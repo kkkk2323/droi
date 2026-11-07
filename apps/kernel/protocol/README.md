@@ -74,15 +74,20 @@ A client says what it wants when it subscribes, because the two clients are not
 alike: the window sits on the machine that runs the kernel, and the phone
 reaches it over the Relay, on someone else's network.
 
-| `subscribe` | A `conversation.view` carries | Who uses it |
-| ----------- | ----------------------------- | ----------- |
-| `"view"` (default) | `{id, kind: "value", value, ops, retired}` — the window over entries, whole | The window on this computer |
-| `"delta"` | `{id, kind: "value", value: null, ops, retired}` — Pi's incremental ops only | The phone over the Relay |
+| `subscribe`        | A `conversation.view` carries                                                | Who uses it                 |
+| ------------------ | ---------------------------------------------------------------------------- | --------------------------- |
+| `"view"` (default) | `{id, kind: "value", value, ops, retired}` — the window over entries, whole  | The window on this computer |
+| `"delta"`          | `{id, kind: "value", value: null, ops, retired}` — Pi's incremental ops only | The phone over the Relay    |
 
 A `"delta"` subscription, as a client asks for it:
 
 ```json
-{"jsonrpc":"2.0","id":"4","method":"conversation.open","params":{"id":7,"subscribe":"delta"}}
+{
+  "jsonrpc": "2.0",
+  "id": "4",
+  "method": "conversation.open",
+  "params": { "id": 7, "subscribe": "delta" }
+}
 ```
 
 `kind: "full"` carries the whole `value` and `ops: []`. The kernel sends it
@@ -148,11 +153,32 @@ JSON-RPC 2.0.
 | `-32011` | process not found         | `{"processId"}`                     |                                                                          |
 | `-32012` | timeout                   | `{"method","timeoutMs"}`            | The kernel's own deadline for the call.                                  |
 | `-32013` | conflict                  | `{"requestId"}`                     | The same `requestId` was used for a different request.                   |
-| `-32014` | model output invalid      | `{"issues":[...],"text"}`         | `model.complete`'s answer does not match the `schema` it was given.      |
-| `-32015` | model call failed         | `{"status"?,"provider"?}`          | The provider answered with an error. `message` carries its own words.    |
+| `-32014` | model output invalid      | `{"issues":[...],"text"}`           | `model.complete`'s answer does not match the `schema` it was given.      |
+| `-32015` | model call failed         | `{"status"?,"provider"?}`           | The provider answered with an error. `message` carries its own words.    |
 | `-32016` | model not found           | `{"model"}`                         | `model.complete` with a provider or model id this build does not know.   |
 | `-32017` | budget exceeded           | `{"maxTokens"}`                     | `maxTokens` or the call's own budget was above what the build allows.    |
 | `-32018` | model refused             | `{"reason"?}`                       | The model declined to answer. Nothing can be salvaged by parsing again.  |
+
+### Stopping the kernel
+
+The Host stops a kernel two ways:
+
+- **SIGTERM**, then SIGKILL after 12 s (macOS, Linux). This is how `process.stop` would do it, and it
+  closes the harness and then the storage.
+- **`kernel.shutdown`**, over the WebSocket that already carried the token. Windows has no SIGTERM a
+  parent can send: a supervisor can only `TerminateProcess`, which would leave `storage.close()` unrun
+  and the SQLite file to be recovered on the next start. So the Host asks instead.
+
+The method answers `{"status":"closing"}` first and starts closing on the next tick, so a client waiting
+for its answer is not cut off by the process going away. It then refuses new work (`-32008 read-only`,
+message "shutting down"), closes the harness, closes the storage, and exits `0`; a kernel that cannot
+close exits `1`. A second call during closing answers `{"status":"closing"}` again rather than
+failing.
+
+```json
+{"jsonrpc":"2.0","id":"26","method":"kernel.shutdown"}
+{"jsonrpc":"2.0","id":"26","result":{"status":"closing"}}
+```
 
 ## Identifiers
 
@@ -171,37 +197,37 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 
 ## Methods
 
-26 methods. "Capability" names the `harness.info.capabilities` flag that says
+27 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
-| Method                   | Params                                                      | Result                                                           | Capability      | M1  |
-| ------------------------ | ----------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
-| `harness.info`           | —                                                           | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
-| `conversation.create`    | `{agent?, cwd?, instructions?, kind?, requestId?}`          | `{conversationId, view}`                                         | `conversations` | yes |
-| `conversation.list`      | `{kind?, archived?, workspace?, query?, cursor?, limit?}`   | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.open`      | `{id, window?, subscribe?}`                                             | `{view}`                                                         | `conversations` | yes |
-| `conversation.unwatch`   | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
-| `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
-| `conversation.abort`     | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
-| `submission.abort`       | `{id, submissionId}`                                        | `{status}`                                                       | `conversations` | yes |
-| `conversation.configure` | `{id, change}`                                              | `{agent}`                                                        | `conversations` | yes |
-| `conversation.compact`   | `{id, instructions?}`                                       | `{taskId}`                                                       | `compaction`    | yes |
-| `conversation.fork`      | `{id, at}`                                                  | `{conversationId, view}`                                         | `fork`          | yes |
-| `conversation.entries`   | `{id, query?, limit?, cursor?}`                             | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.usage`     | `{id}`                                                      | `{models, tools, context}`                                       | `usage`         | yes |
-| `task.abort`             | `{taskId}`                                                  | `{status}`                                                       | `tasks`         | yes |
-| `index.update`           | `{id, title?, archived?, kind?}`                            | `{}`                                                             | `index`         | yes |
-| `process.list`           | `{id}`                                                      | `{processes[]}`                                                  | `processes`     | no  |
-| `process.stop`           | `{id, processId}`                                           | `{status}`                                                       | `processes`     | no  |
-| `approval.respond`       | `{requestId, outcome, scope?}`                              | `{status}`                                                       | `approvals`     | no  |
-| `ask.respond`            | `{requestId, answers?, cancelled?}`                         | `{status}`                                                       | `asks`          | no  |
-| `mcp.list`               | —                                                           | `{servers[]}`                                                    | `mcp`           | no  |
-| `mcp.set`                | `{name, server?, enabled?, remove?}`                        | `{servers[]}`                                                    | `mcp`           | no  |
-| `mcp.authorize`          | `{name}`                                                    | `{authorizationUrl}`                                             | `mcp`           | no  |
-| `mcp.authorize.cancel`   | `{name}`                                                    | `{}`                                                             | `mcp`           | no  |
-| `skills.list`            | —                                                           | `{skills[]}`                                                     | `skills`        | no  |
-| `skills.setDisabled`     | `{name, disabled}`                                          | `{skills[]}`                                                     | `skills`        | no  |
-| `model.complete`         | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}`                    | `models`        | no  |
+| Method                   | Params                                                                     | Result                                                           | Capability      | M1  |
+| ------------------------ | -------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
+| `harness.info`           | —                                                                          | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
+| `conversation.create`    | `{agent?, cwd?, instructions?, kind?, requestId?}`                         | `{conversationId, view}`                                         | `conversations` | yes |
+| `conversation.list`      | `{kind?, archived?, workspace?, query?, cursor?, limit?}`                  | `{items[], cursor?}`                                             | `conversations` | yes |
+| `conversation.open`      | `{id, window?, subscribe?}`                                                | `{view}`                                                         | `conversations` | yes |
+| `conversation.unwatch`   | `{id}`                                                                     | `{}`                                                             | `conversations` | yes |
+| `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                | `{submissionId}`                                                 | `conversations` | yes |
+| `conversation.abort`     | `{id, background?}`                                                        | `{}`                                                             | `conversations` | yes |
+| `submission.abort`       | `{id, submissionId}`                                                       | `{status}`                                                       | `conversations` | yes |
+| `conversation.configure` | `{id, change}`                                                             | `{agent}`                                                        | `conversations` | yes |
+| `conversation.compact`   | `{id, instructions?}`                                                      | `{taskId}`                                                       | `compaction`    | yes |
+| `conversation.fork`      | `{id, at}`                                                                 | `{conversationId, view}`                                         | `fork`          | yes |
+| `conversation.entries`   | `{id, query?, limit?, cursor?}`                                            | `{items[], cursor?}`                                             | `conversations` | yes |
+| `conversation.usage`     | `{id}`                                                                     | `{models, tools, context}`                                       | `usage`         | yes |
+| `task.abort`             | `{taskId}`                                                                 | `{status}`                                                       | `tasks`         | yes |
+| `index.update`           | `{id, title?, archived?, kind?}`                                           | `{}`                                                             | `index`         | yes |
+| `process.list`           | `{id}`                                                                     | `{processes[]}`                                                  | `processes`     | no  |
+| `process.stop`           | `{id, processId}`                                                          | `{status}`                                                       | `processes`     | no  |
+| `approval.respond`       | `{requestId, outcome, scope?}`                                             | `{status}`                                                       | `approvals`     | no  |
+| `ask.respond`            | `{requestId, answers?, cancelled?}`                                        | `{status}`                                                       | `asks`          | no  |
+| `mcp.list`               | —                                                                          | `{servers[]}`                                                    | `mcp`           | no  |
+| `mcp.set`                | `{name, server?, enabled?, remove?}`                                       | `{servers[]}`                                                    | `mcp`           | no  |
+| `mcp.authorize`          | `{name}`                                                                   | `{authorizationUrl}`                                             | `mcp`           | no  |
+| `mcp.authorize.cancel`   | `{name}`                                                                   | `{}`                                                             | `mcp`           | no  |
+| `skills.list`            | —                                                                          | `{skills[]}`                                                     | `skills`        | no  |
+| `skills.setDisabled`     | `{name, disabled}`                                                         | `{skills[]}`                                                     | `skills`        | no  |
+| `model.complete`         | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}`                                    | `models`        | no  |
 
 M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
 `mcp.list` and `skills.list` return an empty list, and the write methods and the
@@ -254,15 +280,15 @@ record a Client can open. The kernel sends the request, validates the answer
 when a `schema` is given, and answers once; nothing is stored, and no entry,
 conversation or task is created.
 
-| Param          | Meaning                                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------------------- |
-| `model`        | `{provider, modelId}`, the same shape `agent.model` takes.                                               |
-| `system`       | Optional system text. Absent means the kernel's own, minimal one.                                        |
-| `input`        | A string, or a list of content blocks: `{"type":"text","text":...}`.                                     |
-| `schema`       | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                        |
-| `thinkingLevel`| Optional: `off`, `low`, `medium`, `high`. Absent means the model's default, which may think for minutes. |
-| `maxTokens`    | Optional cap on the answer.                                                                              |
-| `timeoutMs`    | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                            |
+| Param           | Meaning                                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------- |
+| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                               |
+| `system`        | Optional system text. Absent means the kernel's own, minimal one.                                        |
+| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                     |
+| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                        |
+| `thinkingLevel` | Optional: `off`, `low`, `medium`, `high`. Absent means the model's default, which may think for minutes. |
+| `maxTokens`     | Optional cap on the answer.                                                                              |
+| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                           |
 
 The result is `{model, text, json?, usage}`:
 
@@ -285,21 +311,22 @@ What this method does not do, and deliberately: it does not stream (a Host waits
 for the whole answer and the answer is small), it keeps no history (a caller
 that wants one passes the earlier turns in `input`), it runs no tool, and it
 writes no usage row of its own — the `usage` in the result is the record.
+
 ## Notifications
 
-| Notification         | Payload                                                                                                                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `conversation.view`  | `{id, kind: "value"\|"full"\|"failed", value, ops, retired}` — Pi's `WatchCall`, or `{id, kind:"failed", error}`; `value` is `null` for a `"delta"` subscriber's `"value"` push, and whole for `"view"` and `"full"`                                                                                                               |
-| `conversation.busy`  | `{id, run, runFailure?}` — `run` is Pi's `LiveRun` or `null`                                                                                                                                        |
-| `approval.requested` | `{requestId, id, tool, args, options[], scopeHint?}`                                                                                                                                                |
-| `approval.resolved`  | `{requestId, id, outcome, by}`                                                                                                                                                                      |
-| `ask.requested`      | `{requestId, id, questions[], context}` — `context` is required and non-empty: the sentence that says what the answer is for                                                                                                                                                            |
-| `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                              |
-| `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                            |
-| `mcp.changed`        | `{servers[]}`                                                                                                                                                                                       |
-| `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                         |
-| `index.changed`      | `{id, title?, archived?, lastActivityAt?}`                                                                                                                                                          |
-| `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error` |
+| Notification         | Payload                                                                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conversation.view`  | `{id, kind: "value"\|"full"\|"failed", value, ops, retired}` — Pi's `WatchCall`, or `{id, kind:"failed", error}`; `value` is `null` for a `"delta"` subscriber's `"value"` push, and whole for `"view"` and `"full"` |
+| `conversation.busy`  | `{id, run, runFailure?}` — `run` is Pi's `LiveRun` or `null`                                                                                                                                                         |
+| `approval.requested` | `{requestId, id, tool, args, options[], scopeHint?}`                                                                                                                                                                 |
+| `approval.resolved`  | `{requestId, id, outcome, by}`                                                                                                                                                                                       |
+| `ask.requested`      | `{requestId, id, questions[], context}` — `context` is required and non-empty: the sentence that says what the answer is for                                                                                         |
+| `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                                               |
+| `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
+| `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |
+| `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                                          |
+| `index.changed`      | `{id, title?, archived?, lastActivityAt?}`                                                                                                                                                                           |
+| `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only
 `conversation.view` is per connection, everything else reaches every connection.

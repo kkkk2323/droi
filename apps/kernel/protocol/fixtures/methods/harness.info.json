@@ -41,10 +41,7 @@
         {
           "id": "factory",
           "name": "Factory",
-          "models": [
-            "claude-sonnet-4-5",
-            "gpt-5.1-codex"
-          ]
+          "models": ["claude-sonnet-4-5", "gpt-5.1-codex"]
         }
       ],
       "models": [
@@ -54,16 +51,8 @@
           "name": "Claude Sonnet 4.5",
           "contextWindow": 200000,
           "maxOutput": 64000,
-          "input": [
-            "text",
-            "image"
-          ],
-          "thinking": [
-            "off",
-            "low",
-            "medium",
-            "high"
-          ]
+          "input": ["text", "image"],
+          "thinking": ["off", "low", "medium", "high"]
         },
         {
           "provider": "factory",
@@ -71,32 +60,15 @@
           "name": "GPT-5.1 Codex",
           "contextWindow": 400000,
           "maxOutput": 128000,
-          "input": [
-            "text",
-            "image"
-          ],
-          "thinking": [
-            "off",
-            "low",
-            "medium",
-            "high"
-          ]
+          "input": ["text", "image"],
+          "thinking": ["off", "low", "medium", "high"]
         }
       ],
       "extensions": [
         {
           "name": "coding",
-          "tools": [
-            "read",
-            "write",
-            "edit",
-            "bash",
-            "powershell"
-          ],
-          "sections": [
-            "environment",
-            "cwd"
-          ]
+          "tools": ["read", "write", "edit", "bash", "powershell"],
+          "sections": ["environment", "cwd"]
         }
       ],
       "limits": {

@@ -285,11 +285,15 @@ export class Kernel implements Dispatcher {
     const conversation = await this.#conversation(id)
     const window = parseWindow(optionalObject(params, 'window'))
     const mode = parseMode(params['subscribe'])
-    const view = await this.#view(id, window)
-    await this.#options.indexer.markViewed(id)
-    if (this.#closing) return { view }
+    // One watch answers the call and feeds the subscription. Two watches would be two mounts, and a
+    // commit between them would leave a delta subscriber's baseline one step behind the ops it gets.
     const watch = await conversation.watch(context, window)
-    // The delta window's baseline is the value this answer carries, so no first `full` is needed.
+    const view = watch.value
+    await this.#options.indexer.markViewed(id)
+    if (this.#closing) {
+      await watch.stop()
+      return { view }
+    }
     const pusher = new ViewWindow({
       connection,
       conversationId: id,
@@ -314,6 +318,7 @@ export class Kernel implements Dispatcher {
     await this.track(id)
     return { view }
   }
+
   async #unwatch(params: Record<string, unknown>, connection: Connection): Promise<unknown> {
     const id = requiredNumber(params, 'id')
     await connection.unsubscribe(id)

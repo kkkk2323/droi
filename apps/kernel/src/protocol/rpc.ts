@@ -37,16 +37,16 @@ export const Code = {
   processNotFound: -32011,
   timeout: -32012,
   conflict: -32013,
-  /** `model.complete` could not reach a model: no model configured, or the one named is unknown. */
-  modelUnavailable: -32014,
-  /** `model.complete` was given arguments its schema does not take. */
-  modelSchema: -32015,
-  /** The model answered but not with the JSON the schema asked for. */
-  modelOutput: -32016,
-  /** `model.complete` was cancelled by the caller. */
-  modelCancelled: -32017,
-  /** The model request failed: a provider error, a timeout, a refusal. */
-  modelFailed: -32018,
+  /** `model.complete`'s answer does not match the `schema` it was given. */
+  modelOutputInvalid: -32014,
+  /** The provider answered with an error: a status, a refusal, a timeout. */
+  modelCallFailed: -32015,
+  /** `model.complete` with a provider or model id this build does not know. */
+  modelNotFound: -32016,
+  /** `maxTokens`, or the call's own budget, was above what the build allows. */
+  budgetExceeded: -32017,
+  /** The model declined to answer: nothing is salvageable by parsing again. */
+  modelRefused: -32018,
 } as const
 
 export class RpcError extends Error {

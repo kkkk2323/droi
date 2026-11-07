@@ -11,9 +11,7 @@
       "ops": [
         [
           "a",
-          [
-            "entries"
-          ],
+          ["entries"],
           {
             "id": 43,
             "conversationId": 7,

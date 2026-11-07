@@ -29,9 +29,7 @@
       "code": -32014,
       "message": "the model's answer does not match the schema: missing required property slug",
       "data": {
-        "issues": [
-          { "path": "", "message": "missing required property \"slug\"" }
-        ],
+        "issues": [{ "path": "", "message": "missing required property \"slug\"" }],
         "text": "{\"summary\":\"Added the fixtures.\"}"
       }
     }

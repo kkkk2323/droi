@@ -3,28 +3,28 @@
   "method": "model.complete",
   "error": {
     "code": -32016,
-    "name": "model output"
+    "name": "model not found"
   },
   "request": {
     "jsonrpc": "2.0",
-    "id": "28",
+    "id": "29",
     "method": "model.complete",
     "params": {
       "model": {
         "provider": "factory",
         "modelId": "nope"
       },
-      "prompt": "hi"
+      "input": "hi"
     }
   },
   "response": {
     "jsonrpc": "2.0",
-    "id": "28",
+    "id": "29",
     "error": {
       "code": -32016,
-      "message": "the answer was not the JSON the schema asks for",
+      "message": "no such model: factory/nope",
       "data": {
-        "detail": "unexpected token"
+        "model": "factory/nope"
       }
     }
   }
