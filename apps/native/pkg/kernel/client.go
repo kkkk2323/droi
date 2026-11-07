@@ -28,6 +28,12 @@ const (
 	// closeUnauthorized is the WebSocket close code the contract gives a
 	// wrong or missing token that got as far as the upgrade.
 	closeUnauthorized = websocket.StatusCode(4401)
+	// defaultWriteTimeout bounds one write to the socket.
+	defaultWriteTimeout = 10 * time.Second
+	// pendingNotesPerConversation is how many notifications of one
+	// conversation a slow reader may fall behind by: a view supersedes the
+	// one before it, so only the newest matters.
+	pendingNotesPerConversation = 8
 )
 
 // Options say how to reach a Kernel.
@@ -43,10 +49,16 @@ type Options struct {
 	RequestTimeout time.Duration
 	// MaxMessage bounds one incoming frame; 0 is 64 MiB.
 	MaxMessage int64
-	// NotesBuffer is how many notifications may wait for the reader; 0 is
-	// 256. One goroutine reads them, in order, so a reader that stops reading
-	// stops Kernel's news.
+	// NotesBuffer is how many notifications are handed to the reader at once;
+	// 0 is 256. A reader that stops reading never stops the answers: the read
+	// loop queues notifications without waiting, so a slow consumer costs
+	// memory, not calls. One goroutine reads the queue in order, so a reader
+	// sees Kernel's news as it sent it.
 	NotesBuffer int
+	// WriteTimeout bounds one write to the socket; 0 is 10 s. Kernel not
+	// reading its frames is a broken connection, and without this the caller
+	// waiting on the write mutex would wait forever.
+	WriteTimeout time.Duration
 	// Log, optional, hears what the Client drops: a frame it cannot read, an
 	// answer to a call that is gone.
 	Log func(string)
@@ -71,8 +83,15 @@ type Client struct {
 
 	mu      sync.Mutex
 	pending map[string]chan *rpcFrame
-	opened  map[ID]struct{}
+	opened  []ID
 	err     error
+
+	// queued holds notifications the read loop took but the reader has not
+	// been given yet, so a slow reader never stops the read loop.
+	queuedMu sync.Mutex
+	queued   []Notification
+	dropped  int
+	wake     chan struct{}
 
 	notes chan Notification
 	done  chan struct{}
@@ -104,12 +123,20 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		conn:    conn,
 		opts:    opts,
 		pending: map[string]chan *rpcFrame{},
-		opened:  map[ID]struct{}{},
+		wake:    make(chan struct{}, 1),
 		notes:   make(chan Notification, opts.notesBuffer()),
 		done:    make(chan struct{}),
 	}
+	go c.deliver()
 	go c.read()
 	return c, nil
+}
+
+func (o Options) writeTimeout() time.Duration {
+	if o.WriteTimeout > 0 {
+		return o.WriteTimeout
+	}
+	return defaultWriteTimeout
 }
 
 func (o Options) maxMessage() int64 {
@@ -153,19 +180,43 @@ func (c *Client) Err() error {
 func (c *Client) Opened() []ID {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	out := make([]ID, 0, len(c.opened))
-	for id := range c.opened {
-		out = append(out, id)
-	}
-	return out
+	return append([]ID(nil), c.opened...)
 }
 
-// Close ends the connection, which unwatches everything it opened.
+// watch notes that this connection watches id.
+func (c *Client) watch(id ID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, have := range c.opened {
+		if have == id {
+			return
+		}
+	}
+	c.opened = append(c.opened, id)
+}
+
+// forget stops counting id as watched, "" only when Kernel took the unwatch.
+func (c *Client) forget(id ID) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, have := range c.opened {
+		if have == id {
+			c.opened = append(c.opened[:i], c.opened[i+1:]...)
+			return
+		}
+	}
+}
+
+// Close ends the connection, which unwatches everything it opened. Closing
+// twice is safe: the second answer is nil.
 func (c *Client) Close() error {
 	// Shut first, so a waiting call sees ErrClosed whether or not the close
 	// handshake reaches Kernel.
 	c.shut(nil)
-	return c.conn.Close(websocket.StatusNormalClosure, "")
+	if err := c.conn.Close(websocket.StatusNormalClosure, ""); err != nil && c.Err() == nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Client) shut(err error) {
@@ -186,9 +237,6 @@ func (c *Client) logf(format string, args ...any) {
 }
 
 func (c *Client) read() {
-	// The reader is the only sender on notes, so closing it here cannot race
-	// a send.
-	defer close(c.notes)
 	for {
 		typ, data, err := c.conn.Read(context.Background())
 		if err != nil {
@@ -237,10 +285,10 @@ func (c *Client) handle(data []byte) {
 
 func (c *Client) dispatch(f rpcFrame) {
 	if f.Method != "" {
-		select {
-		case c.notes <- Notification{Method: f.Method, Params: f.Params}:
-		case <-c.done:
-		}
+		// The read loop never waits for the reader: a consumer that is busy
+		// handling a notification and calls back in must not deadlock, and a
+		// consumer that stops reading must not stall the answers.
+		c.enqueue(Notification{Method: f.Method, Params: f.Params})
 		return
 	}
 	id := normalizeID(f.ID)
@@ -318,6 +366,11 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 		return c.terminalErr()
 	default:
 	}
+	if err := ctx.Err(); err != nil {
+		// The caller gave up before the frame left: Kernel never hears of it,
+		// so it never answers a call nobody waits for.
+		return fmt.Errorf("kernel: %s: %w", method, err)
+	}
 	id := strconv.FormatInt(c.seq.Add(1), 10)
 	b, err := json.Marshal(rpcFrame{JSONRPC: "2.0", ID: json.RawMessage(strconv.Quote(id)), Method: method, Params: mustJSON(params)})
 	if err != nil {
@@ -333,8 +386,11 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 		c.mu.Unlock()
 	}()
 
-	if err := c.write(ctx, b); err != nil {
-		return fmt.Errorf("kernel: %s: %w", method, err)
+	// The write has a deadline of its own: the caller's context bounds the
+	// wait for the answer, and a caller that gives up must not end the
+	// connection everyone else is using.
+	if err := c.write(method, b); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.opts.timeout())
 	defer cancel()
@@ -369,16 +425,116 @@ func (c *Client) Send(ctx context.Context, method string, params any) error {
 	if err != nil {
 		return fmt.Errorf("kernel: %s: %w", method, err)
 	}
-	if err := c.write(ctx, b); err != nil {
+	return c.write(method, b)
+}
+
+// write sends one frame with a deadline of its own, so a Kernel that stopped
+// reading makes this call fail instead of holding the write mutex forever.
+func (c *Client) write(method string, b []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.opts.writeTimeout())
+	defer cancel()
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	select {
+	case <-c.done:
+		return fmt.Errorf("kernel: %s: %w", method, c.terminalErr())
+	default:
+	}
+	if err := c.conn.Write(ctx, websocket.MessageText, b); err != nil {
 		return fmt.Errorf("kernel: %s: %w", method, err)
 	}
 	return nil
 }
 
-func (c *Client) write(ctx context.Context, b []byte) error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
-	return c.conn.Write(ctx, websocket.MessageText, b)
+// enqueue puts a notification in line for the reader and wakes it.
+//
+// A conversation.view supersedes the view of the same conversation still
+// waiting: the newer one is the whole truth, so a reader that fell behind sees
+// the latest state rather than every intermediate one. Anything else keeps its
+// place; only a reader that stops reading for good loses notifications, and it
+// hears how many it lost through Log.
+func (c *Client) enqueue(n Notification) {
+	c.queuedMu.Lock()
+	if n.Method == NotifyConversationView {
+		if id, ok := conversationID(n.Params); ok {
+			for i := range c.queued {
+				if c.queued[i].Method != NotifyConversationView {
+					continue
+				}
+				if other, ok := conversationID(c.queued[i].Params); ok && other == id {
+					c.queued[i] = n
+					c.queuedMu.Unlock()
+					c.signal()
+					return
+				}
+			}
+		}
+	}
+	if len(c.queued) >= maxQueuedNotes {
+		c.queued = c.queued[1:]
+		c.dropped++
+		if c.dropped == 1 || c.dropped%1000 == 0 {
+			c.logf("kernel: a slow reader lost %d notifications", c.dropped)
+		}
+	}
+	c.queued = append(c.queued, n)
+	c.queuedMu.Unlock()
+	c.signal()
+}
+
+// maxQueuedNotes bounds what a reader that stopped reading costs: a
+// conversation's views coalesce, so reaching this means a real flood or a
+// reader that is gone.
+const maxQueuedNotes = 4096
+
+// conversationID reads the id of a notification's params, for coalescing.
+func conversationID(params json.RawMessage) (ID, bool) {
+	var p struct {
+		ID ID `json:"id"`
+	}
+	if json.Unmarshal(params, &p) != nil || p.ID == 0 {
+		return 0, false
+	}
+	return p.ID, true
+}
+
+func (c *Client) signal() {
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+}
+
+// deliver hands queued notifications to the reader, in the order they arrived,
+// on a goroutine of its own: it is the only sender on notes and the only one
+// that closes it.
+func (c *Client) deliver() {
+	defer close(c.notes)
+	for {
+		select {
+		case <-c.done:
+			return
+		default:
+		}
+		c.queuedMu.Lock()
+		if len(c.queued) == 0 {
+			c.queuedMu.Unlock()
+			select {
+			case <-c.wake:
+				continue
+			case <-c.done:
+				return
+			}
+		}
+		n := c.queued[0]
+		c.queued = c.queued[1:]
+		c.queuedMu.Unlock()
+		select {
+		case c.notes <- n:
+		case <-c.done:
+			return
+		}
+	}
 }
 
 // mustJSON is params as JSON: nil is omitted, and an already-encoded

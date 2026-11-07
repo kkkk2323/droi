@@ -45,10 +45,9 @@ func TestKernelHelperProcess(t *testing.T) {
 			data = os.Args[i+1]
 		}
 	}
-	if port == 0 {
-		fmt.Fprintln(os.Stderr, "kernel: --port is required")
-		os.Exit(1)
-	}
+	// --port 0 is the contract's own way of asking for a port: the helper
+	// binds one, and the handshake names what it got.
+
 	// The token must arrive in the environment only; refuse to start from argv
 	// if a test ever puts it there.
 	for _, arg := range os.Args {
@@ -68,6 +67,7 @@ func TestKernelHelperProcess(t *testing.T) {
 		fmt.Fprintf(os.Stderr, "kernel: listen: %v\n", err)
 		os.Exit(1)
 	}
+	port = listener.Addr().(*net.TCPAddr).Port
 	if noise := os.Getenv("GO_KERNEL_NOISE"); noise != "" {
 		// A compiled sidecar prints what its runtime says before its own
 		// handshake; that line must not be taken for one.
@@ -82,6 +82,34 @@ func TestKernelHelperProcess(t *testing.T) {
 	if server != nil {
 		go func() { _ = server.Serve(listener) }()
 	}
+	if noise := os.Getenv("GO_KERNEL_NOISE_BYTES"); noise != "" {
+		// A sidecar that keeps printing after its handshake: whatever reads
+		// its stdout must keep reading, or the pipe fills and it blocks.
+		if n, err := strconv.Atoi(noise); err == nil && n > 0 {
+			line := strings.Repeat("x", 200) + "\n"
+			for written := 0; written < n; written += len(line) {
+				if _, err := os.Stdout.WriteString(line); err != nil {
+					fmt.Fprintf(os.Stderr, "kernel: stdout write: %v\n", err)
+					os.Exit(4)
+				}
+			}
+			if done := os.Getenv("GO_KERNEL_NOISE_DONE"); done != "" && data != "" {
+				_ = os.WriteFile(filepath.Join(data, done), []byte("done"), 0o600)
+			}
+		}
+	}
+	if hold := os.Getenv("GO_KERNEL_CHILD_HOLD_MS"); hold != "" {
+		// A process the sidecar starts — bash, or a background job — which
+		// inherits its stderr and outlives it.
+		if ms, err := strconv.Atoi(hold); err == nil && ms > 0 {
+			child := exec.Command("sh", "-c", "sleep "+strconv.Itoa((ms+999)/1000))
+			child.Stdout, child.Stderr = os.Stdout, os.Stderr
+			if err := child.Start(); err != nil {
+				fmt.Fprintf(os.Stderr, "kernel: child: %v\n", err)
+			}
+		}
+	}
+
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
 	if file := os.Getenv("GO_KERNEL_TOUCH"); file != "" {
@@ -402,5 +430,56 @@ func TestKernelSupervisorFindsTheHandshakeAfterOtherOutput(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the line before the handshake was dropped; log %v", logged)
+	}
+}
+
+// A sidecar that keeps writing after its handshake must not block: whatever
+// reads its stdout has to keep draining it.
+func TestKernelSupervisorKeepsDrainingStdoutAfterTheHandshake(t *testing.T) {
+	data := t.TempDir()
+	w := newWatch()
+	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
+		cmd.Env = append(os.Environ(), "GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv+"="+token,
+			"GO_KERNEL_NOISE_BYTES=2097152", "GO_KERNEL_NOISE_DONE=noise-done")
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, nil, err
+		}
+		return cmd, stdout, nil
+	})
+	defer s.Stop()
+	s.Start()
+	w.waitState(t, KernelRunning)
+	done := filepath.Join(data, "noise-done")
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		if _, err := os.Stat(done); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the sidecar could not finish writing 2 MiB to stdout: nothing drains it after the handshake")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A process the sidecar starts inherits its stderr. Stop must not wait for
+// that process: only the sidecar's own shutdown is what the window waits on.
+func TestKernelSupervisorStopDoesNotWaitForAGrandchild(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_CHILD_HOLD_MS=20000"))
+	s.StopGrace = 500 * time.Millisecond
+	s.Start()
+	w.waitState(t, KernelRunning)
+	// Let the sidecar start its child before it is stopped.
+	time.Sleep(300 * time.Millisecond)
+	started := time.Now()
+	s.Stop()
+	elapsed := time.Since(started)
+	if elapsed > 5*time.Second {
+		t.Fatalf("Stop took %s: it waited for a grandchild that holds the stderr pipe", elapsed)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
 	}
 }

@@ -28,19 +28,18 @@ func (c *Client) Open(ctx context.Context, p OpenParams) (OpenResult, error) {
 	if err != nil {
 		return res, err
 	}
-	c.mu.Lock()
-	c.opened[p.ID] = struct{}{}
-	c.mu.Unlock()
+	c.watch(p.ID)
 	return res, nil
 }
 
 // Unwatch stops this connection's subscription; the conversation, and every
-// other connection's subscription, stay.
+// other connection's subscription, stay. A failed unwatch keeps counting the
+// conversation as watched, because Kernel still sends its views.
 func (c *Client) Unwatch(ctx context.Context, id ID) error {
 	err := c.Call(ctx, MethodConversationUnwatch, IDParams{ID: id}, nil)
-	c.mu.Lock()
-	delete(c.opened, id)
-	c.mu.Unlock()
+	if err == nil {
+		c.forget(id)
+	}
 	return err
 }
 

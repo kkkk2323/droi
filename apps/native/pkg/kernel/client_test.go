@@ -587,3 +587,123 @@ func TestClientTracksWhatItWatched(t *testing.T) {
 		t.Fatalf("Opened() = %v after unwatching 7", opened)
 	}
 }
+
+// A call whose caller's context is already done must fail alone: it may not
+// end the connection, because the next call needs it.
+func TestCancelledCallLeavesTheConnectionUp(t *testing.T) {
+	f := startFakeKernel(t)
+	c := dialFake(t, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.Harness(ctx); err == nil {
+		t.Fatal("a call with a cancelled context succeeded")
+	}
+	select {
+	case <-c.Done():
+		t.Fatalf("one cancelled call ended the connection: %v", c.Err())
+	case <-time.After(200 * time.Millisecond):
+	}
+	// The next call still works.
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Harness(context.Background())
+		done <- err
+	}()
+	sent := f.next(t)
+	f.reply(t, sent.ID, map[string]any{"version": "kernel-1.5.0-1"})
+	if err := <-done; err != nil {
+		t.Fatalf("the call after a cancelled one: %v", err)
+	}
+}
+
+// A consumer that stops reading notifications must not stop the answers: the
+// read loop serves both, and a slow consumer is not Kernel's fault.
+func TestSlowNotificationReaderDoesNotBlockAnswers(t *testing.T) {
+	f := startFakeKernel(t)
+	c, err := Dial(context.Background(), Options{URL: f.url(), Token: "t-test", RequestTimeout: 3 * time.Second, NotesBuffer: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	// Nobody reads Notifications(); Kernel sends five and then the answer.
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Harness(context.Background())
+		done <- err
+	}()
+	sent := f.next(t)
+	for i := 0; i < 5; i++ {
+		f.notify(t, NotifyWarning, map[string]any{"kind": "extension_error", "message": "boom"})
+	}
+	f.reply(t, sent.ID, map[string]any{"version": "kernel-1.5.0-1"})
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("the answer never arrived with nobody reading notifications: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the answer never arrived: a slow notification reader blocked the read loop")
+	}
+	// The notifications are still there, in order, for a reader that comes
+	// late.
+	for i := 0; i < 5; i++ {
+		select {
+		case n := <-c.Notifications():
+			if n.Method != NotifyWarning {
+				t.Fatalf("notification %d is %s", i, n.Method)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d notifications were kept", i)
+		}
+	}
+}
+
+// A peer that stops reading must not hold the writer forever: the call fails
+// on its own write timeout, and the calls behind it are not stuck behind the
+// write mutex.
+func TestStalledPeerDoesNotHoldTheWriter(t *testing.T) {
+	release := make(chan struct{})
+	stalled := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		// Read nothing until the test releases it: the client's writes fill
+		// the socket buffer and then block inside the write.
+		close(stalled)
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+	c, err := Dial(context.Background(), Options{
+		URL:            "ws" + strings.TrimPrefix(server.URL, "http") + "/rpc",
+		RequestTimeout: 2 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	<-stalled
+	// A payload far larger than any socket buffer, twice: the first write
+	// blocks in the socket, the second waits on the write mutex.
+	big := strings.Repeat("x", 8<<20)
+	done := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			done <- c.Call(context.Background(), MethodIndexUpdate, map[string]any{"id": 1, "title": big}, nil)
+		}()
+	}
+	deadline := time.After(15 * time.Second)
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("a call to a peer that never read its frame succeeded")
+			}
+		case <-deadline:
+			t.Fatal("a call to a peer that stopped reading never returned: the writer is held forever")
+		}
+	}
+}
