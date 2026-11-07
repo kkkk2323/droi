@@ -339,12 +339,18 @@ func (s *KernelSupervisor) Start() {
 // Stop ends the sidecar and disarms restarts. The data directory stays as it
 // is.
 //
-// It asks the sidecar to stop — Terminate when the Host wired one, which is
+// It asks the sidecar to stop — AskShutdown when the Host wired one, which is
 // kernel.shutdown and the only orderly stop on Windows, else the platform's
 // signal — waits StopGrace for it to exit, then ends the generation's whole
 // process tree. The tree is ended whether or not the sidecar exited: a shell
 // or a background process it started keeps its own life, and one that ignores
 // the signal outlives its parent.
+//
+// StopGrace is the contract's own shutdown window, and it covers what Kernel
+// does after it answers: close the harness, end the tool process groups it
+// started, close the storage. The ask may use the grace to answer and the same
+// grace again to exit, so a close that spends its whole window on the harness
+// still has time for the rest before the tree is ended from outside.
 //
 // Stop never waits for a callback. The state is published before the sidecar is
 // asked to stop, so a window hears "stopped" while the process is still closing;
@@ -431,6 +437,15 @@ func (s *KernelSupervisor) liveChild(ch *kernelChild) bool {
 	return s.child == ch && s.running
 }
 
+// owning reports whether this generation is still the Supervisor's to end: it is
+// what the watchdog checks before it kills, so a tree that a Stop retired first
+// is not touched again.
+func (s *KernelSupervisor) owning(ch *kernelChild) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.child == ch
+}
+
 // reasonOf is why the Supervisor ended this child itself, "" when it did not.
 func (s *KernelSupervisor) reasonOf(ch *kernelChild) string {
 	s.mu.Lock()
@@ -476,16 +491,18 @@ func (s *KernelSupervisor) watchHealth(ch *kernelChild, port int) {
 			continue
 		}
 		s.logf("kernel did not answer health %d times in a row: restarting it", failures)
+		// Under the ownership of the generation: a Stop that landed while this
+		// check was in flight has already retired the tree and released its
+		// handles, and a kill after that is a kill of something else.
+		if !s.owning(ch) {
+			return
+		}
 		s.mu.Lock()
 		ch.failure = "health: no answer after " + strconv.Itoa(failures) + " checks"
 		s.mu.Unlock()
 		// The whole tree: a wedged sidecar's children are wedged with it, and
 		// the exit that follows is what wakes the launch loop.
-		if ch.tree != nil {
-			ch.tree.kill()
-		} else if ch.cmd.Process != nil {
-			_ = ch.cmd.Process.Kill()
-		}
+		ch.endTree()
 		return
 	}
 }
@@ -712,7 +729,17 @@ func (s *KernelSupervisor) launch(gen int) {
 	// says what the sidecar said and waits to be asked to start again.
 	if exitCode(ch.err) == kernel.ExitRefused {
 		reason := s.exitReason(ch, failure)
+		// The decision is taken again under the lock that commits it: a Stop,
+		// or a Stop and a Start, may have run between the ownership check and
+		// here, and this refusal would then belong to a generation nobody owns.
+		// Writing "stopped" over the next one left a live sidecar that no Stop
+		// would ever reach.
 		s.mu.Lock()
+		if !s.running || gen != s.gen {
+			s.mu.Unlock()
+			s.logf("kernel refused to start; the generation it belonged to is gone: %s", reason)
+			return
+		}
 		s.running = false
 		s.attempt = 0
 		s.setLocked(KernelState{Status: KernelStopped, Reason: "the kernel refused to start: " + reason})
