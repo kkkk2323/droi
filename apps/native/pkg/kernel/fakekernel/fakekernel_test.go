@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
 )
 
@@ -336,5 +337,71 @@ func TestFakeKernelSettledTurnStopsAtItsOwnAnswer(t *testing.T) {
 	}
 	if !strings.Contains(string(output), "settled with") {
 		t.Fatalf("the failure does not say the turn settled without a match:\n%s", output)
+	}
+}
+
+// TestFakeKernelAbortedTurnIsTerminal is the last false pass: a submission that ended without an answer is
+// final, so a wait on it must fail at once with the Kernel's reason — and its entries must stop where its own
+// turn stopped, not run through the next turn's reply.
+func TestFakeKernelAbortedTurnIsTerminal(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		// The delay keeps the run in flight long enough to abort it, which is the state under test.
+		{Match: "first", Text: "too late", Delay: 2 * time.Second},
+		{Match: "second", Text: "second answer"},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	slow := k.Submit(t, c, id, "first")
+	for deadline := time.Now().Add(5 * time.Second); len(k.Requests()) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the model was never asked")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := c.Abort(t.Context(), kernel.AbortParams{ID: id}); err != nil {
+		t.Fatalf("conversation.abort: %v", err)
+	}
+	record := k.Record(t, c, slow, 30*time.Second)
+	if record.Status != "unanswered" {
+		t.Fatalf("the aborted submission is %q, want unanswered: %+v", record.Status, record)
+	}
+	if record.Reason == "" {
+		t.Fatal("an unanswered submission has no reason")
+	}
+	// Its turn has a definite end: the entries it wrote, and nothing after them.
+	entries := k.EntriesAfter(t, c, slow, 30*time.Second)
+	for _, entry := range entries {
+		if record.Last != 0 && entry.ID > record.Last {
+			t.Fatalf("the aborted turn includes entry %d, after its own last %d", entry.ID, record.Last)
+		}
+	}
+	// The later turn's reply is not part of it.
+	second := k.Submit(t, c, id, "second")
+	k.WaitForReply(t, c, second, "second answer", 30*time.Second)
+	after := k.EntriesAfter(t, c, slow, 30*time.Second)
+	for _, entry := range after {
+		if strings.Contains(entry.Text, "second answer") {
+			t.Fatalf("the aborted turn now holds the next turn's reply: %+v", entry)
+		}
+	}
+
+	// And a wait on it fails immediately, saying why, rather than after its timeout.
+	if os.Getenv("FAKEKERNEL_ABORTED_CHILD") != "" {
+		started := time.Now()
+		k.WaitForReply(t, c, slow, "anything", 10*time.Second)
+		t.Fatalf("a wait on an aborted turn returned after %s instead of failing", time.Since(started))
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("no test binary to re-run: %v", err)
+	}
+	child := exec.Command(self, "-test.run=^TestFakeKernelAbortedTurnIsTerminal$", "-test.v")
+	child.Env = append(os.Environ(), "FAKEKERNEL_ABORTED_CHILD=1")
+	run, err := child.CombinedOutput()
+	if err == nil {
+		t.Fatalf("a wait on an aborted turn did not fail:\n%s", run)
+	}
+	if !strings.Contains(string(run), "was never answered") {
+		t.Fatalf("the failure does not say the turn was unanswered:\n%s", run)
 	}
 }

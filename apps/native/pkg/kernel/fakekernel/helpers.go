@@ -34,6 +34,9 @@ type Record struct {
 	Entry kernel.ID
 	// Answer is the entry that answered it; present once Status is "done".
 	Answer kernel.ID
+	// Last is the highest entry this submission's turn wrote. It equals Answer for a done submission, and is
+	// the only end an unanswered one has: a turn cut short still owns the entries it wrote.
+	Last   kernel.ID
 	Reason string
 }
 
@@ -82,6 +85,15 @@ func (k *Kernel) Submit(t testing.TB, c *kernel.Client, id kernel.ID, text strin
 	return Submission{Conversation: id, ID: result.SubmissionID}
 }
 
+// submissionRecord asks the Kernel where this submission is, including the end of its turn.
+type submissionRecord struct {
+	Status string          `json:"status"`
+	Entry  json.RawMessage `json:"entry"`
+	Answer json.RawMessage `json:"answer"`
+	Last   json.RawMessage `json:"last"`
+	Reason string          `json:"reason"`
+}
+
 // Record asks the Kernel where this submission is: queued, placed, done, or unanswered.
 func (k *Kernel) Record(t testing.TB, c *kernel.Client, sub Submission, within time.Duration) Record {
 	t.Helper()
@@ -92,12 +104,7 @@ func (k *Kernel) Record(t testing.TB, c *kernel.Client, sub Submission, within t
 
 func (k *Kernel) record(ctx context.Context, t testing.TB, c *kernel.Client, sub Submission) Record {
 	t.Helper()
-	var answer struct {
-		Status string          `json:"status"`
-		Entry  json.RawMessage `json:"entry"`
-		Answer json.RawMessage `json:"answer"`
-		Reason string          `json:"reason"`
-	}
+	var answer submissionRecord
 	if err := c.Call(ctx, "submission.get", map[string]any{
 		"id": sub.Conversation, "submissionId": sub.ID,
 	}, &answer); err != nil {
@@ -107,26 +114,46 @@ func (k *Kernel) record(ctx context.Context, t testing.TB, c *kernel.Client, sub
 		Status: answer.Status,
 		Entry:  idOf(answer.Entry),
 		Answer: idOf(answer.Answer),
+		Last:   idOf(answer.Last),
 		Reason: answer.Reason,
 	}
+}
+
+// finishedTurn is what a settled submission's turn covers, or why there is nothing to wait for.
+//
+// Every terminal submission is final: waiting longer cannot add an entry. An `unanswered` one — aborted, or
+// ended without a reply — is reported with its reason at once, rather than spending the caller's timeout to
+// say "deadline exceeded" about something the Kernel already knew.
+func (k *Kernel) finishedTurn(t testing.TB, sub Submission, record Record) (end kernel.ID, finished bool) {
+	t.Helper()
+	switch record.Status {
+	case "queued", "placed":
+		return 0, false
+	case "done":
+		return record.Answer, true
+	case "unanswered":
+		t.Fatalf("fakekernel: submission %d was never answered (%s); its turn is not a reply",
+			sub.ID, record.Reason)
+		return 0, true
+	}
+	// A status this package does not know: treat it as unfinished, so a new one does not silently pass tests.
+	return 0, false
 }
 
 // WaitForReply waits until this submission's own answer holds text, and returns the answer's text.
 //
 // The answer is the entry the Kernel says answered this submission, so a reply that was already in flight is
-// never mistaken for it — the false pass a "newest assistant entry" wait produces.
+// never mistaken for it. A submission that ended without an answer fails the test at once, with the Kernel's
+// reason, instead of spending the caller's timeout.
 func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, text string, within time.Duration) string {
 	t.Helper()
 	ctx, cancel := k.context(t, within)
 	defer cancel()
 	for {
 		record := k.record(ctx, t, c, sub)
-		if record.Status == "unanswered" {
-			t.Fatalf("fakekernel: submission %d was never answered: %s\n%s", sub.ID, record.Reason, k.Logs())
-		}
-		if record.Status == "done" && record.Answer != 0 {
-			for _, entry := range k.entriesFrom(ctx, t, c, sub.Conversation, record.Answer-1) {
-				if entry.ID != record.Answer || entry.Kind != "pi.assistant" {
+		if answer, finished := k.finishedTurn(t, sub, record); finished {
+			for _, entry := range k.entriesBetween(ctx, t, c, sub.Conversation, answer-1, answer) {
+				if entry.ID != answer || entry.Kind != "pi.assistant" {
 					continue
 				}
 				if got := entry.Text; strings.Contains(got, text) {
@@ -135,6 +162,8 @@ func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, te
 				t.Fatalf("fakekernel: submission %d was answered by %q, which does not hold %q",
 					sub.ID, entry.Text, text)
 			}
+			t.Fatalf("fakekernel: submission %d answered entry %d, which is not in the transcript\n%s",
+				sub.ID, answer, k.Logs())
 		}
 		select {
 		case <-ctx.Done():
@@ -146,61 +175,10 @@ func (k *Kernel) WaitForReply(t testing.TB, c *kernel.Client, sub Submission, te
 	}
 }
 
-// Ask submits and waits for the reply in one call, which is what most tests want.
-func (k *Kernel) Ask(t testing.TB, c *kernel.Client, id kernel.ID, prompt, reply string, within time.Duration) string {
-	t.Helper()
-	return k.WaitForReply(t, c, k.Submit(t, c, id, prompt), reply, within)
-}
-
-// Entry is one transcript entry, as a test reads it.
-type Entry struct {
-	ID   kernel.ID
-	Kind string
-	// Text is the entry's own text: an assistant message's text, or a tool result's content.
-	Text string
-	// Raw is the entry's model JSON, for a test that needs a part this does not decode.
-	Raw json.RawMessage
-}
-
-// EntriesAfter is the entries this submission's turn wrote, oldest first.
-//
-// Both boundaries come from the Kernel, and both are needed. The turn starts at the user's own entry and ends
-// at the reply that answered it: without the end, a later submission's entries would be included, and a wait
-// for the first turn could be satisfied by the second one's reply. A submission that is still queued has no
-// entry at all, so it answers nothing — not "the previous turn", which is what a zero boundary turned into.
-func (k *Kernel) EntriesAfter(t testing.TB, c *kernel.Client, sub Submission, within time.Duration) []Entry {
-	t.Helper()
-	ctx, cancel := k.context(t, within)
-	defer cancel()
-	return k.turnEntries(ctx, t, c, sub)
-}
-
-// turnEntries is the transcript of one submission, bounded at both ends.
-func (k *Kernel) turnEntries(
-	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission,
-) []Entry {
-	t.Helper()
-	record := k.record(ctx, t, c, sub)
-	// Not placed yet: this submission has written nothing, so its turn is empty.
-	if record.Entry == 0 {
-		return nil
-	}
-	from := record.Entry - 1
-	entries := k.entriesFrom(ctx, t, c, sub.Conversation, from)
-	if record.Answer == 0 {
-		return entries
-	}
-	// Settled: the reply is the last entry of this turn, whatever came after it in the conversation.
-	cut := 0
-	for index, entry := range entries {
-		if entry.ID <= record.Answer {
-			cut = index + 1
-		}
-	}
-	return entries[:cut]
-}
-
 // WaitForEntries waits until this submission's turn holds an entry satisfying match, and returns the turn.
+//
+// Both ends come from the Kernel, so a later turn's entries are never part of this one — and a turn that has
+// settled without a match fails at once rather than waiting for entries that cannot arrive.
 func (k *Kernel) WaitForEntries(
 	t testing.TB, c *kernel.Client, sub Submission, match func([]Entry) bool, within time.Duration,
 ) []Entry {
@@ -208,17 +186,17 @@ func (k *Kernel) WaitForEntries(
 	ctx, cancel := k.context(t, within)
 	defer cancel()
 	for {
-		if record := k.record(ctx, t, c, sub); record.Entry != 0 {
-			entries := k.turnEntries(ctx, t, c, sub)
-			if match(entries) {
-				return entries
-			}
-			// A settled submission will not grow: waiting further cannot make its turn contain anything
-			// new, and saying so is better than a timeout that looks like a slow Kernel.
-			if record.Answer != 0 {
-				t.Fatalf("fakekernel: submission %d settled with %d entries, none matching: %+v\n%s",
-					sub.ID, len(entries), entries, k.Logs())
-			}
+		record := k.record(ctx, t, c, sub)
+		entries := k.turnEntries(ctx, t, c, sub, record)
+		if match(entries) {
+			return entries
+		}
+		// A settled submission is final: a queued one that was withdrawn has no turn at all, and a done one
+		// cannot grow. Waiting further would only turn a known answer — the reason it was never answered —
+		// into a timeout.
+		if _, finished := k.finishedTurn(t, sub, record); finished {
+			t.Fatalf("fakekernel: submission %d settled with %d entries, none matching: %+v\n%s",
+				sub.ID, len(entries), entries, k.Logs())
 		}
 		select {
 		case <-ctx.Done():
@@ -230,12 +208,32 @@ func (k *Kernel) WaitForEntries(
 	}
 }
 
-// entriesFrom reads the conversation's entries above `from`, oldest first, page by page.
+// turnEntries is the transcript of one submission, bounded at both ends.
+//
+// The ends are the Kernel's: `entry` is the user's own entry and `last` is the highest entry the turn wrote —
+// the answer for a done submission, and the last entry of a run that was cut short for an unanswered one. A
+// submission that has not been placed has written nothing, so its turn is empty rather than "everything so
+// far".
+func (k *Kernel) turnEntries(
+	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission, record Record,
+) []Entry {
+	t.Helper()
+	if record.Entry == 0 {
+		return nil
+	}
+	if record.Last == 0 {
+		return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, 0)
+	}
+	return k.entriesBetween(ctx, t, c, sub.Conversation, record.Entry-1, record.Last)
+}
+
+// entriesBetween reads the conversation's entries above `from` and at or below `to` (0: no upper bound),
+// oldest first, page by page.
 //
 // Ascending and paginated on purpose: the RPC's default order is newest first, which reads a turn backwards,
 // and one page silently truncates a long one.
-func (k *Kernel) entriesFrom(
-	ctx context.Context, t testing.TB, c *kernel.Client, id kernel.ID, from kernel.ID,
+func (k *Kernel) entriesBetween(
+	ctx context.Context, t testing.TB, c *kernel.Client, id kernel.ID, from, to kernel.ID,
 ) []Entry {
 	t.Helper()
 	var entries []Entry
@@ -260,6 +258,9 @@ func (k *Kernel) entriesFrom(
 			if entry.ID <= from {
 				continue
 			}
+			if to != 0 && entry.ID > to {
+				return entries
+			}
 			entries = append(entries, Entry{
 				ID: entry.ID, Kind: entry.Kind, Text: entryText(entry), Raw: entry.Model,
 			})
@@ -269,6 +270,30 @@ func (k *Kernel) entriesFrom(
 		}
 		cursor = page.Cursor
 	}
+}
+
+// Ask submits and waits for the reply in one call, which is what most tests want.
+func (k *Kernel) Ask(t testing.TB, c *kernel.Client, id kernel.ID, prompt, reply string, within time.Duration) string {
+	t.Helper()
+	return k.WaitForReply(t, c, k.Submit(t, c, id, prompt), reply, within)
+}
+
+// Entry is one transcript entry, as a test reads it.
+type Entry struct {
+	ID   kernel.ID
+	Kind string
+	// Text is the entry's own text: an assistant message's text, or a tool result's content.
+	Text string
+	// Raw is the entry's model JSON, for a test that needs a part this does not decode.
+	Raw json.RawMessage
+}
+
+// EntriesAfter is the entries this submission's turn wrote, oldest first.
+func (k *Kernel) EntriesAfter(t testing.TB, c *kernel.Client, sub Submission, within time.Duration) []Entry {
+	t.Helper()
+	ctx, cancel := k.context(t, within)
+	defer cancel()
+	return k.turnEntries(ctx, t, c, sub, k.record(ctx, t, c, sub))
 }
 
 // ViewPush is one conversation.view notification, decoded.
