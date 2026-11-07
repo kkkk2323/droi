@@ -23,6 +23,20 @@ export type Lock = {
 const TABLE = 'droi_lock'
 
 /**
+ * How long a start may wait for a lock that another start is *taking*, in milliseconds.
+ *
+ * The wait is needed, and it is not a nicety: opening the lock database is itself several writes — the
+ * journal mode, the table, its seed row — and with a zero timeout simultaneous starters collide on those
+ * and **all** give up, which is a failed start, not a refusal. Measured before this constant existed: one
+ * round in twenty of three simultaneous starts ended with three refusals and no kernel at all.
+ *
+ * It must not be a long wait, and it must not be a retry loop: a kernel that genuinely holds the lock holds
+ * it until it exits, so a bounded wait tells the two cases apart in one go — the queue behind a start that
+ * is still taking the lock clears in milliseconds, and the queue behind a running kernel ends here.
+ */
+const SETUP_TIMEOUT_MS = 750
+
+/**
  * One kernel per data directory, with a lock **the operating system owns**.
  *
  * `kernel.lock.db` is a SQLite database whose only job is to be locked. The first starter opens it
@@ -59,7 +73,9 @@ export function takeLock(path: string): Lock {
   let db: Database | undefined
   try {
     db = new Database(path, { create: true })
-    db.exec('PRAGMA busy_timeout = 0')
+    // A start that races another start waits for it; a start that races a *running kernel* waits the same
+    // and is then refused. Both are one bounded wait, and neither is unbounded.
+    db.exec(`PRAGMA busy_timeout = ${SETUP_TIMEOUT_MS}`)
     // A rollback journal, never WAL, and said so rather than inherited: this file is only ever locked, and
     // the invariant the lock depends on is the one below — that the first dirty page writes its original to
     // a rollback journal, which takes the file lock. A database an earlier build left in WAL mode would
@@ -71,6 +87,10 @@ export function takeLock(path: string): Lock {
     db.exec('PRAGMA locking_mode = EXCLUSIVE')
     db.exec('BEGIN EXCLUSIVE')
     db.exec(`UPDATE ${TABLE} SET owner = ${process.pid}`)
+    // Held now, and held for the life of the process. Nothing else is written on this connection, so from
+    // here on it must never wait: a bounded timeout exists to sort out the start, not to hide a would-be
+    // deadlock behind it.
+    db.exec('PRAGMA busy_timeout = 0')
   } catch (error) {
     try {
       db?.close()

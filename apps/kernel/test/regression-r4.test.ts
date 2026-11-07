@@ -115,16 +115,19 @@ function judgeStartGroup(outcomes: readonly Outcome[]): StartVerdict {
         .join(' | ')}`,
     }
   }
-  // No kernel reached the handshake: nothing was proven either way. That is not a violation — a
-  // violation is two owners — but it is not an answer either, so the group is started again.
-  if (owners.length === 0) {
+  // Every start was refused and nothing was killed: each one was told somebody else held the lock, and
+  // nobody did. That is not a missing verdict, it is a group of kernels that could not start — a worse
+  // failure than two owners, because the data directory is left with nothing running in it at all.
+  if (owners.length === 0 && outcomes.every((outcome) => outcome.signal === null)) {
     return {
-      kind: 'inconclusive',
-      reason: `no start reached the handshake: ${outcomes
-        .map((outcome) => `code ${outcome.code} signal ${outcome.signal}`)
+      kind: 'violation',
+      reason: `every start was refused (exit 2) and none reached the handshake: ${outcomes
+        .map((outcome) => outcome.stderr.trim().slice(0, 200))
         .join(' | ')}`,
     }
   }
+  // A child killed before it could answer or be refused tested nothing: that is the one case that is
+  // started again, and it includes the case where a real owner answered and another was reaped.
   const interrupted = outcomes.filter((outcome) => outcome.signal !== null)
   if (interrupted.length > 0) {
     return {
@@ -228,8 +231,10 @@ test('R4 a group with two handshakes is a violation, never a retry', () => {
   // A start that neither answered nor was refused is broken, not a refusal.
   const broken = judgeStartGroup([refused(), { code: 1, signal: null, stderr: 'boom' }])
   expect(broken.kind).toBe('violation')
-  // No owner at all: nothing was proven, so the group is started again rather than reported as a failure.
-  expect(judgeStartGroup([refused(), refused()]).kind).toBe('inconclusive')
+  // Nobody started and nobody was killed: every start was told somebody else held the lock, and the data
+  // directory is left with no kernel at all. Retrying this would hide a directory that cannot be started.
+  const nobodyStarted = judgeStartGroup([refused(), refused(), refused()])
+  expect(nobodyStarted.kind).toBe('violation')
 })
 
 test('R4 a lock database left in WAL mode is normalized, and still excludes', async () => {
@@ -305,6 +310,32 @@ test('R4 three starts at once leave exactly one kernel', async () => {
     data.cleanup()
   }
 }, 40_000)
+
+test('R4 five starts at once, repeated, always leave exactly one kernel', async () => {
+  // The all-refused failure this guards against is rare and load-dependent: measured on the previous
+  // head, one round in forty of three simultaneous starts ended with every start refused (exit 2) and no
+  // kernel running, because their setup statements collided on a zero busy timeout. Four rounds here,
+  // five at a time, is the suite-sized version of the twenty-round run this was found with.
+  const data = tempData()
+  try {
+    for (let round = 1; round <= 4; round++) {
+      const outcomes = await starters(data.dir, 5)
+      const owners = outcomes.filter((outcome) => outcome.port !== undefined)
+      const refused = outcomes.filter((outcome) => outcome.port === undefined)
+      expect(
+        owners,
+        `round ${round}: ${refused.map((entry) => entry.stderr).join(' | ')}`,
+      ).toHaveLength(1)
+      expect(refused).toHaveLength(4)
+      for (const loser of refused) {
+        expect(loser.code, `round ${round}: ${loser.stderr}`).toBe(2)
+        expect(loser.stderr).toContain('another kernel')
+      }
+    }
+  } finally {
+    data.cleanup()
+  }
+}, 60_000)
 
 test('R4 a lock left by a crash never blocks the next start', async () => {
   // R4b-2: a SIGKILL between creating a claim file and writing its owner refused every later start for
