@@ -1,0 +1,23 @@
+{
+  "kind": "method",
+  "method": "approval.respond",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "18",
+    "method": "approval.respond",
+    "params": {
+      "requestId": "req-x3rtg4",
+      "outcome": "proceed_always_tool",
+      "scope": {
+        "tool": "bash"
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "18",
+    "result": {
+      "status": "accepted"
+    }
+  }
+}

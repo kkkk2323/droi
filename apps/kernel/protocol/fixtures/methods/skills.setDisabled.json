@@ -1,0 +1,33 @@
+{
+  "kind": "method",
+  "method": "skills.setDisabled",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "25",
+    "method": "skills.setDisabled",
+    "params": {
+      "name": "code-review",
+      "disabled": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "25",
+    "result": {
+      "skills": [
+        {
+          "name": "code-review",
+          "scope": "personal",
+          "path": "/Users/clive/.droi/skills/code-review",
+          "enabled": true
+        },
+        {
+          "name": "ship-it",
+          "scope": "workspace",
+          "path": "/Users/clive/dev/droi/.factory/skills/ship-it",
+          "enabled": false
+        }
+      ]
+    }
+  }
+}

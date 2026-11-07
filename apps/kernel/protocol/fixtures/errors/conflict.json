@@ -1,0 +1,28 @@
+{
+  "kind": "error",
+  "method": "conversation.create",
+  "error": {
+    "code": -32013,
+    "name": "conflict"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "14",
+    "method": "conversation.create",
+    "params": {
+      "requestId": "c-1b2c3d4e",
+      "kind": "memory"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "14",
+    "error": {
+      "code": -32013,
+      "message": "requestId was used for another request",
+      "data": {
+        "requestId": "c-1b2c3d4e"
+      }
+    }
+  }
+}

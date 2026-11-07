@@ -1,0 +1,75 @@
+{
+  "kind": "method",
+  "method": "harness.info",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "harness.info"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "1",
+    "result": {
+      "version": "kernel-1.5.0-1",
+      "kernel": {
+        "name": "@droi/kernel",
+        "version": "kernel-1.5.0-1",
+        "pi": {
+          "durable": "1.5.0",
+          "ai": "1.5.0",
+          "chord": "1.5.0",
+          "schema": "1.5.0"
+        }
+      },
+      "capabilities": {
+        "conversations": true,
+        "compaction": true,
+        "fork": true,
+        "usage": true,
+        "tasks": true,
+        "index": true,
+        "images": true,
+        "processes": false,
+        "approvals": false,
+        "asks": false,
+        "mcp": false,
+        "skills": false,
+        "codemode": false
+      },
+      "providers": [
+        {
+          "id": "factory",
+          "name": "Factory",
+          "models": ["claude-sonnet-4-5", "gpt-5.1-codex"]
+        }
+      ],
+      "models": [
+        {
+          "provider": "factory",
+          "id": "claude-sonnet-4-5",
+          "name": "Claude Sonnet 4.5",
+          "contextWindow": 200000,
+          "maxOutput": 64000,
+          "input": ["text", "image"],
+          "thinking": ["off", "low", "medium", "high"]
+        },
+        {
+          "provider": "factory",
+          "id": "gpt-5.1-codex",
+          "name": "GPT-5.1 Codex",
+          "contextWindow": 400000,
+          "maxOutput": 128000,
+          "input": ["text", "image"],
+          "thinking": ["off", "low", "medium", "high"]
+        }
+      ],
+      "extensions": [
+        {
+          "name": "coding",
+          "tools": ["read", "write", "edit", "bash", "powershell"],
+          "sections": ["environment", "cwd"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "kind": "method",
+  "method": "conversation.create",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "2",
+    "method": "conversation.create",
+    "params": {
+      "agent": {
+        "model": {
+          "provider": "factory",
+          "modelId": "claude-sonnet-4-5"
+        },
+        "thinkingLevel": "off",
+        "cwd": "/Users/clive/dev/droi"
+      },
+      "kind": "chat",
+      "instructions": "Prefer small diffs.",
+      "requestId": "c-1b2c3d4e"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "2",
+    "result": {
+      "conversationId": 7,
+      "view": {
+        "conversation": {
+          "id": 7
+        },
+        "entries": [],
+        "docs": {
+          "pi.agent": {
+            "model": {
+              "provider": "factory",
+              "modelId": "claude-sonnet-4-5"
+            },
+            "thinkingLevel": "off",
+            "cwd": "/Users/clive/dev/droi"
+          },
+          "pi.live": {}
+        }
+      }
+    }
+  }
+}

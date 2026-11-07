@@ -1,0 +1,19 @@
+{
+  "kind": "method",
+  "method": "task.abort",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "14",
+    "method": "task.abort",
+    "params": {
+      "taskId": 902
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "14",
+    "result": {
+      "status": "marked"
+    }
+  }
+}
