@@ -48,6 +48,8 @@ type PendingRow = {
     requestId?: string
     requestFingerprint?: string
     parentId?: number
+    /** The working tree `workspace` sits in, worked out once by the caller that knew the `cwd`. */
+    repoRoot?: string
   }
   /** The newest entry's own timestamp: the only thing that may move `last_activity_at`. */
   activity?: number
@@ -375,6 +377,7 @@ export class Indexer {
     at: number,
     extra: {
       workspace?: string
+      repoRoot?: string
       kind?: string
       title?: string
       preview?: string
@@ -394,6 +397,10 @@ export class Indexer {
     if (extra.workspace !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }
       pending.insert.workspace = extra.workspace
+    }
+    if (extra.repoRoot !== undefined) {
+      pending.insert ??= { createdAt: extra.createdAt ?? at }
+      pending.insert.repoRoot = extra.repoRoot
     }
     if (extra.kind !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }
@@ -589,9 +596,39 @@ export class Indexer {
   /** Archive, rename or re-kind one conversation. Absent fields stay as they are; `null` clears. */
   async update(
     id: number,
-    change: { title?: string | null; archived?: boolean; kind?: string | null },
+    change: {
+      title?: string | null
+      archived?: boolean
+      kind?: string | null
+      /** A new `cwd`, and the working tree it belongs to: both move together or not at all. */
+      workspace?: string | null
+      repoRoot?: string | null
+      /** The conversation that owns this one, or `null` for a top-level row. */
+      parentId?: number | null
+    },
   ): Promise<void> {
     await this.flush()
+    if (change.workspace !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET workspace = ? WHERE id = ?',
+        change.workspace,
+        id,
+      )
+    }
+    if (change.repoRoot !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET repo_root = ? WHERE id = ?',
+        change.repoRoot,
+        id,
+      )
+    }
+    if (change.parentId !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET parent_id = ? WHERE id = ?',
+        change.parentId,
+        id,
+      )
+    }
     // A title the user chose must survive the next repair, so an empty title stands for "chosen".
     if (change.title !== undefined) {
       await this.#db.run(
@@ -613,6 +650,17 @@ export class Indexer {
   }
 
   async markViewed(id: number, at = this.#now()): Promise<void> {
+    await this.#db.run('UPDATE droi_conversations SET viewed_at = ? WHERE id = ?', at, id)
+  }
+
+  /**
+   * Set or clear when a person last looked at a conversation.
+   *
+   * `null` is "not read yet", which a client sets when it wants the unread dot back; a time is what
+   * `conversation.open` writes by itself.
+   */
+  async setViewed(id: number, at: number | null): Promise<void> {
+    await this.flush()
     await this.#db.run('UPDATE droi_conversations SET viewed_at = ? WHERE id = ?', at, id)
   }
 
@@ -726,6 +774,12 @@ export class Indexer {
     kind?: string
     archived?: boolean
     workspace?: string
+    repoRoot?: string
+    /**
+     * `undefined` lists the conversations nobody owns — the sidebar's rows. A number lists that
+     * conversation's children, which is how a Workstream or a subagent is found (ADR 0043).
+     */
+    parent?: number
     text?: string
     /** The last row of the previous page: `{before: id}`. */
     cursor?: { before?: number }
@@ -745,6 +799,17 @@ export class Indexer {
     if (query.workspace !== undefined) {
       where.push('workspace = ?')
       params.push(query.workspace)
+    }
+    if (query.repoRoot !== undefined) {
+      where.push('repo_root = ?')
+      params.push(query.repoRoot)
+    }
+    // A child conversation is reached through its parent, not through the list: showing every subagent
+    // as a top-level row would put hundreds of them beside the conversations a person started.
+    if (query.parent === undefined) where.push('parent_id IS NULL')
+    else {
+      where.push('parent_id = ?')
+      params.push(query.parent)
     }
     if (query.text !== undefined && query.text.trim() !== '') {
       const words = searchWords(query.text)
@@ -788,6 +853,31 @@ export class Indexer {
       : { items }
   }
 
+  /**
+   * Work out the repository of every conversation that has a `workspace` but no `repo_root` yet: the
+   * rows a build before this one wrote, and the rows a rebuilt index has just recomputed.
+   *
+   * Once per process, before the kernel serves anything, and one `resolve` call per distinct directory —
+   * `repoRootOf` answers a non-repository with the directory itself, so a machine without git only pays
+   * one launch per workspace per start.
+   */
+  async backfillRepoRoots(resolve: (directory: string) => string): Promise<void> {
+    await this.flush()
+    const rows = await this.#db.all<{ workspace: string }>(
+      `SELECT DISTINCT workspace FROM droi_conversations
+       WHERE repo_root IS NULL AND workspace IS NOT NULL`,
+    )
+    for (const row of rows) {
+      const root = resolve(row.workspace)
+      await this.#db.run(
+        `UPDATE droi_conversations SET repo_root = ?
+         WHERE repo_root IS NULL AND workspace = ?`,
+        root,
+        row.workspace,
+      )
+    }
+  }
+
   async close(): Promise<void> {
     await this.flush()
     this.#closed = true
@@ -820,11 +910,12 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     const at = Math.max(row.eventAt ?? 0, row.activity ?? 0, row.insert.createdAt)
     await exec.run(
       `INSERT INTO droi_conversations
-         (id, created_at, last_activity_at, workspace, kind, title, preview, parent_id, request_id, request_fingerprint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, created_at, last_activity_at, workspace, repo_root, kind, title, preview, parent_id, request_id, request_fingerprint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          last_activity_at = MAX(droi_conversations.last_activity_at, excluded.last_activity_at),
          workspace = COALESCE(excluded.workspace, droi_conversations.workspace),
+         repo_root = COALESCE(excluded.repo_root, droi_conversations.repo_root),
          kind = COALESCE(excluded.kind, droi_conversations.kind),
          title = COALESCE(droi_conversations.title, excluded.title),
          preview = COALESCE(excluded.preview, droi_conversations.preview),
@@ -835,6 +926,7 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
       row.insert.createdAt,
       at,
       row.insert.workspace ?? null,
+      row.insert.repoRoot ?? null,
       row.insert.kind ?? null,
       row.title ?? null,
       row.preview ?? null,

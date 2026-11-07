@@ -8,7 +8,8 @@
     "params": {
       "id": 7,
       "title": "parseConfig tests",
-      "archived": false
+      "archived": false,
+      "viewedAt": 1762480010000
     }
   },
   "response": {

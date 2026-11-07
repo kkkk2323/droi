@@ -21,7 +21,11 @@ const missingID = kernel.ID(999999)
 // and the methods the test drives are exactly the ones the contract lists. A method added to pkg/kernel
 // without one here fails the count, which is what makes the shell worth writing by hand over reflection.
 func TestObserverRecordsEveryMethod(t *testing.T) {
-	k := fakekernel.Start(t, fakekernel.Scenario{})
+	// `model.complete` really calls the model now, so the script has to answer it: the scenario is strict
+	// about a request it does not describe.
+	k := fakekernel.Start(t, fakekernel.Scenario{
+		Steps: []fakekernel.Step{{Match: "hi", Text: "an answer"}},
+	})
 	c := k.Dial(t)
 	o := k.Observe(c)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

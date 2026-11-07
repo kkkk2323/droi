@@ -35,7 +35,7 @@
         "asks": false,
         "mcp": false,
         "skills": false,
-        "models": false,
+        "models": true,
         "codemode": false
       },
       "providers": [

@@ -150,12 +150,13 @@ type Request struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"messages"`
 	Stream bool `json:"stream"`
-	// Headers are the request's HTTP headers, with Go's lower-cased keys; they are not part of the body.
-	// A test reads CallHeader here to assert that a completion was marked as one.
+	// Headers are the request's HTTP headers, lower-cased by Go; a test reads CallHeader here to tell a
+	// `model.complete` request from a conversation's, which pi-ai streams the same way.
 	Headers map[string]string `json:"headers,omitempty"`
 }
 
-// Header is one request header, by any spelling of its name.
+// Header is one request header, matched without regard to case (Go stores the keys lower-cased).
+
 func (r Request) Header(name string) string {
 	for key, value := range r.Headers {
 		if strings.EqualFold(key, name) {
@@ -544,11 +545,9 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if len(r.Header) > 0 {
-		request.Headers = make(map[string]string, len(r.Header))
-		for key := range r.Header {
-			request.Headers[key] = r.Header.Get(key)
-		}
+	request.Headers = make(map[string]string, len(r.Header))
+	for key := range r.Header {
+		request.Headers[key] = r.Header.Get(key)
 	}
 	m.mu.Lock()
 	m.seen = append(m.seen, request)
