@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
@@ -94,6 +95,11 @@ type KernelSupervisor struct {
 	// Binary is the sidecar executable; DataDir is its --data.
 	Binary  string
 	DataDir string
+	// UserDir is the user's own directory for Kernel — personal skills, the
+	// global mcp.json, the global AGENTS.md — which it receives as
+	// DROI_USER_DIR. "" is the brand's, ~/.droi, which is also what a Kernel
+	// started by hand falls back to.
+	UserDir string
 	// Spawn replaces the launch, for a test: it answers the sidecar's command
 	// with token in its environment, and its stdout.
 	Spawn func(port int, token string) (*exec.Cmd, io.ReadCloser, error)
@@ -608,6 +614,12 @@ func (s *KernelSupervisor) launch(gen int) {
 		s.scheduleRestart(gen, err.Error())
 		return
 	}
+	// The user's own directory goes on whatever launched it — the binary, or a
+	// test's Spawn hook — because it is Kernel's to read, not the launcher's to
+	// remember. An empty value leaves Kernel at its own default.
+	if dir := s.userDir(); dir != "" {
+		cmd.Env = append(cmd.Env, kernel.UserDirEnv+"="+dir)
+	}
 	out := newTailBuffer(4096)
 	if cmd.Stderr != nil {
 		cmd.Stderr = io.MultiWriter(cmd.Stderr, out)
@@ -824,6 +836,26 @@ func (s *KernelSupervisor) spawn(port int, token string) (*exec.Cmd, io.ReadClos
 		return cmd, nil, nil
 	}
 	return cmd, pair, nil
+}
+
+// userDir is the absolute directory Kernel is told to keep the user's own
+// skills, mcp.json and AGENTS.md in.
+//
+// It is the app's own folder, ~/.droi, not the droid CLI's ~/.factory: that one
+// belongs to another program, and its contents are copied once at first start
+// (CopyFactoryHome) rather than read in place. A Kernel told to read ~/.factory
+// would also start writing its own mcp.json there, beside droid's.
+func (s *KernelSupervisor) userDir() string {
+	if s.UserDir != "" {
+		return s.UserDir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		// No HOME is no answer rather than a wrong one: an empty value leaves
+		// Kernel at its own default, which is this same folder.
+		return ""
+	}
+	return brand.UserFolder(home)
 }
 
 // stdioPair is a pipe whose write end goes to the child and whose read end the
