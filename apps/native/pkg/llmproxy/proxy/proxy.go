@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/egoist/mygo/netproxy"
@@ -483,8 +485,11 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	logErr := ""
-	if copyErr != nil {
+	if copyErr != nil && !endedByClient(req.Context(), copyErr) {
 		logErr = "response_copy_error"
+		if errorDetail == "" {
+			errorDetail = snippetForLog([]byte(copyErr.Error()))
+		}
 	}
 	if detail, failed := observer.Failure(); failed {
 		if logErr == "" {
@@ -566,6 +571,23 @@ func (p *Proxy) recordRequest(req *http.Request, path, upstream, model, requeste
 		Error:         logErr,
 		ErrorDetail:   errorDetail,
 	})
+}
+
+// endedByClient reports a copy that stopped because the client let go: the
+// Kernel closes a stream once it has read the last frame, and Go then cancels
+// the request's context, which aborts the read of the upstream body with
+// context.Canceled. That is the client's own choice, not a failure of the
+// request, so the record does not carry it as one; a copy the upstream cut
+// short reports its own error (unexpected EOF, a reset) and still does.
+//
+// The request's context is what tells the two apart: a reset or a closed
+// connection can come from either side, but only a client that left cancels
+// its own request. A broken pipe is always the write to the client.
+func endedByClient(ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+	return errors.Is(err, syscall.EPIPE) || errors.Is(err, io.ErrClosedPipe)
 }
 
 // flushWriter flushes after every write so a streamed reply reaches droid
