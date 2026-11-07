@@ -2,7 +2,13 @@ import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
 import type { EntryRecord, Storage } from '@earendil-works/pi-durable'
 import type { Message } from '@earendil-works/pi-ai'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
-import { type ConversationMeta, type ConversationRow, migrate } from './schema.ts'
+import {
+  type ConversationMeta,
+  type ConversationRow,
+  migrate,
+  readMeta,
+  writeMeta,
+} from './schema.ts'
 
 /**
  * Droi's conversation list, search index and view times, kept in the kernel's one SQLite file.
@@ -30,11 +36,6 @@ export type IndexerOptions = {
   onChange?: (conversations: readonly number[]) => void
   /** Called when a flush fails. A storage error here is worth a warning, not a crash. */
   onError?: (error: unknown) => void
-  /**
-   * Pi's own table of entries. Only the import-key repair reads it, to recover a key whose cache row is gone:
-   * an entry's kind lives in its JSON, which the index's own tables do not keep.
-   */
-  entriesTable?: string
 }
 /** A conversation's row as a flush will write it. */
 type PendingRow = {
@@ -61,19 +62,43 @@ type PendingEntry = {
   id: number
   conversation: number
   text: string
-  import?: { key: string; fingerprint: string; entryIds: number[] }
+  /** Present for a create memo: the only import identity that is global. */
+  import?: ImportMemo
 }
 
-/** An import memo's key record, or undefined when the entry is not one or does not carry it. */
-function importMemo(
-  entry: EntryRecord,
-): { key: string; fingerprint: string; entryIds: number[] } | undefined {
+/** What an import memo carries, and which identity it is: a create's key is global, an append's is local. */
+export type ImportMemo = {
+  key: string
+  fingerprint: string
+  entryIds: number[]
+  scope: 'create' | 'append'
+}
+
+/**
+ * An import memo's record, or undefined when the entry is not one.
+ *
+ * `kind` is checked on the entry itself, not on anything inside its data: a `droi.note` whose payload happens
+ * to contain the word must not be mistaken for a memo.
+ */
+function importMemo(entry: EntryRecord): ImportMemo | undefined {
+  if (entry.kind !== 'droi.import') return undefined
   const data = entry.data as
-    | { key?: unknown; fingerprint?: unknown; entryIds?: unknown }
+    | { key?: unknown; fingerprint?: unknown; entryIds?: unknown; scope?: unknown }
     | undefined
   if (typeof data?.key !== 'string' || typeof data.fingerprint !== 'string') return undefined
   if (!Array.isArray(data.entryIds)) return undefined
-  return { key: data.key, fingerprint: data.fingerprint, entryIds: data.entryIds as number[] }
+  if (data.scope !== 'create' && data.scope !== 'append') return undefined
+  return {
+    key: data.key,
+    fingerprint: data.fingerprint,
+    entryIds: data.entryIds as number[],
+    scope: data.scope,
+  }
+}
+/** An entry's create-key memo, if it is one: only a create's key is a global identity. */
+function createMemo(entry: EntryRecord): ImportMemo | undefined {
+  const memo = importMemo(entry)
+  return memo?.scope === 'create' ? memo : undefined
 }
 const TITLE_LIMIT = 120
 const PREVIEW_LIMIT = 200
@@ -103,8 +128,6 @@ export class Indexer {
   #flush: Promise<void> | undefined
   #watermarks = new Map<number, number>()
   #closed = false
-  /** Pi's entries table, for the import-key repair that has to read an entry's JSON. */
-  #entriesTable: string | undefined
 
   constructor(db: BunSqliteDatabase, storage: Storage, options: IndexerOptions = {}) {
     this.#db = db
@@ -113,17 +136,28 @@ export class Indexer {
     this.#now = options.now ?? Date.now
     this.#onChange = options.onChange
     this.#onError = options.onError
-    this.#entriesTable = options.entriesTable
   }
 
   async open(): Promise<void> {
     await migrate(this.#db)
+    // The import-key cache is complete because it is written with the watermark that covers it. A row count
+    // that disagrees with the marker means rows were lost outside this kernel, and the memos are the only
+    // source: drop the watermarks so the catch-up re-reads them, rather than searching for one key at a time.
+    const marker = await readMeta(this.#db, 'index.importKeys')
+    if (marker !== undefined) {
+      const row = await this.#db.get<{ count: number }>(
+        'SELECT COUNT(*) AS count FROM droi_import_keys',
+      )
+      if ((row?.count ?? 0) !== Number(marker)) {
+        await this.#db.run('DELETE FROM droi_index_watermarks')
+        this.#watermarks.clear()
+      }
+    }
     const rows = await this.#db.all<{ conversation_id: number; entry_id: number }>(
       'SELECT conversation_id, entry_id FROM droi_index_watermarks',
     )
     this.#watermarks = new Map(rows.map((row) => [row.conversation_id, row.entry_id]))
   }
-
   /** The highest entry ID whose text is indexed for one conversation. */
   watermark(conversationId: number): number {
     return this.#watermarks.get(conversationId) ?? 0
@@ -231,8 +265,18 @@ export class Indexer {
           }
         }
         const text = entryText(entry)
+        // A create's key is an identity, so a rebuilt index rebuilds it too, in the same flush as the
+        // watermark that covers the memo.
+        const imported = createMemo(entry)
+        if (text !== '' || imported !== undefined) {
+          this.#entries.push({
+            id: entryId,
+            conversation: id,
+            text,
+            ...(imported === undefined ? {} : { import: imported }),
+          })
+        }
         if (text !== '') {
-          this.#entries.push({ id: entryId, conversation: id, text })
           count++
           // The name comes from the first user message, so a repair that sees only later entries keeps
           // the one the conversation already had.
@@ -375,9 +419,10 @@ export class Indexer {
     const id = entry.conversationId as unknown as number
     const entryId = entry.id as unknown as number
     if (entryId <= this.watermark(id)) return
-    // An import's memo is what `droi_import_keys` caches: the key travels with the entry that records it, so
-    // the table is written in the same flush as the watermark covering that entry.
-    const imported = entry.kind === 'droi.import' ? importMemo(entry) : undefined
+    // A create's key is what `droi_import_keys` caches. Only a create's: an append's key belongs to its own
+    // conversation, and replaying it globally would stop the create it shadows. The row is written in the same
+    // flush as the watermark covering this entry, so the cache is complete once the index is.
+    const imported = createMemo(entry)
     const text = entryText(entry)
     if (text !== '' || imported !== undefined) {
       this.#entries.push({
@@ -499,6 +544,10 @@ export class Indexer {
           entryId,
         )
       }
+      const cached = await tx.get<{ count: number }>(
+        'SELECT COUNT(*) AS count FROM droi_import_keys',
+      )
+      await writeMeta(tx, 'index.importKeys', String(cached?.count ?? 0))
     })
     this.#flush = run.then(
       () => undefined,
@@ -575,22 +624,24 @@ export class Indexer {
   /**
    * The conversation one import key created, with the fingerprint of the call that did it.
    *
-   * A cache over the transcripts: every `droi.import` entry records its key, and `entry()` fills this table in
-   * the same flush as the watermark that covers it. A row that is missing while its entry is stored — a manual
-   * delete, a reset the catch-up has not caught up from — is rebuilt from the entry itself, so the identity can
-   * never be lost while the transcript holds it.
+   * A cache over the transcripts, and only over **create** memos: an append's key is local to its conversation
+   * and must neither reach another one nor be replayed by a create. The row is written in the same flush as the
+   * watermark covering the memo, so a miss means the key never created a conversation — there is nothing to
+   * search for, which is what makes this a cache and not a lookup with a fallback.
+   *
+   * A miss still repairs a cache that lost rows outside this kernel (the row count disagrees with its marker):
+   * the memos are the only source, so the watermarks are dropped and the catch-up re-reads them once.
    */
   async importKey(
     key: string,
   ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
     await this.flush()
-    const cached = await this.#importKeyRow(key)
-    if (cached !== undefined) return cached
-    const rebuilt = await this.#rebuildImportKey(key)
-    if (rebuilt === undefined) return undefined
-    this.#rememberImport(rebuilt.conversationId, key, rebuilt)
-    await this.flush()
-    return rebuilt
+    const found = await this.#importKeyRow(key)
+    if (found !== undefined || (await this.#importCacheComplete())) return found
+    await this.#db.run('DELETE FROM droi_index_watermarks')
+    this.#watermarks.clear()
+    await this.catchUp()
+    return this.#importKeyRow(key)
   }
 
   async #importKeyRow(
@@ -609,46 +660,14 @@ export class Indexer {
     }
   }
 
-  /**
-   * One key's identity, read back from the transcript when the cache lacks it.
-   *
-   * The query is on Pi's own table because only an entry's JSON knows its kind; it runs only when a key that is
-   * expected to exist does not, which is the repair path rather than the ordinary one.
-   */
-  async #rebuildImportKey(
-    key: string,
-  ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
-    const table = this.#entriesTable
-    if (table === undefined) return undefined
-    const rows = await this.#db.all<{ conversation_id: number; record: string }>(
-      `SELECT conversation_id, record FROM ${table} WHERE record LIKE ?`,
-      `%"droi.import"%${key}%`,
+  /** Whether the import-key cache holds the rows its marker says it does: the index wrote them together. */
+  async #importCacheComplete(): Promise<boolean> {
+    const marker = await readMeta(this.#db, 'index.importKeys')
+    if (marker === undefined) return true
+    const row = await this.#db.get<{ count: number }>(
+      'SELECT COUNT(*) AS count FROM droi_import_keys',
     )
-    for (const row of rows) {
-      const record = JSON.parse(row.record) as EntryRecord
-      const memo = importMemo(record)
-      if (memo?.key !== key) continue
-      return { conversationId: row.conversation_id, ...memo }
-    }
-    return undefined
-  }
-
-  #rememberImport(
-    conversationId: number,
-    key: string,
-    memo: { fingerprint: string; entryIds: number[] },
-  ): void {
-    this.#db.run(
-      `INSERT INTO droi_import_keys (key, conversation_id, fingerprint, entry_ids) VALUES (?, ?, ?, ?)
-       ON CONFLICT (key) DO UPDATE SET
-         conversation_id = excluded.conversation_id,
-         fingerprint = excluded.fingerprint,
-         entry_ids = excluded.entry_ids`,
-      key,
-      conversationId,
-      memo.fingerprint,
-      JSON.stringify(memo.entryIds),
-    )
+    return (row?.count ?? 0) === Number(marker)
   }
   async byRequestId(requestId: string): Promise<ConversationRow | undefined> {
     await this.flush()

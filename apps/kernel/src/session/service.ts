@@ -450,6 +450,8 @@ export class Kernel implements Dispatcher {
     }
     const run = async (): Promise<number> => {
       const createdAt = Date.now()
+      // A head must point at an entry this conversation can see. On a create it cannot: the entries it names do
+      // not have ids yet, so only `"self"` is meaningful there.
       const meta: ConversationMeta = {
         ...(requestId === undefined ? {} : { requestId, requestFingerprint: fingerprint }),
         ...(kind === undefined ? {} : { kind }),
@@ -570,6 +572,9 @@ export class Kernel implements Dispatcher {
       }
     }
 
+    // A head must point at an entry this conversation can see. On a create it cannot: the entries it names
+    // do not have ids yet, so only `"self"` is meaningful there.
+    await this.#checkImportedHeads(undefined, entries)
     const meta: ConversationMeta = {
       createdAt,
       ...(kind === undefined ? {} : { kind }),
@@ -590,7 +595,7 @@ export class Kernel implements Dispatcher {
           if (key !== undefined) {
             await tx.appendEntry(conversationId, {
               kind: 'droi.import',
-              data: { key, fingerprint, entryIds, at: createdAt },
+              data: { key, fingerprint, entryIds, scope: 'create', at: createdAt },
             })
           }
         },
@@ -623,6 +628,7 @@ export class Kernel implements Dispatcher {
       )
     }
     await this.#conversation(id)
+    await this.#checkImportedHeads(id, entries)
     const fingerprint = fingerprintOf({ entries: entries.map((entry) => entry.draft) })
     if (key !== undefined) {
       const replay = await this.#importedEntries(id, key, fingerprint)
@@ -639,7 +645,7 @@ export class Kernel implements Dispatcher {
       if (key !== undefined) {
         await tx.appendEntry(id as never, {
           kind: 'droi.import',
-          data: { key, fingerprint, entryIds: ids, at: Date.now() },
+          data: { key, fingerprint, entryIds: ids, scope: 'append', at: Date.now() },
         })
       }
       return ids
@@ -680,6 +686,40 @@ export class Kernel implements Dispatcher {
     }
   }
 
+  /**
+   * Check every imported `head` against what the conversation holds.
+   *
+   * A create has no entries yet — its own batch is being written — so only `"self"` can refer to anything. An
+   * append may point at an entry the conversation already has, but at nothing else: Pi resolves the id when it
+   * derives context, and an id that never existed poisons the Session rather than failing the request.
+   */
+  async #checkImportedHeads(id: number | undefined, entries: ImportedEntry[]): Promise<void> {
+    const heads = entries
+      .map((entry, index) => ({ head: entry.draft.head, index }))
+      .filter((each) => typeof each.head === 'number')
+    if (heads.length === 0) return
+    if (id === undefined) {
+      throw invalidParams(
+        heads.map((each) => ({
+          path: `entries[${each.index}].head`,
+          message: 'a create cannot point at an entry it is creating; `"self"` starts the context',
+        })),
+      )
+    }
+    const conversation = await this.#conversation(id)
+    for (const { head, index } of heads) {
+      const page = await conversation.entries(
+        { order: 'ascending', minEntryId: head as EntryId, maxEntryId: head as EntryId },
+        1,
+        undefined,
+        context,
+      )
+      if (page.items.some((entry) => (entry.id as unknown as number) === head)) continue
+      throw invalidParams([
+        { path: `entries[${index}].head`, message: `entry ${head} is not in this conversation` },
+      ])
+    }
+  }
   /** The agent an import asks for: `agent` (if any) over `cwd` and `instructions`, over the config defaults. */
   #importedAgent(params: Record<string, unknown>, cwd: string | undefined): AgentChange {
     const top = this.#agentChange(
@@ -716,10 +756,14 @@ export class Kernel implements Dispatcher {
         if ((entry.conversationId as unknown as number) !== id) continue
         if (entry.kind !== 'droi.import') continue
         const data = entry.data as
-          | { key?: unknown; fingerprint?: unknown; entryIds?: unknown }
+          | { key?: unknown; fingerprint?: unknown; entryIds?: unknown; scope?: unknown }
           | undefined
         if (data?.key !== key || !Array.isArray(data.entryIds)) continue
-        // The same key with other entries is a different batch: answering with the old ids would silently
+        // A create's key is a different identity: an append that reuses one would either replay a create's ids
+        // or write under a key someone else owns, so it is refused rather than guessed at.
+        if (data.scope === 'create') throw conflict(key)
+        // Only an append memo replays here.
+        if (data.scope !== 'append') continue // The same key with other entries is a different batch: answering with the old ids would silently
         // discard what the caller asked to append.
         if (data.fingerprint !== fingerprint) throw conflict(key)
         return data.entryIds as number[]
@@ -1420,14 +1464,21 @@ function normalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalize)
   if (typeof value !== 'object' || value === null) return value
   const record = value as Record<string, unknown>
-  const out: Record<string, unknown> = {}
+  // A null prototype and `defineProperty`: an own `__proto__` in imported data is a field like any other, and
+  // assigning it would set the prototype instead — losing it from the fingerprint so two different payloads
+  // look like the same request.
+  const out = Object.create(null) as Record<string, unknown>
   for (const key of Object.keys(record).sort()) {
     if (record[key] === undefined) continue
-    out[key] = normalize(record[key])
+    Object.defineProperty(out, key, {
+      value: normalize(record[key]),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
   }
   return out
 }
-
 /**
  * Every method of the contract this build does not implement, and the capability that says so.
  *
@@ -1622,6 +1673,46 @@ function parseImportedEntries(value: unknown): ImportedEntry[] {
   return parsed
 }
 
+/**
+ * What is wrong with one Pi message, or undefined when nothing is.
+ *
+ * Structural, and only structural: an imported history may hold odd shapes, but a value that Pi's context
+ * derivation would throw on — a `null` where a message belongs, an assistant whose `content` is a string —
+ * must be refused at the request rather than poison the Session later.
+ */
+function messageProblem(
+  value: unknown,
+  path: string,
+): { path: string; message: string } | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { path, message: 'a message object is required' }
+  }
+  const message = value as Record<string, unknown>
+  const role = message['role']
+  if (role !== 'system' && role !== 'user' && role !== 'assistant' && role !== 'toolResult') {
+    return { path: `${path}.role`, message: 'system, user, assistant or toolResult' }
+  }
+  const content = message['content']
+  const isText = typeof content === 'string'
+  const isBlocks =
+    Array.isArray(content) && content.every((block) => typeof block === 'object' && block !== null)
+  // An assistant's content is always blocks: `content.filter` is what Pi calls on it.
+  if (role === 'assistant' ? !isBlocks : !isText && !isBlocks) {
+    return {
+      path: `${path}.content`,
+      message:
+        role === 'assistant'
+          ? 'an array of content blocks is required'
+          : 'a string or an array of blocks is required',
+    }
+  }
+  // A message without its own time would inherit the import's, which is the one thing an import must not do.
+  if (typeof message['timestamp'] !== 'number' || !Number.isFinite(message['timestamp'])) {
+    return { path: `${path}.timestamp`, message: 'epoch milliseconds are required' }
+  }
+  return undefined
+}
+
 /** What is wrong with an imported entry's `model`, or undefined when nothing is. */
 function importedModelProblem(
   value: unknown,
@@ -1630,119 +1721,16 @@ function importedModelProblem(
   if (!Array.isArray(value))
     return { path: `${path}.model`, message: 'an array of messages is required' }
   for (const [index, raw] of value.entries()) {
-    const at = `${path}.model[${index}]`
-    if (typeof raw !== 'object' || raw === null)
-      return { path: at, message: 'a message object is required' }
-    const message = raw as Record<string, unknown>
-    const role = message['role']
-    if (role !== 'user' && role !== 'assistant' && role !== 'toolResult') {
-      return { path: `${at}.role`, message: 'user, assistant or toolResult' }
-    }
-    const content = message['content']
-    const isText = typeof content === 'string'
-    const isBlocks =
-      Array.isArray(content) &&
-      content.every((block) => typeof block === 'object' && block !== null)
-    if (!isText && !isBlocks) {
-      return { path: `${at}.content`, message: 'a string or an array of blocks is required' }
-    }
-    // A message without its own time would inherit the import's, which is the one thing an import must not do.
-    if (typeof message['timestamp'] !== 'number' || !Number.isFinite(message['timestamp'])) {
-      return { path: `${at}.timestamp`, message: 'epoch milliseconds are required' }
+    const problem = messageProblem(raw, `${path}.model[${index}]`)
+    if (problem !== undefined) return problem
+    // An entry's own model is chat history, not prompt: a system message here is not what Pi replays.
+    const role = (raw as { role?: unknown }).role
+    if (role === 'system') {
+      return { path: `${path}.model[${index}].role`, message: 'user, assistant or toolResult' }
     }
   }
   return undefined
 }
-
-/** One message's `usage`, with the counters Pi's ledger keeps; a missing counter or cost counts as zero. */
-function readImportedUsage(value: unknown, path: string): ImportedUsage | undefined {
-  if (typeof value !== 'object' || value === null) return undefined
-  const usage = value as Record<string, unknown>
-  const count = (source: Record<string, unknown>, field: string): number => {
-    const raw = source[field]
-    return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0
-  }
-  const optional = (field: string): number | undefined => {
-    const raw = usage[field]
-    return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
-  }
-  const cost = (
-    typeof usage['cost'] === 'object' && usage['cost'] !== null ? usage['cost'] : {}
-  ) as Record<string, unknown>
-  void path
-  return {
-    input: count(usage, 'input'),
-    output: count(usage, 'output'),
-    cacheRead: count(usage, 'cacheRead'),
-    cacheWrite: count(usage, 'cacheWrite'),
-    totalTokens: count(usage, 'totalTokens'),
-    cost: {
-      input: count(cost, 'input'),
-      output: count(cost, 'output'),
-      cacheRead: count(cost, 'cacheRead'),
-      cacheWrite: count(cost, 'cacheWrite'),
-      total: count(cost, 'total'),
-    },
-    ...(optional('cacheWrite1h') === undefined ? {} : { cacheWrite1h: optional('cacheWrite1h') }),
-    ...(optional('reasoning') === undefined ? {} : { reasoning: optional('reasoning') }),
-  }
-}
-
-/** Append one batch, answering its entry ids in order, and record what its messages spent. */
-async function appendImported(
-  tx: Tx,
-  id: ConversationId,
-  entries: ImportedEntry[],
-): Promise<number[]> {
-  const ids: number[] = []
-  for (const entry of entries) {
-    const record = await tx.appendEntry(id, entry.draft)
-    ids.push(record.id as unknown as number)
-    if (entry.usage.length === 0) continue
-    const state = await tx.doc(UsageDoc, id)
-    for (const { key, usage } of entry.usage) addImportedUsage(state, key, usage)
-  }
-  return ids
-}
-
-/** Add one message's usage to the conversation's `pi.usage`, the way Pi records a real answer's. */
-function addImportedUsage(state: UsageState, key: string, usage: ImportedUsage): void {
-  const total = Object.hasOwn(state.models, key) ? state.models[key] : undefined
-  if (total === undefined) {
-    // The key is always `provider/model`, so it can never be `__proto__`; assignment on the draft is what Pi
-    // does through `copyJson`, and a plain object is what the draft accepts.
-    state.models[key] = { ...usage, cost: { ...usage.cost } }
-    return
-  }
-  total.input += usage.input
-  total.output += usage.output
-  total.cacheRead += usage.cacheRead
-  total.cacheWrite += usage.cacheWrite
-  total.totalTokens += usage.totalTokens
-  // Pi adds a counter once either side reports it; a provider that omits it must not read as zero later.
-  if (usage.cacheWrite1h !== undefined)
-    total.cacheWrite1h = (total.cacheWrite1h ?? 0) + usage.cacheWrite1h
-  if (usage.reasoning !== undefined) total.reasoning = (total.reasoning ?? 0) + usage.reasoning
-  total.cost.input += usage.cost.input
-  total.cost.output += usage.cost.output
-  total.cost.cacheRead += usage.cost.cacheRead
-  total.cost.cacheWrite += usage.cost.cacheWrite
-  total.cost.total += usage.cost.total
-}
-
-/** The oldest message time in a batch: the conversation's own beginning when it is imported without one. */
-function earliestMessageTime(entries: ImportedEntry[]): number | undefined {
-  let oldest: number | undefined
-  for (const entry of entries) {
-    for (const message of (entry.draft.model as { timestamp?: unknown }[] | undefined) ?? []) {
-      const at = message.timestamp
-      if (typeof at !== 'number') continue
-      if (oldest === undefined || at < oldest) oldest = at
-    }
-  }
-  return oldest
-}
-
 /** What is wrong with an imported entry's `edits`, or undefined when nothing is. */
 function importedEditsProblem(
   value: unknown,
@@ -1768,8 +1756,17 @@ function importedEditsProblem(
     if (action !== 'omit' && action !== 'replace') {
       return { path: `${at}.action`, message: 'omit or replace' }
     }
-    if (action === 'replace' && !Array.isArray(edit['messages'])) {
-      return { path: `${at}.messages`, message: 'an array of messages is required' }
+    if (action === 'replace') {
+      const messages = edit['messages']
+      if (!Array.isArray(messages)) {
+        return { path: `${at}.messages`, message: 'an array of messages is required' }
+      }
+      // Each message is checked, not just the array: a `null` or a string content reaches Pi's context
+      // derivation and throws there, far from this request.
+      for (const [messageIndex, message] of messages.entries()) {
+        const problem = messageProblem(message, `${at}.messages[${messageIndex}]`)
+        if (problem !== undefined) return problem
+      }
     }
     if (action === 'omit' && edit['messages'] !== undefined) {
       return { path: `${at}.messages`, message: 'an omit edit contributes no messages' }
@@ -1783,13 +1780,107 @@ function importedHeadProblem(
   value: unknown,
   path: string,
 ): { path: string; message: string } | undefined {
-  // `head` decides where the active context starts. A string reaches Pi's resolution, which poisons the
-  // Session; a reset's `"self"` is the only non-numeric value it takes.
+  // `head` decides where the active context starts. Pi resolves it to an entry and stores it in an INTEGER
+  // column, so a value outside the safe-integer range poisons the Session (`cannot store REAL value`) rather
+  // than being a bad request; `1e100` passes `Number.isInteger`.
+  const field = `${path}.head`
   if (value === 'self') return undefined
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return undefined
-  return { path: `${path}.head`, message: '`"self"` or an entry ID of 1 or more is required' }
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 1) return undefined
+  return {
+    path: field,
+    message: '`"self"` or an entry ID between 1 and 2^53-1 is required',
+  }
+}
+/** One message's `usage`, with the counters Pi's ledger keeps; a missing counter or cost counts as zero. */
+function readImportedUsage(value: unknown, path: string): ImportedUsage | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const usage = value as Record<string, unknown>
+  const count = (source: Record<string, unknown>, field: string): number => {
+    const raw = source[field]
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0
+  }
+  const optional = (field: string): number | undefined => {
+    const raw = usage[field]
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
+  }
+  const cost = (
+    typeof usage['cost'] === 'object' && usage['cost'] !== null ? usage['cost'] : {}
+  ) as Record<string, unknown>
+  void path
+  const cacheWrite1h = optional('cacheWrite1h')
+  const reasoning = optional('reasoning')
+  return {
+    input: count(usage, 'input'),
+    output: count(usage, 'output'),
+    cacheRead: count(usage, 'cacheRead'),
+    cacheWrite: count(usage, 'cacheWrite'),
+    totalTokens: count(usage, 'totalTokens'),
+    cost: {
+      input: count(cost, 'input'),
+      output: count(cost, 'output'),
+      cacheRead: count(cost, 'cacheRead'),
+      cacheWrite: count(cost, 'cacheWrite'),
+      total: count(cost, 'total'),
+    },
+    // Pi adds a counter once either side reports it, so an omitted one must stay absent rather than read 0.
+    ...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
+    ...(reasoning === undefined ? {} : { reasoning }),
+  }
 }
 
+/** Append one batch, answering its entry ids in order, and record what its messages spent. */
+async function appendImported(
+  tx: Tx,
+  id: ConversationId,
+  entries: ImportedEntry[],
+): Promise<number[]> {
+  const ids: number[] = []
+  for (const entry of entries) {
+    const record = await tx.appendEntry(id, entry.draft)
+    ids.push(record.id as unknown as number)
+    if (entry.usage.length === 0) continue
+    const state = await tx.doc(UsageDoc, id)
+    for (const { key, usage } of entry.usage) addImportedUsage(state, key, usage)
+  }
+  return ids
+}
+
+/** Add one message's usage to the conversation's `pi.usage`, the way Pi records a real answer's. */
+function addImportedUsage(state: UsageState, key: string, usage: ImportedUsage): void {
+  const total = Object.hasOwn(state.models, key) ? state.models[key] : undefined
+  if (total === undefined) {
+    // A model key is always `provider/model`, so it can never be `__proto__`; plain assignment is what Pi's
+    // own `recordUsage` does through its draft.
+    state.models[key] = { ...usage, cost: { ...usage.cost } }
+    return
+  }
+  total.input += usage.input
+  total.output += usage.output
+  total.cacheRead += usage.cacheRead
+  total.cacheWrite += usage.cacheWrite
+  total.totalTokens += usage.totalTokens
+  if (usage.cacheWrite1h !== undefined)
+    total.cacheWrite1h = (total.cacheWrite1h ?? 0) + usage.cacheWrite1h
+  if (usage.reasoning !== undefined) total.reasoning = (total.reasoning ?? 0) + usage.reasoning
+  total.cost.input += usage.cost.input
+  total.cost.output += usage.cost.output
+  total.cost.cacheRead += usage.cost.cacheRead
+  total.cost.cacheWrite += usage.cost.cacheWrite
+  total.cost.total += usage.cost.total
+}
+
+/** The oldest message time in a batch: the conversation's own beginning when it is imported without one. */
+function earliestMessageTime(entries: ImportedEntry[]): number | undefined {
+  let oldest: number | undefined
+  for (const entry of entries) {
+    for (const message of (entry.draft.model as { timestamp?: unknown }[] | undefined) ?? []) {
+      const at = message.timestamp
+      if (typeof at !== 'number') continue
+      if (oldest === undefined || at < oldest) oldest = at
+    }
+  }
+  return oldest
+}
 /** The newest message time in a batch, which is the conversation's activity at that point in its history. */
 function latestMessageTime(entries: ImportedEntry[]): number | undefined {
   let newest: number | undefined

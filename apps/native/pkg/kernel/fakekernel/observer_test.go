@@ -76,6 +76,10 @@ func TestObserverRecordsEveryMethod(t *testing.T) {
 			_, err := o.Compact(ctx, kernel.CompactParams{ID: missingID})
 			return err
 		}},
+		{kernel.MethodConversationImport, func() error {
+			_, err := o.Import(ctx, kernel.ImportParams{Entries: []kernel.ImportEntry{{Kind: "pi.user"}}})
+			return err
+		}},
 		{kernel.MethodConversationFork, func() error {
 			_, err := o.Fork(ctx, kernel.ForkParams{ID: missingID, At: 1})
 			return err

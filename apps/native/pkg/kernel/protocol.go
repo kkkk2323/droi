@@ -38,6 +38,9 @@ const (
 	MethodConversationConfig  = "conversation.configure"
 	MethodConversationCompact = "conversation.compact"
 	MethodConversationFork    = "conversation.fork"
+	// MethodConversationImport writes a transcript that already exists: without Id it
+	// creates the conversation, with Id it appends one batch to it.
+	MethodConversationImport  = "conversation.import"
 	MethodConversationEntries = "conversation.entries"
 	MethodConversationUsage   = "conversation.usage"
 	MethodTaskAbort           = "task.abort"
@@ -69,7 +72,7 @@ var Methods = []string{
 	MethodHarnessInfo, MethodConversationCreate, MethodConversationList,
 	MethodConversationOpen, MethodConversationUnwatch, MethodConversationSubmit,
 	MethodConversationAbort, MethodSubmissionAbort, MethodSubmissionGet, MethodConversationConfig,
-	MethodConversationCompact, MethodConversationFork, MethodConversationEntries,
+	MethodConversationCompact, MethodConversationFork, MethodConversationImport, MethodConversationEntries,
 	MethodConversationUsage, MethodTaskAbort, MethodIndexUpdate, MethodProcessList,
 	MethodProcessStop, MethodApprovalRespond, MethodAskRespond, MethodMCPList,
 	MethodMCPSet, MethodMCPAuthorize, MethodMCPAuthorizeCancel, MethodSkillsList,

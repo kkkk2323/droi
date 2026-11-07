@@ -146,7 +146,6 @@ export async function startKernel(
 
     indexer = new Indexer(db, storage, {
       // Pi's entries, for the one repair that has to read an entry's JSON: a lost import-key row.
-      entriesTable: 'pi_entries',
       // A flush that could not be stored is reported, not dropped: a silent failure here is an index that
       // quietly stops keeping up.
       onError: (cause) => {

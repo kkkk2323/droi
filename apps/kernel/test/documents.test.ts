@@ -373,19 +373,23 @@ describe('the documents, continued', () => {
     }
   }, 60_000)
 
-  test('a slot never reports done while it still holds output', async () => {
-    // `clearProgress` runs as the slot is marked done, so the two never appear together: a client can trust
-    // "output" to mean "still running".
+  test('a done slot has no output while its round still runs', async () => {
+    // `clearProgress` runs as the slot is marked done, so the two never appear together: "output" can be
+    // trusted to mean "still running". Two parallel calls make that observable — one finishes, one keeps going,
+    // so the finished slot stays in `pi.live.tools` long enough to be seen.
     const data = tempData()
     const faux = fauxCatalog()
     faux.faux.setResponses([
       fauxAssistantMessage(
-        fauxToolCall('bash', {
-          command: 'for i in 1 2 3 4 5 6 7 8; do echo row$i; sleep 0.25; done',
-        }),
+        [
+          fauxToolCall('bash', { command: 'echo quick-one' }),
+          fauxToolCall('bash', {
+            command: 'for i in 1 2 3 4 5 6; do echo slow$i; sleep 0.4; done',
+          }),
+        ],
         { stopReason: 'toolUse' },
       ),
-      fauxAssistantMessage('after the rows'),
+      fauxAssistantMessage('after both'),
     ])
     const kernel = await start({ dir: data.dir, faux })
     const client = new Client(kernel.port)
@@ -393,48 +397,35 @@ describe('the documents, continued', () => {
       const { conversationId: id } = (await client.call('conversation.create', {
         agent: { model: faux.model },
       })) as { conversationId: number }
-      await client.call('conversation.submit', { id, input: 'print rows' })
-      let sawRunning = false
-      let sawDone = false
+      await client.call('conversation.submit', { id, input: 'run two tools' })
+      let sawRunningOutput = false
+      let sawDoneWithoutOutput = false
       for (const end = Date.now() + 60_000; Date.now() < end;) {
         const live = (await docs(client, id))['pi.live'] as {
           tools?: { status?: string; output?: string }[]
         }
-        for (const slot of live?.tools ?? []) {
-          if (slot.status === 'running') {
-            expect(slot.output === undefined || typeof slot.output === 'string').toBe(true)
-            if (slot.output !== undefined) sawRunning = true
-          }
+        const slots = live?.tools ?? []
+        for (const slot of slots) {
           if (slot.status === 'done') {
-            sawDone = true
             expect(slot.output).toBeUndefined()
+            sawDoneWithoutOutput = true
+            expect(slots.some((each) => each.status === 'running')).toBe(true)
           }
+          if (slot.status === 'running' && slot.output !== undefined) sawRunningOutput = true
         }
-        const page = (await client.call('conversation.entries', {
-          id,
-          query: { order: 'ascending' },
-          limit: 100,
-        })) as { items: { kind: string; model?: unknown }[] }
-        if (
-          page.items.some(
-            (entry) =>
-              entry.kind === 'pi.assistant' &&
-              JSON.stringify(entry.model).includes('after the rows'),
-          )
-        ) {
-          break
-        }
+        if (sawDoneWithoutOutput && sawRunningOutput) break
+        await Bun.sleep(20)
       }
-      expect(sawRunning).toBe(true)
-      // The slot may be gone before a poll sees it; what may never happen is `done` with output, checked above.
-      void sawDone
+      // Both halves observed, so the property is not vacuous: a finished call lost its output while its
+      // sibling was still running, and a running call had some.
+      expect(sawRunningOutput).toBe(true)
+      expect(sawDoneWithoutOutput).toBe(true)
     } finally {
       client.close()
       await kernel.stop()
       data.cleanup()
     }
-  }, 90_000)
-
+  }, 120_000)
   test('pi.live has no compactions while the conversation is idle', async () => {
     const data = tempData()
     const faux = fauxCatalog()

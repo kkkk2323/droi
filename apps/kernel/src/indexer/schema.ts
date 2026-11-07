@@ -1,7 +1,7 @@
 import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
 
 /** The shape of the index's own tables. A different value clears the caches and rebuilds them. */
-export const INDEX_VERSION = '2'
+export const INDEX_VERSION = '3'
 
 /**
  * Droi's own tables, in the same SQLite file as Pi's (`pi_` prefix), so a conversation's metadata and
@@ -47,11 +47,13 @@ const statements = [
     ON droi_conversations (kind, last_activity_at DESC, id DESC)`,
   `CREATE INDEX IF NOT EXISTS droi_index_workspace
     ON droi_conversations (workspace, last_activity_at DESC, id DESC)`,
-  // Which conversation one import key already made, so a retried create converges instead of importing twice.
+  // Which conversation one **create** import key made, so a retried create converges instead of importing twice.
   //
-  // The transcript's `droi.import` memo is the record for an append (it lives in the conversation it wrote);
-  // a create has no conversation to search yet, so this table is what a retry reads. It survives an
-  // `INDEX_VERSION` reset: an identity is not a cache, and forgetting it would import a second conversation.
+  // A cache, like `droi_requests`: every `droi.import` entry with `scope: "create"` carries its key, its
+  // fingerprint and the ids it wrote, and the index writes this row in the same flush as the watermark that
+  // covers that entry. So a miss means the key never created a conversation — there is no fallback scan — and an
+  // `INDEX_VERSION` reset is repaired by the catch-up that rereads the memos. An append's key is not here at
+  // all: it belongs to the one conversation that received it.
   `CREATE TABLE IF NOT EXISTS droi_import_keys (
     key TEXT PRIMARY KEY,
     conversation_id INTEGER NOT NULL,
@@ -110,6 +112,7 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
     // An import key is rebuilt from the `droi.import` entries the catch-up then re-reads, so this cache goes
     // with the rest: nothing is lost that the transcript does not hold.
     await tx.exec('DELETE FROM droi_import_keys')
+    await writeMeta(tx, 'index.importKeys', '0')
     await tx.exec('UPDATE droi_conversations SET request_id = NULL, request_fingerprint = NULL')
     await writeMeta(tx, 'index.version', INDEX_VERSION)
     await writeMeta(tx, 'index.tokenizer', TOKENIZER)

@@ -319,9 +319,12 @@ describe('conversation.import, round 1', () => {
       expect(replay.entryIds).toEqual(first.entryIds)
       expect(replay.replayed).toBe(true)
       const listed = (await client.call('conversation.list', { query: 'crash-window-needle' })) as {
-        items: { id: number }[]
+        items: { id: number; createdAt: number; lastActivityAt: number }[]
       }
       expect(listed.items.map((item) => item.id)).toEqual([first.conversationId])
+      // The row the catch-up rebuilt keeps the history's own clock, not the rebuild's time.
+      expect(listed.items[0]?.createdAt).toBe(100)
+      expect(listed.items[0]?.lastActivityAt).toBe(1000)
     } finally {
       client.close()
       await kernel.stop()
@@ -634,6 +637,243 @@ describe('conversation.import, activity and identity details', () => {
       expect(listed.items).toHaveLength(1)
     } finally {
       peers.forEach((peer) => peer.close())
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+})
+
+describe('conversation.import, round 2', () => {
+  test('a key with quotes, a backslash or a newline replays after its cache row is lost', async () => {
+    // The cache is filled from the memos, not searched for: so an escaped key is found by exactly matching the
+    // parsed one, and nothing about the key's text matters.
+    const keys = ['quote"key', 'back\\slash', 'line\nbreak', 'percent%and_underscore', '中文键']
+    const data = tempData()
+    let kernel = await start({ dir: data.dir, faux: fauxCatalog() })
+    let client = new Client(kernel.port)
+    const imported: { key: string; conversationId: number; entryIds: number[] }[] = []
+    try {
+      for (const key of keys) {
+        const created = (await client.call('conversation.import', {
+          key,
+          createdAt: 100,
+          entries: [user(`payload ${key}`, 1000)],
+        })) as Imported
+        imported.push({ key, conversationId: created.conversationId, entryIds: created.entryIds })
+      }
+      client.close()
+      await kernel.stop()
+
+      // The cache is a cache: drop it, and the catch-up rebuilds it from the memos.
+      const db = new Database(join(data.dir, 'kernel.sqlite'))
+      db.run('DELETE FROM droi_import_keys')
+      db.close()
+
+      kernel = await start({ dir: data.dir, faux: fauxCatalog() })
+      client = new Client(kernel.port)
+      for (const entry of imported) {
+        const replay = (await client.call('conversation.import', {
+          key: entry.key,
+          createdAt: 100,
+          entries: [user(`payload ${entry.key}`, 1000)],
+        })) as Imported
+        expect(replay.conversationId).toBe(entry.conversationId)
+        expect(replay.entryIds).toEqual(entry.entryIds)
+        expect(replay.replayed).toBe(true)
+      }
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test('only a droi.import entry is a memo', async () => {
+    const { kernel, client, data } = await kernelForTest()
+    try {
+      // A payload that looks like a memo but is an ordinary note must not become one.
+      const seeded = (await client.call('conversation.import', {
+        entries: [
+          {
+            kind: 'droi.note',
+            data: {
+              marker: 'droi.import',
+              key: 'forged',
+              fingerprint: 'x',
+              entryIds: [12345],
+              scope: 'create',
+            },
+          },
+        ],
+      })) as Imported
+      const created = (await client.call('conversation.import', {
+        key: 'forged',
+        entries: [user('the real history', 1000)],
+      })) as Imported
+      expect(created.replayed).toBeUndefined()
+      expect(created.conversationId).not.toBe(seeded.conversationId)
+      const page = (await client.call('conversation.entries', {
+        id: created.conversationId,
+        query: { order: 'ascending' },
+        limit: 100,
+      })) as { items: { model?: unknown }[] }
+      expect(JSON.stringify(page.items)).toContain('the real history')
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test("an append's key is local, so a create key keeps its own identity", async () => {
+    const { kernel, client, data } = await kernelForTest()
+    try {
+      const params = { key: 'shared-key', entries: [user('parent history', 1000)] }
+      const parent = (await client.call('conversation.import', params)) as Imported
+      const tail = (await client.call('conversation.entries', {
+        id: parent.conversationId,
+        query: { order: 'descending' },
+        limit: 1,
+      })) as { items: { id: number }[] }
+      const forked = (await client.call('conversation.fork', {
+        id: parent.conversationId,
+        at: tail.items[0]!.id,
+      })) as { conversationId: number }
+
+      // The fork appends under the same key: that is the fork's own batch, and must not touch the create's.
+      const own = (await client.call('conversation.import', {
+        id: forked.conversationId,
+        key: 'shared-key',
+        entries: [user('fork batch', 2000)],
+      })) as Imported
+      expect(own.replayed).toBeUndefined()
+
+      // And retrying the create still answers the parent, not a conflict.
+      const replay = (await client.call('conversation.import', params)) as Imported
+      expect(replay.conversationId).toBe(parent.conversationId)
+      expect(replay.replayed).toBe(true)
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test('replacement messages are validated one by one', async () => {
+    const { kernel, client, data } = await kernelForTest()
+    const fails = (params: Record<string, unknown>) =>
+      client.fails('conversation.import', params) as Promise<{
+        code: number
+        data?: { issues?: { path: string }[] }
+      }>
+    try {
+      const created = (await client.call('conversation.import', {
+        entries: [user('one', 1000)],
+      })) as Imported
+      const target = created.entryIds[0]!
+      const nullMessage = await fails({
+        id: created.conversationId,
+        entries: [
+          {
+            kind: 'droi.note',
+            data: { text: 'x' },
+            edits: [{ target, action: 'replace', messages: [null] }],
+          },
+        ],
+      })
+      expect(nullMessage.code).toBe(-32602)
+      expect(nullMessage.data?.issues?.[0]?.path).toBe('entries[0].edits[0].messages[0]')
+
+      const stringContent = await fails({
+        id: created.conversationId,
+        entries: [
+          {
+            kind: 'droi.note',
+            edits: [
+              {
+                target,
+                action: 'replace',
+                messages: [{ role: 'assistant', content: 'text', timestamp: 1000 }],
+              },
+            ],
+          },
+        ],
+      })
+      expect(stringContent.code).toBe(-32602)
+      expect(stringContent.data?.issues?.[0]?.path).toBe('entries[0].edits[0].messages[0].content')
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test('a head must be a safe entry id this conversation holds', async () => {
+    const { kernel, client, data } = await kernelForTest()
+    const fails = (params: Record<string, unknown>) =>
+      client.fails('conversation.import', params) as Promise<{
+        code: number
+        data?: { issues?: { path: string }[] }
+      }>
+    try {
+      const created = (await client.call('conversation.import', {
+        entries: [user('one', 1000)],
+      })) as Imported
+      // 1e100 passes Number.isInteger and used to reach SQLite's INTEGER column, poisoning the Session.
+      const huge = await fails({
+        id: created.conversationId,
+        entries: [{ kind: 'pi.reset', head: 1e100, model: [] }],
+      })
+      expect(huge.code).toBe(-32602)
+      expect(huge.data?.issues?.[0]?.path).toBe('entries[0].head')
+
+      const missing = await fails({
+        id: created.conversationId,
+        entries: [{ kind: 'pi.reset', head: 987654, model: [] }],
+      })
+      expect(missing.code).toBe(-32602)
+      expect(missing.data?.issues?.[0]?.path).toBe('entries[0].head')
+
+      // On a create nothing has an id yet, so only "self" can be a head.
+      const onCreate = await fails({
+        entries: [{ kind: 'pi.reset', head: 1, model: [] }],
+      })
+      expect(onCreate.code).toBe(-32602)
+      expect(onCreate.data?.issues?.[0]?.path).toBe('entries[0].head')
+
+      // The conversation still works after the refused requests.
+      const appended = (await client.call('conversation.import', {
+        id: created.conversationId,
+        entries: [user('still fine', 2000)],
+      })) as Imported
+      expect(appended.entryIds).toHaveLength(1)
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test('an own __proto__ in data takes part in the fingerprint', async () => {
+    const { kernel, client, data } = await kernelForTest()
+    try {
+      // `{"__proto__": {"value": 1}}` is an own field of the parsed data; a normalisation that assigns it
+      // would set the prototype, lose it, and make two different payloads look like one request.
+      const withProto = (value: number) => ({
+        key: 'proto-key',
+        createdAt: 100,
+        entries: [
+          {
+            kind: 'droi.note',
+            data: JSON.parse(`{"__proto__": {"value": ${value}}}`) as unknown,
+          },
+        ],
+      })
+      await client.call('conversation.import', withProto(1))
+      const changed = (await client.fails('conversation.import', withProto(2))) as { code: number }
+      expect(changed.code).toBe(-32013)
+    } finally {
       client.close()
       await kernel.stop()
       data.cleanup()

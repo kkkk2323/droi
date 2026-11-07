@@ -60,6 +60,12 @@ func (c *Client) AbortSubmission(ctx context.Context, p AbortSubmissionParams) (
 	return call[Status](c, ctx, MethodSubmissionAbort, p)
 }
 
+// Import writes a transcript that already exists: without a conversation ID it creates the
+// conversation, with one it appends a batch. A key makes a batch idempotent.
+func (c *Client) Import(ctx context.Context, p ImportParams) (ImportResult, error) {
+	return call[ImportResult](c, ctx, MethodConversationImport, p)
+}
+
 // SubmissionGet answers where one submission of a conversation got to: its
 // status, the user entry it produced and the answer it got. A turn's entries
 // name the task that wrote them rather than the submission, so this is the only

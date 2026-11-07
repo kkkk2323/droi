@@ -540,15 +540,20 @@ it settles.
 **`pi.usage`** — `{models: {"provider/model": {input, output, cacheRead, cacheWrite, totalTokens, cost}},
 tools: {...}}`, the ledger `conversation.usage` reads.
 
-Two parts of this section are **not pinned by a test**, because M1 has no way to reach them:
+What `apps/kernel/test/documents.test.ts` pins, and what it does not:
 
-- a `pi.inbox` item with `mode: "write"` — the kernel never submits a write (only Pi's own tools and a
-  future `conversation.submit` with a draft would), so the shape is Pi's (`harness/inbox.d.ts:5-20`) and is
-  documented rather than observed;
-- `nestedTools` for a call a **model-issued tool** makes of itself — the two nested-tool tests use a test
-  extension, which is what the field is for, but no shipped M1 tool makes a nested call.
-
-Everything else in this section is asserted by `apps/kernel/test/documents.test.ts`.
+| Claim                                                              | Pinned                                                                               |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `pi.inbox` items: `id`, `mode`, `content` of a queued input        | yes                                                                                  |
+| `pi.inbox` item with `mode: "write"` and its `entry` draft         | no — the kernel never submits a write; the shape is Pi's (`harness/inbox.d.ts:5-20`) |
+| `pi.live.tools[i].output` while the call runs                      | yes                                                                                  |
+| a `done` slot has no output, seen while its sibling still runs     | yes                                                                                  |
+| `nestedTools` from a call a **tool** makes through `executeTool()` | yes, with a test extension                                                           |
+| `nestedTools` from a **shipped** M1 tool                           | no — no shipped tool makes a nested call; the field arrives with M3's codemode       |
+| `pi.live.compactions` fields while a compaction runs               | yes                                                                                  |
+| `pi.live` has no `compactions` key while idle                      | yes                                                                                  |
+| `generation.retry` as `{at, error}` across attempts                | yes                                                                                  |
+| `pi.agent` holds the **stored** configuration                      | yes, with `conversation.create`/`configure`                                          |
 
 ### The `droi.` entries
 
@@ -570,6 +575,7 @@ so a client can build the card before the feature lands:
 approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
 process and for a subagent. `at` is epoch milliseconds. An entry that has not settled yet is the newest
 record of that `requestId`: the kernel appends one entry per change rather than rewriting.
+
 ### `conversation.import`
 
 Write a transcript that already exists — M2's history constructor, and M5's importer for old droid sessions.
@@ -605,12 +611,16 @@ it, or an answer that follows no user message, is preserved rather than refused.
 kernel owns — `droi.meta`, `droi.request` and `droi.import` (`issues[].path` is `entries[i].kind`) — because
 writing one would forge an identity or a memo.
 
-**The key travels in the same commit as the conversation.** A create's `droi.import` memo holds
-`{key, fingerprint, entryIds, at}` — written with Pi's own conversation, its meta and its entries, so a crash
-cannot separate them. `droi_import_keys` is a cache over those memos, written in the same index flush as the
-watermark covering the entry and rebuilt from the transcript when a row is missing (a reset, a lost table).
-Losing the cache costs a rebuild; it can never produce a second conversation. An append's memo is the record
-itself, since it lives in the conversation it wrote.
+**The key travels in the same commit as the conversation, and means one of two things.** A `droi.import` memo
+holds `{key, fingerprint, entryIds, scope, at}`, written with Pi's own conversation, its meta and its entries, so
+a crash cannot separate them. `scope` is `"create"` or `"append"`:
+
+- a **create** key is global: a retry of the same call answers the conversation it already made. The kernel
+  caches those identities in `droi_import_keys`, written in the same index flush as the watermark covering the
+  memo and rebuilt by the catch-up after an `INDEX_VERSION` reset. The cache is complete once the index is, so a
+  miss means the key never created a conversation — there is no fallback search over the transcripts.
+- an **append** key is local: it replays only inside the conversation that received it. Using one for a create,
+  or a create's key for an append, is `-32013` rather than a guess.
 
 **The fingerprint covers the entries.** The same key with different entries is a different request and answers
 `-32013`, on both paths: a create that would otherwise silently keep the first history, and an append that would
@@ -624,10 +634,13 @@ unaffected, and the batch writes nothing.
 **One key is admitted once at a time.** Two concurrent calls with the same key converge on one conversation
 rather than race into two.
 
-**Validation is structural, for every field Pi reads.** `kind` must be a non-empty string; `model` must be Pi's
-messages with a numeric `timestamp`; `edits` must be `{target, action: "omit" | "replace", messages?}`; `head`
-must be `"self"` or an entry ID. A string where Pi expects an array poisons its context derivation, and a bad
-`head` poisons the Session — both are `-32602` with the field's path, never stored.
+**Validation is structural, for every field Pi reads, and a `head` must point at something real.** `kind` must be
+a non-empty string; `model` must be Pi's messages with a numeric `timestamp`; `edits` must be
+`{target, action: "omit" | "replace", messages?}` with each replacement message checked in turn; `head` must be
+`"self"` or a **safe** entry ID (at most 2^53−1 — a value outside it reaches SQLite's INTEGER column and poisons
+the Session) that the conversation actually holds. One batch cannot point at itself: on a create there are no
+entries yet, so only `"self"` is a valid head there. Every refusal is `-32602` with the field's path, and nothing
+is stored.
 
 **Activity follows messages only.** A batch with no message time (a `droi.note`, an empty append) leaves
 `lastActivityAt` where it was, and a history imported without `createdAt` takes its clock from its first message,
