@@ -63,15 +63,20 @@ describe('the data directory lock', () => {
     rmSync(join(data.dir, 'kernel.lock'), { force: true })
   })
 
-  test('a file that is not a database is a refusal, and says what happened', () => {
+  test('a file that is not a database is a failure, not a refusal', () => {
+    // "Another kernel is using this" is the one thing a Supervisor retries. A lock database that cannot
+    // be opened is not that: starting again will fail the same way, and the message has to say what is
+    // wrong instead of naming a process that does not exist.
     writeFileSync(path, 'this is not a SQLite database at all, it is a sentence')
-    let refusal: unknown
+    let failure: unknown
     try {
       takeLock(path)
     } catch (error) {
-      refusal = error
+      failure = error
     }
-    expect(refusal).toBeInstanceOf(LockError)
-    expect((refusal as Error).message).toContain('kernel.lock.db')
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).not.toBeInstanceOf(LockError)
+    expect((failure as Error).message).toContain('kernel.lock.db')
+    expect((failure as Error).message).toContain('cannot be used')
   })
 })

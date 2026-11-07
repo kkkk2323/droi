@@ -265,6 +265,24 @@ test('R4 a lock database left in WAL mode is normalized, and still excludes', as
   }
 }, 40_000)
 
+test('R4 a lock database that cannot be opened fails the start with exit 1', async () => {
+  const data = tempData()
+  // Not a database at all: no retry fixes this, so it must not be reported as "another kernel is using
+  // this data directory" (exit 2, which a Supervisor retries) — the operator has a file to deal with.
+  writeFileSync(join(data.dir, 'kernel.lock.db'), 'this is not a SQLite database, it is a sentence')
+  const started = startProcess(data.dir)
+  try {
+    const outcome = await started.outcome
+    expect(outcome.port).toBeUndefined()
+    expect(outcome.code, outcome.stderr).toBe(1)
+    expect(outcome.stderr).toContain('cannot be used')
+    expect(outcome.stderr).not.toContain('another kernel')
+  } finally {
+    await started.kill('SIGKILL')
+    data.cleanup()
+  }
+}, 40_000)
+
 test('R4 a second start is refused while the first runs, and starts the moment it dies', async () => {
   const data = tempData()
   const owner = startProcess(data.dir)

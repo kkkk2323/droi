@@ -57,6 +57,24 @@ async function startBinary(
   return { child, handshake, stderr: () => log }
 }
 
+/**
+ * Stop the binary and wait until it is really gone.
+ *
+ * The wait is what makes the cleanup below work on Windows: a kernel holds `kernel.lock.db` open for its
+ * whole life, so removing the data directory before the process has exited fails with `EBUSY` — which is
+ * exactly how the cross-compiled smoke failed in CI, once the lock became a real file the kernel keeps
+ * open. On Windows `kill('SIGTERM')` terminates the process asynchronously, so the removal raced it.
+ */
+async function stop(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
+  child.kill('SIGTERM')
+  const timer = setTimeout(() => child.kill('SIGKILL'), 10_000)
+  timer.unref?.()
+  await exited
+  clearTimeout(timer)
+}
+
 async function main(): Promise<void> {
   const provider = startFakeProvider()
   const configPath = join(workDir, 'config.json')
@@ -107,7 +125,8 @@ async function main(): Promise<void> {
     }
   } finally {
     client.close()
-    binary.child.kill('SIGTERM')
+    // Before removing the data directory: the kernel holds its lock database open until it exits.
+    await stop(binary.child)
     provider.stop()
     if (!keep) {
       rmSync(dataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
