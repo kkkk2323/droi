@@ -48,15 +48,23 @@ const SETUP_TIMEOUT_MS = 750
  * three earlier designs (a PID file, then a rename claim, then a guard, then a fence) each moved the same
  * check-then-delete race one layer outward, and this one has nothing to race over.
  *
- * Two details make the lock real rather than nominal:
+ * Three details make the lock real rather than nominal:
  *
- * - `busy_timeout = 0` asks for no wait at all. A start either takes the directory now or is refused now;
- *   a retry loop here would turn a supervisor's restart storm into a queue of stuck processes.
+ * - **Wait while *starting*, never while holding.** Setup runs with `busy_timeout = SETUP_TIMEOUT_MS`
+ *   (750 ms): opening this database is several writes — the journal mode, the table, its seed row,
+ *   `BEGIN EXCLUSIVE` — and simultaneous starters collide on them. With no wait at all, three at once
+ *   sometimes ended with **all three refused** and no kernel running (measured: one round in twenty).
+ *   The wait is bounded and is turned back to `0` as soon as the lock is held, so a kernel that really
+ *   holds the directory still refuses the next start after the same 750 ms, and holding never waits.
  * - The holding statement is an `UPDATE` of an existing row, not an `INSERT` of a new one. SQLite writes
  *   the original page to the rollback journal when it first dirties a page, and that is what takes the
  *   lock; a row that stays in the page cache can leave the transaction holding nothing. Measured on Bun
  *   1.3.14 here: an `INSERT` into a table created in the same connection blocks nothing, the `UPDATE`
  *   blocks every other writer.
+ * - A start that races a *running* kernel is refused with `LockError` — the one status a Supervisor may
+ *   retry, because the directory may become free. Anything else that stops the lock from being taken (a
+ *   file that is not a database, a directory it may not write) is a plain error: no retry can fix it, and
+ *   reporting it as "another kernel" would send an operator looking for a process that does not exist.
  *
  * `kernel.pid` beside it is **diagnosis only** — the message a refused starter prints. Nothing reads it to
  * decide anything, so a stale one misleads a human for one line and nothing more.
@@ -97,12 +105,16 @@ export function takeLock(path: string): Lock {
     } catch {
       // A connection that failed to lock is not worth a second error.
     }
-    // Only "somebody else holds it" is a refusal a Supervisor retries. Anything else — a file that is not
-    // a database, a directory it may not write — is a start that cannot succeed, and says why.
+    // Only "somebody else holds it" is a refusal a Supervisor retries, and it exits `2`. Anything else —
+    // a file that is not a database, a directory it may not write — cannot be fixed by starting again, so
+    // it is a plain failure (exit `1`) that says what happened; calling it "another kernel" would send an
+    // operator looking for a process that does not exist.
     const message = error instanceof Error ? error.message : String(error)
     if (!/SQLITE_BUSY|SQLITE_LOCKED|database is locked/i.test(message)) {
-      throw new LockError(
-        `the data directory lock ${JSON.stringify(path)} could not be taken: ${message}`,
+      throw new Error(
+        `the data directory lock ${JSON.stringify(path)} cannot be used: ${message}. ` +
+          'Delete it if no kernel is running in this data directory.',
+        { cause: error },
       )
     }
     const owner = readPid(pidPath)

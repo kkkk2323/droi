@@ -21,7 +21,7 @@ secret the Host generates, and it arrives in the environment, never on the
 command line: on macOS `ps` shows the arguments of every user's processes, so a
 token there is readable by any local user, while a process's environment is not.
 A kernel started without `DROI_KERNEL_TOKEN` writes a line to stderr and exits
-with status `2`.
+with status `1`: no retry supplies a token.
 
 | Endpoint      | Purpose                                                                                                                                                              |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -194,7 +194,7 @@ kernel --data <tmp dir> --port 0
 port, the data directory, the read-only flag and the token still come from the command line and the
 environment. **It is not a way in.** Every connection needs `Authorization: Bearer <DROI_KERNEL_TOKEN>`,
 and a token in the query string is refused like a wrong one — the header is the only place it is read.
-An empty or malformed value is a start-up failure with status `2` rather than a silently unconfigured
+An empty or malformed value is a start-up failure with status `1` rather than a silently unconfigured
 kernel.
 
 The settings a test needs beyond that:
@@ -231,15 +231,17 @@ same SQLite file, and a synchronous `busy_timeout` wait there blocks the whole e
 
 ### Exit statuses
 
-| Status | Meaning                                                                        |
-| ------ | ------------------------------------------------------------------------------ |
-| `0`    | Asked to stop (`kernel.shutdown`, SIGTERM, SIGINT) and closed cleanly.         |
-| `1`    | Could not start, or could not close. A bug or an environment problem; a crash. |
-| `2`    | Refused to start: bad arguments, no token, or the data directory is taken.     |
-| `3`    | The storage failed. The Host must restart the kernel, not reuse it.            |
+| Status | Meaning                                                                                         |
+| ------ | ----------------------------------------------------------------------------------------------- |
+| `0`    | Asked to stop (`kernel.shutdown`, SIGTERM, SIGINT) and closed cleanly.                          |
+| `1`    | Could not start, or could not close: bad arguments, an unusable data directory, a bug, a crash. |
+| `2`    | Refused to start because **another kernel holds the data directory**. A retry may succeed.      |
+| `3`    | The storage failed. The Host must restart the kernel, not reuse it.                             |
 
-`2` and `3` are the two a Supervisor acts on differently: a refusal may be retried or reported to the user,
-a storage failure is a restart with the same data directory.
+`2` is the only status that means "try again later": another kernel owns the data directory, and it may exit.
+Everything a retry cannot fix is `1` — missing token, bad arguments, a `kernel.lock.db` that is not a database
+or a data directory that cannot be written — and the stderr line says which. `3` is a restart with the same
+data directory.
 
 ### Page sizes
 
