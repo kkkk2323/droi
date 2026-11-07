@@ -372,6 +372,13 @@ numbers (Pi's durable IDs, which are int64 and read as `bigint` in SQLite; the
 kernel serializes them as numbers, so they are exact below 2^53, which is far
 beyond any realistic count).
 
+`conversation.create` takes `kind` and `instructions` at the top level as well as inside `agent`; both are
+accepted and both are stored. `kind` is Droi's own label (`chat`, `automation`, `section`, …): it goes into the
+conversation's `droi.meta` entry and the index row, `conversation.list` filters on it, and Pi never sees it.
+`instructions` is the agent's, and `conversation.configure` answers it back. A top-level field beats the config
+file's agent defaults, and `agent` beats the top level, so a Host can set a default and a caller can still
+override one field of it.
+
 `requestId` on `conversation.create` and `conversation.submit` is the client's
 own deduplication key, scoped to the conversation. Repeating it returns the same
 conversation or submission; reusing it with different params is `-32013`.
@@ -479,6 +486,75 @@ instructions?, cwd?, maxTurns?}`.
 `input` in `conversation.submit` is a string or a list of content blocks:
 `{"type":"text","text":...}` and `{"type":"image","data":<base64>,"mimeType":...}`.
 `continue: true` asks for a run on the context as it is, with no new user message.
+
+### The documents a client reads
+
+`docs` is Pi's document store, passed through unchanged: the kernel reads it, never rewrites it. Four of
+the kinds are the ones a client renders from, and their fields are Pi 1.5.0's own — the kernel adds and
+removes nothing, so what is missing here is missing in the store rather than in the wire.
+
+**`pi.agent`** — `{model?: {provider, modelId}, thinkingLevel?, instructions?, cwd?, maxTurns?, tools?, ...}`:
+the agent as Pi resolved it. `conversation.configure` answers the same fields in its own shape.
+
+**`pi.inbox`** — the messages waiting for the running turn, in submission-ID order:
+
+```json
+{
+  "items": [
+    { "id": 17, "mode": "followUp", "content": "queued one" },
+    { "id": 18, "mode": "steer", "content": "steer one" },
+    { "id": 19, "mode": "write", "entry": { "kind": "droi.note", "data": { "text": "…" } } }
+  ]
+}
+```
+
+`mode` is `steer` or `followUp` for a user input and `write` for an entry the client asked to append;
+`content` is the item's `conversation.submit` input, and `entry` is the draft it will be placed as. An
+item leaves the list when a boundary places it, so the list is exactly "not yet in the transcript". The
+submission `id` is the one `conversation.submit` answered, which is how a client pairs a queued message
+with `submission.abort`.
+
+**`pi.live`** — the running state. Everything a streaming view needs is here:
+
+| Field               | Shape                                                                                                                  | When it holds                                     |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `run`               | `{taskId, inputs[], turns, first?}`                                                                                    | exactly while busy                                |
+| `runFailure`        | `{taskId, inputs[], reason, detail?, first?}`                                                                          | the newest run that ended without an answer       |
+| `generation`        | `{attempt, message?, retry?, deferred?}`                                                                               | while a model request is being made               |
+| `generation.retry`  | `{at, error}`                                                                                                          | a failed attempt backing off, `at` in epoch ms    |
+| `tools`             | `[{callId, name, status, output?, droppedBytes?, droppedLines?, details?, diagnostics?, taskId?, entry?, unoffered?}]` | the current tool round, in call order             |
+| `nestedTools`       | `[{parentCallId, parentTaskId, taskId, callId, name, arguments, status, output?, summary?}]`                           | calls a running tool made through `executeTool()` |
+| `compactions`       | `[{taskId, trigger, blocking, attempt, retry?}]`                                                                       | live compaction tasks                             |
+| `compactionFailure` | `{taskId, trigger, error}`                                                                                             | the newest compaction that failed                 |
+
+`tools[i].output` is the running output of a call that has not finished (`droppedBytes`/`droppedLines`
+say what the bounds dropped), and it is cleared once the call settles: the result entry replaces it.
+`nestedTools` is in creation order, so a parent precedes its children, and a call's slots disappear when
+it settles.
+
+**`pi.usage`** — `{models: {"provider/model": {input, output, cacheRead, cacheWrite, totalTokens, cost}},
+tools: {...}}`, the ledger `conversation.usage` reads.
+
+### The `droi.` entries
+
+The kernel's own kinds are model-invisible bookkeeping that a client renders as cards. These are the
+shapes the kernel guarantees — the first three exist today, the rest are fixed now and written in M3/M4,
+so a client can build the card before the feature lands:
+
+| kind            | `data`                                                                       | Written            | Exists |
+| --------------- | ---------------------------------------------------------------------------- | ------------------ | ------ |
+| `droi.meta`     | `{createdAt, requestId?, requestFingerprint?, kind?, workspace?, parentId?}` | the kernel         | yes    |
+| `droi.request`  | `{requestId, fingerprint, submissionId}`                                     | the kernel         | yes    |
+| `droi.note`     | `{text}`                                                                     | the kernel         | yes    |
+| `droi.approval` | `{requestId, tool, args, status, outcome?, scope?, at}`                      | the approval layer | M3     |
+| `droi.ask`      | `{requestId, questions[], context, status, answers?, at}`                    | the ask tool       | M3     |
+| `droi.subagent` | `{parentCallId, childConversationId, title, status}`                         | the subagent tool  | M4     |
+| `droi.process`  | `{processId, pid, command, logPath, status, exitCode?, at}`                  | `bash_background`  | M3     |
+
+`status` is the entry's current state, one of `pending` / `allowed` / `denied` / `abandoned` for an
+approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
+process and for a subagent. `at` is epoch milliseconds. An entry that has not settled yet is the newest
+record of that `requestId`: the kernel appends one entry per change rather than rewriting.
 
 ### `model.complete`
 
