@@ -618,7 +618,7 @@ func (s *KernelSupervisor) launch(gen int) {
 	// test's Spawn hook — because it is Kernel's to read, not the launcher's to
 	// remember. An empty value leaves Kernel at its own default.
 	if dir := s.userDir(); dir != "" {
-		cmd.Env = append(cmd.Env, kernel.UserDirEnv+"="+dir)
+		cmd.Env = withUserDir(cmd.Env, dir)
 	}
 	out := newTailBuffer(4096)
 	if cmd.Stderr != nil {
@@ -836,6 +836,22 @@ func (s *KernelSupervisor) spawn(port int, token string) (*exec.Cmd, io.ReadClos
 		return cmd, nil, nil
 	}
 	return cmd, pair, nil
+}
+
+// withUserDir adds DROI_USER_DIR=dir to a launch's environment unless the
+// launcher already chose one (a test keeps its own temporary directory). A nil
+// environment is the process's own, as os/exec reads it, so it starts there.
+func withUserDir(env []string, dir string) []string {
+	if env == nil {
+		env = os.Environ()
+	}
+	prefix := kernel.UserDirEnv + "="
+	for _, kv := range env {
+		if strings.HasPrefix(kv, prefix) {
+			return env
+		}
+	}
+	return append(env, prefix+dir)
 }
 
 // userDir is the absolute directory Kernel is told to keep the user's own
