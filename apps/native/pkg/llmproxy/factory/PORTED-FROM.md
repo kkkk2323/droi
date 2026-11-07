@@ -22,14 +22,14 @@ usage policy check refuses a request that says it is something else with 403
 `content_policy_rejected`, which is what the Kernel's own prompt got before
 this layer existed (M1 acceptance, 2026-11-08).
 
-| Go | upstream (`index.mjs`) | notes |
-|---|---|---|
-| `DroidBody`, the route switch | `droidBody` 613-651 | only the identity half: no `promptOpenings`, no `temperature`/`top_p` removal for OpenAI models |
-| `chatBody`, `droidChat`, `openContent` | `droidChat` 581-611 | a chat completions first system message, string or parts |
-| `responsesBody` | `droidBody`'s `/responses` branch, 630-644 | string `instructions` only; the input is left as it came |
-| `anthropicBody` | `anthropicBody` 1609-1674 | system blocks only: empty blocks go, the line is first, duplicate lines go; no billing header, no Claude Code context |
-| `geminiBody` | `geminiBody` 663-698 | the system instruction only, its role removed; the model in the body and the `/generate` path are not here |
-| `DroidLine` | `DROID_LINE` 470 | the same sentence, byte for byte |
+| Go                                     | upstream (`index.mjs`)                     | notes                                                                                                                 |
+| -------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `DroidBody`, the route switch          | `droidBody` 613-651                        | only the identity half: no `promptOpenings`, no `temperature`/`top_p` removal for OpenAI models                       |
+| `chatBody`, `droidChat`, `openContent` | `droidChat` 581-611                        | a chat completions first system message, string or parts                                                              |
+| `responsesBody`                        | `droidBody`'s `/responses` branch, 630-644 | string `instructions` only; the input is left as it came                                                              |
+| `anthropicBody`                        | `anthropicBody` 1609-1674                  | system blocks only: empty blocks go, the line is first, duplicate lines go; no billing header, no Claude Code context |
+| `geminiBody`                           | `geminiBody` 663-698                       | the system instruction only, its role removed; the model in the body and the `/generate` path are not here            |
+| `DroidLine`                            | `DROID_LINE` 470                           | the same sentence, byte for byte                                                                                      |
 
 The golden cases in `droidbody_test.go` come from the upstream tests
 `droid.test.mjs` (the cases that cover the routes Droi sends), which are
