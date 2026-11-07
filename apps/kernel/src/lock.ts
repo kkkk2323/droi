@@ -49,6 +49,10 @@ const TABLE = 'droi_lock'
  *
  * A database left by a crashed kernel needs no repair: the next start finds a hot journal and rolls it
  * back, which is the same thing SQLite does after any crash.
+ *
+ * **Never delete or replace this file while a kernel holds it.** The lock lives on the inode, so an
+ * unlinked lock database lets the next starter create a fresh one and take it — two kernels, one data
+ * directory. Nothing in the kernel removes it; a cleanup tool must not either.
  */
 export function takeLock(path: string): Lock {
   const pidPath = `${path.slice(0, -'.lock.db'.length)}.pid`
@@ -56,6 +60,12 @@ export function takeLock(path: string): Lock {
   try {
     db = new Database(path, { create: true })
     db.exec('PRAGMA busy_timeout = 0')
+    // A rollback journal, never WAL, and said so rather than inherited: this file is only ever locked, and
+    // the invariant the lock depends on is the one below — that the first dirty page writes its original to
+    // a rollback journal, which takes the file lock. A database an earlier build left in WAL mode would
+    // keep that setting for ever, so it is normalized here (which itself needs the write lock, and so is
+    // already a test of who owns the directory).
+    db.exec('PRAGMA journal_mode = DELETE')
     db.exec(`CREATE TABLE IF NOT EXISTS ${TABLE} (owner INTEGER)`)
     db.exec(`INSERT INTO ${TABLE} (owner) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM ${TABLE})`)
     db.exec('PRAGMA locking_mode = EXCLUSIVE')

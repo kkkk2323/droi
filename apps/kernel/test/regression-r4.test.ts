@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { Database } from 'bun:sqlite'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { Client, TOKEN, allEntries, fauxCatalog, start, tempData } from './helpers.ts'
@@ -60,12 +61,80 @@ test('R4 a first answer in the first index batch advances the listed activity', 
   }
 })
 
-type Outcome = { port?: number; code: number | null; signal: NodeJS.Signals | null; stderr: string }
+type Outcome = {
+  port?: number
+  code: number | null
+  signal: NodeJS.Signals | null
+  stderr: string
+}
 type KernelProcess = {
   child: ReturnType<typeof spawn>
   /** The handshake port, or — when it was refused — the exit code and what it said. */
   outcome: Promise<Outcome>
   kill: (signal: NodeJS.Signals) => Promise<void>
+}
+
+/** What a group of simultaneous starts showed about mutual exclusion. */
+type StartVerdict =
+  | { kind: 'ok'; owners: number }
+  /** A real failure: the caller's assertions would fail, and a retry would only hide it. */
+  | { kind: 'violation'; reason: string }
+  /** No verdict at all: a child died to a signal before it could answer or be refused. */
+  | { kind: 'inconclusive'; reason: string }
+
+/**
+ * Judge one group of simultaneous starts.
+ *
+ * The order of the checks is the whole point. **More than one handshake is a violation, whatever else the
+ * group did**, and it is returned before anything about signals is considered: a group in which a kernel
+ * was killed *and* two kernels started is not an interrupted run, it is proof that the lock failed, and a
+ * retry would replace that proof with the next attempt's cleaner result. Only a group that kept the
+ * invariant and lost a child to a signal is retried — and that is not a judgement about the lock at all: a
+ * child with no verdict was reaped, usually by the test runner.
+ */
+function judgeStartGroup(outcomes: readonly Outcome[]): StartVerdict {
+  const owners = outcomes.filter((outcome) => outcome.port !== undefined)
+  if (owners.length > 1) {
+    return {
+      kind: 'violation',
+      reason: `${owners.length} kernels reached the handshake on one data directory (ports ${owners
+        .map((owner) => owner.port)
+        .join(', ')})`,
+    }
+  }
+  // A start that neither answered nor was refused did not test the lock: it is a broken start, and
+  // reporting it as a refusal would pass the "exactly one owner" assertion for the wrong reason.
+  const broken = outcomes.filter(
+    (outcome) => outcome.port === undefined && outcome.signal === null && outcome.code !== 2,
+  )
+  if (broken.length > 0) {
+    return {
+      kind: 'violation',
+      reason: `a start failed for another reason: ${broken
+        .map((outcome) => `exit ${outcome.code} ${outcome.stderr}`)
+        .join(' | ')}`,
+    }
+  }
+  // No kernel reached the handshake: nothing was proven either way. That is not a violation — a
+  // violation is two owners — but it is not an answer either, so the group is started again.
+  if (owners.length === 0) {
+    return {
+      kind: 'inconclusive',
+      reason: `no start reached the handshake: ${outcomes
+        .map((outcome) => `code ${outcome.code} signal ${outcome.signal}`)
+        .join(' | ')}`,
+    }
+  }
+  const interrupted = outcomes.filter((outcome) => outcome.signal !== null)
+  if (interrupted.length > 0) {
+    return {
+      kind: 'inconclusive',
+      reason: `${interrupted.length} of ${outcomes.length} starts were killed by ${interrupted
+        .map((outcome) => outcome.signal)
+        .join(', ')}`,
+    }
+  }
+  return { kind: 'ok', owners: owners.length }
 }
 
 function startProcess(dir: string): KernelProcess {
@@ -111,21 +180,85 @@ function startProcess(dir: string): KernelProcess {
 }
 
 /**
- * Start `count` kernels at the same instant and report what each one did.
+ * Start `count` kernels at the same instant, and report what each one did.
  *
- * The group is launched again when one of them was killed by a signal instead of answering or exiting: a
- * process with no verdict at all was reaped by the test runner (it does that to children a test leaves
- * alive), and that says nothing about the lock.
+ * Only an inconclusive group is launched again; a group that showed a violation is returned as it was, so
+ * the failure is the one that actually happened.
  */
 async function starters(dir: string, count: number, attempts = 3): Promise<Outcome[]> {
+  let last: StartVerdict | undefined
   for (let attempt = 0; attempt < attempts; attempt++) {
     const group = Array.from({ length: count }, () => startProcess(dir))
     const outcomes = await Promise.all(group.map((starter) => starter.outcome))
     await Promise.all(group.map((starter) => starter.kill('SIGKILL')))
-    if (outcomes.every((outcome) => outcome.signal === null)) return outcomes
+    const verdict = judgeStartGroup(outcomes)
+    if (verdict.kind === 'ok') return outcomes
+    if (verdict.kind === 'violation') throw new Error(verdict.reason)
+    // A retry is itself a fact worth having in the log: with no reason printed, a flake looks like a pass.
+    console.error(
+      `start group ${attempt + 1} was inconclusive, starting it again: ${verdict.reason}`,
+    )
+    last = verdict
   }
-  throw new Error(`every attempt to start ${count} kernels was cut short by a signal`)
+  throw new Error(
+    `every attempt to start ${count} kernels was inconclusive: ${last?.kind === 'inconclusive' ? last.reason : ''}`,
+  )
 }
+
+test('R4 a group with two handshakes is a violation, never a retry', () => {
+  // The classification is the guard against masking: one killed child must not launder a group that
+  // started two kernels.
+  const owner = (port: number): Outcome => ({ port, code: null, signal: null, stderr: '' })
+  const refused = (): Outcome => ({
+    code: 2,
+    signal: null,
+    stderr: 'another kernel (pid 1) is using this data directory',
+  })
+  const killed = (): Outcome => ({ code: null, signal: 'SIGKILL', stderr: '' })
+
+  const masked = judgeStartGroup([owner(1001), owner(1002), killed()])
+  expect(masked.kind).toBe('violation')
+  expect(masked.kind === 'violation' ? masked.reason : '').toContain(
+    '2 kernels reached the handshake',
+  )
+
+  // A single owner and a killed child is the one case worth starting again: nobody saw a verdict.
+  expect(judgeStartGroup([owner(1003), refused(), killed()]).kind).toBe('inconclusive')
+  expect(judgeStartGroup([owner(1004), refused(), refused()]).kind).toBe('ok')
+  // A start that neither answered nor was refused is broken, not a refusal.
+  const broken = judgeStartGroup([refused(), { code: 1, signal: null, stderr: 'boom' }])
+  expect(broken.kind).toBe('violation')
+  // No owner at all: nothing was proven, so the group is started again rather than reported as a failure.
+  expect(judgeStartGroup([refused(), refused()]).kind).toBe('inconclusive')
+})
+
+test('R4 a lock database left in WAL mode is normalized, and still excludes', async () => {
+  const data = tempData()
+  const path = join(data.dir, 'kernel.lock.db')
+  // A lock database an earlier build wrote in WAL mode. The lock must not depend on which mode it finds.
+  const prepared = new Database(path, { create: true })
+  prepared.exec('PRAGMA journal_mode = WAL')
+  prepared.exec('CREATE TABLE IF NOT EXISTS droi_lock (owner INTEGER)')
+  prepared.exec('INSERT INTO droi_lock (owner) VALUES (0)')
+  prepared.close()
+  const owner = startProcess(data.dir)
+  try {
+    expect((await owner.outcome).port).toBeGreaterThan(0)
+    const rival = await startProcess(data.dir).outcome
+    expect(rival.port).toBeUndefined()
+    expect(rival.code).toBe(2)
+    await owner.kill('SIGKILL')
+    const inspect = new Database(path)
+    try {
+      expect(inspect.query('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'delete' })
+    } finally {
+      inspect.close()
+    }
+  } finally {
+    await owner.kill('SIGKILL')
+    data.cleanup()
+  }
+}, 40_000)
 
 test('R4 a second start is refused while the first runs, and starts the moment it dies', async () => {
   const data = tempData()

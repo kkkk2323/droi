@@ -221,6 +221,11 @@ segfault is gone the moment the process is, and all a killed kernel leaves behin
 rolls back for the next starter. `<data>/kernel.pid` is **diagnosis only** — the pid a refusal names — and no
 version reads it to decide anything. A `<data>/kernel.lock` file of text from a pre-release build is ignored.
 
+**Never delete or replace `kernel.lock.db` while a kernel is running.** The lock belongs to the file, so
+removing it lets the next starter create a fresh one and take it — two kernels, one data directory, both
+holding "the" lock. Nothing in the kernel removes or renames it, and a cleanup tool must not either; the only
+file a kernel deletes is `kernel.pid`, which is advice. Replacing it _while no kernel runs_ is harmless.
+
 One kernel per data directory is not a performance choice: a second one would open a second connection to the
 same SQLite file, and a synchronous `busy_timeout` wait there blocks the whole event loop.
 
