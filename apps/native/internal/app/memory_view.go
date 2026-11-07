@@ -128,7 +128,7 @@ func (a *App) memoryTab(c *ui.Context) {
 func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	k, t := a.kit, a.kit.T
 	m := &a.memory
-	desc := L("Off: Droid starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past work on this computer.")
+	desc := L("Off: Droi starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past work on this computer.")
 	if on {
 		desc = L("On: Droi summarizes each Session once it has been left for a while and keeps a short Memory Summary that every new Session starts with. Only Droi’s Daemon has it; the droid CLI is untouched.")
 	}

@@ -260,7 +260,7 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 					kit.Pulse(cursor, k.Px(2), func(w float32) ui.Color { return t.Foreground.Alpha(0.6 * (0.5 + 0.5*w)) })
 				}
 			case transcript.Picture:
-				v.picture(c, b.ID, b.Image, 288, l10n.L("Image from Droid"))
+				v.picture(c, b.ID, b.Image, 288, l10n.L("Image from Droi"))
 			case transcript.Thinking:
 				v.thinking(c, b, r.e.ID == v.streamingID)
 			case transcript.Subagent:

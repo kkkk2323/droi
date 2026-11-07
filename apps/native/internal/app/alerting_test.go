@@ -38,7 +38,7 @@ func TestCompletionAlertsWhileAnotherSessionIsOpen(t *testing.T) {
 	if len(sounds) != 1 || sounds[0] != "fx-ok01" {
 		t.Errorf("sounds %q", sounds)
 	}
-	if n := notes[0]; n.SessionID != deploy || n.Title != "Droid finished" || n.Body != "Deploy" {
+	if n := notes[0]; n.SessionID != deploy || n.Title != "Droi finished" || n.Body != "Deploy" {
 		t.Errorf("notification %+v", n)
 	}
 	mu.Unlock()

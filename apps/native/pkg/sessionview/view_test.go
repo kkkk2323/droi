@@ -212,7 +212,7 @@ func TestAQueuedQuestionSitsAboveThePlainComposer(t *testing.T) {
 		Context: "The region decides the CDN.", Reply: "Building meanwhile."}))
 	h.send("Ship it")
 	h.until("the queued question", func() bool { return h.hasText("Which region?") && h.hasText("Building meanwhile.") })
-	card, ok := h.tt.Find("Droid has a queued question")
+	card, ok := h.tt.Find("Droi has a queued question")
 	composer, hasComposer := h.tt.Find("Message")
 	if !ok || !hasComposer || card.Y+card.H > composer.Y {
 		t.Fatalf("the card %v (%v) is not above the composer %v (%v)", card, ok, composer, hasComposer)
@@ -225,7 +225,7 @@ func TestAQueuedQuestionSitsAboveThePlainComposer(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.until("the record", func() bool { return h.hasText("Answered queued questions") && h.hasText("Noted: eu-west.") })
-	if _, ok := h.tt.Find("Droid has a queued question"); ok {
+	if _, ok := h.tt.Find("Droi has a queued question"); ok {
 		t.Error("the card stays after the answer")
 	}
 }
@@ -317,7 +317,7 @@ func TestAPermissionCardFolds(t *testing.T) {
 	if _, ok := h.tt.Find("Yes, allow"); ok {
 		t.Error("the folded card still shows its options")
 	}
-	if !h.hasText("Droid wants to run Execute") {
+	if !h.hasText("Droi wants to run Execute") {
 		t.Errorf("the folded card lost its title: %q", h.tt.Texts())
 	}
 	if err := h.tt.Click("Show options"); err != nil {

@@ -134,7 +134,7 @@ func TestTheSessionListLeavesOutMemorySessions(t *testing.T) {
 
 func clickMemorySwitch(h *harness, asked func() bool) {
 	h.t.Helper()
-	clickSwitchBeside(h, []string{"Off: Droid starts", "On: Droi summarizes"}, asked)
+	clickSwitchBeside(h, []string{"Off: Droi starts", "On: Droi summarizes"}, asked)
 }
 
 // clickSwitchBeside clicks a settings switch named like its section in the

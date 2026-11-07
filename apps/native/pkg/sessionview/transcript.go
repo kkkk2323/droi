@@ -39,7 +39,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 			return
 		}
 		ui.Box(c).Fill().Center().Children(func() {
-			k.Text(c, l10n.L("What should Droid work on?"), 14, 20).TextColor(t.MutedForeground)
+			k.Text(c, l10n.L("What should Droi work on?"), 14, 20).TextColor(t.MutedForeground)
 		})
 		return
 	}

@@ -172,7 +172,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 						case scratch:
 							h(L("What should we work on?")).Role(ui.RoleHeading)
 						default:
-							h(L("Where should Droid work?")).Role(ui.RoleHeading)
+							h(L("Where should Droi work?")).Role(ui.RoleHeading)
 							if len(listed) > 0 || status.Connected {
 								a.workspaceMenu(c, recent, "", L("Choose a workspace"))
 							}

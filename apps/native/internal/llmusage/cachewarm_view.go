@@ -53,7 +53,7 @@ func warmMode(mode string) (label, help string, ok bool) {
 	case proxy.CacheWarmingDryRun:
 		return l10n.L("Dry run"), l10n.L("Only decides whether to renew and writes the result to the event log. Sends no renewal and spends no quota."), true
 	case proxy.CacheWarmingStreaming:
-		return l10n.L("While tools run"), l10n.L("Renews caches while Droid runs tools, not while a session is idle."), true
+		return l10n.L("While tools run"), l10n.L("Renews caches while Droi runs tools, not while a session is idle."), true
 	case proxy.CacheWarmingIdle:
 		return l10n.L("Including idle"), l10n.L("Renews while tools run and while a session is idle. Idle renewal has a time limit, 30 minutes by default."), true
 	case proxy.CacheWarmingSmart:
