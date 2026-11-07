@@ -258,3 +258,83 @@ func TestFakeKernelEntriesAfterIsOldestFirst(t *testing.T) {
 		t.Fatalf("the turn ends with %q / %q", last.Kind, last.Text)
 	}
 }
+
+// TestFakeKernelQueuedSubmissionHasNoEntries is one half of a false pass the review found: a submission that
+// has not been placed has no entry of its own, and turning that zero into "from the beginning" answered the
+// whole previous transcript.
+func TestFakeKernelQueuedSubmissionHasNoEntries(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Match: "first", Text: "previous reply", Delay: 300 * time.Millisecond},
+		{Match: "second", Text: "own reply"},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	first := k.Submit(t, c, id, "first")
+	for deadline := time.Now().Add(5 * time.Second); len(k.Requests()) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("the model was never asked")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	second := k.Submit(t, c, id, "second")
+	if record := k.Record(t, c, second, 5*time.Second); record.Status != "queued" {
+		t.Fatalf("the second submission is %q, want queued", record.Status)
+	}
+	if entries := k.EntriesAfter(t, c, second, 5*time.Second); len(entries) != 0 {
+		t.Fatalf("a queued submission answered %d entries of the previous turn: %+v", len(entries), entries)
+	}
+	k.WaitForReply(t, c, second, "own reply", 30*time.Second)
+	k.WaitForReply(t, c, first, "previous reply", 30*time.Second)
+}
+
+// TestFakeKernelSettledTurnStopsAtItsOwnAnswer is the other half: without an end boundary, a later
+// submission's entries join the earlier turn, and a wait for the earlier turn is satisfied by the later reply.
+func TestFakeKernelSettledTurnStopsAtItsOwnAnswer(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Match: "first", Text: "first answer"},
+		{Match: "second", Text: "later unrelated answer"},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	first := k.Submit(t, c, id, "first")
+	k.WaitForReply(t, c, first, "first answer", 30*time.Second)
+	second := k.Submit(t, c, id, "second")
+	k.WaitForReply(t, c, second, "later unrelated answer", 30*time.Second)
+
+	record := k.Record(t, c, first, 5*time.Second)
+	entries := k.EntriesAfter(t, c, first, 5*time.Second)
+	for _, entry := range entries {
+		if entry.ID > record.Answer {
+			t.Fatalf("the first turn includes entry %d, after its own answer %d", entry.ID, record.Answer)
+		}
+	}
+	if len(entries) == 0 {
+		t.Fatal("the first turn is empty")
+	}
+	// A wait on the first turn must not be satisfied by the second one's reply. Waits that cannot be
+	// satisfied fail the test they are in, so this runs as a child whose failure is the assertion.
+	if os.Getenv("FAKEKERNEL_ENTRIES_CHILD") != "" {
+		k.WaitForEntries(t, c, first, func(entries []fakekernel.Entry) bool {
+			for _, entry := range entries {
+				if strings.Contains(entry.Text, "later unrelated answer") {
+					return true
+				}
+			}
+			return false
+		}, 2*time.Second)
+		return
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("no test binary to re-run: %v", err)
+	}
+	cmd := exec.Command(self, "-test.run=^TestFakeKernelSettledTurnStopsAtItsOwnAnswer$", "-test.v")
+	cmd.Env = append(os.Environ(), "FAKEKERNEL_ENTRIES_CHILD=1", "FAKEKERNEL_STRICT_CHILD=")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("a wait on the first turn accepted the second turn's reply:\n%s", output)
+	}
+	if !strings.Contains(string(output), "settled with") {
+		t.Fatalf("the failure does not say the turn settled without a match:\n%s", output)
+	}
+}

@@ -44,6 +44,14 @@ const (
 	ModelID    = "fake-1"
 )
 
+const (
+	// shutdownAskTimeout bounds the dial and the `kernel.shutdown` call: a Kernel that stopped answering
+	// must cost a Close a few seconds, not the whole test run.
+	shutdownAskTimeout = 3 * time.Second
+	// shutdownWaitTimeout is how long a Kernel gets to finish its own cleanup after saying it will stop.
+	shutdownWaitTimeout = 15 * time.Second
+)
+
 // RequiredEnv turns a missing Kernel binary from a skip into a failure. CI sets it: a package whose tests
 // all skip is a package with no tests.
 const RequiredEnv = "DROI_FAKEKERNEL_REQUIRED"
@@ -133,6 +141,7 @@ type Kernel struct {
 	Version string
 
 	model     *scriptedModel
+	t         testing.TB
 	cmd       *exec.Cmd
 	tree      processTree
 	logs      *lockedBuffer
@@ -189,7 +198,7 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 
 	k := &Kernel{
 		Token: token, DataDir: data, HomeDir: home, Workspace: workspace,
-		model: model, cmd: cmd, logs: logs, wait: make(chan struct{}),
+		model: model, cmd: cmd, logs: logs, wait: make(chan struct{}), t: t,
 	}
 	tree, err := newProcessTree(cmd)
 	if err != nil {
@@ -214,36 +223,45 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 	return k
 }
 
-// Close stops the Kernel, everything it started, and the scripted model. It runs when the test ends;
-// calling it twice is harmless.
+// Close stops the Kernel, everything it started, and the scripted model. It runs when the test ends; calling
+// it twice is harmless.
 //
-// Order matters, and it is the whole point of the process tree: the Kernel's tools are its children in a
-// process group (Unix) or a job (Windows), so ending the group before the Kernel — or with it — is what
-// stops a `sleep 60` a tool started. Killing only the Kernel leaves that process running with a closed
-// stdin, which is how the first version of this package leaked one per test.
+// The order is ask, wait, then escalate: `kernel.shutdown` is the path the Host takes, and the Kernel ends
+// the tools it started on its way out. Signalling before that finishes would race the Kernel's own cleanup,
+// and the tree below is the fallback for a Kernel that will not stop — not the normal route.
 func (k *Kernel) Close() {
 	k.closeOnce.Do(func() {
 		// Ask first, the way the Host does: `kernel.shutdown` closes the harness, ends the tools the Kernel
-		// started, and closes the storage, so a test's Close exercises the same path a stop does. A Kernel too
-		// wedged to answer falls through to the signals below.
-		if client, err := kernel.Dial(context.Background(), kernel.Options{
-			URL:            kernel.URL(k.Port),
-			Token:          k.Token,
-			RequestTimeout: 5 * time.Second,
-		}); err == nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// started, and closes the storage, so a test's Close exercises the same path a stop does. Both the
+		// dial and the call are bounded: a Kernel that accepts TCP and then stops answering — SIGSTOP is how
+		// the review reproduced it — would otherwise block Close for ever, and go test's hard timeout would
+		// kill the run with the cleanup half done.
+		if client := k.dialForShutdown(); client != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), shutdownAskTimeout)
 			_ = client.Send(ctx, "kernel.shutdown", map[string]any{})
 			cancel()
 			_ = client.Close()
+			// Then wait for it: the Kernel finishes its own cleanup and exits. A second signal now would race
+			// that cleanup — main.ts answers SIGINT by closing and exiting, and the ordering between the two
+			// is what decides whether a tool's group is ended at all.
+			select {
+			case <-k.wait:
+				k.tree.kill()
+				k.tree.close()
+				k.model.stop()
+				return
+			case <-time.After(shutdownWaitTimeout):
+			}
 		}
+		// It did not close in time, or never answered: stop it the hard way. One short grace for a SIGINT
+		// that might still land, then SIGKILL — Close must not spend a test run waiting on a wedged Kernel.
 		if k.cmd.Process != nil {
 			_ = k.cmd.Process.Signal(os.Interrupt)
 		}
 		select {
 		case <-k.wait:
-		case <-time.After(2 * time.Second):
+		case <-time.After(time.Second):
 		}
-		// Whatever is left of the tree, including a tool the Kernel started and did not finish.
 		k.tree.kill()
 		k.tree.close()
 		if k.cmd.Process != nil {
@@ -255,6 +273,21 @@ func (k *Kernel) Close() {
 		}
 		k.model.stop()
 	})
+}
+
+// dialForShutdown connects for the shutdown request, or answers nil when the Kernel will not have it.
+func (k *Kernel) dialForShutdown() *kernel.Client {
+	ctx, cancel := k.context(k.t, shutdownAskTimeout)
+	defer cancel()
+	client, err := kernel.Dial(ctx, kernel.Options{
+		URL:            kernel.URL(k.Port),
+		Token:          k.Token,
+		RequestTimeout: shutdownAskTimeout,
+	})
+	if err != nil {
+		return nil
+	}
+	return client
 }
 
 // Logs is what the Kernel wrote to stderr so far; a failing assertion prints it.

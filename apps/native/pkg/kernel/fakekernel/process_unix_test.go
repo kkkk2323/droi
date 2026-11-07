@@ -98,3 +98,49 @@ func TestFakeKernelLeavesNoBackgroundToolProcess(t *testing.T) {
 		}
 	}
 }
+
+// TestCloseWaitsForTheRequestedShutdown is the other half: a signal sent right after `kernel.shutdown` raced
+// the Kernel's own cleanup, so a tool's background process could outlive a shutdown that was already running.
+func TestCloseWaitsForTheRequestedShutdown(t *testing.T) {
+	pidfile := filepath.Join(t.TempDir(), "pid")
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Call: &fakekernel.Call{Name: "bash", Arguments: map[string]any{
+			"command": fmt.Sprintf("sleep 100 & echo $! > %s", pidfile),
+		}}},
+		{Text: "started"},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	k.Ask(t, c, id, "start a background process", "started", 30*time.Second)
+	pid := readPID(t, pidfile)
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+
+	k.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := syscall.Kill(pid, 0); err != nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a background process %d outlived Close: the shutdown it asked for was cut short", pid)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// readPID waits for a file a tool wrote and returns the number in it.
+func readPID(t testing.TB, path string) int {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			if pid, convErr := strconv.Atoi(strings.TrimSpace(string(data))); convErr == nil && pid > 0 {
+				return pid
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no pid in %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

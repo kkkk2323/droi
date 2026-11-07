@@ -164,19 +164,40 @@ type Entry struct {
 
 // EntriesAfter is the entries this submission's turn wrote, oldest first.
 //
-// "This submission's" is the Kernel's answer, not a guess: the turn starts at the user's own entry and ends at
-// the reply that answered it. A submission still queued has no turn yet, and answers the entries so far —
-// nothing — rather than whatever the previous turn left in the transcript.
+// Both boundaries come from the Kernel, and both are needed. The turn starts at the user's own entry and ends
+// at the reply that answered it: without the end, a later submission's entries would be included, and a wait
+// for the first turn could be satisfied by the second one's reply. A submission that is still queued has no
+// entry at all, so it answers nothing — not "the previous turn", which is what a zero boundary turned into.
 func (k *Kernel) EntriesAfter(t testing.TB, c *kernel.Client, sub Submission, within time.Duration) []Entry {
 	t.Helper()
 	ctx, cancel := k.context(t, within)
 	defer cancel()
+	return k.turnEntries(ctx, t, c, sub)
+}
+
+// turnEntries is the transcript of one submission, bounded at both ends.
+func (k *Kernel) turnEntries(
+	ctx context.Context, t testing.TB, c *kernel.Client, sub Submission,
+) []Entry {
+	t.Helper()
 	record := k.record(ctx, t, c, sub)
-	from := record.Entry - 1
-	if from < 0 {
-		from = 0
+	// Not placed yet: this submission has written nothing, so its turn is empty.
+	if record.Entry == 0 {
+		return nil
 	}
-	return k.entriesFrom(ctx, t, c, sub.Conversation, from)
+	from := record.Entry - 1
+	entries := k.entriesFrom(ctx, t, c, sub.Conversation, from)
+	if record.Answer == 0 {
+		return entries
+	}
+	// Settled: the reply is the last entry of this turn, whatever came after it in the conversation.
+	cut := 0
+	for index, entry := range entries {
+		if entry.ID <= record.Answer {
+			cut = index + 1
+		}
+	}
+	return entries[:cut]
 }
 
 // WaitForEntries waits until this submission's turn holds an entry satisfying match, and returns the turn.
@@ -187,11 +208,16 @@ func (k *Kernel) WaitForEntries(
 	ctx, cancel := k.context(t, within)
 	defer cancel()
 	for {
-		record := k.record(ctx, t, c, sub)
-		if record.Entry != 0 {
-			entries := k.entriesFrom(ctx, t, c, sub.Conversation, record.Entry-1)
+		if record := k.record(ctx, t, c, sub); record.Entry != 0 {
+			entries := k.turnEntries(ctx, t, c, sub)
 			if match(entries) {
 				return entries
+			}
+			// A settled submission will not grow: waiting further cannot make its turn contain anything
+			// new, and saying so is better than a timeout that looks like a slow Kernel.
+			if record.Answer != 0 {
+				t.Fatalf("fakekernel: submission %d settled with %d entries, none matching: %+v\n%s",
+					sub.ID, len(entries), entries, k.Logs())
 			}
 		}
 		select {
