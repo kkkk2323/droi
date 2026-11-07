@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -37,6 +38,18 @@ func gunzipBody(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decoded request body exceeds %d bytes", maxDecodedRequestBody)
 	}
 	return decoded, nil
+}
+
+// encodeWireBody is plain as the request body a client sent in encoding, so
+// that a body the proxy changed goes out as the client encoded it.
+func encodeWireBody(encoding string, plain []byte) ([]byte, error) {
+	switch strings.ToLower(strings.TrimSpace(encoding)) {
+	case "", "identity":
+		return plain, nil
+	case "gzip":
+		return gzipBody(plain)
+	}
+	return nil, fmt.Errorf("unsupported content encoding %q", encoding)
 }
 
 func gzipBody(plain []byte) ([]byte, error) {

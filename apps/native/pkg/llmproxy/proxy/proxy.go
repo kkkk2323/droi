@@ -4,8 +4,10 @@
 // of the Key Pool. It never changes a request's Authorization: which key an
 // LLM request carries is decided inside droid, by the key file the hook
 // reads. It refuses an LLM request that carries no key of the pool, which
-// would bill the signed-in account. Ported from droid-proxy, which rotates
-// keys itself.
+// would bill the signed-in account. It opens a model request's system prompt
+// as droid opens it (package factory), so that a client other than droid can
+// talk to Factory through it. Ported from droid-proxy, which rotates keys
+// itself.
 package proxy
 
 import (
@@ -25,6 +27,7 @@ import (
 	"github.com/egoist/mygo/netproxy"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
 
@@ -298,6 +301,15 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		plain := raw
 		if dec, err := decodeWireBody(req.Header.Get("Content-Encoding"), raw); err == nil {
 			plain = dec
+			// Factory's usage policy check refuses a request whose system
+			// prompt does not open with droid's line (403
+			// content_policy_rejected); the Daemon's own requests already do,
+			// and come back as they came.
+			if shaped, opened := factory.DroidBody(upstreamPath, plain); opened {
+				if wire, err := encodeWireBody(req.Header.Get("Content-Encoding"), shaped); err == nil {
+					raw, plain = wire, shaped
+				}
+			}
 		}
 		model = extractModel(plain)
 		requestedPool = keys.ModelBillingPool(model)
