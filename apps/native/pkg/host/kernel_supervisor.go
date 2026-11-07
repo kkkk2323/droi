@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -99,9 +100,18 @@ type KernelSupervisor struct {
 	// OnState hears the state as it settles, on a goroutine of the Supervisor's
 	// own, serialized, and never with a lock held. It may call Stop or Restart.
 	OnState func(KernelState)
-	// Terminate, optional, asks the sidecar of cmd to stop in place of the
-	// platform's signal. What the Host wires here is kernel.shutdown, which is
-	// the orderly stop on Windows: there is no SIGTERM a parent can send.
+	// AskShutdown, optional, asks the running sidecar to close in order —
+	// kernel.shutdown over the connection the Host already has — and returns
+	// once Kernel has answered. It is the only orderly way to stop Kernel on
+	// Windows, where a parent can only TerminateProcess, which skips
+	// storage.close() and leaves the SQLite file to recover from its log.
+	//
+	// Stop asks it first, before the platform's signal, which is what the
+	// contract calls an orderly stop; a negative answer of any kind falls back
+	// to the signal.
+	AskShutdown func(ctx context.Context) error
+	// Terminate, optional, asks the sidecar of cmd to shut down in place of
+	// the process group's terminate signal.
 	Terminate func(cmd *exec.Cmd)
 	// Log, optional, hears what the sidecar printed and why an attempt
 	// failed. It never hears the token.
@@ -110,6 +120,13 @@ type KernelSupervisor struct {
 	Backoff      []time.Duration
 	ReadyTimeout time.Duration
 	StableAfter  time.Duration
+	// HealthEvery is how often a running sidecar's health is asked; 0 is 5 s,
+	// and a negative value turns the check off.
+	HealthEvery time.Duration
+	// HealthFailures is how many checks in a row must fail before the sidecar
+	// is restarted; 0 is 3. A process that is up but wedged answers nothing,
+	// and this is what notices.
+	HealthFailures int
 	// StopGrace is how long Stop waits for the sidecar's own close before it
 	// ends the tree: the contract's 12 s, the time harness.close() and
 	// storage.close() get.
@@ -162,6 +179,10 @@ type kernelChild struct {
 	// it, and a second kill of a tree whose handles are already released is
 	// exactly what a supervisor must not do.
 	killed sync.Once
+	// failure, when set, is why the Supervisor ended this child itself — a
+	// health check that failed too often. It is what the window says. The
+	// Supervisor's mutex guards it.
+	failure string
 }
 
 // processTree is a generation's whole process tree.
@@ -318,12 +339,18 @@ func (s *KernelSupervisor) Start() {
 // Stop ends the sidecar and disarms restarts. The data directory stays as it
 // is.
 //
-// It asks the sidecar to stop — Terminate when the Host wired one, which is
+// It asks the sidecar to stop — AskShutdown when the Host wired one, which is
 // kernel.shutdown and the only orderly stop on Windows, else the platform's
 // signal — waits StopGrace for it to exit, then ends the generation's whole
 // process tree. The tree is ended whether or not the sidecar exited: a shell
 // or a background process it started keeps its own life, and one that ignores
 // the signal outlives its parent.
+//
+// StopGrace is the contract's own shutdown window, and it covers what Kernel
+// does after it answers: close the harness, end the tool process groups it
+// started, close the storage. The ask may use the grace to answer and the same
+// grace again to exit, so a close that spends its whole window on the harness
+// still has time for the rest before the tree is ended from outside.
 //
 // Stop never waits for a callback. The state is published before the sidecar is
 // asked to stop, so a window hears "stopped" while the process is still closing;
@@ -351,18 +378,133 @@ func (s *KernelSupervisor) Stop() {
 	if ch == nil {
 		return
 	}
-	if s.Terminate != nil {
-		s.Terminate(ch.cmd)
-	} else {
-		signalProcess(ch.cmd)
-	}
 	grace := orDefault(s.StopGrace, kernelStopGrace)
-	select {
-	case <-ch.done:
-	case <-time.After(grace):
-		s.logf("kernel did not exit %s after it was asked", grace)
+	// An orderly close first, then the signal: kernel.shutdown runs the
+	// sidecar's own harness.close() and storage.close(), and only a sidecar that
+	// will not answer gets ended.
+	if !s.askShutdown(grace, ch) {
+		if s.Terminate != nil {
+			s.Terminate(ch.cmd)
+		} else {
+			signalProcess(ch.cmd)
+		}
+		select {
+		case <-ch.done:
+		case <-time.After(grace):
+			s.logf("kernel did not exit %s after it was asked", grace)
+		}
 	}
 	s.retire(ch)
+}
+
+// askShutdown asks Kernel to close in order, within grace, and bounds how long
+// the answer and the exit may take. It answers whether the sidecar went; an ask
+// that is not wired, fails, or outlasts the grace is the caller's to handle
+// with a signal.
+func (s *KernelSupervisor) askShutdown(grace time.Duration, ch *kernelChild) bool {
+	if s.AskShutdown == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	answered := make(chan error, 1)
+	go func() { answered <- s.AskShutdown(ctx) }()
+	select {
+	case err := <-answered:
+		if err != nil {
+			s.logf("kernel.shutdown failed: %v", err)
+			return false
+		}
+	case <-ctx.Done():
+		s.logf("kernel.shutdown did not answer within %s", grace)
+		return false
+	}
+	select {
+	case <-ch.done:
+		return true
+	case <-time.After(grace):
+		s.logf("kernel did not exit %s after it began closing", grace)
+		return false
+	case <-ctx.Done():
+		return false
+	}
+}
+
+// liveChild reports whether ch is still the generation the Supervisor owns.
+func (s *KernelSupervisor) liveChild(ch *kernelChild) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.child == ch && s.running
+}
+
+// owning reports whether this generation is still the Supervisor's to end: it is
+// what the watchdog checks before it kills, so a tree that a Stop retired first
+// is not touched again.
+func (s *KernelSupervisor) owning(ch *kernelChild) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.child == ch
+}
+
+// reasonOf is why the Supervisor ended this child itself, "" when it did not.
+func (s *KernelSupervisor) reasonOf(ch *kernelChild) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return ch.failure
+}
+
+// watchHealth asks a running sidecar's health while it runs, and kills one that
+// stops answering: a process that is up but wedged — a storage call that never
+// returns, an event loop stuck behind a synchronous wait — is invisible to a
+// supervisor that only watches for an exit. A killed sidecar exits, and the
+// launch loop restarts it as it would after a crash.
+func (s *KernelSupervisor) watchHealth(ch *kernelChild, port int) {
+	every := s.HealthEvery
+	if every == 0 {
+		every = 5 * time.Second
+	}
+	if every < 0 {
+		return
+	}
+	failuresWanted := s.HealthFailures
+	if failuresWanted <= 0 {
+		failuresWanted = 3
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	failures := 0
+	for {
+		select {
+		case <-ch.done:
+			return
+		case <-ticker.C:
+		}
+		if !s.liveChild(ch) {
+			return
+		}
+		if _, err := kernel.CheckHealth(context.Background(), port); err == nil {
+			failures = 0
+			continue
+		}
+		failures++
+		if failures < failuresWanted {
+			continue
+		}
+		s.logf("kernel did not answer health %d times in a row: restarting it", failures)
+		// Under the ownership of the generation: a Stop that landed while this
+		// check was in flight has already retired the tree and released its
+		// handles, and a kill after that is a kill of something else.
+		if !s.owning(ch) {
+			return
+		}
+		s.mu.Lock()
+		ch.failure = "health: no answer after " + strconv.Itoa(failures) + " checks"
+		s.mu.Unlock()
+		// The whole tree: a wedged sidecar's children are wedged with it, and
+		// the exit that follows is what wakes the launch loop.
+		ch.endTree()
+		return
+	}
 }
 
 // Restart stops the sidecar and starts a new one.
@@ -534,6 +676,12 @@ func (s *KernelSupervisor) launch(gen int) {
 		s.setLocked(running)
 	}
 	s.mu.Unlock()
+	if ready && live {
+		// A sidecar that answered health once can still wedge later: the
+		// watch is what notices, and a kill is answered by the launch loop as
+		// it would answer a crash.
+		go s.watchHealth(ch, answered)
+	}
 	if live && !ready {
 		// Spawned but never healthy: end it now rather than wait for a
 		// restart it would trigger anyway.
@@ -574,7 +722,45 @@ func (s *KernelSupervisor) launch(gen int) {
 		return
 	}
 	s.logf("kernel exited: %v\n%s", ch.err, ch.output.String())
-	s.scheduleRestart(gen, exitReason(ch, failure))
+	// A refusal is not a crash. Kernel exits 2 when it will not start at all —
+	// bad arguments, no token, or a data directory another kernel already holds
+	// — and the one that matters here is the lock: retrying it in a backoff loop
+	// would only spin against a directory that stays taken, so the Supervisor
+	// says what the sidecar said and waits to be asked to start again.
+	if exitCode(ch.err) == kernel.ExitRefused {
+		reason := s.exitReason(ch, failure)
+		// The decision is taken again under the lock that commits it: a Stop,
+		// or a Stop and a Start, may have run between the ownership check and
+		// here, and this refusal would then belong to a generation nobody owns.
+		// Writing "stopped" over the next one left a live sidecar that no Stop
+		// would ever reach.
+		s.mu.Lock()
+		if !s.running || gen != s.gen {
+			s.mu.Unlock()
+			s.logf("kernel refused to start; the generation it belonged to is gone: %s", reason)
+			return
+		}
+		s.running = false
+		s.attempt = 0
+		s.setLocked(KernelState{Status: KernelStopped, Reason: "the kernel refused to start: " + reason})
+		s.mu.Unlock()
+		s.logf("kernel refused to start; not retried: %s", reason)
+		return
+	}
+	s.scheduleRestart(gen, s.exitReason(ch, failure))
+}
+
+// exitCode is the status a sidecar exited with, -1 when it was killed by a
+// signal or never ran.
+func exitCode(err error) int {
+	if err == nil {
+		return kernel.ExitOK
+	}
+	var exited *exec.ExitError
+	if errors.As(err, &exited) {
+		return exited.ExitCode()
+	}
+	return -1
 }
 
 // closeReadCloser closes what a failed launch left behind, if it can.
@@ -586,7 +772,10 @@ func closeReadCloser(rc io.ReadCloser) {
 
 // exitReason is why an attempt ended, as the window should say it: the
 // sidecar's own last line when it wrote one, else the failure, else its exit.
-func exitReason(ch *kernelChild, failure string) string {
+func (s *KernelSupervisor) exitReason(ch *kernelChild, failure string) string {
+	if ended := s.reasonOf(ch); ended != "" {
+		return ended
+	}
 	if tail := strings.TrimSpace(ch.output.String()); tail != "" {
 		lines := strings.Split(tail, "\n")
 		if line := strings.TrimSpace(lines[len(lines)-1]); line != "" {

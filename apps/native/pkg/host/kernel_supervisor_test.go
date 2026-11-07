@@ -1,8 +1,10 @@
 package host
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -57,15 +59,47 @@ func TestKernelHelperProcess(t *testing.T) {
 			os.Exit(3)
 		}
 	}
+	if os.Getenv("GO_KERNEL_REFUSE") == "1" {
+		// A refused start, as the contract has it: a line that says what took
+		// the data directory, then status 2.
+		fmt.Fprintln(os.Stderr, "kernel: the data directory is taken: kernel (pid 4242) is using this data directory")
+		os.Exit(kernel.ExitRefused)
+	}
 	var healthDelay atomic.Int64
 	mux := http.NewServeMux()
+	var wedged atomic.Bool
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if delay := healthDelay.Load(); delay > 0 {
 			time.Sleep(time.Duration(delay) * time.Millisecond)
 		}
+		if wedged.Load() {
+			// Answer nothing: the request hangs, as a stuck storage call does.
+			<-r.Context().Done()
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"ok":true,"version":"kernel-test-1","pi":"1.5.0"}`))
 	})
+	if wedge := os.Getenv("GO_KERNEL_UNHEALTHY_AFTER_MS"); wedge != "" {
+		// A sidecar that is alive but stops answering: what a wedged event
+		// loop looks like from outside.
+		if ms, err := strconv.Atoi(wedge); err == nil && ms >= 0 {
+			go func() {
+				time.Sleep(time.Duration(ms) * time.Millisecond)
+				wedged.Store(true)
+			}()
+		}
+	}
+	if os.Getenv("GO_KERNEL_SHUTDOWN_EXITS") == "1" {
+		// kernel.shutdown, as the contract has it: answer, then exit with 0.
+		// The helper has no WebSocket, so the request itself is the cue.
+		mux.HandleFunc("/rpc", func(w http.ResponseWriter, r *http.Request) {
+			go func() {
+				time.Sleep(50 * time.Millisecond)
+				os.Exit(0)
+			}()
+		})
+	}
 	server := &http.Server{Handler: mux}
 	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
 	if err != nil {
@@ -739,5 +773,138 @@ func TestAClosedSupervisorStartsNoPublisher(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if got := calls.Load(); got != before {
 		t.Fatalf("a closed Supervisor published %d more states", got-before)
+	}
+}
+
+// A sidecar that answers kernel.shutdown is stopped by asking it, not by a
+// signal: that is the only orderly stop on Windows, where the signal a parent
+// can send is TerminateProcess.
+// The ask must be the thing that stops Kernel, not a formality in front of a
+// signal: this sends the request the contract describes, to the sidecar the
+// test launched, and fails if the stop needed the fallback at all.
+func TestKernelSupervisorAsksKernelToShutDown(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_SHUTDOWN_EXITS=1"))
+	s.HealthEvery = -1
+	var asked, fellBack atomic.Int32
+	s.Terminate = func(cmd *exec.Cmd) {
+		fellBack.Add(1)
+		signalProcess(cmd)
+	}
+	var port int
+	s.AskShutdown = func(ctx context.Context) error {
+		asked.Add(1)
+		// The contract: the call answers, then the sidecar exits. The helper
+		// exits on this request, which is what makes this the real path. The
+		// port is the one the running state named: Stop publishes "stopped"
+		// before it asks, so State() no longer carries it.
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			fmt.Sprintf("http://127.0.0.1:%d/rpc", port), nil)
+		if err != nil {
+			return err
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		return res.Body.Close()
+	}
+	s.Start()
+	port = w.waitState(t, KernelRunning).Port
+	started := time.Now()
+	s.Stop()
+	elapsed := time.Since(started)
+	if got := asked.Load(); got != 1 {
+		t.Fatalf("the sidecar was asked to shut down %d times, want once", got)
+	}
+	if got := fellBack.Load(); got != 0 {
+		t.Fatalf("the stop needed the fallback signal %d times: the request did not stop the sidecar", got)
+	}
+	if elapsed > 6*time.Second {
+		t.Fatalf("Stop took %s after an answered shutdown", elapsed)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
+	}
+}
+
+// An ask that fails falls back to the signal: a Kernel whose connection is
+// already broken must still be stopped.
+func TestKernelSupervisorFallsBackWhenShutdownFails(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t))
+	s.AskShutdown = func(context.Context) error { return errors.New("no connection") }
+	s.StopGrace = 2 * time.Second
+	s.Start()
+	w.waitState(t, KernelRunning)
+	started := time.Now()
+	s.Stop()
+	if elapsed := time.Since(started); elapsed > 8*time.Second {
+		t.Fatalf("Stop took %s with a failed ask and a 2 s window", elapsed)
+	}
+	if st := s.State(); st.Status != KernelStopped {
+		t.Fatalf("state after Stop: %+v", st)
+	}
+}
+
+// A sidecar that is up but wedged is invisible to a supervisor that only
+// watches for an exit: the health check notices, restarts it, and says so.
+func TestKernelSupervisorRestartsAWedgedSidecar(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_UNHEALTHY_AFTER_MS=200"))
+	s.HealthEvery = 100 * time.Millisecond
+	s.HealthFailures = 3
+	s.Backoff = []time.Duration{10 * time.Millisecond}
+	defer s.Stop()
+	s.Start()
+	first := w.waitState(t, KernelRunning)
+	restarting := w.waitState(t, KernelRestarting)
+	if !strings.Contains(restarting.Reason, "health") {
+		t.Fatalf("reason = %q, want the health check's", restarting.Reason)
+	}
+	second := w.waitState(t, KernelRunning)
+	if second.PID == first.PID {
+		t.Fatalf("the wedged sidecar kept running as pid %d", first.PID)
+	}
+}
+
+// A kernel that refuses to start is not a crash: it exits 2 when the data
+// directory is already taken, and a backoff loop against it would only spin.
+// The Supervisor says what the sidecar said and waits to be asked again.
+func TestKernelSupervisorDoesNotRestartARefusedStart(t *testing.T) {
+	w := newWatch()
+	spawn := helperSpawn(t, "GO_KERNEL_REFUSE=1")
+	var launches atomic.Int32
+	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
+		launches.Add(1)
+		return spawn(port, token)
+	})
+	s.Backoff = []time.Duration{10 * time.Millisecond}
+	defer s.Stop()
+	s.Start()
+	stopped := w.waitState(t, KernelStopped)
+	if !strings.Contains(stopped.Reason, "is using this data directory") {
+		t.Fatalf("reason = %q, want the sidecar's own line about the data directory", stopped.Reason)
+	}
+	// No attempt follows: a refused start stays refused until Start is asked
+	// for again, and the reason stays on screen.
+	for len(w.states) > 0 {
+		if st := <-w.states; st.Status == KernelRestarting {
+			t.Fatalf("a refused start was retried: %+v", st)
+		}
+	}
+	time.Sleep(200 * time.Millisecond)
+	if st := s.State(); st.Status != KernelStopped || !strings.Contains(st.Reason, "data directory") {
+		t.Fatalf("state after a refusal: %+v", st)
+	}
+	if got := launches.Load(); got != 1 {
+		t.Fatalf("the refused start was launched %d times, want once", got)
+	}
+	// And asking again tries again: the refusal is not a terminal state of the
+	// Supervisor itself.
+	s.Start()
+	w.waitState(t, KernelStopped)
+	if got := launches.Load(); got != 2 {
+		t.Fatalf("Start after a refusal launched the sidecar %d times in all, want twice", got)
 	}
 }
