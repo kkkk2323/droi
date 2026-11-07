@@ -210,11 +210,27 @@ The settings a test needs beyond that:
 | `DROI_KERNEL_LOG=debug` | Log every frame and every commit to stderr.                                  |
 
 One kernel per data directory: `<data>/kernel.lock` holds the owner's PID, and a start whose owner is alive
-is refused (status `2`). Taking over a lock left by a dead process never lets the file be **absent** — a
-second starter would then win it with a plain exclusive create — so the takeover holds
-`kernel.lock.guard` (exclusive create), re-reads the lock, and `rename`s its own file over it, which
-replaces it atomically. `kernel.lock.guard` carries its owner's PID too, so a guard left by a dead
-process does not block the next start.
+is **refused with status `2`** — a refusal the Host may retry, not a crash. Taking over a lock left by a
+dead process never lets the file be **absent** (a second starter would then win it with a plain exclusive
+create), so the takeover holds `kernel.lock.guard` by exclusive create, re-reads the lock, and `rename`s its
+own file over it, which replaces it atomically.
+
+A guard is only ever removed by a holder of `kernel.lock.guard.break`, and only after re-reading it there:
+judging a guard dead and then unlinking it are two calls, and a guard that a racing starter re-created between
+them must not be deleted. A live guard is never removed at all, and a fence whose owner died is waited out
+(500 ms) before it is cleared, so a starter killed mid-takeover delays the next one rather than blocking it.
+
+### Exit statuses
+
+| Status | Meaning                                                                        |
+| ------ | ------------------------------------------------------------------------------ |
+| `0`    | Asked to stop (`kernel.shutdown`, SIGTERM, SIGINT) and closed cleanly.         |
+| `1`    | Could not start, or could not close. A bug or an environment problem; a crash. |
+| `2`    | Refused to start: bad arguments, no token, or the data directory is taken.     |
+| `3`    | The storage failed. The Host must restart the kernel, not reuse it.            |
+
+`2` and `3` are the two a Supervisor acts on differently: a refusal may be retried or reported to the user,
+a storage failure is a restart with the same data directory.
 
 ### Page sizes
 
@@ -285,7 +301,8 @@ A Storage error is final in Pi: the Session closes and nothing works afterwards.
 - marks itself failed, so every later request (including one already in flight) answers `-32010` with the
   reason rather than `-32603`,
 - announces `warning {kind:"kernel_failed"}` on every connection,
-- closes the harness, the storage and the database, and **exits with status 3**.
+- closes the harness, the storage and the database, and **exits with status 3** (`kernel.shutdown` cannot
+  turn that into `0`: in a failed state it answers `-32010` like every other method).
 
 The exit is the point. A kernel that stays up but cannot write is invisible to the Host's Supervisor,
 which only restarts a process that died.

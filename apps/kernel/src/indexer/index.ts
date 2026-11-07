@@ -137,8 +137,11 @@ export class Indexer {
       }
       cursor = page.next as never
     } while (cursor !== undefined)
-    // A flush that fails keeps its batch queued; the start reports it and carries on, and the next flush
-    // retries. Failing the start over a transient lock would leave the Host with no kernel at all.
+    // One flush at the end, not one per conversation: a rebuilt index is written in a single commit, which is
+
+    // also why peak pending memory grows with the size of the rebuild. The batch is not lost if that commit
+
+    // fails — it stays queued and the next flush retries, and the start reports it rather than dying. Failing the start over a transient lock would leave the Host with no kernel at all.
     await this.flush().catch((cause: unknown) => this.#onError?.(cause))
     return indexed
   }
@@ -667,7 +670,9 @@ const context = { signal: new AbortController().signal } as never
  */
 async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
   if (row.insert !== undefined) {
-    const at = row.eventAt ?? row.activity ?? row.insert.createdAt
+    // The newest of the three: a create and the first fast response can share one batch, and the
+    // response's own timestamp is later than the admission that started it.
+    const at = Math.max(row.eventAt ?? 0, row.activity ?? 0, row.insert.createdAt)
     await exec.run(
       `INSERT INTO droi_conversations
          (id, created_at, last_activity_at, workspace, kind, title, preview, parent_id, request_id, request_fingerprint)

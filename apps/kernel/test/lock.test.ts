@@ -79,6 +79,31 @@ describe('the data directory lock', () => {
     expect(Number(readFileSync(path, 'utf8'))).toBe(process.pid)
   })
 
+  test('a fence left by a dead process delays a takeover, and does not block it', () => {
+    writeFileSync(path, '999999')
+    writeFileSync(`${path}.guard`, '999999')
+    writeFileSync(`${path}.guard.break`, '888888')
+    const started = Date.now()
+    takeLock(path, { isAlive: (pid) => pid !== 999999 && pid !== 888888 })
+    // Waiting out the fence is bounded, and the guard and the fence are both gone afterwards.
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(Number(readFileSync(path, 'utf8'))).toBe(process.pid)
+    expect(existsSync(`${path}.guard`)).toBe(false)
+    expect(existsSync(`${path}.guard.break`)).toBe(false)
+  })
+
+  test('a fence with a live owner means another starter is already taking over', () => {
+    writeFileSync(path, '999999')
+    writeFileSync(`${path}.guard`, '999999')
+    writeFileSync(`${path}.guard.break`, String(process.pid + 1))
+    expect(() => takeLock(path, { isAlive: (pid) => pid === process.pid + 1 })).toThrow(
+      'another kernel',
+    )
+    // Nothing was deleted: the other starter's fence and guard are still its own.
+    expect(existsSync(`${path}.guard`)).toBe(true)
+    expect(existsSync(`${path}.guard.break`)).toBe(true)
+  })
+
   test('releasing someone else’s lock is not allowed', () => {
     writeFileSync(path, String(process.pid + 1))
     releaseLock(path, { isAlive: () => true })

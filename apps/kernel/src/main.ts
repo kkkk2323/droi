@@ -1,5 +1,6 @@
 import { loadConfig, parseArgs } from './config.ts'
 import { startKernel, VERSION } from './kernel.ts'
+import { LockError } from './lock.ts'
 import { error, info } from './log.ts'
 
 /**
@@ -51,5 +52,6 @@ try {
     error: cause instanceof Error ? cause.message : String(cause),
     stack: cause instanceof Error ? cause.stack : undefined,
   })
-  process.exitCode = 1
+  // A taken data directory is a refusal, not a crash: the Host may retry it, and must not file it as a bug.
+  process.exitCode = cause instanceof LockError ? 2 : 1
 }

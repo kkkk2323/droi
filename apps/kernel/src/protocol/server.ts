@@ -178,18 +178,12 @@ export function serve(options: ServerOptions): ServerHandle {
         })
         // A request that itself hit the failed storage says so, rather than looking like a bug: the
         // failure is the kernel's, not the caller's, and the client's answer is to wait for a restart.
-        const reason = (
-          options.dispatch as { failureReason?: () => string | undefined }
-        ).failureReason?.()
-        throw new RpcError(
-          reason === undefined ? Code.internalError : Code.kernelFailed,
-          reason === undefined
-            ? 'the kernel failed to run this method'
-            : 'the kernel failed and is being restarted',
-          reason === undefined
-            ? { detail: error instanceof Error ? error.message : String(error) }
-            : { reason },
-        )
+        // The gate is asked again here — the same one asked before the method was looked up — because the
+        // failure may have happened *during* this request, after that first answer.
+        options.dispatch.gate?.()
+        throw new RpcError(Code.internalError, 'the kernel failed to run this method', {
+          detail: error instanceof Error ? error.message : String(error),
+        })
       }
     }
     try {
