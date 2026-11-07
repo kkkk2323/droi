@@ -137,14 +137,19 @@ func TestLiveKernelThreeConversations(t *testing.T) {
 	if bin == "" {
 		t.Skip("no kernel binary: set DROI_KERNEL_BIN, or build apps/kernel")
 	}
-	if os.Getenv("DROI_KERNEL_PROVIDERS") == "" {
-		t.Skip("the kernel does not take DROI_KERNEL_PROVIDERS yet: it cannot be pointed at a fake model")
-	}
+
 	_, providerURL := fakeProvider(t)
 	model := os.Getenv("DROI_KERNEL_MODEL")
 	if model == "" {
 		model = "fake-echo"
 	}
+	// The provider is described here, not by the caller: its port is chosen when the fake provider starts, so
+	// a DROI_KERNEL_PROVIDERS value from the environment could not name it. The shape is the protocol's, and
+	// FAKE_PROVIDER_KEY is the throwaway key pi-ai resolves from the environment.
+	providers := fmt.Sprintf(
+		`[{"id":"fake","baseUrl":%q,"api":"openai-completions","apiKeyEnv":"FAKE_PROVIDER_KEY","models":[{"id":%q,"contextWindow":200000,"maxTokens":8000,"input":["text","image"]}]}]`,
+		providerURL+"/v1", model,
+	)
 
 	data := t.TempDir()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -158,8 +163,8 @@ func TestLiveKernelThreeConversations(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(bin, "--port", fmt.Sprint(port), "--host", "127.0.0.1", "--data", data)
-	cmd.Env = append(os.Environ(), TokenEnv+"="+token, "DROI_KERNEL_PROVIDERS="+os.Getenv("DROI_KERNEL_PROVIDERS"),
-		"DROI_KERNEL_TEST_PROVIDER_URL="+providerURL)
+	cmd.Env = append(os.Environ(), TokenEnv+"="+token, "DROI_KERNEL_PROVIDERS="+providers,
+		"FAKE_PROVIDER_KEY=fake-provider-key")
 	logs := &strings.Builder{}
 	cmd.Stderr = logs
 	cmd.Stdout = nil
@@ -229,7 +234,9 @@ func TestLiveKernelThreeConversations(t *testing.T) {
 			defer wg.Done()
 			for turn := 1; turn <= turns; turn++ {
 				text := fmt.Sprintf("conversation %d turn %d", i+1, turn)
-				if _, err := c.Submit(ctx, SubmitParams{ID: id, Input: text, WhenBusy: WhenBusyQueue}); err != nil {
+				// No WhenBusy: an input that arrives while the conversation runs is queued, which is
+				// what this test wants, and "queue" is not a value the Kernel accepts (-32602).
+				if _, err := c.Submit(ctx, SubmitParams{ID: id, Input: text}); err != nil {
 					errs <- fmt.Errorf("%s: %w", text, err)
 					return
 				}
