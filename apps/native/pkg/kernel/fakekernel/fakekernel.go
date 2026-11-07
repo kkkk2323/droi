@@ -200,6 +200,9 @@ type Kernel struct {
 	HomeDir string
 	// Workspace is the default working directory for conversations and tools.
 	Workspace string
+	// UserDir is the Kernel's DROI_USER_DIR: this test's own directory for
+	// personal skills, mcp.json and AGENTS.md, never the user's real one.
+	UserDir string
 	// Version is the Kernel's version, from its handshake.
 	Version string
 
@@ -240,8 +243,12 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 	// A whole temporary environment: the Kernel and every tool it runs see this HOME, these temp
 	// directories and this PATH, and nothing else from the parent — no FACTORY_*, no *_API_KEY.
 	cmd.Env = isolatedEnv(home)
+	// userDir is this test's own: a Kernel started here must never read, or
+	// write, the user's real ~/.droi — its skills, mcp.json and AGENTS.md.
+	userDir := t.TempDir()
 	cmd.Env = append(cmd.Env,
 		kernel.TokenEnv+"="+token,
+		kernel.UserDirEnv+"="+userDir,
 		"DROI_KERNEL_PROVIDERS="+providersJSON(model.baseURL),
 		"FAKE_PROVIDER_KEY=fake-key",
 	)
@@ -260,7 +267,7 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 	}
 
 	k := &Kernel{
-		Token: token, DataDir: data, HomeDir: home, Workspace: workspace,
+		Token: token, DataDir: data, HomeDir: home, Workspace: workspace, UserDir: userDir,
 		model: model, cmd: cmd, logs: logs, wait: make(chan struct{}), t: t,
 	}
 	tree, err := newProcessTree(cmd)

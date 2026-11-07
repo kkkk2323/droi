@@ -172,6 +172,12 @@ const (
 	ClientHost = "host"
 )
 
+// UserDirEnv is the environment variable that names the user's own directory
+// for Kernel: the personal skills, the global mcp.json and the global
+// AGENTS.md it reads. The Host gives it an absolute path; a Kernel started by
+// hand falls back to ~/.droi.
+const UserDirEnv = "DROI_USER_DIR"
+
 // NewToken is the token of one launch: 32 hex characters of crypto
 // randomness. The Host makes a fresh one per launch and gives it to Kernel in
 // TokenEnv and to the Client in Options.Token; it never goes in argv, where

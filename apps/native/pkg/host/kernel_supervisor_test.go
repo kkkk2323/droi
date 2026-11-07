@@ -908,3 +908,48 @@ func TestKernelSupervisorDoesNotRestartARefusedStart(t *testing.T) {
 		t.Fatalf("Start after a refusal launched the sidecar %d times in all, want twice", got)
 	}
 }
+
+// Kernel is told where the user's own directory is, as an absolute path, in
+// the same environment that carries its token.
+func TestKernelGetsTheUserDirectory(t *testing.T) {
+	w := newWatch()
+	var started *exec.Cmd
+	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
+		cmd, stdout, err := helperSpawn(t)(port, token)
+		if err != nil {
+			return nil, nil, err
+		}
+		started = cmd
+		return cmd, stdout, nil
+	})
+	s.UserDir = filepath.Join(t.TempDir(), "user")
+	defer s.Close()
+	defer s.Stop()
+	s.Start()
+	w.waitState(t, KernelRunning)
+	// Exec does not rewrite Cmd.Env, so this is what the sidecar was given.
+	found := ""
+	for _, kv := range started.Env {
+		if after, ok := strings.CutPrefix(kv, kernel.UserDirEnv+"="); ok {
+			found = after
+		}
+	}
+	if found != s.UserDir {
+		t.Fatalf("%s = %q, want %q", kernel.UserDirEnv, found, s.UserDir)
+	}
+}
+
+// Without a setting the directory is the app's own, ~/.droi, and never the
+// droid CLI's ~/.factory: that one belongs to another program.
+func TestTheUserDirectoryDefaultsToTheAppsOwn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	s := &KernelSupervisor{}
+	want := filepath.Join(home, ".droi")
+	if got := s.userDir(); got != want {
+		t.Fatalf("userDir() = %q, want %q", got, want)
+	}
+	if strings.Contains(s.userDir(), ".factory") {
+		t.Fatalf("userDir() = %q, which is the droid CLI's folder", s.userDir())
+	}
+}
