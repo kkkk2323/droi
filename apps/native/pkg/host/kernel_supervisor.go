@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -704,7 +705,35 @@ func (s *KernelSupervisor) launch(gen int) {
 		return
 	}
 	s.logf("kernel exited: %v\n%s", ch.err, ch.output.String())
+	// A refusal is not a crash. Kernel exits 2 when it will not start at all —
+	// bad arguments, no token, or a data directory another kernel already holds
+	// — and the one that matters here is the lock: retrying it in a backoff loop
+	// would only spin against a directory that stays taken, so the Supervisor
+	// says what the sidecar said and waits to be asked to start again.
+	if exitCode(ch.err) == kernel.ExitRefused {
+		reason := s.exitReason(ch, failure)
+		s.mu.Lock()
+		s.running = false
+		s.attempt = 0
+		s.setLocked(KernelState{Status: KernelStopped, Reason: "the kernel refused to start: " + reason})
+		s.mu.Unlock()
+		s.logf("kernel refused to start; not retried: %s", reason)
+		return
+	}
 	s.scheduleRestart(gen, s.exitReason(ch, failure))
+}
+
+// exitCode is the status a sidecar exited with, -1 when it was killed by a
+// signal or never ran.
+func exitCode(err error) int {
+	if err == nil {
+		return kernel.ExitOK
+	}
+	var exited *exec.ExitError
+	if errors.As(err, &exited) {
+		return exited.ExitCode()
+	}
+	return -1
 }
 
 // closeReadCloser closes what a failed launch left behind, if it can.
