@@ -9,7 +9,7 @@ import (
 // point of a bound is that a reader that stops reading costs a known amount of
 // memory, and a bound that can be raised is one that will be.
 const (
-	// queueMaxRequests bounds the approvals and asks waiting to be answered, and
+	// queueMaxRequests bounds queued approval/ask request notifications, and
 	// the resolutions of requests already answered. An approval that is dropped
 	// leaves a session waiting forever, so this bucket does not drop: it ends
 	// the connection, and the Client that reconnects opens its conversations
@@ -49,7 +49,11 @@ const (
 // matters, and the same is true of one task's or one process's news. What
 // cannot be folded — an approval, an ask — is never dropped either: the queue
 // ends the connection instead, because a session waiting for an approval that
-// will never arrive is worse than a reconnect.
+// will never arrive is worse than a reconnect. A request still queued when its
+// resolution arrives is taken out, since no one has to answer it any more.
+//
+// A taken notification gives its slot back at once: its payload is cleared and
+// the slot counts toward compaction, so a reader that keeps up holds nothing.
 //
 // Order is kept where it carries meaning. A notification that folds replaces
 // the one it supersedes *in place* — when nothing that must be applied in
@@ -69,7 +73,9 @@ type notifQueue struct {
 	// the dead slots before it are skipped.
 	entries []slot
 	head    int
-	dead    int
+	// dead counts every non-live slot, including the consumed prefix and
+	// priority deliveries ahead of head. Only compaction resets this count.
+	dead int
 
 	approvals ints
 	viewSteps ints
@@ -86,9 +92,8 @@ type notifQueue struct {
 	// is one MCP configuration, so one entry.
 	mcp int
 
-	// dropped counts the notifications the buckets had to let go of, and
-	// travels on the next one handed over.
-	dropped int
+	// dropped travels on the next retained notification of the same bucket.
+	dropped [bucketUnknown + 1]int
 }
 
 // slot is one queued notification, and where it belongs.
@@ -115,6 +120,21 @@ func (q *ints) pop() (int, bool) {
 	i := q.items[0]
 	q.items = q.items[1:]
 	return i, true
+}
+
+// remove takes entry index i out of the FIFO. A reader takes entries in
+// arrival order, so i is almost always the front.
+func (q *ints) remove(i int) {
+	if len(q.items) > 0 && q.items[0] == i {
+		q.items = q.items[1:]
+		return
+	}
+	for j, have := range q.items {
+		if have == i {
+			q.items = append(q.items[:j], q.items[j+1:]...)
+			return
+		}
+	}
 }
 
 // keyedIndex is one entry per key: the newest notification of that key, at the
@@ -155,6 +175,7 @@ func (q *notifQueue) put(n Notification) (overflow bool) {
 		}
 		q.approvals.push(q.append(n, "", kind))
 	case bucketResolved:
+		q.removeResolvedRequests(n, key)
 		q.fold(&q.resolved, key, n, kind)
 	case bucketView:
 		q.fold(&q.views, key, n, kind)
@@ -209,10 +230,34 @@ func (q *notifQueue) append(n Notification, key string, kind bucket) int {
 // evict marks the entry at i as superseded, so the reader never sees it.
 func (q *notifQueue) evict(i int) {
 	if i >= 0 && i < len(q.entries) && q.entries[i].live {
-		q.entries[i].live = false
-		q.dead++
-		q.dropped++
+		q.dropped[q.entries[i].kind]++
+		q.release(i)
 	}
+}
+
+// release clears the payload immediately; the empty slot is reclaimed later.
+func (q *notifQueue) release(i int) {
+	q.entries[i] = slot{}
+	q.dead++
+}
+
+// removeResolvedRequests returns capacity for requests answered by any Client.
+// Duplicate requested notifications are retained until their resolution.
+func (q *notifQueue) removeResolvedRequests(n Notification, key string) {
+	method := NotifyApprovalRequested
+	if n.Method == NotifyAskResolved {
+		method = NotifyAskRequested
+	}
+	kept := q.approvals.items[:0]
+	for _, i := range q.approvals.items {
+		request := q.entries[i].note
+		if request.Method == method && fieldKey(request, "requestId") == key {
+			q.release(i)
+		} else {
+			kept = append(kept, i)
+		}
+	}
+	q.approvals.items = kept
 }
 
 // fold stores n as the state of key in b, in the place the previous one had
@@ -237,7 +282,7 @@ func (q *notifQueue) fold(b *keyedIndex, key string, n Notification, kind bucket
 			}
 		}
 		n.Folded = q.entries[i].note.Folded + 1
-		q.evict(i)
+		q.release(i)
 	}
 	if len(b.order) >= b.max {
 		oldest := b.order[0]
@@ -268,22 +313,18 @@ func (q *notifQueue) take() (Notification, bool) {
 		if q.entries[i].live {
 			return q.deliverAt(i), true
 		}
-		if !q.entries[i].live {
-			q.dead--
-		}
 	}
 	return Notification{}, false
 }
 
-// deliverAt answers the entry at i, with the drops since the last one attached,
-// and takes it out of its bucket.
+// deliverAt attaches this bucket's drops and returns the entry's capacity.
 func (q *notifQueue) deliverAt(i int) Notification {
 	s := &q.entries[i]
 	n := s.note
-	n.Dropped += q.dropped
-	q.dropped = 0
-	s.live = false
+	n.Dropped += q.dropped[s.kind]
+	q.dropped[s.kind] = 0
 	q.forget(i, s)
+	q.release(i)
 	q.compactIfWorthIt()
 	return n
 }
@@ -292,6 +333,12 @@ func (q *notifQueue) deliverAt(i int) Notification {
 // notification of the same key starts a new slot rather than reviving this one.
 func (q *notifQueue) forget(i int, s *slot) {
 	switch s.kind {
+	case bucketViewStep:
+		q.viewSteps.remove(i)
+	case bucketWarning:
+		q.warnings.remove(i)
+	case bucketUnknown:
+		q.unknown.remove(i)
 	case bucketResolved, bucketView, bucketBusy, bucketIndex, bucketTask, bucketProcess:
 		b := q.bucketOf(s.kind)
 		if at, ok := b.at[s.key]; ok && at == i {
@@ -336,7 +383,7 @@ func (q *notifQueue) compactIfWorthIt() {
 	if q.dead < 1024 || q.dead*2 < len(q.entries) {
 		return
 	}
-	keep := make([]slot, 0, len(q.entries))
+	keep := make([]slot, 0, len(q.entries)-q.dead)
 	shift := make([]int, len(q.entries))
 	for i, s := range q.entries {
 		shift[i] = -1
