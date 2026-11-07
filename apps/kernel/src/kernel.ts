@@ -9,6 +9,7 @@ import { type KernelConfig } from './config.ts'
 import { codingTools } from './extensions/coding.ts'
 import { photonImages } from './images.ts'
 import { Indexer } from './indexer/index.ts'
+import { repoRootOf } from './workspace.ts'
 import { info, error } from './log.ts'
 import { buildModels } from './models.ts'
 import { serve, type ServerHandle } from './protocol/server.ts'
@@ -37,7 +38,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   mcp: false,
   skills: false,
   codemode: false,
-  models: false,
+  models: true,
 }
 
 export type KernelHandle = {
@@ -168,6 +169,7 @@ export async function startKernel(
               server?.broadcast('index.changed', {
                 id,
                 ...(row.title === null ? {} : { title: row.title }),
+                ...(row.title_source === null ? {} : { titleSource: row.title_source }),
                 archived: row.archived_at !== null,
                 lastActivityAt: row.last_activity_at,
               })
@@ -226,6 +228,17 @@ export async function startKernel(
     }
     info('kernel listening', { port: server.port, data: config.dataDir, readOnly: config.readOnly })
 
+    // A conversation's repository is worked out once and stored, so a list never launches git. Rows
+    // written before this build have none, a rebuilt index recomputed them from the workspace, and a
+    // directory git could not be asked about last time is asked again. After listening: it runs git.
+    const backfill = config.readOnly
+      ? Promise.resolve()
+      : indexer.backfillRepoRoots(repoRootOf).catch((cause) => {
+          error('the repository backfill failed', {
+            detail: cause instanceof Error ? cause.message : String(cause),
+          })
+        })
+
     // A failed Session is fatal: the kernel stops answering (every request is `-32010`), closes what it
     // can, and exits non-zero so the Supervisor replaces it. `Session.closed` is the authoritative signal
     // — `onReport` may describe the same event, or an earlier symptom of it. Watching a flag rather than
@@ -258,6 +271,7 @@ export async function startKernel(
       stopping = (async () => {
         await kernel?.close()
         await server?.stop()
+        await backfill
         // Pi's `harness.close()` seals admission and settles its own writes; the Storage keeps the file
         // open until it is closed too, and only then may the database close.
         clearInterval(failedWatch)

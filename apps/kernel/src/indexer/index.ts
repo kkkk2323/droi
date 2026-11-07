@@ -47,11 +47,18 @@ type PendingRow = {
     workspace?: string
     requestId?: string
     requestFingerprint?: string
+    /** The fork this one came from: lineage, not ownership. */
     parentId?: number
+    /** The working tree `workspace` sits in, worked out once by the caller that knew the `cwd`. */
+    repoRoot?: string
+    /** The conversation that owns this one, when something spawned it. */
+    ownerId?: number
   }
   /** The newest entry's own timestamp: the only thing that may move `last_activity_at`. */
   activity?: number
   title?: string
+  /** Where `title` came from: the kernel's guess, or a person's choice. Default `auto`. */
+  titleSource?: 'auto' | 'chosen'
   preview?: string
   /** Set when a real event happened now (a create, a submit), not by recovery. */
   eventAt?: number
@@ -375,6 +382,7 @@ export class Indexer {
     at: number,
     extra: {
       workspace?: string
+      repoRoot?: string
       kind?: string
       title?: string
       preview?: string
@@ -389,11 +397,18 @@ export class Indexer {
       ...(extra.createdAt === undefined ? {} : { insert: { createdAt: extra.createdAt } }),
     })
     pending.eventAt = Math.max(pending.eventAt ?? 0, at)
-    if (extra.title !== undefined) pending.title = extra.title
+    if (extra.title !== undefined) {
+      pending.title = extra.title
+      pending.titleSource = 'auto'
+    }
     if (extra.preview !== undefined) pending.preview = extra.preview
     if (extra.workspace !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }
       pending.insert.workspace = extra.workspace
+    }
+    if (extra.repoRoot !== undefined) {
+      pending.insert ??= { createdAt: extra.createdAt ?? at }
+      pending.insert.repoRoot = extra.repoRoot
     }
     if (extra.kind !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }
@@ -589,14 +604,57 @@ export class Indexer {
   /** Archive, rename or re-kind one conversation. Absent fields stay as they are; `null` clears. */
   async update(
     id: number,
-    change: { title?: string | null; archived?: boolean; kind?: string | null },
+    change: {
+      title?: string | null
+      /** Where the title comes from. Absent means `chosen`: a caller that names a title chose it. */
+      titleSource?: 'auto' | 'chosen'
+      archived?: boolean
+      kind?: string | null
+      /** A new `cwd`, and the working tree it belongs to: both move together or not at all. */
+      workspace?: string | null
+      repoRoot?: string | null
+      /** The conversation that owns this one, or `null` for a row a person started. */
+      ownerId?: number | null
+    },
   ): Promise<void> {
     await this.flush()
-    // A title the user chose must survive the next repair, so an empty title stands for "chosen".
-    if (change.title !== undefined) {
+    if (change.workspace !== undefined) {
       await this.#db.run(
-        'UPDATE droi_conversations SET title = ? WHERE id = ?',
-        change.title ?? '',
+        'UPDATE droi_conversations SET workspace = ? WHERE id = ?',
+        change.workspace,
+        id,
+      )
+    }
+    if (change.repoRoot !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET repo_root = ? WHERE id = ?',
+        change.repoRoot,
+        id,
+      )
+    }
+    if (change.ownerId !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET owner_id = ? WHERE id = ?',
+        change.ownerId,
+        id,
+      )
+    }
+    // A title the user chose must survive the next repair, so an empty title stands for "chosen".
+    if (change.title === null) {
+      // Cleared: the conversation goes back to the name it would have had, its first message, as `auto`
+      // so the generator may replace it. With no message yet it has none, and the first one fills it.
+      const first = await this.#firstUserTitle(id)
+      await this.#db.run(
+        'UPDATE droi_conversations SET title = ?, title_source = ? WHERE id = ?',
+        first ?? null,
+        first === undefined ? null : 'auto',
+        id,
+      )
+    } else if (change.title !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET title = ?, title_source = ? WHERE id = ?',
+        change.title,
+        change.titleSource ?? 'chosen',
         id,
       )
     }
@@ -614,6 +672,38 @@ export class Indexer {
 
   async markViewed(id: number, at = this.#now()): Promise<void> {
     await this.#db.run('UPDATE droi_conversations SET viewed_at = ? WHERE id = ?', at, id)
+  }
+
+  /**
+   * Set or clear when a person last looked at a conversation.
+   *
+   * `null` is "not read yet", which a client sets when it wants the unread dot back; a time is what
+   * `conversation.open` writes by itself.
+   */
+  async setViewed(id: number, at: number | null): Promise<void> {
+    await this.flush()
+    await this.#db.run('UPDATE droi_conversations SET viewed_at = ? WHERE id = ?', at, id)
+  }
+
+  /** The first line of a conversation's own first user message, as the automatic title. */
+  async #firstUserTitle(id: number): Promise<string | undefined> {
+    let cursor: never | undefined
+    do {
+      const entries = await this.#storage.scanEntries(
+        { conversationId: id as never, order: 'ascending' },
+        SCAN,
+        cursor,
+        context,
+      )
+      for (const entry of entries.items) {
+        // A fork's inherited entries are its source's words, not its own.
+        if ((entry.conversationId as unknown as number) !== id || entry.kind !== 'pi.user') continue
+        const text = entryText(entry)
+        if (text !== '') return firstLine(text, TITLE_LIMIT)
+      }
+      cursor = entries.next as never
+    } while (cursor !== undefined)
+    return undefined
   }
 
   async conversation(id: number): Promise<ConversationRow | undefined> {
@@ -726,6 +816,13 @@ export class Indexer {
     kind?: string
     archived?: boolean
     workspace?: string
+    repoRoot?: string
+    /**
+     * `undefined` lists the conversations nobody owns — the sidebar's rows. A number lists the
+     * conversations that one owns, which is how a Workstream agent or a subagent is found (ADR 0043).
+     * A fork is not owned by anything: its parent is its lineage, and it belongs in the list.
+     */
+    parent?: number
     text?: string
     /** The last row of the previous page: `{before: id}`. */
     cursor?: { before?: number }
@@ -745,6 +842,18 @@ export class Indexer {
     if (query.workspace !== undefined) {
       where.push('workspace = ?')
       params.push(query.workspace)
+    }
+    if (query.repoRoot !== undefined) {
+      where.push('repo_root = ?')
+      params.push(query.repoRoot)
+    }
+    // An owned conversation is reached through its owner, not through the list: showing every subagent as
+    // a top-level row would put hundreds of them beside the conversations a person started. `parent_id` is
+    // a different question — a fork `parent_id` is its lineage, and a person's fork is a row of its own.
+    if (query.parent === undefined) where.push('owner_id IS NULL')
+    else {
+      where.push('owner_id = ?')
+      params.push(query.parent)
     }
     if (query.text !== undefined && query.text.trim() !== '') {
       const words = searchWords(query.text)
@@ -788,6 +897,35 @@ export class Indexer {
       : { items }
   }
 
+  /**
+   * Work out the repository of every conversation that has a `workspace` but no `repo_root` yet: the
+   * rows a build before this one wrote, and the rows a rebuilt index has just recomputed.
+   *
+   * Once per process, after the kernel serves (it runs git, and a slow git must not delay the first
+   * answer), and one `resolve` call per distinct directory. A directory git could not be asked about is
+   * left without one, so the next start asks again: a volume mounted late must not decide the grouping.
+   */
+  async backfillRepoRoots(
+    resolve: (directory: string) => Promise<string | undefined>,
+  ): Promise<void> {
+    await this.flush()
+    const rows = await this.#db.all<{ workspace: string }>(
+      `SELECT DISTINCT workspace FROM droi_conversations
+       WHERE repo_root IS NULL AND workspace IS NOT NULL`,
+    )
+    for (const row of rows) {
+      if (this.#closed) return
+      const root = await resolve(row.workspace)
+      if (root === undefined) continue
+      await this.#db.run(
+        `UPDATE droi_conversations SET repo_root = ?
+         WHERE repo_root IS NULL AND workspace = ?`,
+        root,
+        row.workspace,
+      )
+    }
+  }
+
   async close(): Promise<void> {
     await this.flush()
     this.#closed = true
@@ -820,25 +958,31 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     const at = Math.max(row.eventAt ?? 0, row.activity ?? 0, row.insert.createdAt)
     await exec.run(
       `INSERT INTO droi_conversations
-         (id, created_at, last_activity_at, workspace, kind, title, preview, parent_id, request_id, request_fingerprint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, created_at, last_activity_at, workspace, repo_root, kind, title, title_source, preview, parent_id, owner_id, request_id, request_fingerprint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          last_activity_at = MAX(droi_conversations.last_activity_at, excluded.last_activity_at),
          workspace = COALESCE(excluded.workspace, droi_conversations.workspace),
+         repo_root = COALESCE(excluded.repo_root, droi_conversations.repo_root),
          kind = COALESCE(excluded.kind, droi_conversations.kind),
          title = COALESCE(droi_conversations.title, excluded.title),
+         title_source = COALESCE(droi_conversations.title_source, excluded.title_source),
          preview = COALESCE(excluded.preview, droi_conversations.preview),
          parent_id = COALESCE(droi_conversations.parent_id, excluded.parent_id),
+         owner_id = COALESCE(droi_conversations.owner_id, excluded.owner_id),
          request_id = COALESCE(droi_conversations.request_id, excluded.request_id),
          request_fingerprint = COALESCE(droi_conversations.request_fingerprint, excluded.request_fingerprint)`,
       row.id,
       row.insert.createdAt,
       at,
       row.insert.workspace ?? null,
+      row.insert.repoRoot ?? null,
       row.insert.kind ?? null,
       row.title ?? null,
+      row.titleSource ?? 'auto',
       row.preview ?? null,
       row.insert.parentId ?? null,
+      row.insert.ownerId ?? null,
       row.insert.requestId ?? null,
       row.insert.requestFingerprint ?? null,
     )
@@ -858,11 +1002,12 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     await exec.run('UPDATE droi_conversations SET preview = ? WHERE id = ?', row.preview, row.id)
   }
   if (row.title !== undefined) {
+    // Only a conversation that never had a name gets the automatic one here: an empty title is "chosen,
+    // deliberately blank", and a cleared one was named again when it was cleared.
     await exec.run(
-      'UPDATE droi_conversations SET title = ? WHERE id = ? AND (title IS NULL OR title = ?)',
+      "UPDATE droi_conversations SET title = ?, title_source = COALESCE(title_source, 'auto') WHERE id = ? AND title IS NULL",
       row.title,
       row.id,
-      '',
     )
   }
 }

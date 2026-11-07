@@ -166,10 +166,13 @@ type ProcessChanged struct {
 // IndexChanged is index.changed: Droi's metadata of a conversation moved, so a
 // list redraws its row.
 type IndexChanged struct {
-	ID             ID      `json:"id"`
-	Title          *string `json:"title,omitempty"`
-	Archived       *bool   `json:"archived,omitempty"`
-	LastActivityAt int64   `json:"lastActivityAt,omitempty"`
+	ID    ID      `json:"id"`
+	Title *string `json:"title,omitempty"`
+	// TitleSource is where Title came from, TitleSourceAuto or TitleSourceChosen:
+	// a title generator may only replace an automatic one.
+	TitleSource    string `json:"titleSource,omitempty"`
+	Archived       *bool  `json:"archived,omitempty"`
+	LastActivityAt int64  `json:"lastActivityAt,omitempty"`
 }
 
 // Warning is Kernel's own report: Pi onReport's kinds, such as storage_failed,

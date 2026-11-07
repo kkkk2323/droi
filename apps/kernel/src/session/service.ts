@@ -36,9 +36,10 @@ import {
   optionalString,
   requiredNumber,
   requiredObject,
-  unsupported,
   invalidRequest,
 } from '../protocol/rpc.ts'
+import { completeModel } from '../completion.ts'
+import { repoRootOf } from '../workspace.ts'
 import type { Dispatcher, Connection, Notifier } from '../protocol/server.ts'
 import { ViewWindow, parseMode, parseWindow } from './watch.ts'
 
@@ -473,9 +474,11 @@ export class Kernel implements Dispatcher {
         context,
       )
       const id = conversation.id as unknown as number
+      const repoRoot = resolved.cwd === undefined ? undefined : await repoRootOf(resolved.cwd)
       await this.#options.indexer.touch(id, createdAt, {
         ...(kind === undefined ? {} : { kind }),
         ...(resolved.cwd === undefined ? {} : { workspace: resolved.cwd }),
+        ...(repoRoot === undefined ? {} : { repoRoot }),
         ...(requestId === undefined ? {} : { requestId, requestFingerprint: fingerprint }),
         createdAt,
       })
@@ -670,10 +673,12 @@ export class Kernel implements Dispatcher {
     const newest = latestMessageTime(entries)
     const activityAt = newest ?? fixed.createdAt
     if (fixed.createdAt !== undefined) {
+      const repoRoot = fixed.cwd === undefined ? undefined : await repoRootOf(fixed.cwd)
       await this.#options.indexer.touch(id, activityAt ?? fixed.createdAt, {
         createdAt: fixed.createdAt,
         ...(fixed.kind === undefined ? {} : { kind: fixed.kind }),
         ...(fixed.cwd === undefined ? {} : { workspace: fixed.cwd }),
+        ...(repoRoot === undefined ? {} : { repoRoot }),
       })
     } else if (activityAt !== undefined) {
       await this.#options.indexer.touch(id, activityAt, {})
@@ -830,6 +835,8 @@ export class Kernel implements Dispatcher {
       kind: optionalString(params, 'kind'),
       archived: optionalBoolean(params, 'archived'),
       workspace: optionalString(params, 'workspace'),
+      repoRoot: optionalString(params, 'repoRoot'),
+      parent: optionalNumber(params, 'parent'),
       text: optionalString(params, 'query'),
       cursor: parseListCursor(optionalObject(params, 'cursor')),
       limit: limit === undefined ? undefined : Math.min(limit, MAX_PAGE),
@@ -1048,6 +1055,17 @@ export class Kernel implements Dispatcher {
     const change = requiredObject(params, 'change')
     const resolved = this.#agentChange(change, 'change')
     await conversation.configure(resolved, context)
+    // The row's workspace is where the tools run, so a new cwd is a new row as well: the index groups
+    // conversations by it, and the repository it belongs to can change with it. A cleared cwd clears both,
+    // rather than leave the row claiming a directory the conversation no longer runs in.
+    if (typeof resolved.cwd === 'string') {
+      await this.#options.indexer.update(id, {
+        workspace: resolved.cwd,
+        repoRoot: (await repoRootOf(resolved.cwd)) ?? null,
+      })
+    } else if (resolved.cwd === null) {
+      await this.#options.indexer.update(id, { workspace: null, repoRoot: null })
+    }
     const agent = await conversation.agent(context)
     return { agent: wireAgent(agent) }
   }
@@ -1080,6 +1098,18 @@ export class Kernel implements Dispatcher {
       throw invalidParams([{ path: 'at', message: `entry ${at} is not in this conversation` }])
     }
     const createdAt = Date.now()
+    // A fork runs where its source runs, and is the same kind of conversation: its row says so, so the
+    // sidebar puts it in the source's repository and a list filtered by workspace finds it.
+    const source = await this.#options.indexer.conversation(id)
+    const workspace = source?.workspace ?? undefined
+    const kind = source?.kind ?? undefined
+    const title = source?.title === null || source?.title === '' ? undefined : source?.title
+    const meta: ConversationMeta = {
+      parentId: id,
+      createdAt,
+      ...(kind === undefined ? {} : { kind }),
+      ...(workspace === undefined ? {} : { workspace }),
+    }
     const forked = await conversation.fork(
       at as EntryId,
       {
@@ -1088,16 +1118,22 @@ export class Kernel implements Dispatcher {
         // it would give the fork the parent's requestId — which collides on the unique index at the next
         // start — and the parent's submissions. So the fork writes its own, with the link back.
         init: async (tx, conversationId) => {
-          await tx.appendEntry(conversationId, {
-            kind: 'droi.meta',
-            data: { parentId: id, createdAt } satisfies ConversationMeta,
-          })
+          await tx.appendEntry(conversationId, { kind: 'droi.meta', data: meta })
         },
       },
       context,
     )
     const forkedId = forked.id as unknown as number
-    await this.#options.indexer.touch(forkedId, createdAt, { parentId: id, createdAt })
+    const repoRoot = workspace === undefined ? undefined : await repoRootOf(workspace)
+    await this.#options.indexer.touch(forkedId, createdAt, {
+      parentId: id,
+      createdAt,
+      ...(kind === undefined ? {} : { kind }),
+      ...(workspace === undefined ? {} : { workspace }),
+      ...(repoRoot === undefined ? {} : { repoRoot }),
+      // The source's name, as a name to replace: the title generator may name the fork once it differs.
+      ...(title === undefined ? {} : { title }),
+    })
     await this.track(forkedId)
     return { conversationId: forkedId, view: await this.#view(forkedId, DEFAULT_WINDOW) }
   }
@@ -1175,11 +1211,24 @@ export class Kernel implements Dispatcher {
   async #indexUpdate(params: Record<string, unknown>): Promise<unknown> {
     this.#writable()
     const id = requiredNumber(params, 'id')
-    const change: { title?: string | null; archived?: boolean; kind?: string | null } = {}
+    const change: {
+      title?: string | null
+      titleSource?: 'auto' | 'chosen'
+      archived?: boolean
+      kind?: string | null
+    } = {}
     if ('title' in params) {
       const title = params['title']
       change.title =
         title === null ? null : typeof title === 'string' ? title : invalidTitle('title')
+      // A title someone typed is a choice; a title a generator wrote says so, so it can be replaced again.
+      const source = params['titleSource']
+      if (source !== undefined && source !== 'auto' && source !== 'chosen') {
+        throw invalidParams([{ path: 'titleSource', message: 'auto or chosen is required' }])
+      }
+      change.titleSource = source ?? 'chosen'
+    } else if ('titleSource' in params) {
+      throw invalidParams([{ path: 'titleSource', message: 'a title is required' }])
     }
     if ('kind' in params) {
       const kind = params['kind']
@@ -1187,25 +1236,80 @@ export class Kernel implements Dispatcher {
     }
     const archived = optionalBoolean(params, 'archived')
     if (archived !== undefined) change.archived = archived
-    await this.#options.indexer.update(id, change)
+    // Both of the fields below are checked before the first write: a refusal that had already stored half of
+    // the change would be a lie to a caller that reads -32602 as "nothing happened".
+    let ownerId: number | null | undefined
+    if ('ownerId' in params) {
+      const value = params['ownerId']
+      if (value !== null && (typeof value !== 'number' || !Number.isInteger(value))) {
+        throw invalidParams([{ path: 'ownerId', message: 'a conversation id or null is required' }])
+      }
+      if (value !== null) await this.#checkOwner(id, value)
+      ownerId = value
+    }
+    let viewedAt: number | null | undefined
+    if ('viewedAt' in params) {
+      const value = params['viewedAt']
+      if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) {
+        throw invalidParams([{ path: 'viewedAt', message: 'a number or null is required' }])
+      }
+      viewedAt = value
+    }
+    await this.#options.indexer.update(id, {
+      ...change,
+      ...(ownerId === undefined ? {} : { ownerId }),
+    })
+    // The unread dot: a time says "a person has seen everything up to here", `null` asks for it back.
+    if (viewedAt !== undefined) await this.#options.indexer.setViewed(id, viewedAt)
     const row = await this.#options.indexer.conversation(id)
     this.#notifier?.broadcast('index.changed', {
       id,
-      ...(row?.title === undefined ? {} : { title: row.title }),
+      ...(row?.title === undefined || row.title === null ? {} : { title: row.title }),
+      ...(row?.title_source === undefined || row.title_source === null
+        ? {}
+        : { titleSource: row.title_source }),
       ...(row?.archived_at === undefined ? {} : { archived: row.archived_at !== null }),
       lastActivityAt: row?.last_activity_at ?? Date.now(),
     })
     return {}
   }
 
+  /**
+   * Whether `ownerId` may own `id`: it must be a conversation this kernel has, and not `id` itself nor one of
+   * `id`'s own children — two rows that own each other are rows no list can reach.
+   *
+   * The walk up is bounded by the number of rows it has visited, so a cycle that somehow exists cannot spin
+   * here for ever.
+   */
+  async #checkOwner(id: number, ownerId: number): Promise<void> {
+    if (ownerId === id) {
+      throw invalidParams([{ path: 'ownerId', message: 'a conversation cannot own itself' }])
+    }
+    if ((await this.#options.indexer.conversation(ownerId)) === undefined) {
+      throw notFound(ownerId)
+    }
+    const seen = new Set<number>([id])
+    let current: number | null = ownerId
+    while (current !== null) {
+      if (seen.has(current)) {
+        throw invalidParams([{ path: 'ownerId', message: 'the two would own each other' }])
+      }
+      seen.add(current)
+      const row = await this.#options.indexer.conversation(current)
+      if (row === undefined) return
+      current = row.owner_id
+    }
+  }
+
   // ── model.complete ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * One model call with no conversation behind it, for a caller that wants an answer and not a session
-   * (Memory's summary is the first). M4 implements it; the capability is false until then.
+   * One model call with no conversation behind it. The whole call lives in `completion.ts`: this method
+   * only refuses a read-only kernel, which may not spend a key it was not given.
    */
-  #modelComplete(_params: Record<string, unknown>): never {
-    throw unsupported('models')
+  async #modelComplete(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
+    return completeModel(this.#options.models, params)
   }
 
   // ── kernel.shutdown ──────────────────────────────────────────────────────────────────────────
@@ -1905,7 +2009,15 @@ function wireSummary(row: ConversationRow): Record<string, unknown> {
     lastActivityAt: row.last_activity_at,
     viewedAt: row.viewed_at,
     preview: row.preview,
+    ...(row.repo_root === null ? {} : { repoRoot: row.repo_root }),
+    // `parentId` is the fork this one came from — lineage. `ownerId` is the conversation that spawned it,
+    // which is what keeps a subagent's conversation out of the list (ADR 0043).
     ...(row.parent_id === null ? {} : { parentId: row.parent_id }),
+    ...(row.owner_id === null ? {} : { ownerId: row.owner_id }),
+    // Which title this is: the kernel's own guess (`auto`, the first user message) or a person's
+    // (`chosen`). A client that wants to let someone rename a conversation needs the difference; the text
+    // alone cannot tell them apart.
+    ...(row.title_source === null ? {} : { titleSource: row.title_source }),
   }
 }
 

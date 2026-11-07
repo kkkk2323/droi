@@ -7,6 +7,7 @@
     "params": {
       "id": 7,
       "title": "parseConfig tests",
+      "titleSource": "auto",
       "archived": false,
       "lastActivityAt": 1762480002000
     }

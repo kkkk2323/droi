@@ -1,6 +1,9 @@
 package kernel
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+)
 
 // The methods' params and results, in the contract's shapes.
 
@@ -62,12 +65,19 @@ type CreateResult struct {
 // ListParams is conversation.list's params: one SQL over Droi's metadata
 // table. Cursor is opaque and goes back verbatim.
 type ListParams struct {
-	Kind      string          `json:"kind,omitempty"`
-	Archived  *bool           `json:"archived,omitempty"`
-	Workspace string          `json:"workspace,omitempty"`
-	Query     string          `json:"query,omitempty"`
-	Cursor    json.RawMessage `json:"cursor,omitempty"`
-	Limit     int             `json:"limit,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Archived *bool  `json:"archived,omitempty"`
+	// Workspace is the conversation's cwd, exactly as it was resolved.
+	Workspace string `json:"workspace,omitempty"`
+	// RepoRoot is the working tree a conversation's cwd sits in, so a
+	// repository's worktrees list as one group.
+	RepoRoot string `json:"repoRoot,omitempty"`
+	// Parent lists that conversation's children instead of the top-level rows.
+	// Without it the page holds only conversations nobody owns (ADR 0043).
+	Parent *ID             `json:"parent,omitempty"`
+	Query  string          `json:"query,omitempty"`
+	Cursor json.RawMessage `json:"cursor,omitempty"`
+	Limit  int             `json:"limit,omitempty"`
 }
 
 // ListResult is one page of the conversation list.
@@ -79,15 +89,34 @@ type ListResult struct {
 // Summary is one row of Droi's metadata table. The times are milliseconds
 // since the Unix epoch.
 type Summary struct {
-	ID             ID     `json:"id"`
-	Title          string `json:"title,omitempty"`
-	Kind           string `json:"kind,omitempty"`
-	Workspace      string `json:"workspace,omitempty"`
-	Archived       bool   `json:"archived"`
-	CreatedAt      int64  `json:"createdAt,omitempty"`
-	LastActivityAt int64  `json:"lastActivityAt,omitempty"`
-	ViewedAt       int64  `json:"viewedAt,omitempty"`
-	// Preview is the newest assistant text, for the list's second line.
+	ID    ID     `json:"id"`
+	Title string `json:"title,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	// Workspace is the conversation's cwd: where its tools run.
+	Workspace string `json:"workspace,omitempty"`
+	// RepoRoot is the working tree Workspace sits in, or Workspace itself when it
+	// is not inside one. It is what groups a repository's worktrees together.
+	RepoRoot string `json:"repoRoot,omitempty"`
+	// ParentID is lineage: the conversation this one was forked from. A fork is a
+	// list row of its own, so ParentID says nothing about whether a row belongs in
+	// the main list; OwnerID does.
+	ParentID *ID `json:"parentId,omitempty"`
+	// OwnerID is the conversation that spawned this one (a subagent, a Workstream
+	// agent). conversation.list leaves owned rows out unless asked with Parent, so a
+	// row with an OwnerID is never a main-list row.
+	OwnerID        *ID   `json:"ownerId,omitempty"`
+	Archived       bool  `json:"archived"`
+	CreatedAt      int64 `json:"createdAt,omitempty"`
+	LastActivityAt int64 `json:"lastActivityAt,omitempty"`
+	// TitleSource says where Title came from: TitleSourceAuto is the kernel's own
+	// guess (the first line of the first user message), TitleSourceChosen is a title a
+	// person set. Absent while the conversation has no title.
+	TitleSource string `json:"titleSource,omitempty"`
+	// ViewedAt is when a person last saw the conversation; nil is "not yet", which
+	// is what makes the unread dot show.
+	ViewedAt *int64 `json:"viewedAt,omitempty"`
+	// Preview is the first line of the newest message — the answer once there is
+	// one, the question while it is still being written — for the list's second line.
 	Preview string `json:"preview,omitempty"`
 }
 
@@ -337,11 +366,55 @@ type Status struct {
 // IndexUpdateParams is index.update's params: Droi's own metadata of a
 // conversation. A nil field stays as it was.
 type IndexUpdateParams struct {
-	ID       ID      `json:"id"`
-	Title    *string `json:"title,omitempty"`
-	Archived *bool   `json:"archived,omitempty"`
-	Kind     *string `json:"kind,omitempty"`
+	ID ID `json:"id"`
+	// Title is the new title. Leave it nil to keep the stored one, use TitleText
+	// for a name, or TitleNull to give the conversation back its automatic name
+	// (the first line of its first message).
+	Title    json.RawMessage `json:"title,omitempty"`
+	Archived *bool           `json:"archived,omitempty"`
+	Kind     *string         `json:"kind,omitempty"`
+	// TitleSource is TitleSourceAuto or TitleSourceChosen, and only means anything
+	// with Title: absent, a title a caller names is a choice. TitleSourceAuto says a
+	// generator wrote it, so the kernel may replace it again.
+	TitleSource string `json:"titleSource,omitempty"`
+	// ViewedAt is the unread marker. Leave it nil to keep the stored time, use
+	// ViewedAtNull to ask for the dot back, or ViewedAtTime for a time.
+	ViewedAt json.RawMessage `json:"viewedAt,omitempty"`
+	// OwnerID makes a conversation the owner of this one (OwnerOf), and OwnerNull
+	// makes this a list row again; leave it nil to keep what is stored. An owner that
+	// does not exist is CodeConversationNotFound, and one that would own itself, this
+	// row, or make the two own each other is CodeInvalidParams.
+	OwnerID json.RawMessage `json:"ownerId,omitempty"`
 }
+
+// TitleText is index.update's title.
+func TitleText(title string) json.RawMessage {
+	b, _ := json.Marshal(title)
+	return b
+}
+
+// TitleNull is index.update's "forget the name": the automatic one comes back.
+func TitleNull() json.RawMessage { return json.RawMessage("null") }
+
+// OwnerOf is index.update's "owner is this conversation".
+func OwnerOf(id ID) json.RawMessage { return json.RawMessage(id.String()) }
+
+// OwnerNull is index.update's "this is a list row again".
+func OwnerNull() json.RawMessage { return json.RawMessage("null") }
+
+// The two sources a title can have.
+const (
+	// TitleSourceAuto is the kernel's own guess: the first line of the first user message.
+	TitleSourceAuto = "auto"
+	// TitleSourceChosen is a title a person set, which the kernel's guess must not overwrite.
+	TitleSourceChosen = "chosen"
+)
+
+// ViewedAtTime is index.update's "a person has seen everything up to here".
+func ViewedAtTime(ms int64) json.RawMessage { return json.RawMessage(strconv.FormatInt(ms, 10)) }
+
+// ViewedAtNull is index.update's "this conversation is unread again".
+func ViewedAtNull() json.RawMessage { return json.RawMessage("null") }
 
 // Process is one background process of a conversation (design §3.4): the
 // bash_background tool's droi.process entry.

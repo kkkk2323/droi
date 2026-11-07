@@ -394,16 +394,16 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 28 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
-| Method                 | Params                                                      | Result                                                           | Capability      | M1  |
-| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
-| `harness.info`         | —                                                           | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
-| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`          | `{conversationId, view}`                                         | `conversations` | yes |
-| `conversation.list`    | `{kind?, archived?, workspace?, query?, cursor?, limit?}`   | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.open`    | `{id, window?, subscribe?}`                                 | `{view}`                                                         | `conversations` | yes |
-| `conversation.unwatch` | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
-| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
-| `conversation.abort`   | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
-| `submission.get`       | `{id, submissionId}`                                        | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
+| Method                 | Params                                                                        | Result                                                           | Capability      | M1  |
+| ---------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
+| `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
+| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                         | `conversations` | yes |
+| `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                             | `conversations` | yes |
+| `conversation.open`    | `{id, window?, subscribe?}`                                                   | `{view}`                                                         | `conversations` | yes |
+| `conversation.unwatch` | `{id}`                                                                        | `{}`                                                             | `conversations` | yes |
+| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                 | `conversations` | yes |
+| `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                             | `conversations` | yes |
+| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
 
 The Kernel reports only what Pi keeps: `status`, `entry` and `answer`, plus `reason` for one that ended without
 an answer. It does not report where such a turn stopped, because it cannot: Pi 1.5.0 stores no link from a
@@ -435,7 +435,7 @@ Three qualifications a client that reads a range needs:
 | `conversation.entries` | `{id, query?, limit?, cursor?}` | `{items[], cursor?}` | `conversations` | yes |
 | `conversation.usage` | `{id}` | `{models, tools, context}` | `usage` | yes |
 | `task.abort` | `{taskId}` | `{status}` | `tasks` | yes |
-| `index.update` | `{id, title?, archived?, kind?}` | `{}` | `index` | yes |
+| `index.update` | `{id, title?, titleSource?, archived?, kind?, viewedAt?, ownerId?}` | `{}` | `index` | yes |
 | `process.list` | `{id}` | `{processes[]}` | `processes` | no |
 | `process.stop` | `{id, processId}` | `{status}` | `processes` | no |
 | `approval.respond` | `{requestId, outcome, scope?}` | `{status}` | `approvals` | no |
@@ -446,13 +446,56 @@ Three qualifications a client that reads a range needs:
 | `mcp.authorize.cancel` | `{name}` | `{}` | `mcp` | no |
 | `skills.list` | — | `{skills[]}` | `skills` | no |
 | `skills.setDisabled` | `{name, disabled}` | `{skills[]}` | `skills` | no |
-| `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | no |
+| `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
 M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
 `mcp.list` and `skills.list` return an empty list, and the write methods and the
-two `*.respond` methods are `-32009`. `model.complete` reports
-`capabilities.models: false` until it is built; a Host that needs it for Memory
-(ADR 0042) must read the flag rather than call it (M4).
+two `*.respond` methods are `-32009`. `model.complete` is built: it reports
+`capabilities.models: true` and is the call a Host makes for a name or a Memory
+summary of its own (ADR 0042).
+
+### The list, and what it leaves out
+
+`conversation.list` answers the conversations a person started: rows whose `ownerId` is absent. A
+conversation that something spawned — a subagent's or a Workstream agent's own — is reached with
+`parent: <id>`, which lists what that conversation owns instead. Nothing is filtered by `kind`.
+
+**`parentId` and `ownerId` are two different questions.** `parentId` is lineage: the conversation a fork was
+taken from, which a client shows as "forked from". `ownerId` is ownership: the conversation whose agent
+started this one, and the reason it stays out of the list (ADR 0043). A fork is a conversation a person
+asked for, so it is a row of its own; a subagent's conversation is not.
+
+Three fields a sidebar groups and sorts by:
+
+- `workspace` is the conversation's `cwd`, exactly as it was resolved: the directory its tools run in.
+- `repoRoot` is the repository that `cwd` sits in: the parent of
+  `git rev-parse --path-format=absolute --git-common-dir`, or `--show-toplevel` for a submodule or a bare
+  repository, and the directory itself when git says it is not inside one. It is **not** `--show-toplevel`
+  of the `cwd`: that gives every worktree a group of its own, where the common directory gives a worktree
+  its main checkout's `repoRoot`, which is what makes one repository one group. It is worked out when the
+  conversation is created, forked or its `cwd` changes, and stored in the index, so listing never launches
+  git. Absent when git could not be asked (no git, a directory not there yet, a timeout); the next start
+  asks again. Needs git 2.31 or newer (`--path-format`). A fork has its source's `workspace`, `repoRoot`
+  and `kind`, and its source's title as `auto`. A `cwd` set to `null` clears `workspace` and `repoRoot`.
+- `titleSource` says where `title` came from: `auto` is the kernel's own guess (the first line of
+  the first user message), `chosen` is a title a person set through `index.update` or a generator that said
+  so. Absent while a conversation has no title at all. The text alone cannot be compared against the kernel's
+  truncation rule — a person may type exactly what the kernel would have guessed. `index.update` with
+  `title: null` gives the conversation back its automatic name, the first line of its first user message,
+  as `auto` (or no title, until there is a message). An empty string is a title a person chose.
+- `preview` is the first line of the newest message in the transcript — the answer once there is one, the
+  question while it is still being written — cut to 200 characters with an ellipsis. It is plain text: no
+  search marks, no entry kinds.
+
+A `viewedAt` in `index.update` is the unread marker: a millisecond time says "a person has seen everything
+up to here", `null` asks for the dot back, and an absent field leaves it as it was. `conversation.open`
+writes a time by itself, so a client only needs this call when a conversation is on screen while an answer
+arrives, or when it wants a cleared one to look unread again.
+
+`ownerId` sets which conversation owns this one, and `null` makes it a list row again. The kernel writes
+this itself when a subagent or a Workstream spawns a conversation (M4); the method is how anything imported
+gets the same relation. An owner that does not exist is `-32000`; one that is the conversation itself, or
+that would make the two own each other, is `-32602`.
 
 ### Values
 
@@ -663,15 +706,15 @@ record a Client can open. The kernel sends the request, validates the answer
 when a `schema` is given, and answers once; nothing is stored, and no entry,
 conversation or task is created.
 
-| Param           | Meaning                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------- |
-| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                               |
-| `system`        | Optional system text. Absent means the kernel's own, minimal one.                                        |
-| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                     |
-| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                        |
-| `thinkingLevel` | Optional: `off`, `low`, `medium`, `high`. Absent means the model's default, which may think for minutes. |
-| `maxTokens`     | Optional cap on the answer.                                                                              |
-| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                           |
+| Param           | Meaning                                                                                                                                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                                                                                                                             |
+| `system`        | Optional system text. Absent sends the kernel's own minimal instruction, never a bare user turn.                                                                                                       |
+| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                                                                                                                   |
+| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                                                                                                                      |
+| `thinkingLevel` | Optional: `off`, `low`, `medium`, `high`. `off` asks for no thinking and sends nothing, which is the provider's own default: a model that reasons unless told otherwise still may. Absent is the same. |
+| `maxTokens`     | Optional cap on the answer: a positive whole number, at most what the model itself takes (`-32017`).                                                                                                   |
+| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                                                                                                                         |
 
 The result is `{model, text, json?, usage}`:
 
@@ -684,11 +727,18 @@ The result is `{model, text, json?, usage}`:
   `-32014 model output invalid`, with the issues and the text the model did
   answer (`data.issues`, `data.text`), so the caller can retry or report; it is
   not a parse error and the call is not retried by the kernel.
-- `usage` is `{input, output, totalTokens, cost?}`, per call.
+- `usage` is `{input, output, totalTokens, cost?}`, per call: the token counts the provider
+  reported, and `cost` as dollars for this call when the model's catalog states a price (absent when it
+  is free or unpriced, so a caller can tell "nothing" from "nothing to report").
 
 A model that declines to answer is `-32018 model refused`, with `data.reason`
 where the provider gave one. That is distinct from `-32014`: nothing can be
 salvaged from a refusal by parsing it again.
+
+The request carries `X-Droi-Call: model.complete`. That header is not part of the contract: it exists so a
+scripted model in a test can answer this call differently from a conversation's, because pi-ai sends every
+request as a stream and there is no other way to tell them apart. A client never sets it and never reads it.
+The Host's LLM proxy is the place an `X-Droi-*` header must be removed before a request leaves the machine.
 
 What this method does not do, and deliberately: it does not stream (a Host waits
 for the whole answer and the answer is small), it keeps no history (a caller
@@ -708,7 +758,7 @@ writes no usage row of its own — the `usage` in the result is the record.
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |
 | `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                                          |
-| `index.changed`      | `{id, title?, archived?, lastActivityAt?}`                                                                                                                                                                           |
+| `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?}`                                                                                                                                                             |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only

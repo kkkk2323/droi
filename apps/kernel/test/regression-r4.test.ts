@@ -486,12 +486,17 @@ test('R4 nested forks isolate both directions of request keys across restart', a
     await kernel.stop()
     kernel = await start({ dir: data.dir, faux })
     client = new Client(kernel.port)
+    // A fork is a row of its own whose parentId is lineage; an owned conversation is the one kept out of
+    // the list (SK2), so both forks are here and neither has an owner.
     const rows = (await client.call('conversation.list')).items as {
       id: number
       parentId?: number
+      ownerId?: number
     }[]
-    expect(rows.find((row) => row.id === fork)!.parentId).toBe(parent as number)
-    expect(rows.find((row) => row.id === nested)!.parentId).toBe(fork as number)
+    expect(rows.find((row) => row.id === fork)?.parentId).toBe(parent as number)
+    expect(rows.find((row) => row.id === nested)?.parentId).toBe(fork as number)
+    expect(rows.find((row) => row.id === fork)?.ownerId).toBeUndefined()
+    expect(rows.find((row) => row.id === nested)?.ownerId).toBeUndefined()
     const retries: [unknown, string, unknown][] = [
       [parent, 'parent prompt', parentKey],
       [fork, 'fork prompt different from parent', forkKey],
