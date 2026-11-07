@@ -120,6 +120,7 @@ export class Kernel implements Dispatcher {
     add('conversation.submit', (p) => this.#submit(p))
     add('conversation.abort', (p) => this.#abort(p))
     add('submission.abort', (p) => this.#abortSubmission(p))
+    add('submission.get', (p) => this.#submissionGet(p))
     add('conversation.configure', (p) => this.#configure(p))
     add('conversation.compact', (p) => this.#compact(p))
     add('conversation.fork', (p) => this.#fork(p))
@@ -684,6 +685,35 @@ export class Kernel implements Dispatcher {
     await conversation.abort(context)
     await this.refreshBusy(id)
     return {}
+  }
+
+  /**
+   * `submission.get`: where one admitted submission is, and which entries it produced.
+   *
+   * This is the correlation a client cannot make for itself. `conversation.submit` answers a submission id,
+   * but the entries a turn writes carry the *task* that wrote them, not the submission: one task can answer a
+   * queued input and the one after it, so "entries above this id" is not "this submission's entries" — it
+   * picks up a reply that was already in flight. Pi keeps the record (`entry`, `answer`), so the Kernel
+   * answers with it.
+   */
+  async #submissionGet(params: Record<string, unknown>): Promise<unknown> {
+    this.#readable()
+    const id = requiredNumber(params, 'id')
+    const submissionId = requiredNumber(params, 'submissionId')
+    const record = await this.#options.storage.submission(submissionId as never, context)
+    if (record === undefined || (record.conversationId as unknown as number) !== id) {
+      throw new RpcError(Code.submissionNotFound, 'submission not found', {
+        conversationId: id,
+        submissionId,
+      })
+    }
+    return {
+      submissionId,
+      status: record.status,
+      ...('entry' in record && record.entry !== undefined ? { entry: record.entry } : {}),
+      ...(record.status === 'done' ? { answer: record.answer } : {}),
+      ...(record.status === 'unanswered' ? { reason: record.reason } : {}),
+    }
   }
 
   async #abortSubmission(params: Record<string, unknown>): Promise<unknown> {

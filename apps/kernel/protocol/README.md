@@ -180,6 +180,13 @@ failing.
 {"jsonrpc":"2.0","id":"26","result":{"status":"closing"}}
 ```
 
+**A kernel ends the tools it started.** Pi runs each tool shell `detached`, in a process group of its own, so
+a tool's background process (`sleep 100 &`, a server it started) is not in the kernel's group and survives a
+plain `SIGKILL` of the kernel. The kernel therefore records every tool shell it launches and, on
+`kernel.shutdown` or SIGTERM, first closes the harness and then ends those groups: a background process a
+tool left running does not outlive the kernel. On Windows the process tree belongs to the Host's Job Object,
+and the kernel asks `taskkill /T` for the shells it recorded.
+
 ### Starting the kernel for a test
 
 A test, a CI job or the Fake Daemon points the kernel at a local model without writing a config file:
@@ -347,6 +354,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `conversation.unwatch`   | `{id}`                                                                     | `{}`                                                             | `conversations` | yes |
 | `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                | `{submissionId}`                                                 | `conversations` | yes |
 | `conversation.abort`     | `{id, background?}`                                                        | `{}`                                                             | `conversations` | yes |
+| `submission.get`         | `{id, submissionId}`                                                       | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
 | `submission.abort`       | `{id, submissionId}`                                                       | `{status}`                                                       | `conversations` | yes |
 | `conversation.configure` | `{id, change}`                                                             | `{agent}`                                                        | `conversations` | yes |
 | `conversation.compact`   | `{id, instructions?}`                                                      | `{taskId}`                                                       | `compaction`    | yes |

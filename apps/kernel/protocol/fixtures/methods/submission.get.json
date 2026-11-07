@@ -1,0 +1,23 @@
+{
+  "kind": "method",
+  "method": "submission.get",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "31",
+    "method": "submission.get",
+    "params": {
+      "id": 7,
+      "submissionId": 501
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "31",
+    "result": {
+      "submissionId": 501,
+      "status": "done",
+      "entry": 1201,
+      "answer": 1204
+    }
+  }
+}
