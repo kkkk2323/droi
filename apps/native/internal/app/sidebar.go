@@ -903,6 +903,13 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 		})
 		return
 	}
+	a.sessionMenu(c, b, s, pinned)
+}
+
+// sessionMenu is a row's menu: what a person does to a Session from the sidebar, and the two copies of what
+// it is. It is a method of its own so that a row's drawing and a row's actions can change apart: the drawing
+// follows what a Session is doing, the actions belong to the list.
+func (a *App) sessionMenu(c *ui.Context, b ui.Element, s sessions.Summary, pinned bool) {
 	b.ContextMenu(func(m *ui.Menu) {
 		if m.Item(L("Rename")).Chosen() {
 			a.sidebar.renaming, a.sidebar.rename = s.SessionID, s.Title
