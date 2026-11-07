@@ -14,7 +14,9 @@ import (
 // request leaves the machine — so this test is about the Kernel saying what it is doing, not about what
 // Factory receives.
 func TestModelCompleteSendsItsHeader(t *testing.T) {
-	k := Start(t, Scenario{Steps: []Step{{Match: "name this conversation", Text: "A name"}}})
+	// The answer is a Completion, not a Step: a model.complete request is the call beside a conversation,
+	// and a Step is a conversation's next reply.
+	k := Start(t, Scenario{Completions: []Completion{{Match: "name this conversation", Text: "A name"}}})
 	ctx, cancel := k.context(t, 60*time.Second)
 	defer cancel()
 	c := k.Dial(t)
@@ -38,6 +40,9 @@ func TestModelCompleteSendsItsHeader(t *testing.T) {
 		t.Errorf("the request carries X-Droi-Call %q, not model.complete", got)
 	}
 	if unmatched := k.Unmatched(); unmatched != 0 {
-		t.Errorf("%d model requests matched no step", unmatched)
+		t.Errorf("%d conversation requests matched no step", unmatched)
+	}
+	if completions := k.Completions(); len(completions) != 1 {
+		t.Errorf("%d completions recorded, not one", len(completions))
 	}
 }
