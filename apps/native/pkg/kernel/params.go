@@ -150,8 +150,9 @@ func ImageBlock(data []byte, mimeType string) ContentBlock {
 
 // SubmitParams is conversation.submit's params. Input is a string or a list of
 // content blocks; Continue asks for a run on the context as it is, with no new
-// user message. WhenBusy and WhenIdle are "steer", "queue", "followUp" or
-// "reject"; "" leaves them to Kernel.
+// user message. WhenBusy is "steer", "followUp" or "reject" and WhenIdle is
+// "reject"; "" leaves them to Kernel, which is what most callers want — a
+// submission that arrives while the conversation is busy is queued either way.
 type SubmitParams struct {
 	ID        ID     `json:"id"`
 	Input     any    `json:"input,omitempty"`
@@ -165,7 +166,9 @@ type SubmitParams struct {
 const (
 	// WhenBusySteer joins the running turn.
 	WhenBusySteer = "steer"
-	// WhenBusyQueue waits for the next turn.
+	// WhenBusyQueue is the 1.x spelling of "wait for the next turn". The Kernel does not accept it: it
+	// answers -32602, and queuing is what an omitted WhenBusy already does. Kept so existing callers still
+	// compile; do not pass it.
 	WhenBusyQueue = "queue"
 	// WhenBusyFollowUp adds a turn after this one.
 	WhenBusyFollowUp = "followUp"
