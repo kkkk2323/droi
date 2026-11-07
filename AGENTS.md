@@ -1,4 +1,5 @@
 <coding_guidelines>
+
 # Repository Guidelines
 
 Droi is a thin Client of its own agent process. Read `CONTEXT.md` for the vocabulary
@@ -76,27 +77,31 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 
 ## Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `go run ./apps/native` | Run the native app (1.x: needs `droid` on PATH; 2.0: builds and starts the Kernel) |
-| `pnpm test:kernel` | The Kernel's vitest suite, from the root (2.0; arrives with `apps/kernel`) |
-| `bun run apps/kernel/build.ts` | Compile the Kernel for every target into `apps/native/assets/kernel/` (2.0) |
-| `go test ./apps/native/...` | Go unit tests and the native app's view tests |
-| `go vet ./apps/native/...` | Also with `GOOS=windows` when the change touches Windows |
-| `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows) |
-| `pnpm test` | Run vitest once |
-| `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
-| `pnpm install:phone` | Build a signed Release of the Phone App and install it on the connected iPhone |
-| `pnpm typecheck` | TypeScript validation (root + Phone App + tests) |
-| `pnpm lint` / `pnpm lint:fix` | oxlint |
-| `pnpm format` / `pnpm format:check` | oxfmt |
-| `pnpm check` | format check + lint + typecheck |
+| Command                                                      | Description                                                                                                             |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `go run ./apps/native`                                       | Run the native app (1.x: needs `droid` on PATH; 2.0: builds and starts the Kernel)                                      |
+| `pnpm test:kernel`                                           | The Kernel's own suite, under Bun: the storage conformance, the protocol, conversations, crash recovery, images, search |
+| `pnpm build:kernel`                                          | Compile the Kernel for every target into `apps/native/assets/kernel/` (not committed)                                   |
+| `pnpm smoke:kernel <executable>`                             | Start a built Kernel, `read` a PNG, assert an image comes back (the cross-compile check)                                |
+| `pnpm typecheck:kernel` / `pnpm lint:kernel`                 | The Kernel's own type check and lint                                                                                    |
+| `go test ./apps/native/...`                                  | Go unit tests and the native app's view tests                                                                           |
+| `go vet ./apps/native/...`                                   | Also with `GOOS=windows` when the change touches Windows                                                                |
+| `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows)                                         |
+| `pnpm test`                                                  | Run vitest once                                                                                                         |
+| `pnpm test:e2e:phone`                                        | Export the Phone App for web and run Playwright against it (Fake Daemon)                                                |
+| `pnpm install:phone`                                         | Build a signed Release of the Phone App and install it on the connected iPhone                                          |
+| `pnpm typecheck`                                             | TypeScript validation (root + Phone App + tests)                                                                        |
+| `pnpm lint` / `pnpm lint:fix`                                | oxlint                                                                                                                  |
+| `pnpm format` / `pnpm format:check`                          | oxfmt                                                                                                                   |
+| `pnpm check`                                                 | format check + lint + typecheck                                                                                         |
 
 ## Validation Workflow
 
 Before committing run `pnpm check && pnpm test`, and for Kernel changes `pnpm test:kernel`
-(it runs Pi's storage and environment conformance suites, which must stay green: a facade that
-passes them is the only reason to trust `bun:sqlite` here). For Go changes
+(it runs Pi's storage conformance suite — 32 cases, 721 assertions — which must stay green: a facade
+that passes it is the only reason to trust `bun:sqlite` here). The environment suite is not run: four
+of its directory-reader cases fail on macOS against upstream 1.5.0 itself, and the kernel does not use
+`openDirReader`). For Go changes
 `"$(go env GOROOT)/bin/gofmt" -l apps/native`, `go vet` for darwin, windows and linux,
 and `go test` over `./apps/native/...` plus `go test -cpu 1 ./apps/native/internal/app`
 (as the PR workflow does: on one CPU a view test that races the Fake Daemon's answers fails
