@@ -401,9 +401,22 @@ an answer. It does not report where such a turn stopped, because it cannot: Pi 1
 submission to the run task that carried it, and a turn's entries carry a task rather than a submission, so any
 end the Kernel derived would belong to a different turn after one skipped round (shared/design §7). **A client
 bounds a turn by the status**: `[entry, answer]` for `done`, `[entry, the conversation's head]` while `placed`
-— one conversation runs one turn at a time, and later inputs either queue (no entry yet) or steer into the same
-run, which Pi treats as that same turn and answers with the same `done` record — nothing for `queued`, and for
-`unanswered` a client reports the reason rather than inventing a range.
+— one conversation runs one turn at a time, and later inputs either queue or steer into the same run, which Pi
+treats as that same turn and answers with the same `done` record — nothing for `queued`, and for `unanswered` a
+client reports the reason rather than inventing a range.
+
+Three qualifications a client that reads a range needs:
+
+- **A queued submission writes no model-visible entry**, but it is not silent: `conversation.submit` with a
+  `requestId` also appends the Kernel's own `droi.request` memo, in the same commit, for a submission that has
+  not been placed. Keep `droi.*` entries out of a turn, or attribute them by their payload — a memo carries
+  `{requestId, fingerprint, submissionId}`, so it belongs to the submission it names and to no other.
+- **Read the status again after the transcript.** `submission.get` and `conversation.entries` are separate
+  snapshots. Between them the run may end and a queued follow-up may already be answered, so a range read from
+  a `placed` record can cover the next turn. Re-read and bound by what it says now: `unanswered` means the
+  range is gone, `done` means it ends at `answer`.
+- **A `continue` places no entry**, even when it answers, so `[entry, …]` has no lower bound for it. Its
+  `answer` still names the reply; nothing else about its turn is bounded.
 
 | `submission.abort` | `{id, submissionId}` | `{status}` | `conversations` | yes |
 | `conversation.configure` | `{id, change}` | `{agent}` | `conversations` | yes |
