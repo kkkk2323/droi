@@ -1,45 +1,25 @@
 # Droi
 
-Droi is a desktop, iPhone and mobile-web front end for the Factory Droid coding agent. It does not run the agent itself; it presents and controls agent conversations that live in the Droid Daemon.
+Droi is a desktop, iPhone and mobile-web front end for a coding agent. Since 2.0 it runs that agent itself: the Kernel, Droi's own process built on Pi Durable (ADR 0038), and Droi presents and controls the Conversations the Kernel owns. Factory's models reach the Kernel through the Host's LLM Proxy (ADR 0039).
 
 ## Language
 
 ### Processes
 
-**Daemon**:
-The `droid daemon` process that owns every Session, its transcript, and all filesystem and Git operations. Droi never re-implements what the Daemon already does.
-_Avoid_: backend, server, engine, exec runner
+**Kernel**:
+The agent process Droi builds and ships (`apps/kernel`): TypeScript on Pi Durable with Droi's own coding tools, owning every Conversation, its entries, one SQLite database, and the file and process work of a turn. It is the Host's sidecar, one process for every Conversation on the computer, and Droi speaks to no other agent process.
+_Avoid_: daemon, backend, server, engine, exec runner
 
 **Host**:
-The process on a computer that starts and watches over the Daemon, runs the Gateway, supplies the Factory credential (normally the droid CLI's own login on that computer, an API key as fallback) and keeps that computer's Memory. The Desktop Shell embeds one; on a computer without a Desktop Shell (a headless Linux box) it runs on its own as `droi host`, the same Droi program without a window, kept alive by the system's service manager. Every computer a Client can reach has exactly one Host.
+The process on a computer that starts and watches over the Kernel, runs the Gateway, holds the Key Pool and the LLM Proxy every Factory request goes through, keeps that computer's Memory, its Automations and its Workstreams, and creates the Worktrees a Conversation runs in. The Desktop Shell embeds one; on a computer without a Desktop Shell (a headless Linux box) it runs on its own as `droi host`, the same Droi program without a window, kept alive by the system's service manager. Every computer a Client can reach has exactly one Host.
 _Avoid_: server, node, station, backend, agent runner
 
-**Factory Account**:
-A Factory login the Host can run its Daemon as. The first is the droid CLI's own, in `~/.factory`; each one added in Droi keeps its login in a folder of its own and shares the CLI's skills, droids, MCP Servers, settings and Sessions. The Daemon runs as one at a time, and switching restarts it.
-_Avoid_: profile, key, provider instance
-
-**Minimum Droid**:
-The oldest `droid` build a Droi release starts its Daemon from. The Host reads `droid --version` before every start; an older droid does not start, and the window offers to update it with `droid update`.
-_Avoid_: required droid, droid version (on its own)
-
-**Pinned Droid**:
-The one `droid` build a Droi release would be made for (ADR 0013); not built yet, deferred in favour of the Minimum Droid (ADR 0018). The Host would fetch it and start the Daemon from it, so the Daemon, the Host and every Client of that release speak the same protocol; the droid CLI the user runs from a terminal is a separate install and may be newer. When the Pinned Droid could not be fetched the Host would fall back to the computer's own `droid` and say so.
-_Avoid_: bundled droid, vendored CLI, droid version (on its own)
-
-**Droi's droid**:
-Factory's own `droid` build, downloaded unchanged by the Host into its data folder, which the Daemon runs with the Key Hook while the Key Pool is on (ADR 0033). Opt-in; the official droid stays the default. It does not update itself; Droi offers Factory's newest one, after checking that the Key Hook runs in it. It replaced the Patched Droid (ADR 0027), which changed the build by a Recipe.
-_Avoid_: Patched Droid, modified droid, custom droid, Pinned Droid
-
-**Key Hook**:
-The script Bun preloads into Droi's droid through `BUN_OPTIONS`: inside droid, each Factory LLM request gets the key the Key Pool's key file holds, and everything else keeps droid's own login. With no key it fails the request; it never falls back to the login. It checks in at each start, and a Daemon whose hook did not is stopped (ADR 0033).
-_Avoid_: patch, recipe, preload (on its own)
-
 **Key Pool**:
-The Factory API keys Droi keeps for the LLM requests of Droi's droid, one of them current. In Automatic mode Droi moves to another key when the current one runs out; in Manual mode it keeps the one chosen. A key's Factory plan (Pro, Plus, Max, Ultra) sets the size of its quota, and the Usage tab counts a Max key's percent as ten of a Pro key's. Kept in Droi's own data, apart from droid-proxy's.
-_Avoid_: key list, key rotation, accounts (a Factory Account is a login, not a key)
+The Factory API keys Droi keeps for the Factory requests of every Conversation, one of them current. In Automatic mode Droi moves to another key when the current one runs out; in Manual mode it keeps the one chosen. A key's Factory plan (Pro, Plus, Max, Ultra) sets the size of its quota, and the Usage tab counts a Max key's percent as ten of a Pro key's. Kept in Droi's own data, apart from droid-proxy's.
+_Avoid_: key list, key rotation, accounts, login
 
 **LLM Proxy**:
-The Key Pool's local proxy Droi's droid sends its Factory traffic through. It forwards requests unchanged, except that the reply at `/api/feature-flags` also names the models Settings lets use Script (ADR 0028), and it refuses an LLM request whose key is not in the Key Pool (ADR 0033). It records requests, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
+The Key Pool's local proxy the Kernel sends its Factory traffic through: pi-ai is pointed at it as a provider, and it stamps the current key on every request. It keeps droid's request shape, because Factory's endpoint expects it: droid's first line, Pi's own sentences rewritten, `413` answered by dropping old attachments, `403` explained, the key's organisation and region honoured (ADR 0039). It therefore no longer forwards requests unchanged, and it no longer rewrites `/api/feature-flags`. It records requests, their events and each key's quota for Settings → Usage; it also keeps prompt caches warm. Not the Gateway, and not droid-proxy.
 _Avoid_: dp, gateway, MITM
 
 **Desktop Shell**:
@@ -51,16 +31,16 @@ What names the app built from Droi's packages: its name, the short id of its fol
 _Avoid_: white label, skin, theme
 
 **Extension**:
-What an app built on Droi adds to it through `droiapp.Run`: MCP servers and hooks for the Runtime Overlay, words for the System Prompt Addition, subcommands, pages, Settings sections, a sign-in page of its own, and how tool calls and json-render elements show (ADR 0029). It plugs into seams Droi has; it does not patch Droi.
+What an app built on Droi adds to it through `droiapp.Run`'s seams or, since 2.0, by adding a Kernel extension: MCP servers, words for the System Prompt Addition, tools, subcommands, pages, Settings sections, and how tool calls and json-render elements show (ADRs 0029, 0038). It plugs into seams Droi has; it does not patch Droi.
 _Avoid_: plugin, add-on, module
 **Gateway**:
-The part of the Host that lets a Client reach the Daemon. It checks the Pairing Token and supplies the Factory credential (the Host's Factory login token, or an API key as fallback) so it never leaves the computer. It also adds the Host's System Prompt Addition to every Session a Client starts, creates and trashes Scratch Workspaces, and answers a Client's requests to restart the Daemon or update the Host.
+The part of the Host that lets a Client reach the Kernel. It checks the Pairing Token or the Local Token and passes the Kernel's protocol through without touching a frame; the credential is not its business any more (ADR 0038). It creates and trashes Scratch Workspaces, and answers a Client's requests to restart the Kernel or update the Host.
 _Avoid_: proxy, API server, Hono server, web server
 
 ### Clients
 
 **Client**:
-A Droi user interface. Every Client speaks only the Daemon protocol, reaches the Daemon through a Host's Gateway, and keeps no conversation state of its own. There are two: the Desktop Shell window and the Phone App.
+A Droi user interface. Every Client speaks only the Kernel's protocol, reaches the Kernel through a Host's Gateway, and keeps no conversation state of its own. There are two: the Desktop Shell window and the Phone App.
 _Avoid_: renderer, frontend, web UI
 
 **Local Client**:
@@ -94,114 +74,118 @@ _Avoid_: tunnel, proxy, Ponte, droid's Remote Control (Factory's relay, which Dr
 The random id a Host is addressed by on a Relay, kept in its settings. Only its hash reaches the Relay's memory; it is not a secret that lets anyone in, which the Pairing Token is.
 _Avoid_: connect code, routing token
 
-**Runtime Overlay**:
-The settings the Host hands its Daemon at start, which apply to that Daemon alone and never reach the droid CLI's own files.
-_Avoid_: settings override, daemon config, `--settings` file
-
 ### Memory
 
 **Memory**:
-What Droi keeps on a computer of the user's earlier Sessions for Droid to draw on in later ones: the Memory Summary, the Session Summaries and the Memory Notes, in one folder. The Daemon knows nothing of it; the Host keeps it, and each Host keeps its own.
+What Droi keeps on a computer of the user's earlier Sessions for the agent to draw on in later ones: the Memory Summary, the Session Summaries and the Memory Notes, in one folder. The Kernel knows nothing of it; the Host keeps it, and each Host keeps its own.
 _Avoid_: context, knowledge base, history, Project Memory, Global Memory
 
 **Memory Summary**:
-The short document every Session on Droi's Daemon starts with: who the user is, how they like to work, and pointers to the Session Summaries of recent work.
+The short document every Conversation on a computer with Memory starts with: who the user is, how they like to work, and pointers to the Session Summaries of recent work.
 _Avoid_: memory file, profile, MEMORY.md
 
 **Session Summary**:
-The record of one earlier Session, written from its transcript once the Session has been left for a while.
+The record of one earlier Session, written from its entries once the Session has been left for a while.
 _Avoid_: rollout summary, recap, extraction
 
 **Memory Note**:
-What the user explicitly asked Droid to remember, forget or correct, kept as they asked it until the Memory Summary takes it in.
+What the user explicitly asked the agent to remember, forget or correct, kept as they asked it until the Memory Summary takes it in.
 _Avoid_: memory entry, fact, correction
 
-**Memory Server**:
-The MCP Server Droi carries and attaches only to its own Daemon, through which Droid reads Memory and saves Memory Notes. It is not one of the user's MCP Servers: the Memory setting is its only switch.
-_Avoid_: memory MCP, memory plugin, memory tool (a tool is one of the things it offers)
+**Memory Tools**:
+The tools and the prompt section the Kernel offers when Memory is on: `memory_search`, `memory_read`, `memory_list` and `memory_note`, with the Memory Summary as a section of every request. They are not an MCP Server and nothing is dialled: the Memory setting is their only switch (ADR 0038).
+_Avoid_: memory MCP, memory plugin, memory server
 
 **Memory Session**:
-A Session the Host opens on the Daemon for Memory work of its own, writing a Session Summary or updating the Memory Summary, with no user in it. It carries the `droi.memory` tag, which keeps it out of every Client's session list, and is archived when its turn ends.
+A Conversation the Host opens in the Kernel for Memory work of its own, writing a Session Summary or updating the Memory Summary, with no user in it. Its kind keeps it out of every Client's session list, it has a `submit_result` tool, and it is archived when its turn ends.
 _Avoid_: hidden session, background session, consolidation job
 
 ### Testing
 
-**Fake Daemon**:
-A scripted stand-in for the Daemon used by end-to-end tests. It speaks the Daemon protocol but replays a Scenario instead of running an agent.
-_Avoid_: mock server, stub, recorder
+**Fake Kernel**:
+The real Kernel, started by a test with a scripted model in place of a provider. It speaks the Kernel's protocol, so a test needs no Factory key, and it plays a Scenario instead of running an agent.
+_Avoid_: mock server, stub, recorder, Fake Daemon
 
 **Scenario**:
-The per-test script that tells the Fake Daemon what to answer and when to emit events.
+The per-test script that tells the Fake Kernel's model what to answer and when.
 _Avoid_: fixture data, recording, replay log
 
 ### Conversations
 
 **Session**:
-One conversation with the agent, owned and persisted by the Daemon and identified by the Daemon's session id.
+One conversation with the agent, owned and persisted by the Kernel and identified by its conversation id. It is what a Client shows, and what the Kernel's protocol calls a Conversation.
 _Avoid_: chat, thread, worker, droi session file
 
-**Session Times**:
-What the Host keeps of each Session on its computer apart from the Daemon: when the user last sent it a message from a Client, when its last turn ended, and when a Client last showed it. Every Client orders its Session list by them and marks Sessions Unread by them.
-_Avoid_: updatedAt, last activity, timestamps
+**Conversation**:
+What the Kernel and its protocol call a Session: its entries, its runs and its id. Droi's Clients and screens still say Session, and both words name the same thing (ADR 0038).
+_Avoid_: chat, thread
+
+**Entry**:
+One entry of a Conversation: Pi's six kinds (`pi.user`, `pi.assistant`, `pi.system`, `pi.tool-result`, `pi.reset`, `pi.compaction`) and Droi's five (`droi.approval`, `droi.ask`, `droi.subagent`, `droi.process`, `droi.note`). Clients render and page entries; what a model gets is the entries that carry a model, which is why Droi's own five carry none.
+_Avoid_: message, block, transcript line
+
+**Run**:
+One run of the model in a Conversation: what `conversation.busy` carries and what a Client shows as working. A Conversation is idle between runs.
+_Avoid_: turn (the user's word, not the Kernel's), job
+
+**Task**:
+Work the Kernel runs beside a Conversation's run: a compaction, a subagent, or work queued after the run. `task.changed` reports it and `task.abort` stops it.
+_Avoid_: job, background task (a background process is a `droi.process` entry)
+
+**Submission**:
+One input a Client sends a Conversation: what the user typed, a steer into a run that is working, or a continue. The Kernel answers with a `submissionId`, reports its status, and `submission.abort` takes back what has not settled.
+_Avoid_: message, request, prompt
 
 **Unread**:
-A Session whose last turn ended after any Client of its computer last showed it. Showing it on one Client reads it on all of them.
+A Session whose last run ended after any Client of its computer last showed it. Showing it on one Client reads it on all of them.
 _Avoid_: new, unseen, notification
 
 **Time View**:
 The Session list as one list by when each Session was last used, under Pinned, Right now (working or Unread), Today, Yesterday and Earlier, in place of the groups by Workspace. The window's Sort menu chooses it, and the Phone App follows the window.
 _Avoid_: recent view, Recents (that is the group of Scratch Workspace Sessions), flat list
 
-**Draft Session**:
-A Session the New session page opens as soon as it knows the Workspace, so the composer can offer that Workspace's skills and commands before anything is sent. It carries the `droi.draft` tag, which keeps it out of every Client's session list, until the first send takes it over; an abandoned draft is closed, and the Daemon deletes it.
-_Avoid_: pre-init session, placeholder session
-
 **Subagent**:
-A Session the Daemon starts for a Task tool call; the Daemon lists it with its calling Session and tool call (`callingSessionId`, `callingToolUseId`). Clients keep it out of the session list and reach it from the Session that called it: the Task call's card, the header's subagent menu, and the trail back.
+A Conversation the Kernel starts for a subagent task, which the parent's `droi.subagent` entry names along with the tool call that started it. Clients keep it out of the session list and reach it from the Session that called it: the Task call's card, the header's subagent menu, and the trail back.
 _Avoid_: child session, sub-session, task session
 
 **Session Defaults**:
-What every new Session on a computer starts with: model, reasoning, interaction mode, autonomy, spec mode, compaction and subagent models. The Daemon keeps them in `~/.factory/settings.json`, shared with the droid CLI and the Factory App; every Client edits them through the Daemon.
+What every new Conversation on a computer starts with: model, reasoning, autonomy, plan mode, compaction and subagent models. Droi keeps them in its own settings, in the Kernel's agent shape, and every Client edits them through the Kernel (ADR 0038).
 _Avoid_: preferences, global settings, default settings (on their own)
 
 **System Prompt Addition**:
-Text the Host keeps and the Gateway appends to Droid's own system prompt when a Session starts, whichever Client starts it. It never replaces Droid's prompt, and a Session keeps the one it started with.
+Text the Host keeps and the Kernel adds to its own prompt as a section when a Conversation starts, whichever Client starts it. It never replaces the Kernel's prompt, and a Conversation keeps the one it started with.
 _Avoid_: system prompt override, custom instructions
 
 **Custom Model**:
-A model droid runs that is not Factory's, from `customModels` in `~/.factory/settings.json`: a base URL, an API key and a provider dialect, which is droid's own BYOK (bring your own key). A Session picks one like any other model, and it has no Factory usage multiplier. Clients show them; only the user and the Host add them.
+A model the Kernel runs that is not Factory's: a pi-ai provider with its own base URL, key and dialect, kept in Droi's settings rather than in droid's. A Session picks one like any other model, and it has no Factory usage multiplier. Clients show them; only the user and the Host add them.
 _Avoid_: BYOK model, external model, third-party model (on its own)
 
 **Magpie**:
-A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it and sends it no request of its own apart from the model list: the Host reads that list and hands the models to its Daemon as Custom Models in the Runtime Overlay. The droid CLI's own settings and the CLI itself do not see them.
+A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it. It reached the Daemon as Custom Models in the Runtime Overlay, which 2.0 removes; whether and how its models reach the Kernel is undecided (ADR 0038).
 _Avoid_: proxy, provider, model router (a Router is Factory's), gateway (that is Droi's own)
 
 **Skill**:
-A `SKILL.md` folder the Daemon offers Droid, and the user through "/": built into the droid CLI, personal (`~/.factory/skills`), or the Workspace's (`.factory/skills`). The Daemon lists a Session's skills and writes the switches: off across all projects (`~/.factory/settings.json`) or off for one Workspace (`.factory/settings.json`); the organization's switches are read-only. A personal skill is managed by its files. Droi gives each skill one switch: a built-in one writes across all projects, the Workspace's writes for that Workspace.
+A `SKILL.md` folder the Kernel offers the agent, and the user through "/": built into the Kernel, personal (`~/.droi/skills`, copied once from `~/.factory/skills`), or the Workspace's (`.factory/skills`, read where it lies). The Kernel lists a Session's skills and keeps the switches: off across all projects, or off for one Workspace. A personal skill is managed by its files. Droi gives each skill one switch: a built-in one switches it for every project, the Workspace's switches it there.
 _Avoid_: plugin, extension, prompt template
 
 **MCP Server**:
-A tool server the Daemon connects a Session to, from the user's `~/.factory/mcp.json`, the Workspace's `.factory/mcp.json` or the organization's policy. The Daemon reports each one's connection and tools, switches them, adds and removes the user's own, and runs a sign-in whose page a Client opens and whose callback the Daemon takes on the computer.
+A tool server the Kernel connects a Conversation to, from Droi's `~/.droi/mcp.json` (copied once from `~/.factory/mcp.json`), the Workspace's `.factory/mcp.json` or the organization's policy. The Kernel reports each one's connection and tools, switches them, adds and removes the user's own, and runs a sign-in whose page a Client opens and whose callback the Kernel takes on the computer.
 _Avoid_: connector (Factory's hosted integrations are something else), tool, integration
 
 **Automation**:
-A prompt Droi's Host runs on a schedule on its computer, each run in a new Session (ADR 0035). It is kept in Droi's own data, out of Factory's sync; the window, the Gateway and Droid's tools create, edit, pause and run it.
+A prompt Droi's Host runs on a schedule on its computer, each run in a new Session unless the Automation targets an existing one (ADR 0035, ADR 0038). It is kept in Droi's own data, out of Factory's sync; the window, the Gateway and the agent's own tools create, edit, pause and run it.
 _Avoid_: cron, job, scheduled task, workflow
 
 **Factory Automation**:
-An Automation the Daemon keeps in `~/.factory/automations/<id>/` and syncs to Factory, as the droid CLI and the Factory App make them. Droi lists the local ones and moves one into its own Automations on request; it no longer edits them.
+An Automation kept in `~/.factory/automations/<id>/` and synced to Factory, as the droid CLI and the Factory App make them. Nothing in Droi runs one any more (ADR 0038): Droi lists the local ones and moves one into its own Automations on request, and no longer edits them.
 _Avoid_: Automation (on its own), local automation, Daemon automation
 
 **Automation Run**:
-One run of an Automation: a Session the Host starts with the `droi.automation` tag and closes when its turn ends. Clients list it on the Automations page, not with the other Sessions; a Factory Automation's runs (the Daemon's, tagged `automation`) are listed on that Factory Automation's page.
+One run of an Automation: a Session the Host starts and closes when its turn ends, or, when the Automation targets an existing Session, the input it sends there. Clients list a run in its own Session on the Automations page, not with the other Sessions; a Factory Automation's runs are listed on that Factory Automation's page.
 _Avoid_: job run, execution, automation session
 
-**Loop**:
-A prompt the Daemon sends to the same Session on a schedule, as droid's `/loop` and Loop tool make it (a cron of kind `session_prompt`). It fires only while the Session has a worker; Droi shows a Session's Loops above its composer and keeps that worker running for them.
-_Avoid_: cron, scheduled loop, Automation (that one starts a new Session each run)
-
 **Workstream**:
-A long goal the user hands to an Orchestrator, which splits it among Workstream Agents (ADR 0036). It is Droi's own: the Host starts its Sessions, keeps its record and carries its tools. Archiving it archives its Sessions and keeps its Shared Folder.
+A long goal the user hands to an Orchestrator, which splits it among Workstream Agents (ADR 0036). It is Droi's own: the Host starts its Sessions, keeps its record, and its tools are the Kernel's extensions. Archiving it archives its Sessions and keeps its Shared Folder.
 _Avoid_: mission, project, swarm, team
 
 **Orchestrator**:
@@ -209,7 +193,7 @@ The Session that leads a Workstream: it plans, starts Workstream Agents, sends t
 _Avoid_: lead, manager, parent session
 
 **Workstream Agent**:
-A Session an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream, as a tab of the Orchestrator's page and a row of its panel. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
+A Conversation an Orchestrator starts for one area of a Workstream's work, in a Worktree of its own when the Workspace is a git repository. It reports back to its Orchestrator. Clients keep it out of the session list and reach it from its Workstream, as a tab of the Orchestrator's page and a row of its panel. Every agent of a Workstream runs on the Workstream's agent model, unless the user changes the model in that agent's own Session.
 _Avoid_: worker, subagent (that is a Task call's Session), child session
 
 **Shared Folder**:
@@ -221,18 +205,60 @@ The directory on the computer that a Session operates in.
 _Avoid_: project, project dir, cwd, repo
 
 **Scratch Workspace**:
-A Workspace the Host creates for a Session started without choosing one, for work that belongs to no project. The Sessions that continue it after a compaction share it; archiving the conversation moves it to the Trash. Clients list these Sessions together, under Recents.
-_Avoid_: chat, temp dir, draft (a Draft Session is something else)
+A Workspace the Host creates for a Session started without choosing one, for work that belongs to no project. Archiving the conversation moves it to the Trash. Clients list these Sessions together, under Recents.
+_Avoid_: chat, temp dir, draft
 
 **Worktree**:
-A git worktree the Daemon creates for a Session started with "New worktree": its own directory and a new `droid/<slug>` branch, cut from a base branch of the repository. It is the Session's Workspace, and Clients list the Session under the repository it came from. An ephemeral Worktree is deleted when its Session is archived (or when the Daemon's limit of ephemeral Worktrees is passed); a persistent one stays until the user deletes it in Settings → Worktrees. The Daemon creates and deletes Worktrees; Clients only ask.
+A git worktree the Host creates for a Session started with "New worktree": its own directory and a new `droid/<slug>` branch, cut from a base branch of the repository. It is the Session's Workspace, and Clients list the Session under the repository it came from. An ephemeral Worktree is deleted when its Session is archived (or when the Daemon's limit of ephemeral Worktrees is passed); a persistent one stays until the user deletes it in Settings → Worktrees. The Host creates and deletes Worktrees, since git stays in Go (ADR 0038); Clients only ask.
 _Avoid_: branch (on its own), sandbox, checkout
 
-**Prompt**:
-A question the Daemon asks the human mid-turn: a permission request for a tool call, or an ask-user questionnaire. The Daemon sends it to every Client attached to the Session; the first answer wins and the Daemon then tells every Client the Prompt is resolved.
-_Avoid_: confirmation, approval dialog, permission request (when the ask-user case is included)
+**Approval**:
+A tool call the Kernel stops to ask the human about. The tool writes a `droi.approval` entry, every attached Client gets `approval.requested`, and the first `approval.respond` wins with one of four outcomes: allow once, always allow this tool, always allow this file, or cancel (ADR 0040).
+_Avoid_: confirmation, approval dialog, permission prompt, Prompt
 
-**Queued Question**:
-An ask-user Prompt droid 1.1 asks without stopping the agent (AskUser with `blocking: false`): the agent works on, and the answers, or the dismissal, reach it at a later turn as a record message. Clients show it above the composer, which stays usable, and count it as waiting for the human only once the agent rests.
-_Avoid_: non-blocking prompt, async question, deferred question
+**Question**:
+An `ask_user` tool call: a questionnaire the Kernel puts to the human. A blocking one waits like an Approval; a queued one (`blocking: false`) lets the run go on, shows above the composer, and takes its answers as the next input (ADR 0040).
+_Avoid_: AskUser prompt, non-blocking prompt, async question, deferred question, Prompt
 
+**Autonomy**:
+The four levels that decide which tool calls the Kernel stops for: `ask`, `edits`, `safe` and `all`, in place of droid's off, low, medium and high. The Host keeps the table of allowances an answer added, so "always allow" holds across Conversations and is the same setting Settings → Autonomy shows.
+_Avoid_: permission mode, approval level, confirmation mode
+
+**Plan Mode**:
+A mode a Conversation can be in where the Kernel offers only the reading tools and `submit_plan`: the agent writes a plan instead of making a change, and the user then continues in the same context or starts a new Conversation. It replaces spec mode (ADR 0040).
+_Avoid_: spec mode, plan-only session, draft mode
+
+## Retired in 2.0
+
+These things from 1.x have no place any more. They stay here so a reader who meets one in an older ADR, a commit or a Settings page can map it to what replaced it (ADR 0038, ADR 0039).
+
+**Daemon**:
+`droid daemon`, Factory's agent process that Droi drove over its protocol. The Kernel replaces it, and there is no second one.
+_Avoid_: using the word for the Kernel
+
+**Factory Account**:
+A Factory login Droi kept and gave a Daemon of its own, under `FACTORY_HOME_OVERRIDE`. What was several accounts is several keys in the Key Pool.
+
+**Minimum Droid**, **Pinned Droid**, **Droi's droid**, **Key Hook**:
+The `droid` builds Droi chose or checked, and the preload that picked their LLM key. Nothing selects a droid build now: the Kernel comes with the app and resolves its own key through the LLM Proxy.
+
+**Runtime Overlay**:
+The `--settings` file the Host generated for its Daemon at start. The Kernel takes its configuration as start arguments and as extensions.
+
+**Draft Session**:
+A Session the New session page opened before the user had said anything, so the composer could list its Workspace's skills. Skills and commands are files, and `harness.info` lists them before a Conversation exists.
+
+**Session Times**:
+The Host's own record of when the user wrote, when a turn ended, and when a Client showed a Session. The Kernel derives the first two from entry timestamps and keeps one `viewedAt` column; Clients still order by them and still mark Sessions Unread.
+
+**Loop**:
+A prompt the Daemon sent back into the same Session on a schedule. It is an Automation with `target: existing` now, run by the Host.
+
+**Prompt**, **Queued Question**:
+A mid-turn question from the Daemon, whether a permission request or a questionnaire. Split into Approval and Question, which are tool calls the Kernel waits on.
+
+**Memory Server**:
+The MCP Server Droi carried for Memory. The Memory Tools replace it, in the Kernel's own process.
+
+**Script**:
+droid's tool that wrote and ran a program of tool calls, and the model whitelist in `/api/feature-flags` that decided which models could use it. codemode is the Kernel's extension, on by default, and its nested calls are listed inside the outer card.

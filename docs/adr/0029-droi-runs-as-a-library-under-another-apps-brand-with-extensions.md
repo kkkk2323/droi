@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Droi runs as a library under another app's brand, with extensions
+
+_An Extension still plugs into seams Droi leaves; the Runtime Overlay it used to contribute MCP servers and hooks to is gone (ADR 0038), and it contributes Kernel extensions instead._
 
 _Partly superseded by ADR 0033: a mirror holds Factory's droid builds and `LATEST` only, for Droi's droid; there are no recipes, and `Options.RecipesURL` is ignored._
 

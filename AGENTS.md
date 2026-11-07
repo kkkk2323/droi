@@ -1,17 +1,27 @@
 <coding_guidelines>
 # Repository Guidelines
 
-Droi is a thin Client of the Droid Daemon. Read `CONTEXT.md` for the vocabulary
-(Daemon, Desktop Shell, Gateway, Client, Pairing Token, Fake Daemon, ...) and
+Droi is a thin Client of its own agent process. Read `CONTEXT.md` for the vocabulary
+(Kernel, Host, Gateway, Client, Pairing Token, Conversation, Approval, ...) and
 `docs/adr/` for the decisions behind the layout. Use those names in code,
 comments, commits and issues.
 
+**Droi 2.0 replaces the Droid Daemon with the Kernel** (ADR 0038): a TypeScript sidecar in
+`apps/kernel` built on `@earendil-works/pi-durable` 1.5.0, with the coding tools ported from
+`@earendil-works/pi-coding-agent` 1.5.0. Until that work lands, the 1.x code below still
+starts `droid daemon` and the ADRs about it still describe what the code does; where this file
+says a thing is being removed, the ADR is the reason. The work branches off `feat/pi-kernel`
+and merges there, never into `main`.
+
 ## What is maintained
 
-Only two apps are maintained: the native app (`apps/native`, Go on MyGo, macOS and
+Two apps are maintained: the native app (`apps/native`, Go on MyGo, macOS and
 Windows) and the Phone App (`apps/mobile`), with what they use: `packages/daemon-layer` and
 `tests/mobile`. The Go SDK and the Fake Daemon they use live in their own repository,
 [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) (ADR 0021).
+
+A third is being added for 2.0: the Kernel (`apps/kernel`, TypeScript on Bun, macOS, Windows and
+Linux). It does not exist yet; ADR 0038 is the decision behind it.
 
 The Electron Desktop Shell and the web Client (`apps/desktop`) and their suites
 (`tests/web`, `tests/electron`, `tests/live`) were removed after 1.59.0; the git history
@@ -22,12 +32,21 @@ The release version lives in `apps/native/mygo.json`.
 
 ```
 apps/
+├── kernel/     # 2.0: the Kernel, Droi's own agent process (TypeScript on Bun, ADR 0038)
+│   ├── src/protocol/    # JSON-RPC over WebSocket: 22 methods, 9 notifications
+│   ├── src/session/     # Conversations, the attach table, watch → conversation.view
+│   ├── src/extensions/  # coding tools, skills, MCP, approval, ask-user, plan, memory, codemode
+│   ├── src/storage/     # the bun:sqlite facade (one connection, one database)
+│   ├── protocol/fixtures/  # the JSON examples both sides test against
+│   └── build.ts         # the four bun build --compile targets
 ├── native/     # The desktop app: Go on MyGo (macOS, Windows); see apps/native/README.md
 │   ├── internal/app/   # The window: views and their tests against the Fake Daemon
-│   ├── pkg/host/       # Host: settings, Daemon supervisor, sign-in, CLI login, Runtime Overlay
+│   ├── pkg/kernel/     # 2.0: the Go client for the Kernel's protocol
+│   ├── pkg/host/       # Host: settings, the Kernel's supervisor, Key Pool, LLM Proxy, Memory,
+│   │                   # Automations, Workstreams
 │   ├── internal/...    # memorywork (Memory), computer, updates, slash, ...
-│   └── pkg/...         # Public, for WeCom Droi (ADR 0022): host, gateway (Remote Access),
-│                       # sessionview (a Session's transcript, Prompts, plain composer),
+│   └── pkg/...         # Public, for WeCom Droi (ADR 0022): host, gateway (Remote Access); and
+│                       # sessionview (a Session's entries, Approvals, plain composer),
 │                       # settingsview (Settings' Appearance, Session defaults, model picker),
 │                       # l10n, kit, theme, transcript, ...; and for apps built on Droi
 │                       # (ADR 0029): droiapp (the app), brand, extension, mcpserver, dashkit
@@ -36,7 +55,8 @@ apps/
                 # *.web.ts stand-ins for the tests); DEVICE-CHECKLIST.md
 packages/
 └── daemon-layer/  # @droi/daemon-layer: the Phone App's daemon layer (connection, Session
-                   # state hooks, Gateway contract, local preferences); no DOM or Electron
+                   # state hooks, Gateway contract, local preferences); no DOM or Electron;
+                   # src/kernel/ is its client for the Kernel's protocol (2.0, ADR 0038)
 tests/          # @droi/tests: the Playwright suites, one config per folder
 └── mobile/        # The Phone App's web build against the Fake Daemon
 scripts/        # install:phone, release.sh, measure-cpu.py
@@ -52,7 +72,9 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 
 | Command | Description |
 |---------|-------------|
-| `go run ./apps/native` | Run the native app (needs `droid` on PATH) |
+| `go run ./apps/native` | Run the native app (1.x: needs `droid` on PATH; 2.0: builds and starts the Kernel) |
+| `pnpm test:kernel` | The Kernel's vitest suite, from the root (2.0; arrives with `apps/kernel`) |
+| `bun run apps/kernel/build.ts` | Compile the Kernel for every target into `apps/native/assets/kernel/` (2.0) |
 | `go test ./apps/native/...` | Go unit tests and the native app's view tests |
 | `go vet ./apps/native/...` | Also with `GOOS=windows` when the change touches Windows |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows) |
@@ -66,7 +88,9 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 
 ## Validation Workflow
 
-Before committing run `pnpm check && pnpm test`, and for Go changes
+Before committing run `pnpm check && pnpm test`, and for Kernel changes `pnpm test:kernel`
+(it runs Pi's storage and environment conformance suites, which must stay green: a facade that
+passes them is the only reason to trust `bun:sqlite` here). For Go changes
 `"$(go env GOROOT)/bin/gofmt" -l apps/native`, `go vet` for darwin, windows and linux,
 and `go test` over `./apps/native/...` plus `go test -cpu 1 ./apps/native/internal/app`
 (as the PR workflow does: on one CPU a view test that races the Fake Daemon's answers fails
@@ -78,6 +102,10 @@ workflow rejects it (`go test ./apps/native` checks this too). Run
 changed. For what only an iPhone can show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
 
 ## droid-sdk-go
+
+_2.0 replaces the Go SDK's client with `apps/native/pkg/kernel` and the Fake Daemon with a real
+Kernel started by a test (ADR 0038). The repository, its tag pins and its other consumer stand;
+what Droi no longer needs from it is the Daemon protocol._
 
 The Go SDK (`github.com/kkkk2323/droid-sdk-go`) and the Fake Daemon
 (`@droi/fake-daemon`, which the Go SDK's `fakedaemon` package embeds) come from
@@ -135,15 +163,21 @@ installed types before using an Expo module, and add Expo packages with
 
 ## Factory login
 
-The native app hands its sign-in to the `droid` CLI (ADR 0015, `apps/native/pkg/host/cli_login.go`):
-the two share one login, which the Daemon runs as. (The removed Electron Desktop Shell
-used the CLI's device flow instead, ADR 0005.) More Factory accounts can be added in Settings:
-each has its own folder, which the Daemon gets as `FACTORY_HOME_OVERRIDE`, linked to the CLI's
-skills, settings and sessions (ADR 0017, `apps/native/pkg/host/accounts.go`).
+**2.0 has no sign-in and no Factory Accounts** (ADR 0039). A user pastes an `fk-` key in
+Settings → Key Pool, and the Host's LLM Proxy stamps it on each Factory request; there is no device
+flow, no `~/.factory` credential store to share, and no per-account folder. What the 1.x code does
+today, and what 2.0 deletes, is: the native app hands its sign-in to the `droid` CLI (ADR 0015,
+`apps/native/pkg/host/cli_login.go`), the two share one login which the Daemon runs as, and more
+Factory accounts keep a folder of their own given to the Daemon as `FACTORY_HOME_OVERRIDE`
+(ADR 0017, `apps/native/pkg/host/accounts.go`).
 
 ## Factory API base URL
 
-The native app passes `FACTORY_API_BASE_URL` to the Daemon when Settings has a
-"Factory API base URL" (or its own environment sets it). Point it at droid-proxy
-(`dp status` → baseURL) to route the Daemon's Factory traffic through the proxy.
+In 1.x the native app passes `FACTORY_API_BASE_URL` to the Daemon when Settings has a
+"Factory API base URL" (or its own environment sets it); pointed at droid-proxy (`dp status` →
+baseURL) it routes the Daemon's Factory traffic through the proxy.
+
+In 2.0 the Kernel's Factory traffic always goes through the Host's own LLM Proxy, whose address
+is what the Kernel's Factory provider is pointed at (ADR 0039). The setting keeps its meaning for
+the upstream the LLM Proxy talks to, and droid-proxy stays a way to send that upstream elsewhere.
 </coding_guidelines>

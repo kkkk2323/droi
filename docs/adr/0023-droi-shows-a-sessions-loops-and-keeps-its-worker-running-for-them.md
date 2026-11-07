@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # Droi shows a Session's Loops and keeps its worker running for them
+
+_A Loop is an Automation with `target: existing` (ADR 0035, amended by ADR 0038), run by the Host's scheduler, so no Session worker is kept loaded for one; `daemon.list_crons` and `cron.state_changed` go._
 
 A Loop (droid's `/loop`, or the Loop tool Droid calls) is a cron the Daemon keeps in `~/.factory/crons`: a prompt sent to the same Session every interval, a cron expression read in UTC. Droi did not show them, so a Loop Droid made in a Droi Session ran unseen, and stopped unseen.
 

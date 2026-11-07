@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Client talks to the Droid Daemon; the Desktop Shell is a thin host with an auth Gateway
+
+_A Client still reaches a Host only through its Gateway, but what it speaks to is the Kernel (`conversation.*`, ADR 0038), and the Gateway neither supplies the credential nor rewrites frames any more._
 
 Droi previously carried its own JSON-RPC-over-stdio layer, session storage, Git backend, HTTP API and ~90 Electron IPC methods to drive the `droid` CLI. `droid daemon` plus the browser-safe `@factory/droid-sdk` root entrypoint now provide all of that behind one authenticated WebSocket protocol (sessions, transcripts, search, git, workspace, terminals, skills, MCP). We decided the Client connects to the Daemon with `connectToDaemon()` in both the desktop window and a phone browser, and the Desktop Shell shrinks to: spawn the Daemon, open a window, and run a Gateway.
 

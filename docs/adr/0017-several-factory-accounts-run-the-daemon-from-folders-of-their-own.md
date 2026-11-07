@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0039
 ---
 
 # Several Factory accounts run the Daemon from folders of their own
+
+_There are no Factory Accounts and no `FACTORY_HOME_OVERRIDE` folders: what was several accounts is several keys in the Key Pool, and a Conversation belongs to the computer, not to a login._
 
 Some people have more than one Factory account (a personal one and a work one, or one per organization) and want to move between them without signing out and in again. The Daemon runs as one login, which it reads from droid's credential store in `~/.factory` (ADR 0015), so the Host can only offer another account by starting the Daemon on another credential store.
 

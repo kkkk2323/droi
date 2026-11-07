@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0039
 ---
 
 # Droi runs Factory's own droid with a preloaded key hook
+
+_There is no Key Hook and no Droi's droid: pi-ai resolves each request's key and the LLM Proxy stamps it (ADR 0039). The Key Pool and its file stand._
 
 ADR 0027's Patched Droid changed one bundled module of Factory's build by a Recipe. Every droid
 release needed a new Recipe, a scheduled workflow to make and sign it, an ad-hoc signature on macOS,

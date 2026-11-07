@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Every attached Client sees the turn and may answer prompts; first answer wins
+
+_What the Daemon was observed to do stays the record; permissions and questions are now tools that wait inside the Kernel, answered with `approval.respond` and `ask.respond` (ADR 0040), and every attached Client still sees and races to answer them._
 
 When a Session is open in the Desktop Shell window and on a phone at the same time, both Clients are attached to the same Daemon Session over two connections. We needed to know what the Daemon actually does before designing the Client's prompt UI. The spike in [`0003-spike/`](./0003-spike/) ran a real `droid daemon` (0.223.0, protocol 1.217.0) behind a logging WebSocket proxy with three `connectToDaemon()` connections from `@factory/droid-sdk@0.9.1` on one Session: A created it, B resumed it before the turn, C resumed it mid-turn. A streamed a prompt that ran a shell command (autonomy off, so it asked permission) and then used `ask_user`. Handlers on every connection logged and answered with staggered delays. [`events.log`](./0003-spike/events.txt) is the summarised timeline; [`raw.log`](./0003-spike/raw.txt) is every frame (API key redacted).
 

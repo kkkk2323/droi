@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # E2E tests run the real Client against a scripted Fake Daemon
+
+_The Fake Daemon gives way to a real Kernel started with a scripted model (`fakekernel`); the suites, their scenarios and the rule that a test needs no Factory key stand._
 
 Because the Client's only external dependency is a WebSocket URL (ADR 0001), end-to-end tests do not need a real `droid daemon` or a Factory API key. The primary Playwright suite launches the Client in Chromium against a Fake Daemon: a small `ws` server that implements the subset of the daemon JSON-RPC protocol the Client uses, driven by a per-test scenario, and validates every message it sends with the zod schemas exported by `@factory/droid-sdk` (result and notification schemas; the Daemon request envelopes are not exported, so inbound frames get an envelope check and rely on the SDK, which built them, for their params; see ADR 0004). Schema drift after an SDK upgrade therefore fails the suite instead of surfacing in production. The Fake Daemon also plays the Gateway's part: it checks the Pairing Token at upgrade, so pairing is tested end to end as well.
 

@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Droi runs its own Automations from the Host, out of Factory's sync
+
+_An Automation gains a target, so one can also run in an existing Conversation, which is what a Loop becomes. The Host's scheduler, its own data and the move out of Factory's sync stand._
 
 _Supersedes ADR 0016: the Automations page, its local times and keeping runs out of the session list stand; the Daemon's Automations and the calls that manage them go._
 
