@@ -253,7 +253,8 @@ func geminiBody(body []byte) ([]byte, bool) {
 	raw, has := m["systemInstruction"]
 	if has && !isJSONNull(raw) {
 		if text, isString := rawStringOK(raw); isString {
-			parts = []json.RawMessage{textPart(text)}
+			// A string instruction is one text part, as the reference makes it.
+			parts = []json.RawMessage{geminiPart(text)}
 		} else {
 			si, isObject := jsonObject(raw)
 			if !isObject {
@@ -292,22 +293,14 @@ func geminiBody(body []byte) ([]byte, bool) {
 	return marshalObject(m, body)
 }
 
-// opensWithDroidLine reports a system instruction whose first part is the one
-// text part that opens with the line.
+// opensWithDroidLine reports a system instruction whose first part opens with
+// the line; as in the reference, such an instruction is left as it came.
 func opensWithDroidLine(parts []json.RawMessage) bool {
 	if len(parts) == 0 {
 		return false
 	}
 	first, isText := pureText(parts[0])
-	if !isText || !strings.HasPrefix(first, DroidLine) {
-		return false
-	}
-	for _, part := range parts[1:] {
-		if _, isText := pureText(part); isText {
-			return false
-		}
-	}
-	return true
+	return isText && strings.HasPrefix(first, DroidLine)
 }
 
 // lineWith is text as droid opens a system prompt: the line, then the text,

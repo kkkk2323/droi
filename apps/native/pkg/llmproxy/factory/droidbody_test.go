@@ -183,6 +183,27 @@ var cases = []struct {
 		want: `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»"}]}}`,
 	},
 	{
+		name: "gemini: a string system instruction becomes one text part",
+		path: gemini,
+		in:   `{"contents":[],"systemInstruction":"You are a coding agent."}`,
+		want: `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»\nYou are a coding agent."}]}}`,
+	},
+	{
+		name: "gemini: an instruction that opens with the line goes as it came",
+		path: gemini,
+		in:   `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»"},{"text":"Be brief."}]}}`,
+	},
+	{
+		name: "gemini: the role goes even when the line is already first",
+		path: gemini,
+		in:   `{"contents":[],"systemInstruction":{"role":"system","parts":[{"text":"«line»"}]}}`,
+		want: `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»"}]}}`,
+	},
+	{
+		name: "gemini: a system instruction of another shape goes as it came",
+		path: gemini,
+		in:   `{"contents":[],"systemInstruction":{"parts":"hi"}}`,
+	}, {
 		name: "gemini: droid's own request goes as it came",
 		path: gemini,
 		in:   `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»\nYou work here."}]}}`,
