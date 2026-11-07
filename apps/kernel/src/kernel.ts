@@ -14,7 +14,7 @@ import { buildModels } from './models.ts'
 import { serve, type ServerHandle } from './protocol/server.ts'
 import { BunSqliteDatabase } from './storage/facade.ts'
 import { Kernel, context } from './session/service.ts'
-import { releaseLock, takeLock } from './lock.ts'
+import { takeLock, type Lock } from './lock.ts'
 import { reconcilePending } from './reconcile.ts'
 
 /** What this build is, for `harness.info` and the handshake. Bumped with a Pi upgrade or our own fix. */
@@ -74,8 +74,10 @@ export async function startKernel(
   options: StartOptions,
 ): Promise<KernelHandle> {
   mkdirSync(config.dataDir, { recursive: true })
-  const lockPath = join(config.dataDir, 'kernel.lock')
-  if (options.noLock !== true) takeLock(lockPath)
+  // The lock is a database of its own, not a file of text: the operating system enforces it and releases it
+  // when this process ends, however it ends.
+  const lockPath = join(config.dataDir, 'kernel.lock.db')
+  const lock: Lock | undefined = options.noLock === true ? undefined : takeLock(lockPath)
 
   const databasePath = join(config.dataDir, 'kernel.sqlite')
   const db = new BunSqliteDatabase(databasePath)
@@ -250,7 +252,7 @@ export async function startKernel(
       await harness?.close(context).catch(() => undefined)
       await storage?.close(context).catch(() => undefined)
       await db.close().catch(() => undefined)
-      if (options.noLock !== true) releaseLock(lockPath)
+      lock?.release()
     }
     return {
       get port() {
@@ -268,6 +270,8 @@ export async function startKernel(
       stop,
     }
   } catch (cause) {
+    // A start that failed after taking the lock must not hold it: the caller may retry in this process.
+    lock?.release()
     await harness?.close(context).catch(() => undefined)
     await storage?.close(context).catch(() => undefined)
     await db.close().catch(() => undefined)

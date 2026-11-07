@@ -1,14 +1,10 @@
-import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { Database } from 'bun:sqlite'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 /**
- * How long a **fence** may sit unreadable before it counts as abandoned, in milliseconds. A fence is held
- * for one read and one unlink, so anything older than a blink belongs to a process that died mid-way.
+ * The data directory is taken. Its own error, so the process reports a refusal (status `2`) rather than a
+ * crash: a Supervisor may retry it, and must not file it as a bug.
  */
-const FENCE_ABANDONED_MS = 500
-/** How many times a starter may lose a race before it gives up. */
-const ATTEMPTS = 6
-
-/** The data directory is taken. Its own error, so the process can report a refusal rather than a crash. */
 export class LockError extends Error {
   constructor(message: string) {
     super(message)
@@ -16,147 +12,100 @@ export class LockError extends Error {
   }
 }
 
-export type LockOptions = {
-  /** Whether a pid is alive; the real one signals 0. */
-  isAlive?: (pid: number) => boolean
-  /** For a test: run between the guard being taken and the lock being re-read. */
-  afterGuard?: () => void
+/** A held data-directory lock. Closing it — or the process dying — releases it. */
+export type Lock = {
+  readonly path: string
+  /** Release the lock and the diagnosis file. Safe to call twice. */
+  release(): void
 }
+
+/** The table the lock is held through. Its single row is the owner's PID, for `sqlite3` and `lsof`. */
+const TABLE = 'droi_lock'
 
 /**
- * One kernel per data directory: a second one would open a second connection to the same SQLite file, and
- * a synchronous `busy_timeout` wait there blocks the whole event loop.
+ * One kernel per data directory, with a lock **the operating system owns**.
  *
- * The lock is `kernel.lock`, holding a pid, and **the path is never left empty**: a stale lock is replaced
- * by an atomic `rename` while holding `kernel.lock.guard`, never by `unlink` followed by `create`. Deleting
- * it would open a window in which a third starter's exclusive create succeeds, and the recovering process
- * would then overwrite that third process's lock — two kernels, one database.
+ * `kernel.lock.db` is a SQLite database whose only job is to be locked. The first starter opens it
+ * read-write and keeps a write transaction open for the life of the process; every other starter's first
+ * write fails with `SQLITE_BUSY`, because SQLite's file locking is `fcntl` on Unix and `LockFileEx` on
+ * Windows, and both are enforced across processes by the kernel. When a kernel exits — normally, by
+ * SIGTERM, by `taskkill /F`, by a segfault — the kernel drops the locks, and the next starter's write
+ * succeeds. **There is no PID to check, no staleness to judge, no guard to take over and no waiting**: the
+ * three earlier designs (a PID file, then a rename claim, then a guard, then a fence) each moved the same
+ * check-then-delete race one layer outward, and this one has nothing to race over.
  *
- * The sequence:
+ * Two details make the lock real rather than nominal:
  *
- * 1. `wx` (exclusive create) — the common case, and the only case when no kernel died.
- * 2. The file exists: read its pid. Alive → another kernel owns this directory; refuse.
- * 3. Dead: take `kernel.lock.guard` with `wx`. Two starters cannot both hold it, so only one performs the
- *    takeover. A guard whose owner is **gone** is removed first, and only under the fence that makes that
- *    removal exclusive (see `clearGuard`).
- * 4. Re-read `kernel.lock` **while holding the guard**. If it now names a different live process, that
- *    process won the race after our first read: release the guard and refuse. Otherwise write our pid into
- *    the lock by renaming a fresh file over it — atomic, so a concurrent reader sees either the old pid or
- *    ours, never nothing.
- * 5. Release the guard.
+ * - `busy_timeout = 0` asks for no wait at all. A start either takes the directory now or is refused now;
+ *   a retry loop here would turn a supervisor's restart storm into a queue of stuck processes.
+ * - The holding statement is an `UPDATE` of an existing row, not an `INSERT` of a new one. SQLite writes
+ *   the original page to the rollback journal when it first dirties a page, and that is what takes the
+ *   lock; a row that stays in the page cache can leave the transaction holding nothing. Measured on Bun
+ *   1.3.14 here: an `INSERT` into a table created in the same connection blocks nothing, the `UPDATE`
+ *   blocks every other writer.
  *
- * Every removal—a dead guard, its fence, our own guard—is identity-checked. An observation ("its owner was
- * dead a moment ago") is never the authorization to unlink a path: a starter that re-created the guard in
- * the meantime would lose it, and two starters would then take the lock over at once.
+ * `kernel.pid` beside it is **diagnosis only** — the message a refused starter prints. Nothing reads it to
+ * decide anything, so a stale one misleads a human for one line and nothing more.
+ *
+ * A database left by a crashed kernel needs no repair: the next start finds a hot journal and rolls it
+ * back, which is the same thing SQLite does after any crash.
  */
-export function takeLock(path: string, options: LockOptions = {}): void {
-  const alive = options.isAlive ?? isAlive
-  const guard = `${path}.guard`
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    if (claim(path)) return
-    const owner = readPid(path)
-    if (owner === undefined) continue
-    if (alive(owner)) {
-      throw new LockError(`another kernel (pid ${owner}) is using this data directory`)
-    }
-    if (!takeGuard(guard, alive)) {
-      // An alive starter holds the guard: it is taking this same dead lock over, and will own it.
-      throw new LockError('another kernel is starting in this data directory')
-    }
-    try {
-      options.afterGuard?.()
-      const current = readPid(path)
-      if (current !== undefined && current !== owner && alive(current)) {
-        throw new LockError(`another kernel (pid ${current}) is using this data directory`)
-      }
-      // Replace atomically: the path always holds a pid, so no exclusive create can slip in.
-      const fresh = `${path}.${process.pid}.new`
-      writeFileSync(fresh, String(process.pid))
-      try {
-        renameSync(fresh, path)
-      } catch (error) {
-        rmSync(fresh, { force: true })
-        throw error
-      }
-      return
-    } finally {
-      releaseGuard(guard, process.pid)
-    }
-  }
-  throw new LockError('could not take the data directory lock')
-}
-
-/** Drop the lock, but only if this process owns it — or its owner is gone, as after a SIGKILL. */
-export function releaseLock(path: string, options: LockOptions = {}): void {
-  const owner = readPid(path)
-  const alive = options.isAlive ?? isAlive
-  if (owner !== undefined && owner !== process.pid && alive(owner)) return
-  rmSync(path, { force: true })
-}
-
-/**
- * Take the guard, or say that somebody alive holds it.
- *
- * Removal happens only for a guard whose owner is gone: a live holder is mid-takeover, and deleting its
- * guard would let a second starter rename over the lock in the same instant.
- */
-function takeGuard(guard: string, alive: (pid: number) => boolean): boolean {
-  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    if (claim(guard)) return true
-    const owner = readPid(guard)
-    if (owner === undefined) continue
-    if (alive(owner)) return false
-    clearGuard(guard, owner, alive)
-  }
-  return false
-}
-
-/**
- * Remove a guard whose owner is gone — and only that one.
- *
- * Reading the guard and unlinking it are two calls, so a guard that a racing starter re-created in between
- * would be deleted by mistake, and two starters could then take the lock over at once. The removal is
- * therefore fenced: while `kernel.lock.guard.break` exists, no other starter removes a guard, and the guard
- * is re-read **after** the fence is taken. Nothing else unlinks a guard, and a guard is only ever created
- * with `wx`, so the file that is finally unlinked is the one that was judged dead.
- */
-function clearGuard(guard: string, expected: number, alive: (pid: number) => boolean): void {
-  const fence = `${guard}.break`
-  if (!claim(fence)) {
-    const holder = readPid(fence)
-    // A live holder is already removing this guard; wait for it, and look again on the next attempt.
-    if (holder !== undefined && alive(holder)) return
-    // Its owner died inside the critical section. The fence is short-lived, so waiting it out is short
-    // too, and it is the only way to be sure nobody is still filling it in.
-    if (!waitForAbandoned(fence, FENCE_ABANDONED_MS)) return
-    rmSync(fence, { force: true })
-    return
-  }
+export function takeLock(path: string): Lock {
+  const pidPath = `${path.slice(0, -'.lock.db'.length)}.pid`
+  let db: Database | undefined
   try {
-    const current = readPid(guard)
-    // Re-read under the fence: a different file means another starter already cleared this generation, and
-    // a live one is never ours to remove.
-    if (current !== expected || alive(current)) return
-    rmSync(guard, { force: true })
-  } finally {
-    releaseGuard(fence, process.pid)
-  }
-}
-
-/** Drop a guard or a fence, but only while it is still ours. */
-function releaseGuard(path: string, pid: number): void {
-  const owner = readPid(path)
-  if (owner !== undefined && owner !== pid) return
-  rmSync(path, { force: true })
-}
-
-function claim(path: string): boolean {
-  try {
-    writeFileSync(path, String(process.pid), { flag: 'wx' })
-    return true
+    db = new Database(path, { create: true })
+    db.exec('PRAGMA busy_timeout = 0')
+    db.exec(`CREATE TABLE IF NOT EXISTS ${TABLE} (owner INTEGER)`)
+    db.exec(`INSERT INTO ${TABLE} (owner) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM ${TABLE})`)
+    db.exec('PRAGMA locking_mode = EXCLUSIVE')
+    db.exec('BEGIN EXCLUSIVE')
+    db.exec(`UPDATE ${TABLE} SET owner = ${process.pid}`)
   } catch (error) {
-    if ((error as { code?: string }).code === 'EEXIST') return false
-    throw error
+    try {
+      db?.close()
+    } catch {
+      // A connection that failed to lock is not worth a second error.
+    }
+    // Only "somebody else holds it" is a refusal a Supervisor retries. Anything else — a file that is not
+    // a database, a directory it may not write — is a start that cannot succeed, and says why.
+    const message = error instanceof Error ? error.message : String(error)
+    if (!/SQLITE_BUSY|SQLITE_LOCKED|database is locked/i.test(message)) {
+      throw new LockError(
+        `the data directory lock ${JSON.stringify(path)} could not be taken: ${message}`,
+      )
+    }
+    const owner = readPid(pidPath)
+    throw new LockError(
+      owner === undefined
+        ? 'another kernel is using this data directory'
+        : `another kernel (pid ${owner}) is using this data directory`,
+    )
+  }
+  // Only now, with the lock held, is this process the owner those words are about.
+  try {
+    writeFileSync(pidPath, String(process.pid))
+  } catch {
+    // A diagnosis file nobody could write is not a reason to refuse a locked start.
+  }
+  let released = false
+  return {
+    path,
+    release: () => {
+      if (released) return
+      released = true
+      // Closing rolls the transaction back and drops the OS locks with it.
+      try {
+        db?.close()
+      } catch {
+        // Nothing left to release.
+      }
+      try {
+        rmSync(pidPath, { force: true })
+      } catch {
+        // Same: the file is advice, not state.
+      }
+    },
   }
 }
 
@@ -166,36 +115,5 @@ function readPid(path: string): number | undefined {
     return Number.isInteger(pid) && pid > 0 ? pid : undefined
   } catch {
     return undefined
-  }
-}
-
-/**
- * Block until a file with no readable owner is older than `limitMs`, or that long at most.
- *
- * Startup is single-threaded and nothing else is running yet, so the wait is a synchronous sleep rather
- * than a promise; it is bounded by a few hundred milliseconds in the one case that reaches it.
- */
-function waitForAbandoned(path: string, limitMs: number): boolean {
-  const deadline = Date.now() + limitMs
-  for (;;) {
-    let age: number
-    try {
-      age = Date.now() - statSync(path).mtimeMs
-    } catch {
-      // Gone already: there is nothing to wait for.
-      return true
-    }
-    if (age > limitMs) return true
-    if (Date.now() >= deadline + limitMs) return false
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(1, limitMs - age + 1))
-  }
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
   }
 }

@@ -209,16 +209,20 @@ The settings a test needs beyond that:
 | `DROI_KERNEL_TOKEN`     | The launch token. Required; never on the command line.                       |
 | `DROI_KERNEL_LOG=debug` | Log every frame and every commit to stderr.                                  |
 
-One kernel per data directory: `<data>/kernel.lock` holds the owner's PID, and a start whose owner is alive
-is **refused with status `2`** — a refusal the Host may retry, not a crash. Taking over a lock left by a
-dead process never lets the file be **absent** (a second starter would then win it with a plain exclusive
-create), so the takeover holds `kernel.lock.guard` by exclusive create, re-reads the lock, and `rename`s its
-own file over it, which replaces it atomically.
+One kernel per data directory, enforced by a lock **the operating system owns**. `<data>/kernel.lock.db` is a
+SQLite database whose only job is to be locked: the first starter opens it, keeps a write transaction open
+for the life of the process, and every other starter's first write fails with `SQLITE_BUSY` — the standard
+`fcntl` / `LockFileEx` file lock, enforced across processes and released by the kernel when the process ends,
+however it ends. A start that cannot take it is **refused with status `2`**, which the Host may retry; it is
+not a crash.
 
-A guard is only ever removed by a holder of `kernel.lock.guard.break`, and only after re-reading it there:
-judging a guard dead and then unlinking it are two calls, and a guard that a racing starter re-created between
-them must not be deleted. A live guard is never removed at all, and a fence whose owner died is waited out
-(500 ms) before it is cleared, so a starter killed mid-takeover delays the next one rather than blocking it.
+There is nothing to clean up and nothing to judge stale: a lock left by a `SIGKILL`, a `taskkill /F` or a
+segfault is gone the moment the process is, and all a killed kernel leaves behind is a hot journal that SQLite
+rolls back for the next starter. `<data>/kernel.pid` is **diagnosis only** — the pid a refusal names — and no
+version reads it to decide anything. A `<data>/kernel.lock` file of text from a pre-release build is ignored.
+
+One kernel per data directory is not a performance choice: a second one would open a second connection to the
+same SQLite file, and a synchronous `busy_timeout` wait there blocks the whole event loop.
 
 ### Exit statuses
 

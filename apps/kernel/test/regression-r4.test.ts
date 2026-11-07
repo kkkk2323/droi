@@ -1,12 +1,11 @@
 import { expect, test } from 'bun:test'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { Client, TOKEN, allEntries, fauxCatalog, start, tempData } from './helpers.ts'
 import { context } from '../src/session/service.ts'
 import { BunSqliteDatabase } from '../src/storage/facade.ts'
 import { Indexer } from '../src/indexer/index.ts'
-import { takeLock } from '../src/lock.ts'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 
 test('R4 an entry newer than its create wins inside the first index batch', async () => {
@@ -61,133 +60,120 @@ test('R4 a first answer in the first index batch advances the listed activity', 
   }
 })
 
-test('R4 a stale-guard remover never unlinks a live guard', () => {
-  const data = tempData()
-  const path = join(data.dir, 'kernel.lock')
-  // A lock and a guard whose owners are gone, as after a SIGKILL during a takeover.
-  writeFileSync(path, '99999999')
-  writeFileSync(`${path}.guard`, '88888888')
-  const live = 4242
-  const alive = (pid: number) => {
-    if (pid === 88888888) {
-      // The exact window R4-2 describes: another starter clears the dead guard and installs its own
-      // live one between our staleness check and our removal. An observation is not authorization.
-      writeFileSync(`${path}.guard`, String(live))
-      return false
-    }
-    return pid === live
-  }
-  expect(() => takeLock(path, { isAlive: alive })).toThrow('another kernel')
-  // The other starter's guard is untouched, and nobody took the lock over behind its back.
-  expect(readFileSync(`${path}.guard`, 'utf8').trim()).toBe(String(live))
-  expect(readFileSync(path, 'utf8').trim()).toBe('99999999')
-  data.cleanup()
-})
+type KernelProcess = {
+  child: ReturnType<typeof spawn>
+  /** The handshake port, or — when it was refused — the exit code and what it said. */
+  outcome: Promise<{ port?: number; code: number | null; stderr: string }>
+  kill: (signal: NodeJS.Signals) => Promise<void>
+}
 
-test('R4 a second starter cannot clear the guard a live one is replacing', async () => {
+function startProcess(dir: string): KernelProcess {
+  const child = spawn(
+    process.execPath,
+    [new URL('../src/main.ts', import.meta.url).pathname, '--data', dir],
+    { env: { ...process.env, DROI_KERNEL_TOKEN: TOKEN } },
+  )
+  let out = ''
+  let stderr = ''
+  child.stdout.on('data', (chunk) => (out += chunk))
+  child.stderr.on('data', (chunk) => (stderr += chunk))
+  const outcome = new Promise<{ port?: number; code: number | null; stderr: string }>((resolve) => {
+    const settle = (code: number | null) =>
+      resolve({
+        ...(out.includes('\n') ? { port: JSON.parse(out.split('\n')[0]!).port as number } : {}),
+        code,
+        stderr,
+      })
+    // Whichever comes first: the handshake line, or the process leaving.
+    const timer = setInterval(() => {
+      if (!out.includes('\n')) return
+      clearInterval(timer)
+      setTimeout(() => settle(null), 100)
+    }, 20)
+    child.once('exit', (code) => {
+      clearInterval(timer)
+      settle(code)
+    })
+  })
+  return {
+    child,
+    outcome,
+    kill: async (signal) => {
+      if (child.exitCode !== null || child.signalCode !== null) return
+      const gone = new Promise<void>((resolve) => child.once('exit', () => resolve()))
+      child.kill(signal)
+      await gone
+    },
+  }
+}
+
+test('R4 a second start is refused while the first runs, and starts the moment it dies', async () => {
   const data = tempData()
-  const path = join(data.dir, 'kernel.lock')
-  // A lock and a guard whose owners are both gone: the state after a SIGKILL during a takeover.
-  writeFileSync(path, '99999999')
-  writeFileSync(`${path}.guard`, '99999998')
-  const launch = (role: string) => {
-    const child = spawn(process.execPath, [
-      new URL('./r4-lock-race-child.ts', import.meta.url).pathname,
-      data.dir,
-      role,
-    ])
-    const output = { log: '' }
-    child.stdout.on('data', (chunk) => (output.log += chunk))
-    child.stderr.on('data', (chunk) => (output.log += chunk))
-    const exited = new Promise<number | null>((resolve) => child.once('exit', resolve))
-    return { child, output, exited }
-  }
-  const waitFor = async (name: string): Promise<void> => {
-    const deadline = Date.now() + 5000
-    while (!existsSync(join(data.dir, name))) {
-      if (Date.now() > deadline) throw new Error(`no ${name}`)
-      await Bun.sleep(5)
-    }
-  }
-  const first = launch('A')
+  const owner = startProcess(data.dir)
   try {
-    // A is inside the takeover: it holds the fence, has judged the guard dead, and has not unlinked it.
-    await waitFor('A-before-guard-unlink.paused')
-    const second = launch('B')
-    await second.exited
-    // B saw a live fence: it may not touch the guard, so it refuses instead of starting a second kernel.
-    expect(existsSync(join(data.dir, 'B.won'))).toBe(false)
-    expect(readFileSync(join(data.dir, 'B.refused'), 'utf8')).toContain('another kernel')
-    writeFileSync(join(data.dir, 'A-before-guard-unlink.go'), '')
-    await first.exited
-    const winner = Number(readFileSync(join(data.dir, 'A.won'), 'utf8'))
-    expect(winner).toBeGreaterThan(0)
-    expect(Number(readFileSync(path, 'utf8').trim())).toBe(winner)
-    expect(existsSync(`${path}.guard`)).toBe(false)
-    expect(existsSync(`${path}.guard.break`)).toBe(false)
+    const first = await owner.outcome
+    expect(first.port).toBeGreaterThan(0)
+    // The PID file is diagnosis only, but a refusal should be able to name the kernel in the way.
+    expect(Number(readFileSync(join(data.dir, 'kernel.pid'), 'utf8').trim())).toBe(owner.child.pid!)
+
+    const rival = startProcess(data.dir)
+    const refused = await rival.outcome
+    expect(refused.port).toBeUndefined()
+    expect(refused.code).toBe(2)
+    expect(refused.stderr).toContain(`another kernel (pid ${owner.child.pid})`)
+
+    await owner.kill('SIGKILL')
+    // No waiting, no staleness check, no repair: the operating system released the lock with the process.
+    const started = Date.now()
+    const next = startProcess(data.dir)
+    const third = await next.outcome
+    await next.kill('SIGTERM')
+    expect(third.port).toBeGreaterThan(0)
+    expect(Date.now() - started).toBeLessThan(5000)
   } finally {
-    first.child.kill('SIGKILL')
-    await first.exited
+    await owner.kill('SIGKILL')
     data.cleanup()
   }
-}, 20_000)
+}, 40_000)
 
-test('R4 two starters over a dead lock leave exactly one owner and exit 2', async () => {
+test('R4 three starts at once leave exactly one kernel', async () => {
   const data = tempData()
-  writeFileSync(join(data.dir, 'kernel.lock'), '99999999')
-  writeFileSync(join(data.dir, 'kernel.lock.guard'), '99999998')
-  const main = new URL('../src/main.ts', import.meta.url).pathname
-  type Outcome = { handshake?: number; code: number | null; stderr: string }
-  const launch = (): { kill: () => void; done: Promise<Outcome> } => {
-    const child = spawn(process.execPath, [main, '--data', data.dir], {
-      env: { ...process.env, DROI_KERNEL_TOKEN: TOKEN },
-    })
-    let out = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => (out += chunk))
-    child.stderr.on('data', (chunk) => (stderr += chunk))
-    const done = new Promise<Outcome>((resolve) => {
-      // Whichever comes first: the handshake, or an exit. Both starters are racing, and only one of
-      // them may reach the handshake.
-      const finish = (code: number | null) =>
-        resolve({
-          handshake: out.includes('\n')
-            ? (JSON.parse(out.split('\n')[0]!).port as number)
-            : undefined,
-          code,
-          stderr,
-        })
-      child.once('exit', (code) => finish(code))
-      const timer = setInterval(() => {
-        if (!out.includes('\n')) return
-        clearInterval(timer)
-        setTimeout(() => finish(null), 100)
-      }, 20)
-    })
-    return { kill: () => child.kill('SIGTERM'), done }
-  }
-  const first = launch()
-  const second = launch()
+  const starters = [startProcess(data.dir), startProcess(data.dir), startProcess(data.dir)]
   try {
-    const outcomes = await Promise.all([first.done, second.done])
-    const owners = outcomes.filter((outcome) => outcome.handshake !== undefined)
-    const losers = outcomes.filter((outcome) => outcome.handshake === undefined)
+    const outcomes = await Promise.all(starters.map((starter) => starter.outcome))
+    const owners = outcomes.filter((outcome) => outcome.port !== undefined)
+    const refused = outcomes.filter((outcome) => outcome.port === undefined)
     expect(owners).toHaveLength(1)
-    expect(losers).toHaveLength(1)
-    // A refused start is its own status, not a generic crash: the Host must not read it as a bug.
-    expect(losers[0]!.code).toBe(2)
-    expect(losers[0]!.stderr).toContain('another kernel')
-    const owner = owners[0]!.handshake!
-    expect(Number(readFileSync(join(data.dir, 'kernel.lock'), 'utf8').trim())).toBeGreaterThan(0)
-    void owner
+    expect(refused).toHaveLength(2)
+    for (const loser of refused) expect(loser.code).toBe(2)
   } finally {
-    first.kill()
-    second.kill()
-    await Promise.all([first.done, second.done]).catch(() => undefined)
+    await Promise.all(starters.map((starter) => starter.kill('SIGKILL')))
     data.cleanup()
   }
-}, 30_000)
+}, 40_000)
 
+test('R4 a lock left by a crash never blocks the next start', async () => {
+  // R4b-2: a SIGKILL between creating a claim file and writing its owner refused every later start for
+  // ever. There is no such window now — the file is the database — and all a killed kernel leaves is a hot
+  // journal, which SQLite rolls back for the next starter.
+  const data = tempData()
+  const holder = startProcess(data.dir)
+  try {
+    expect((await holder.outcome).port).toBeGreaterThan(0)
+    await holder.kill('SIGKILL')
+    // The old algorithm's residue, in both shapes: an empty main lock, and a PID text file.
+    writeFileSync(join(data.dir, 'kernel.lock'), '')
+    const started = Date.now()
+    const next = startProcess(data.dir)
+    const outcome = await next.outcome
+    await next.kill('SIGKILL')
+    expect(outcome.port).toBeGreaterThan(0)
+    expect(Date.now() - started).toBeLessThan(5000)
+  } finally {
+    await holder.kill('SIGKILL')
+    data.cleanup()
+  }
+}, 40_000)
 test('R4 the request which first hits failed storage returns kernel_failed', async () => {
   const data = tempData()
   const child = spawn(process.execPath, [
