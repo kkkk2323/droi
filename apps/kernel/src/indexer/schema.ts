@@ -80,6 +80,9 @@ const TOKENIZER = 'trigram'
  */
 export async function migrate(db: SqliteExecutor): Promise<void> {
   for (const sql of statements) await db.exec(sql)
+  // A table this build no longer has. An earlier M1 recorded where a submission's turn ended; the contract
+  // has no such field, and the rows are neither read nor rebuildable, so the table goes rather than linger.
+  await db.exec('DROP TABLE IF EXISTS droi_submission_ends')
   const columns = await db.all<{ name: string }>('PRAGMA table_info(droi_conversations)')
   if (!columns.some((column) => column.name === 'request_fingerprint')) {
     await db.exec('ALTER TABLE droi_conversations ADD COLUMN request_fingerprint TEXT')

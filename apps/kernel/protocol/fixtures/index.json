@@ -28,6 +28,7 @@
     "methods/skills.list.json",
     "methods/skills.setDisabled.json",
     "methods/submission.abort.json",
+    "methods/submission.get.json",
     "methods/task.abort.json"
   ],
   "notifications": [

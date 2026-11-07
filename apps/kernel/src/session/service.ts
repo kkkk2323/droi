@@ -120,6 +120,7 @@ export class Kernel implements Dispatcher {
     add('conversation.submit', (p) => this.#submit(p))
     add('conversation.abort', (p) => this.#abort(p))
     add('submission.abort', (p) => this.#abortSubmission(p))
+    add('submission.get', (p) => this.#submissionGet(p))
     add('conversation.configure', (p) => this.#configure(p))
     add('conversation.compact', (p) => this.#compact(p))
     add('conversation.fork', (p) => this.#fork(p))
@@ -686,6 +687,30 @@ export class Kernel implements Dispatcher {
     return {}
   }
 
+  async #submissionGet(params: Record<string, unknown>): Promise<unknown> {
+    this.#readable()
+    const id = requiredNumber(params, 'id')
+    const submissionId = requiredNumber(params, 'submissionId')
+    const record = await this.#options.storage.submission(submissionId as never, context)
+    if (record === undefined || (record.conversationId as unknown as number) !== id) {
+      throw new RpcError(Code.submissionNotFound, 'submission not found', {
+        conversationId: id,
+        submissionId,
+      })
+    }
+    const entry = 'entry' in record && record.entry !== undefined ? record.entry : undefined
+    // Only Pi's own fields. A turn's entries do not carry its submission, and Pi keeps no submission → run task
+    // link, so there is no end the Kernel could report for a turn that produced no answer (see
+    // shared/design/kernel-index-ownership.md §7). A client bounds a turn by the status: `[entry, answer]` for
+    // a done submission, `[entry, head]` while placed, and nothing for one that ended without an answer.
+    return {
+      submissionId,
+      status: record.status,
+      ...(entry === undefined ? {} : { entry }),
+      ...(record.status === 'done' ? { answer: record.answer } : {}),
+      ...(record.status === 'unanswered' ? { reason: record.reason } : {}),
+    }
+  }
   async #abortSubmission(params: Record<string, unknown>): Promise<unknown> {
     this.#writable()
     const id = requiredNumber(params, 'id')

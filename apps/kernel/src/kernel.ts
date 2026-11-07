@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { Harness, createRegistry } from '@earendil-works/pi-durable'
 import type { HarnessSettings, Registry, Storage } from '@earendil-works/pi-durable'
 import { SqliteStorage } from '@earendil-works/pi-durable/storage/sqlite'
-import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node'
+import { createToolProcesses, type ToolProcesses } from './tool-processes.ts'
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { type KernelConfig } from './config.ts'
 import { codingTools } from './extensions/coding.ts'
@@ -87,6 +87,8 @@ export async function startKernel(
   /** Set by `onReport` (or the Session's own close) when the Session failed; turns into an exit below. */
   let failed: unknown
   let kernel: Kernel | undefined
+  /** Every tool shell this Kernel started, so closing it can end what a tool left running. */
+  let tools: ToolProcesses | undefined
   try {
     storage = await SqliteStorage.open(db, { prefix: 'pi_' })
     const models = options.models ?? buildModels(config.providers)
@@ -96,6 +98,12 @@ export async function startKernel(
     })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
+
+    // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
+    tools = createToolProcesses({
+      ...(coding.shellPath === undefined ? {} : { shellPath: coding.shellPath }),
+      cwd: process.cwd(),
+    })
 
     const settings: HarnessSettings = {
       extensions: [coding.extension],
@@ -114,11 +122,7 @@ export async function startKernel(
         // A viewer that another process drives: every commit with writes is refused by Pi itself, so no
         // path in the kernel can slip a write through.
         readOnly: config.readOnly,
-        env: (target) =>
-          new NodeExecutionEnv({
-            cwd: target.cwd ?? process.cwd(),
-            ...(coding.shellPath === undefined ? {} : { shellPath: coding.shellPath }),
-          }),
+        env: tools.env,
         onReport: (report) => {
           const detail = report.error instanceof Error ? report.error.message : String(report.error)
           error('harness report', { kind: report.kind, detail })
@@ -239,20 +243,29 @@ export async function startKernel(
     }, 50)
     failedWatch.unref?.()
 
-    const closing = { done: false }
-    const stop = async (): Promise<void> => {
-      if (closing.done) return
-      closing.done = true
-      await kernel?.close()
-      await server?.stop()
-      // Pi's `harness.close()` seals admission and settles its own writes; the Storage keeps the file
-      // open until it is closed too, and only then may the database close.
-      clearInterval(failedWatch)
-      // A failed Session already closed itself; closing again is a no-op, not an error.
-      await harness?.close(context).catch(() => undefined)
-      await storage?.close(context).catch(() => undefined)
-      await db.close().catch(() => undefined)
-      lock?.release()
+    // One stop, shared. A second caller — `kernel.shutdown` on the wire and then SIGINT, or the failure
+    // watchdog and a signal — must wait for the same cleanup, not return at once and let a signal handler
+    // exit the process in the middle of it. That early exit is how a background tool process used to survive
+    // a shutdown that arrived while another shutdown was already running.
+    let stopping: Promise<void> | undefined
+    const stop = (): Promise<void> => {
+      if (stopping !== undefined) return stopping
+      stopping = (async () => {
+        await kernel?.close()
+        await server?.stop()
+        // Pi's `harness.close()` seals admission and settles its own writes; the Storage keeps the file
+        // open until it is closed too, and only then may the database close.
+        clearInterval(failedWatch)
+        // A failed Session already closed itself; closing again is a no-op, not an error.
+        await harness?.close(context).catch(() => undefined)
+        // After the harness, so no tool starts while this runs; before the storage, so a shutdown leaves no
+        // process of ours running in the data directory.
+        await tools?.stop(context).catch(() => undefined)
+        await storage?.close(context).catch(() => undefined)
+        await db.close().catch(() => undefined)
+        lock?.release()
+      })()
+      return stopping
     }
     return {
       get port() {
@@ -272,6 +285,7 @@ export async function startKernel(
   } catch (cause) {
     // A start that failed after taking the lock must not hold it: the caller may retry in this process.
     lock?.release()
+    await tools?.stop(context).catch(() => undefined)
     await harness?.close(context).catch(() => undefined)
     await storage?.close(context).catch(() => undefined)
     await db.close().catch(() => undefined)

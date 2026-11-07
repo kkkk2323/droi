@@ -180,6 +180,53 @@ failing.
 {"jsonrpc":"2.0","id":"26","result":{"status":"closing"}}
 ```
 
+**A kernel ends the tools it started, and only those.** Pi runs each tool shell `detached`, in a process group
+of its own, so a tool's background process (`sleep 100 &`, a server it started) is not in the kernel's group and
+survives a plain `SIGKILL` of the kernel. The kernel therefore records each tool shell's group id and, when the
+shell exits, the time it did — and at shutdown takes **one** `ps` snapshot and ends the groups whose identity
+still checks out:
+
+| The record                 | The snapshot                                               | What happens                                                                              |
+| -------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| the shell is still running | —                                                          | killed: its pid is still its own, so the group cannot have been reused                    |
+| the shell exited           | the group is empty                                         | dropped, nothing signalled                                                                |
+| the shell exited           | a member started at or before the exit time                | killed: a reused group id can only hold processes that started after the number came free |
+| the shell exited           | every member started after the exit time                   | dropped, nothing signalled — not enough evidence                                          |
+| either                     | `ps` missing, failing, unreadable, or taking over a second | nothing is signalled, and a warning is logged                                             |
+| the shell exited           | the wall clock moved more than a second since it exited    | nothing is signalled, and a warning is logged                                             |
+
+A pid is not an identity, and neither is a group id: a record outlives the group it names, and the system may
+hand that number to somebody else's tree. Killing a stranger is worse than missing one of ours, so an unclear
+case does nothing.
+
+Two things make the comparison itself safe:
+
+- **The reference time is read after `ps`**, not before. A row's elapsed time describes the process at the
+  moment the table was sampled, so taking the clock beforehand would add the snapshot's own duration to every
+  start time's error; and a table that takes longer than a second is refused outright.
+- **Start times and exit times are only compared when the wall clock did not move.** `ps` reports wall-clock
+  uptime and the exit records are wall-clock readings, while `performance.now()` cannot be stepped: shutdown
+  compares the wall-minus-monotonic drift with the drift recorded at the exit, and if they differ by more than
+  a second the clock jumped and those groups are left alone.
+
+Three consequences, recorded here rather than discovered later:
+
+- **Missed:** our background process started a child and then exited, so only that grandchild remains. It
+  started after the shell exited, the evidence says "not ours", and it survives the kernel.
+- **Accepted risk:** a group id reused **inside the same second** as the exit reads as ours — elapsed times are
+  printed to the second, so that is the resolution of the evidence itself.
+- **Missed after a reboot or a clock step:** a jump leaves nothing to compare against.
+
+Records are capped: past a thousand of them, one snapshot drops the ones whose groups have emptied. Nothing is
+scanned while a tool runs — the `ps` cost is one snapshot at shutdown, not one call per tool.
+
+On Windows there are no process groups: a tool's tree belongs to the Host's process tree — the Job Object the
+Host gives the kernel — whose handle ends its members when the kernel exits, and the kernel signals nothing by
+pid there.
+
+A kernel killed with `SIGKILL` cannot run any of this; the Host's own process tree is then the only thing that
+ends a tool that outlived it.
+
 ### Starting the kernel for a test
 
 A test, a CI job or the Fake Daemon points the kernel at a local model without writing a config file:
@@ -338,34 +385,45 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 27 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
-| Method                   | Params                                                                     | Result                                                           | Capability      | M1  |
-| ------------------------ | -------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
-| `harness.info`           | —                                                                          | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
-| `conversation.create`    | `{agent?, cwd?, instructions?, kind?, requestId?}`                         | `{conversationId, view}`                                         | `conversations` | yes |
-| `conversation.list`      | `{kind?, archived?, workspace?, query?, cursor?, limit?}`                  | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.open`      | `{id, window?, subscribe?}`                                                | `{view}`                                                         | `conversations` | yes |
-| `conversation.unwatch`   | `{id}`                                                                     | `{}`                                                             | `conversations` | yes |
-| `conversation.submit`    | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                | `{submissionId}`                                                 | `conversations` | yes |
-| `conversation.abort`     | `{id, background?}`                                                        | `{}`                                                             | `conversations` | yes |
-| `submission.abort`       | `{id, submissionId}`                                                       | `{status}`                                                       | `conversations` | yes |
-| `conversation.configure` | `{id, change}`                                                             | `{agent}`                                                        | `conversations` | yes |
-| `conversation.compact`   | `{id, instructions?}`                                                      | `{taskId}`                                                       | `compaction`    | yes |
-| `conversation.fork`      | `{id, at}`                                                                 | `{conversationId, view}`                                         | `fork`          | yes |
-| `conversation.entries`   | `{id, query?, limit?, cursor?}`                                            | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.usage`     | `{id}`                                                                     | `{models, tools, context}`                                       | `usage`         | yes |
-| `task.abort`             | `{taskId}`                                                                 | `{status}`                                                       | `tasks`         | yes |
-| `index.update`           | `{id, title?, archived?, kind?}`                                           | `{}`                                                             | `index`         | yes |
-| `process.list`           | `{id}`                                                                     | `{processes[]}`                                                  | `processes`     | no  |
-| `process.stop`           | `{id, processId}`                                                          | `{status}`                                                       | `processes`     | no  |
-| `approval.respond`       | `{requestId, outcome, scope?}`                                             | `{status}`                                                       | `approvals`     | no  |
-| `ask.respond`            | `{requestId, answers?, cancelled?}`                                        | `{status}`                                                       | `asks`          | no  |
-| `mcp.list`               | —                                                                          | `{servers[]}`                                                    | `mcp`           | no  |
-| `mcp.set`                | `{name, server?, enabled?, remove?}`                                       | `{servers[]}`                                                    | `mcp`           | no  |
-| `mcp.authorize`          | `{name}`                                                                   | `{authorizationUrl}`                                             | `mcp`           | no  |
-| `mcp.authorize.cancel`   | `{name}`                                                                   | `{}`                                                             | `mcp`           | no  |
-| `skills.list`            | —                                                                          | `{skills[]}`                                                     | `skills`        | no  |
-| `skills.setDisabled`     | `{name, disabled}`                                                         | `{skills[]}`                                                     | `skills`        | no  |
-| `model.complete`         | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}`                                    | `models`        | no  |
+| Method                 | Params                                                      | Result                                                           | Capability      | M1  |
+| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
+| `harness.info`         | —                                                           | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
+| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`          | `{conversationId, view}`                                         | `conversations` | yes |
+| `conversation.list`    | `{kind?, archived?, workspace?, query?, cursor?, limit?}`   | `{items[], cursor?}`                                             | `conversations` | yes |
+| `conversation.open`    | `{id, window?, subscribe?}`                                 | `{view}`                                                         | `conversations` | yes |
+| `conversation.unwatch` | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
+| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
+| `conversation.abort`   | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
+| `submission.get`       | `{id, submissionId}`                                        | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
+
+The Kernel reports only what Pi keeps: `status`, `entry` and `answer`, plus `reason` for one that ended without
+an answer. It does not report where such a turn stopped, because it cannot: Pi 1.5.0 stores no link from a
+submission to the run task that carried it, and a turn's entries carry a task rather than a submission, so any
+end the Kernel derived would belong to a different turn after one skipped round (shared/design §7). **A client
+bounds a turn by the status**: `[entry, answer]` for `done`, `[entry, the conversation's head]` while `placed`
+— one conversation runs one turn at a time, and later inputs either queue (no entry yet) or steer into the same
+run, which Pi treats as that same turn and answers with the same `done` record — nothing for `queued`, and for
+`unanswered` a client reports the reason rather than inventing a range.
+
+| `submission.abort` | `{id, submissionId}` | `{status}` | `conversations` | yes |
+| `conversation.configure` | `{id, change}` | `{agent}` | `conversations` | yes |
+| `conversation.compact` | `{id, instructions?}` | `{taskId}` | `compaction` | yes |
+| `conversation.fork` | `{id, at}` | `{conversationId, view}` | `fork` | yes |
+| `conversation.entries` | `{id, query?, limit?, cursor?}` | `{items[], cursor?}` | `conversations` | yes |
+| `conversation.usage` | `{id}` | `{models, tools, context}` | `usage` | yes |
+| `task.abort` | `{taskId}` | `{status}` | `tasks` | yes |
+| `index.update` | `{id, title?, archived?, kind?}` | `{}` | `index` | yes |
+| `process.list` | `{id}` | `{processes[]}` | `processes` | no |
+| `process.stop` | `{id, processId}` | `{status}` | `processes` | no |
+| `approval.respond` | `{requestId, outcome, scope?}` | `{status}` | `approvals` | no |
+| `ask.respond` | `{requestId, answers?, cancelled?}` | `{status}` | `asks` | no |
+| `mcp.list` | — | `{servers[]}` | `mcp` | no |
+| `mcp.set` | `{name, server?, enabled?, remove?}` | `{servers[]}` | `mcp` | no |
+| `mcp.authorize` | `{name}` | `{authorizationUrl}` | `mcp` | no |
+| `mcp.authorize.cancel` | `{name}` | `{}` | `mcp` | no |
+| `skills.list` | — | `{skills[]}` | `skills` | no |
+| `skills.setDisabled` | `{name, disabled}` | `{skills[]}` | `skills` | no |
+| `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | no |
 
 M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
 `mcp.list` and `skills.list` return an empty list, and the write methods and the
