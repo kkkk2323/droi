@@ -524,39 +524,6 @@ export class Indexer {
     return this.#db.get<ConversationRow>('SELECT * FROM droi_conversations WHERE id = ?', id)
   }
 
-  /**
-   * Remember where a submission's turn ended, at the moment it ended.
-   *
-   * Written when the Kernel settles a submission without an answer — aborted, or withdrawn while queued. The
-   * value is the conversation's head entry at that instant, which is the last entry its turn could have
-   * written: entries appended later belong to other turns, and the record must not follow them.
-   */
-  async recordSubmissionEnd(
-    conversationId: number,
-    submissionId: number,
-    lastEntryId: number,
-  ): Promise<void> {
-    await this.#db.run(
-      `INSERT INTO droi_submission_ends (conversation_id, submission_id, last_entry_id)
-       VALUES (?, ?, ?)
-       ON CONFLICT (conversation_id, submission_id) DO UPDATE SET
-         last_entry_id = MAX(droi_submission_ends.last_entry_id, excluded.last_entry_id)`,
-      conversationId,
-      submissionId,
-      lastEntryId,
-    )
-  }
-
-  /** Where a settled submission's turn ended, if it was recorded; undefined for one that was not. */
-  async submissionEnd(conversationId: number, submissionId: number): Promise<number | undefined> {
-    const row = await this.#db.get<{ last_entry_id: number }>(
-      'SELECT last_entry_id FROM droi_submission_ends WHERE conversation_id = ? AND submission_id = ?',
-      conversationId,
-      submissionId,
-    )
-    return row?.last_entry_id
-  }
-
   async byRequestId(requestId: string): Promise<ConversationRow | undefined> {
     await this.flush()
     return this.#db.get<ConversationRow>(

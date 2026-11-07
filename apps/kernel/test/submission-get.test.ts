@@ -16,8 +16,6 @@ type Submission = {
   status: string
   entry?: number
   answer?: number
-  /** The highest entry this submission's turn wrote, when it ended without an answer. */
-  last?: number
   reason?: string
 }
 
@@ -116,10 +114,9 @@ test('submission.get refuses a submission that belongs to another conversation',
   }
 }, 60_000)
 
-test('submission.get bounds an aborted turn at its own last entry', async () => {
-  // An aborted submission has no `answer`, and `answer` is what a client used as the end of the turn. Without
-  // a definite end, "my submission's entries" reads through the next turn's reply, and a wait for the cut-short
-  // turn is satisfied by somebody else's answer.
+test('submission.get reports no end for a turn that answered nothing', async () => {
+  // A client used to read `last` as the end of a cut-short turn. Pi keeps no such value, and an end the Kernel
+  // guessed adopted a later turn; so the contract has no field, and the client reads the status instead.
   const data = tempData()
   const faux = fauxCatalog()
   const kernel = await start({ dir: data.dir, faux })
@@ -147,27 +144,23 @@ test('submission.get bounds an aborted turn at its own last entry', async () => 
     expect(aborted.status).toBe('unanswered')
     expect(aborted.reason).toBe('aborted')
     expect(aborted.answer).toBeUndefined()
-    // The run it started wrote its system entry; that is where the turn stops.
-    expect(aborted.last).toBeGreaterThanOrEqual(aborted.entry!)
+    // The field is gone from the wire shape, not merely empty, so a client cannot read a guess.
+    expect(Object.keys(aborted).sort()).toEqual(['entry', 'reason', 'status', 'submissionId'])
 
+    // A later turn leaves the record as it was: nothing "moves" because nothing was ever stored.
+    const seen = JSON.stringify(aborted)
     const second = await client.call('conversation.submit', { id, input: 'second' })
     await (await kernel.harness.conversation(id as never, context))!.waitForIdle(context)
+    const later = await client.call('submission.get', { id, submissionId: first['submissionId'] })
+    expect(JSON.stringify(later)).toBe(seen)
+
+    // A done submission keeps both ends Pi records.
     const done = (await client.call('submission.get', {
       id,
       submissionId: second['submissionId'],
     })) as Submission
-    expect(done.last).toBe(done.answer!)
-
-    // The later turn's entries are above the aborted turn's end, which is the point of `last`.
-    const page = await client.call('conversation.entries', {
-      id,
-      query: { order: 'ascending' },
-      limit: 200,
-    })
-    for (const entry of page['items'] as { id: number; kind: string }[]) {
-      if (entry.kind !== 'pi.assistant') continue
-      expect(entry.id).toBeGreaterThan(aborted.last!)
-    }
+    expect(done.status).toBe('done')
+    expect(done.answer).toBeGreaterThan(done.entry!)
   } finally {
     client.close()
     await kernel.stop()

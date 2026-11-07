@@ -681,62 +681,10 @@ export class Kernel implements Dispatcher {
     this.#writable()
     const id = requiredNumber(params, 'id')
     const conversation = await this.#conversation(id)
-    // The submissions this abort may settle, remembered before it runs: afterwards they are terminal, and the
-    // end of a turn can only be read at the moment it ends.
-    const live = await this.#liveSubmissions(id)
     // Protocol `background?` has no Pi counterpart yet (recorded in the contract's change log).
     await conversation.abort(context)
-    await this.#recordEnds(id, live)
     await this.refreshBusy(id)
     return {}
-  }
-
-  /** Submissions of a conversation that have not settled yet: the ones an abort can end. */
-  async #liveSubmissions(id: number): Promise<number[]> {
-    const page = await this.#options.storage.scanSubmissions(
-      { conversationId: id as never, order: 'ascending' },
-      MAX_PAGE,
-      undefined,
-      context,
-    )
-    const live: number[] = []
-    for (const record of page.items) {
-      if (record.status === 'queued' || record.status === 'placed') {
-        live.push(record.id as unknown as number)
-      }
-    }
-    return live
-  }
-
-  /**
-   * Fix where each of `submissions` ended, now that they have.
-   *
-   * Only for those that ended without an answer: a done submission's end is its `answer`, which Pi keeps. The
-   * value is the conversation's head entry at this instant — the last entry the turn could have written; a
-   * turn's entries do not carry its submission, so nothing later can be attributed back to it.
-   */
-  async #recordEnds(id: number, submissions: readonly number[]): Promise<void> {
-    if (submissions.length === 0) return
-    const head = await this.#headEntry(id)
-    if (head === 0) return
-    for (const submissionId of submissions) {
-      const record = await this.#options.storage.submission(submissionId as never, context)
-      if (record === undefined || record.status !== 'unanswered') continue
-      if (!('entry' in record) || record.entry === undefined) continue
-      await this.#options.indexer.recordSubmissionEnd(id, submissionId, head)
-    }
-  }
-
-  /** The conversation's newest entry, or 0 when it holds none. */
-  async #headEntry(id: number): Promise<number> {
-    const page = await this.#options.storage.scanEntries(
-      { conversationId: id as never, order: 'descending' },
-      1,
-      undefined,
-      context,
-    )
-    const newest = page.items[0]
-    return newest === undefined ? 0 : (newest.id as unknown as number)
   }
 
   async #submissionGet(params: Record<string, unknown>): Promise<unknown> {
@@ -751,24 +699,15 @@ export class Kernel implements Dispatcher {
       })
     }
     const entry = 'entry' in record && record.entry !== undefined ? record.entry : undefined
-    // `last` is where this submission's turn ended, fixed when it ended:
-    //
-    // - a done submission's end is Pi's `answer`, which is durable;
-    // - one that ended without an answer — aborted, withdrawn — has the value the Kernel recorded at that
-    //   moment (see `Indexer.recordSubmissionEnd`). A submission settled before the Kernel could record it
-    //   answers its own entry, which under-reports rather than borrowing the next turn's reply.
-    const last =
-      record.status === 'done'
-        ? record.answer
-        : entry === undefined
-          ? undefined
-          : ((await this.#options.indexer.submissionEnd(id, submissionId)) ?? entry)
+    // Only Pi's own fields. A turn's entries do not carry its submission, and Pi keeps no submission → run task
+    // link, so there is no end the Kernel could report for a turn that produced no answer (see
+    // shared/design/kernel-index-ownership.md §7). A client bounds a turn by the status: `[entry, answer]` for
+    // a done submission, `[entry, head]` while placed, and nothing for one that ended without an answer.
     return {
       submissionId,
       status: record.status,
       ...(entry === undefined ? {} : { entry }),
       ...(record.status === 'done' ? { answer: record.answer } : {}),
-      ...(last === undefined ? {} : { last }),
       ...(record.status === 'unanswered' ? { reason: record.reason } : {}),
     }
   }
@@ -781,8 +720,6 @@ export class Kernel implements Dispatcher {
       context,
       id as never,
     )
-    // A withdrawn submission that had been placed ends here; where it ended is known only now.
-    if (status === 'aborted') await this.#recordEnds(id, [submissionId])
     switch (status) {
       case 'aborted':
         return { status }

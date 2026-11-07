@@ -394,12 +394,16 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `conversation.unwatch` | `{id}`                                                      | `{}`                                                             | `conversations` | yes |
 | `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}` | `{submissionId}`                                                 | `conversations` | yes |
 | `conversation.abort`   | `{id, background?}`                                         | `{}`                                                             | `conversations` | yes |
-| `submission.get`       | `{id, submissionId}`                                        | `{submissionId, status, entry?, answer?, last?, reason?}`        | `conversations` | no  |
+| `submission.get`       | `{id, submissionId}`                                        | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
 
-`last` is **where this submission's turn ended, fixed at the moment it ended**: `answer` for a done
-submission, and for one that ended without an answer the conversation's last entry when the Kernel settled it.
-It never changes afterwards, so a turn cannot absorb entries written by a later one. A submission that ended
-before the Kernel could record its end answers its own `entry`, which under-reports rather than borrowing.
+The Kernel reports only what Pi keeps: `status`, `entry` and `answer`, plus `reason` for one that ended without
+an answer. It does not report where such a turn stopped, because it cannot: Pi 1.5.0 stores no link from a
+submission to the run task that carried it, and a turn's entries carry a task rather than a submission, so any
+end the Kernel derived would belong to a different turn after one skipped round (shared/design §7). **A client
+bounds a turn by the status**: `[entry, answer]` for `done`, `[entry, the conversation's head]` while `placed`
+— one conversation runs one turn at a time, and later inputs either queue (no entry yet) or steer into the same
+run, which Pi treats as that same turn and answers with the same `done` record — nothing for `queued`, and for
+`unanswered` a client reports the reason rather than inventing a range.
 
 | `submission.abort` | `{id, submissionId}` | `{status}` | `conversations` | yes |
 | `conversation.configure` | `{id, change}` | `{agent}` | `conversations` | yes |

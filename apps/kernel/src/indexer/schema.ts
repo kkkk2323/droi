@@ -47,17 +47,6 @@ const statements = [
     ON droi_conversations (kind, last_activity_at DESC, id DESC)`,
   `CREATE INDEX IF NOT EXISTS droi_index_workspace
     ON droi_conversations (workspace, last_activity_at DESC, id DESC)`,
-  // Where a submission's turn ended, written when the Kernel settles one without an answer.
-  //
-  // The end cannot be derived from the transcript: a turn's entries do not carry its submission (they carry a
-  // task, and tool results belong to child tasks), so "the first task after my entry" adopts the next turn.
-  // It is recorded once, at the moment the submission ends, and read back unchanged.
-  `CREATE TABLE IF NOT EXISTS droi_submission_ends (
-    conversation_id INTEGER NOT NULL,
-    submission_id INTEGER NOT NULL,
-    last_entry_id INTEGER NOT NULL,
-    PRIMARY KEY (conversation_id, submission_id)
-  )`,
   `CREATE TABLE IF NOT EXISTS droi_requests (
     conversation_id INTEGER NOT NULL,
     request_id TEXT NOT NULL,
@@ -91,6 +80,9 @@ const TOKENIZER = 'trigram'
  */
 export async function migrate(db: SqliteExecutor): Promise<void> {
   for (const sql of statements) await db.exec(sql)
+  // A table this build no longer has. An earlier M1 recorded where a submission's turn ended; the contract
+  // has no such field, and the rows are neither read nor rebuildable, so the table goes rather than linger.
+  await db.exec('DROP TABLE IF EXISTS droi_submission_ends')
   const columns = await db.all<{ name: string }>('PRAGMA table_info(droi_conversations)')
   if (!columns.some((column) => column.name === 'request_fingerprint')) {
     await db.exec('ALTER TABLE droi_conversations ADD COLUMN request_fingerprint TEXT')
