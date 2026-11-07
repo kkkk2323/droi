@@ -94,9 +94,8 @@ type Client struct {
 	// been given yet, so a slow reader never stops the read loop.
 	queuedMu sync.Mutex
 	queued   []Notification
-	// lost counts whole views the reader never saw; over counts the times a
-	// must-arrive notification pushed the queue past its cap.
-	lost int
+	// over counts the notifications that arrived while the queue already held
+	// its cap, which is how a reader that fell behind is noticed.
 	over int
 	wake chan struct{}
 
@@ -498,14 +497,19 @@ func (c *Client) write(caller context.Context, method string, b []byte) error {
 //     waiting forever. These are never merged, never reordered and never
 //     dropped for want of room.
 //
-// A full queue gives way to a notification that must arrive by spending a whole
-// view — the oldest one, which the conversation's next push or a fresh
-// conversation.open rebuilds. A whole view is decided by the last word, not the
-// cap: it is appended even when the queue is past it, because losing the final
-// state of an idle conversation leaves a reader stale with nothing to trigger a
-// rebuild. So the queue can hold up to one final state per conversation beyond
-// its cap, and a conversation's next whole view replaces its own queued one
-// instead of adding another.
+// Nothing is ever dropped for want of room, because there is nothing left to
+// drop: a step the reader has not applied cannot be rebuilt, and a whole view is
+// the conversation's state — an idle conversation's last one would leave a
+// reader stale with nothing to trigger a rebuild (no push, no open). The cap is
+// therefore a backlog threshold rather than a hard bound: past it the reader is
+// behind, the queue keeps everything, and overLocked says so.
+//
+// It stays bounded in the way that matters. A stuck reader costs at most one
+// state per conversation, because a conversation's newer whole view replaces its
+// own queued one instead of adding another — and the number of conversations is
+// what a reader subscribed to. Steps are what can pile up under a flood, and
+// that is the contract's own trade: an approval or an ask that is dropped waits
+// for the session forever.
 func (c *Client) enqueue(n Notification) {
 	c.queuedMu.Lock()
 	if _, superseded := c.supersedesLocked(n); superseded {
@@ -513,9 +517,7 @@ func (c *Client) enqueue(n Notification) {
 		c.signal()
 		return
 	}
-	if len(c.queued) >= c.opts.maxQueuedNotes() && !c.dropRebuildableLocked() {
-		// Nothing rebuildable to trade: a must-arrive notification and a whole
-		// view both grow the queue past its cap rather than be lost.
+	if len(c.queued) >= c.opts.maxQueuedNotes() {
 		c.overLocked()
 	}
 	c.queued = append(c.queued, n)
@@ -567,43 +569,14 @@ func notificationID(n Notification) (ID, bool) {
 	return p.ID, true
 }
 
-// dropRebuildableLocked takes the oldest whole view out of the queue, so a
-// notification that must arrive can have its room, and answers whether it
-// found one.
-//
-// The holder must hold c.queuedMu.
-func (c *Client) dropRebuildableLocked() bool {
-	for i := range c.queued {
-		if isWholeView(c.queued[i]) {
-			method := c.queued[i].Method
-			c.queued = append(c.queued[:i], c.queued[i+1:]...)
-			c.lostLocked(method)
-			return true
-		}
-	}
-	return false
-}
-
-// lostLocked counts a whole view the reader will never see because a
-// notification that must arrive took its room. The conversation's next push or
-// a fresh conversation.open rebuilds it.
-//
-// The holder must hold c.queuedMu.
-func (c *Client) lostLocked(method string) {
-	c.lost++
-	if c.lost == 1 || c.lost%1000 == 0 {
-		c.logf("kernel: a slow reader traded %d whole views for notifications that must arrive (last: %s); a view rebuilds on the conversation's next push or open", c.lost, method)
-	}
-}
-
-// overLocked counts a notification that had to push the queue past its cap:
-// one that must arrive, or a whole view with nothing to trade for its room.
+// overLocked counts a notification that arrived while the queue already held
+// its cap: the reader is behind, and nothing gives way any more.
 //
 // The holder must hold c.queuedMu.
 func (c *Client) overLocked() {
 	c.over++
 	if c.over == 1 || c.over%1000 == 0 {
-		c.logf("kernel: the reader is %d notifications behind and nothing in the queue can be traded: it grew past its cap of %d %d times", len(c.queued), c.opts.maxQueuedNotes(), c.over)
+		c.logf("kernel: the reader is %d notifications behind its cap of %d (past it %d times); it keeps them all, one state per conversation and every step in order", len(c.queued), c.opts.maxQueuedNotes(), c.over)
 	}
 }
 
@@ -629,11 +602,6 @@ func wholeView(n Notification) (ID, bool) {
 	return p.ID, true
 }
 
-// isWholeView reports whether n may be dropped when the queue is full.
-func isWholeView(n Notification) bool {
-	_, ok := wholeView(n)
-	return ok
-}
 func (c *Client) signal() {
 	select {
 	case c.wake <- struct{}{}:

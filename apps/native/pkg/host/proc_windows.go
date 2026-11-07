@@ -3,6 +3,7 @@ package host
 import (
 	"errors"
 	"os/exec"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -66,11 +67,19 @@ func newProcessTree(cmd *exec.Cmd) (processTree, error) {
 }
 
 // jobTree is one generation's job.
-type jobTree struct{ job windows.Handle }
+//
+// The handle is guarded: the watchdog and the retire path both end a tree, and
+// one of them may reach close while the other is on its way to kill.
+type jobTree struct {
+	mu  sync.Mutex
+	job windows.Handle
+}
 
-// kill ends every process in the job. A job that is already empty answers an
-// error the caller does not need: the tree is gone either way.
+// kill ends every process in the job. A job that is already empty, or already
+// released, answers nothing the caller needs: the tree is gone either way.
 func (j *jobTree) kill() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	if j.job != 0 {
 		_ = windows.TerminateJobObject(j.job, 1)
 	}
@@ -79,6 +88,8 @@ func (j *jobTree) kill() {
 // close releases the job. KILL_ON_JOB_CLOSE is also what ends a process that
 // joined late, so closing is a last sweep rather than only a free.
 func (j *jobTree) close() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	if j.job != 0 {
 		_ = windows.CloseHandle(j.job)
 		j.job = 0

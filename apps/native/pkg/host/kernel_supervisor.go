@@ -28,16 +28,21 @@ const (
 
 // KernelState is the sidecar's state, as Settings and the window show it.
 //
-// It is a value the Supervisor publishes asynchronously: the window hears the
-// states it might have missed as one, and must take what it is told. Two rules
-// follow from that, and they are the contract:
+// It is a value the Supervisor publishes asynchronously, and the promise is
+// deliberately weaker than "nothing stale after Stop returns":
 //
-//   - A callback that began before Stop returned may return after it. Stop
-//     never joins a callback, because a callback may be the thing waiting for
-//     Stop. A window that draws the state it is handed, and checks Generation
-//     before acting on a running sidecar, is correct under that.
-//   - The last state a Host hears is the current one, so a queued "running"
-//     that a Stop already superseded is never delivered on its own.
+//   - A callback that began before Stop returned may return after it, and it
+//     may carry a running state: the publisher takes the state, releases the
+//     lock and then calls. Stop does not join a callback — a callback may be the
+//     thing waiting for Stop — so no ordering there can be closed without
+//     reintroducing that deadlock.
+//   - What is guaranteed is the end: after Stop returns, a stale running may
+//     arrive, and the stopped state that follows it always does, so the last
+//     state a Host hears is the current one.
+//
+// A window is therefore written to draw what it is handed and to check
+// Generation before it acts on a running sidecar: a state of an earlier
+// generation is stale by definition.
 type KernelState struct {
 	Status KernelStatus
 	Port   int
@@ -153,6 +158,10 @@ type kernelChild struct {
 	tree processTree
 	// retired makes the clean-up run once, whichever path gets there first.
 	retired sync.Once
+	// killed ends the process tree once. Both the watchdog and retire kill
+	// it, and a second kill of a tree whose handles are already released is
+	// exactly what a supervisor must not do.
+	killed sync.Once
 }
 
 // processTree is a generation's whole process tree.
@@ -163,6 +172,22 @@ type processTree interface {
 	// close releases the handle without ending anything else: after kill it
 	// only frees what the Host holds.
 	close()
+}
+
+// endTree ends this generation's process tree, once. Whoever gets there first —
+// the watchdog that found a wedged sidecar, or retire — is the one that kills
+// it, and the other waits for that kill rather than repeating it on handles
+// that may already be released.
+func (ch *kernelChild) endTree() {
+	ch.killed.Do(func() {
+		if ch.tree != nil {
+			ch.tree.kill()
+			return
+		}
+		if ch.cmd != nil && ch.cmd.Process != nil {
+			_ = ch.cmd.Process.Kill()
+		}
+	})
 }
 
 // waitDelay bounds how long the Supervisor waits for a generation's stdout
@@ -302,7 +327,10 @@ func (s *KernelSupervisor) Start() {
 //
 // Stop never waits for a callback. The state is published before the sidecar is
 // asked to stop, so a window hears "stopped" while the process is still closing;
-// a callback may call Stop or Restart without deadlocking.
+// a callback may call Stop or Restart without deadlocking. The price is the one
+// KernelState documents: a callback already under way may deliver a stale
+// running state after Stop returned, and the stopped state that follows it is
+// what ends the sequence.
 //
 // How long it can take: StopGrace (12 s by default), then the bounded drain of
 // what the sidecar already wrote (waitDelay, then pumpJoin) and the tree's own
@@ -353,9 +381,7 @@ func (s *KernelSupervisor) Restart() {
 // reader alive: the reader's Read fails and it returns.
 func (s *KernelSupervisor) retire(ch *kernelChild) {
 	ch.retired.Do(func() {
-		if ch.tree != nil {
-			ch.tree.kill()
-		}
+		ch.endTree()
 		// The process itself is reaped by the waiter of its command, and "the
 		// sidecar is gone" means reaped: until then it is a zombie that still
 		// answers a signal, which is what a caller of Stop would see. A
@@ -511,11 +537,24 @@ func (s *KernelSupervisor) launch(gen int) {
 	if live && !ready {
 		// Spawned but never healthy: end it now rather than wait for a
 		// restart it would trigger anyway.
+		//
+		// The wait is bounded and the tree is ended after it, because this
+		// launch is over either way: a sidecar that ignores the signal — a
+		// harness stuck in close, a process in its own handler — would
+		// otherwise hold the launch goroutine here forever, with the state
+		// still saying "starting" and no restart ever scheduled.
 		if s.Terminate != nil {
 			s.Terminate(ch.cmd)
 		} else {
 			signalProcess(ch.cmd)
 		}
+		grace := orDefault(s.StopGrace, kernelStopGrace)
+		select {
+		case <-ch.done:
+		case <-time.After(grace):
+			s.logf("kernel did not exit %s after a failed readiness was signalled", grace)
+		}
+		s.retire(ch)
 	}
 
 	<-ch.done

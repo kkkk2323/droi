@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -106,13 +107,32 @@ func (f *fakeKernel) write(t *testing.T, frame outFrame) {
 
 func (f *fakeKernel) writeRaw(t *testing.T, b []byte) {
 	t.Helper()
-	f.mu.Lock()
-	conn := f.conn
-	f.mu.Unlock()
+	conn := f.connFor(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := conn.Write(ctx, websocket.MessageText, b); err != nil {
 		t.Fatalf("write: %v", err)
+	}
+}
+
+// connFor is the accepted connection, waiting for the dial when it is still in
+// flight. A test that writes before the Client's dial landed — or a server that
+// has read a frame but not yet stored the connection — is a race in this
+// helper, not a Kernel that lost something.
+func (f *fakeKernel) connFor(t *testing.T) *websocket.Conn {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		conn := f.conn
+		f.mu.Unlock()
+		if conn != nil {
+			return conn
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the client never connected")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -132,11 +152,9 @@ func (f *fakeKernel) notify(t *testing.T, method string, params any) {
 }
 
 // hangUp ends the connection as a crashed Kernel would.
-func (f *fakeKernel) hangUp() {
-	f.mu.Lock()
-	conn := f.conn
-	f.mu.Unlock()
-	_ = conn.CloseNow()
+func (f *fakeKernel) hangUp(t *testing.T) {
+	t.Helper()
+	_ = f.connFor(t).CloseNow()
 }
 
 func dialFake(t *testing.T, f *fakeKernel) *Client {
@@ -519,7 +537,7 @@ func TestClientClosesWaitingCalls(t *testing.T) {
 func TestClientEndsWhenKernelGoesAway(t *testing.T) {
 	f := startFakeKernel(t)
 	c := dialFake(t, f)
-	f.hangUp()
+	f.hangUp(t)
 	select {
 	case <-c.Done():
 	case <-time.After(5 * time.Second):
@@ -775,10 +793,11 @@ func TestWholeViewsCoalesceInTheQueue(t *testing.T) {
 	}
 }
 
-// A notification that cannot be rebuilt — an approval, an ask, a lifecycle
-// change — is never dropped for want of room: whole views give way to it,
-// oldest first, because a conversation's next push or a fresh
-// conversation.open rebuilds one.
+// Nothing that reaches the queue is dropped for want of room: a notification
+// that cannot be rebuilt — an approval, an ask, a lifecycle change — would leave
+// a session waiting forever, and a whole view is the only thing a reader that
+// fell behind cannot rebuild either. The cap is a backlog threshold, and past it
+// the queue keeps everything.
 func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 	f := startFakeKernel(t)
 	c, err := Dial(context.Background(), Options{
@@ -809,18 +828,18 @@ func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	// Eight more views of conversations of their own: none coalesces with
-	// another, so a queue of two grows past its cap rather than lose the last
-	// state of eight conversations — and the approval and the ask that follow
-	// trade the oldest of those views for room.
+	// another, so the queue grows past its cap rather than lose the last state
+	// of eight conversations — and the approval and the ask that follow are
+	// kept too, in the order they arrived.
 	for id := 2; id <= 9; id++ {
-		say(NotifyConversationView, view(id, "dropped"))
+		say(NotifyConversationView, view(id, "waiting"))
 	}
 	say(NotifyApprovalRequested, map[string]any{"requestId": "a-1", "id": 2, "tool": "bash", "args": map[string]any{"command": "rm -rf build"}})
 	say(NotifyAskRequested, map[string]any{"requestId": "q-1", "id": 2, "questions": []any{}, "context": "why"})
 
-	sawApproval, sawAsk := false, false
+	sawApproval, sawAsk, views := false, false, map[string]bool{}
 	deadline := time.Now().Add(5 * time.Second)
-	for (!sawApproval || !sawAsk) && time.Now().Before(deadline) {
+	for (!sawApproval || !sawAsk || len(views) < 8) && time.Now().Before(deadline) {
 		select {
 		case n := <-c.Notifications():
 			switch n.Method {
@@ -828,6 +847,16 @@ func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 				sawApproval = true
 			case NotifyAskRequested:
 				sawAsk = true
+			case NotifyConversationView:
+				var params struct {
+					ID    int `json:"id"`
+					Value struct {
+						Before string `json:"before"`
+					} `json:"value"`
+				}
+				if json.Unmarshal(n.Params, &params) == nil && params.Value.Before == "waiting" {
+					views[strconv.Itoa(params.ID)] = true
+				}
 			}
 		case <-time.After(100 * time.Millisecond):
 		}
@@ -835,11 +864,16 @@ func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 	if !sawApproval || !sawAsk {
 		t.Fatalf("the approval arrived: %v, the ask: %v — neither may be dropped", sawApproval, sawAsk)
 	}
+	// Eight conversations that were not coalesced away, each with its own final
+	// state: a reader behind loses none of them, and the cap only counts.
+	if len(views) != 8 {
+		t.Fatalf("%d of the eight waiting views arrived: %v", len(views), views)
+	}
 	c.queuedMu.Lock()
-	lost := c.lost
+	over := c.over
 	c.queuedMu.Unlock()
-	if lost == 0 {
-		t.Fatal("no whole view was counted as lost, so the cap was never exercised")
+	if over == 0 {
+		t.Fatal("the cap was never reached, so the policy was not exercised")
 	}
 }
 
@@ -1115,7 +1149,7 @@ func TestShutdownAnswersWhileTheCloseRuns(t *testing.T) {
 		t.Fatal("the shutdown call never answered")
 	}
 	// Kernel then goes away, as it does after answering.
-	f.hangUp()
+	f.hangUp(t)
 	select {
 	case <-c.Done():
 	case <-time.After(5 * time.Second):

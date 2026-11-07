@@ -11,7 +11,12 @@ import (
 	"time"
 )
 
-func TestReview228R3PipeReadEndClosesAfterDrain(t *testing.T) {
+// The two halves of the reviewer's probe, which pre-closed both ends and so
+// could not tell the pump's own clean-up from retire's.
+//
+// This is the first: the Host-owned read end is closed by the pump itself when
+// the child's write end reaches EOF, without anyone closing it from outside.
+func TestReview228R3PumpClosesTheReadEndItOwns(t *testing.T) {
 	read, write, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -19,14 +24,59 @@ func TestReview228R3PipeReadEndClosesAfterDrain(t *testing.T) {
 	defer read.Close()
 	defer write.Close()
 	pair := &stdioPair{read: read, write: write}
-	_ = pair.Close() // The parent's post-Start close.
 	ch := &kernelChild{stdout: pair, output: newTailBuffer(4096), pumped: make(chan struct{})}
+	if _, err := write.WriteString("a line\n"); err != nil {
+		t.Fatal(err)
+	}
+	// The child is gone: its write end reaches EOF, which is what the pump
+	// sees when the last holder of that end exits.
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
 	(&KernelSupervisor{}).pumpStdout(ch)
+	select {
+	case <-ch.pumped:
+	case <-time.After(time.Second):
+		t.Fatal("the pump did not return at EOF")
+	}
 	if !pipeEndClosed(t, read) {
 		t.Fatal("pumpStdout returned but the Host-owned read fd is still open")
 	}
 }
 
+// And the second: a process that left the tree keeps the write end open, so a
+// reader that only waits for EOF never returns. Retiring the generation closes
+// the read end under it, and the reader goes.
+func TestReview228R3RetireClosesTheReadEndUnderAStuckPump(t *testing.T) {
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	defer write.Close() // The holder the kill could not reach: never closed here.
+	pair := &stdioPair{read: read, write: write}
+	ch := &kernelChild{
+		stdout: pair, output: newTailBuffer(4096),
+		done: make(chan struct{}), pumped: make(chan struct{}),
+	}
+	close(ch.done)
+	go (&KernelSupervisor{}).pumpStdout(ch)
+	// The pump is blocked on a read that will not see EOF.
+	time.Sleep(20 * time.Millisecond)
+	started := time.Now()
+	(&KernelSupervisor{}).retire(ch)
+	if elapsed := time.Since(started); elapsed > waitDelay+pumpJoin+2*time.Second {
+		t.Fatalf("retire waited %s for a reader it can close itself", elapsed)
+	}
+	select {
+	case <-ch.pumped:
+	case <-time.After(time.Second):
+		t.Fatal("the reader is still blocked after retire closed the read end")
+	}
+	if !pipeEndClosed(t, read) {
+		t.Fatal("retire returned with the Host-owned read fd still open")
+	}
+}
 func TestReview228R3StartFailureClosesBothPipeEnds(t *testing.T) {
 	read, write, err := os.Pipe()
 	if err != nil {
@@ -103,50 +153,51 @@ func TestReview228R3OnStateDelegatedStopDoesNotDeadlock(t *testing.T) {
 	}
 }
 
-// The reviewer's admission probe put a barrier between the live check and the
-// callback. There is no such gap now: nothing is admitted, the publisher reads
-// whatever state is current when it wakes, so a state a Stop made stale can only
-// be delivered if its callback began before Stop returned. This checks that over
-// real launches: no callback that *starts* after Stop returned ever sees running.
-func TestReview228R3RunningIsNeverPublishedAfterStopReturns(t *testing.T) {
-	var stopped atomic.Bool
-	stale := make(chan KernelState, 4)
-	spawn := helperSpawn(t)
-	s := &KernelSupervisor{
-		Spawn: spawn,
-		OnState: func(st KernelState) {
-			if st.Status == KernelRunning && stopped.Load() {
-				select {
-				case stale <- st:
-				default:
-				}
-			}
-		},
-		Backoff:      []time.Duration{time.Hour},
-		ReadyTimeout: 10 * time.Second,
-		StableAfter:  10 * time.Second,
-		StopGrace:    time.Second,
-		Log:          func(string) {},
+// A callback that began before Stop returned may return after it — the
+// publisher takes the state, releases the lock and calls, and Stop does not
+// join a callback because a callback may be the thing waiting for Stop. What a
+// window is promised is the end of the sequence, not the absence of a stale
+// state: the stopped state always follows, and Generation says which is which.
+//
+// This is deterministic: the callback itself is the barrier.
+func TestReview228R3AStartedCallbackOutlastsStopAndStoppedFollows(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	delivered := make(chan KernelState, 4)
+	var first atomic.Bool
+	s := &KernelSupervisor{}
+	defer s.Close()
+	s.OnState = func(st KernelState) {
+		if first.CompareAndSwap(false, true) {
+			close(entered)
+			<-release
+		}
+		delivered <- st
 	}
-	for i := 0; i < 10; i++ {
-		stopped.Store(false)
-		s.Start()
-		// Stop at a different point of the launch each time, so one of them
-		// lands between the health answer and the running state.
-		time.Sleep(time.Duration(i) * 5 * time.Millisecond)
-		s.Stop()
-		stopped.Store(true)
+	s.mu.Lock()
+	s.setLocked(KernelState{Status: KernelRunning, Generation: 7})
+	s.mu.Unlock()
+	<-entered // The running state is inside a callback now.
+	s.Stop()  // It returns without waiting for that callback.
+	close(release)
+	var sawRunning, sawStopped bool
+	for deadline := time.After(2 * time.Second); !(sawRunning && sawStopped); {
 		select {
-		case st := <-stale:
-			t.Fatalf("iteration %d: running published after Stop returned: %+v", i, st)
-		default:
+		case st := <-delivered:
+			switch st.Status {
+			case KernelRunning:
+				sawRunning = true
+				if st.Generation != 7 {
+					t.Fatalf("the stale running state lost its generation: %+v", st)
+				}
+			case KernelStopped:
+				sawStopped = true
+			}
+		case <-deadline:
+			t.Fatalf("saw running=%v stopped=%v: the stopped state must always follow a stale one", sawRunning, sawStopped)
 		}
 	}
-	s.Close()
-	select {
-	case st := <-stale:
-		t.Fatalf("running published after Stop returned: %+v", st)
-	case <-time.After(200 * time.Millisecond):
+	if current := s.State(); current.Status != KernelStopped {
+		t.Fatalf("the last state a Host hears must be the current one: %+v", current)
 	}
 }
 func TestReview228R3RestartKeepsCallbacksSerialized(t *testing.T) {

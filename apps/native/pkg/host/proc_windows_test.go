@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,11 +41,22 @@ func TestWindowsJobEndsChildrenAfterTheParentExitsFirst(t *testing.T) {
 	w := newWatch()
 	s := w.supervisor(helperSpawnIn(t, data,
 		"GO_KERNEL_CHILD_HOLD_MS=60000", "GO_KERNEL_EXIT_MS=400"))
+	// One attempt only: the sidecar must crash by itself, and a restart would
+	// leave a second parent whose Stop is not the one being tested.
+	s.Backoff = []time.Duration{time.Hour}
+	defer s.Close()
 	defer s.Stop()
 	s.Start()
+	w.waitState(t, KernelRunning)
 	// The child exists before the crash: that is what is left behind.
 	child := waitChildPid(t, data)
-	s.Stop()
+	if !processAlive(child) {
+		t.Fatalf("the sidecar's child %d never ran", child)
+	}
+	// Stop is not called until the parent has exited on its own and its
+	// generation has been retired — otherwise this would test an ordinary
+	// Stop, which is the other test's case.
+	w.waitState(t, KernelRestarting)
 	waitGone(t, child)
 }
 
@@ -98,4 +110,22 @@ func waitGone(t *testing.T, pid int) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("pid %d is still alive after its tree was ended", pid)
+}
+
+// A launch that never becomes ready is retired on Windows too. TerminateProcess
+// is not ignorable, so the bound is not what this proves; what it proves is that
+// the failed generation reaches retire and the retry — the reviewer's case used
+// an unkillable sidecar, which only Unix can build.
+func TestWindowsFailedReadinessRetiresAndRetries(t *testing.T) {
+	w := newWatch()
+	s := w.supervisor(helperSpawn(t, "GO_KERNEL_NO_HANDSHAKE=1"))
+	s.ReadyTimeout = 300 * time.Millisecond
+	s.Backoff = []time.Duration{10 * time.Millisecond}
+	defer s.Close()
+	defer s.Stop()
+	s.Start()
+	restarting := w.waitState(t, KernelRestarting)
+	if !strings.Contains(restarting.Reason, "handshake") {
+		t.Fatalf("reason = %q, want the handshake's", restarting.Reason)
+	}
 }

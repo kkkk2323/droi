@@ -19,7 +19,7 @@ func TestReview228R3MixedSubscriptionOrder(t *testing.T) {
 		c.enqueue(n)
 	}
 	if len(c.queued) == 0 || string(c.queued[len(c.queued)-1].Params) != string(notes[3].Params) {
-		t.Fatalf("overflow dropped the final whole view after full/delta: queue=%v lost=%d", c.queued, c.lost)
+		t.Fatalf("overflow dropped the final whole view after full/delta: queue=%v lost=%d", c.queued, c.over)
 	}
 }
 

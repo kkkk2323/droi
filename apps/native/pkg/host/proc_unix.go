@@ -40,7 +40,8 @@ func newProcessTree(cmd *exec.Cmd) (processTree, error) {
 	return &groupTree{pid: cmd.Process.Pid}, nil
 }
 
-// groupTree is one generation's process group.
+// groupTree is one generation's process group. It holds no handle, so killing
+// it twice costs a signal and nothing else; endTree still makes it once.
 type groupTree struct{ pid int }
 
 // kill ends the group and answers once no member is left, bounded by
