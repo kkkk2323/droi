@@ -30,8 +30,6 @@ const (
 	closeUnauthorized = websocket.StatusCode(4401)
 	// defaultWriteTimeout bounds one write to the socket.
 	defaultWriteTimeout = 10 * time.Second
-	// defaultMaxQueuedNotes bounds what a reader that fell behind costs.
-	defaultMaxQueuedNotes = 4096
 )
 
 // Options say how to reach a Kernel.
@@ -49,16 +47,11 @@ type Options struct {
 	MaxMessage int64
 	// NotesBuffer is how many notifications are handed to the reader at once;
 	// 0 is 256. A reader that stops reading never stops the answers: the read
-	// loop queues notifications without waiting, so a slow consumer costs
-	// memory, not calls. One goroutine reads the queue in order, so a reader
-	// sees Kernel's news as it sent it.
+	// loop queues notifications without waiting, and the queue is bounded per
+	// kind, so a slow consumer costs a known amount of memory, not calls. One
+	// goroutine reads the queue in order, so a reader sees Kernel's news as
+	// Kernel sent it, with the states it superseded folded away.
 	NotesBuffer int
-	// MaxQueuedNotes is how many notifications may wait for a reader that is
-	// behind; 0 is 4096. A whole view waiting here is superseded by the next
-	// one of its conversation, so reaching the cap means a real flood or a
-	// reader that is gone. Notifications that cannot be rebuilt are never
-	// dropped, so the queue may grow past the cap to keep one.
-	MaxQueuedNotes int
 	// WriteTimeout bounds one write to the socket; 0 is 10 s. Kernel not
 	// reading its frames is a broken connection, and without this the caller
 	// waiting on the write mutex would wait forever.
@@ -68,8 +61,8 @@ type Options struct {
 	Log func(string)
 }
 
-// Client is one connection to a Kernel: the contract's 25 methods as Go calls,
-// and its notifications in order on Notifications.
+// Client is one connection to a Kernel: the contract's methods as Go calls, and
+// its notifications in order on Notifications.
 //
 // A Client is one connection's view of Kernel: conversation.view arrives only
 // for the conversations it opened, and Close (or losing the connection)
@@ -90,14 +83,11 @@ type Client struct {
 	opened  []ID
 	err     error
 
-	// queued holds notifications the read loop took but the reader has not
-	// been given yet, so a slow reader never stops the read loop.
-	queuedMu sync.Mutex
-	queued   []Notification
-	// over counts the notifications that arrived while the queue already held
-	// its cap, which is how a reader that fell behind is noticed.
-	over int
-	wake chan struct{}
+	// queue holds notifications the read loop took but the reader has not been
+	// given yet, folded by kind and bounded per kind, so a reader that stops
+	// reading costs a known amount of memory and never stops the read loop.
+	queue *notifQueue
+	wake  chan struct{}
 
 	notes chan Notification
 	done  chan struct{}
@@ -129,6 +119,7 @@ func Dial(ctx context.Context, opts Options) (*Client, error) {
 		conn:    conn,
 		opts:    opts,
 		pending: map[string]chan *rpcFrame{},
+		queue:   newNotifQueue(),
 		wake:    make(chan struct{}, 1),
 		notes:   make(chan Notification, opts.notesBuffer()),
 		done:    make(chan struct{}),
@@ -159,13 +150,6 @@ func (o Options) notesBuffer() int {
 	return defaultNotesBuffer
 }
 
-func (o Options) maxQueuedNotes() int {
-	if o.MaxQueuedNotes > 0 {
-		return o.MaxQueuedNotes
-	}
-	return defaultMaxQueuedNotes
-}
-
 func (o Options) timeout() time.Duration {
 	if o.RequestTimeout != 0 {
 		return o.RequestTimeout
@@ -173,8 +157,17 @@ func (o Options) timeout() time.Duration {
 	return defaultRequestTimeout
 }
 
-// Notifications is every notification Kernel sends this connection, in order.
-// The channel closes when the connection does; Done and Err say why.
+// Notifications is every notification Kernel sends this connection, in order,
+// folded and bounded as the queue describes: a conversation's states arrive as
+// the newest one, and a flood the reader cannot keep up with is folded (states)
+// or counted (warnings) rather than queued.
+//
+// The channel closes when the connection does; Done and Err say why. Two kinds
+// of flood end the connection instead of dropping what cannot be rebuilt: more
+// approvals and asks than the queue holds, and more delta steps than a reader
+// could apply — reconnecting opens the conversations and starts from a whole
+// view.
+
 func (c *Client) Notifications() <-chan Notification { return c.notes }
 
 // Done is closed when the connection ends.
@@ -480,80 +473,44 @@ func (c *Client) write(caller context.Context, method string, b []byte) error {
 	return nil
 }
 
-// enqueue puts a notification in line for the reader and wakes it. The read
-// loop never waits here, so a reader that is busy — or that stops reading —
-// costs the queue, not the answers.
+// enqueue puts a notification in the queue for the reader and wakes it. The
+// read loop never waits here, so a reader that is busy — or that stops reading
+// — costs the queue, not the answers.
 //
-// Two kinds of notification are told apart, because only one of them can be
-// rebuilt:
+// What happens to a notification depends on whether it can be rebuilt:
 //
-//   - A whole view (conversation.view with kind "value" and a value) is the
-//     state of a conversation, and the newest one supersedes an earlier one the
-//     reader has not taken yet — so a reader that fell behind sees the latest
-//     state instead of every intermediate one.
-//   - Everything else is a step in a sequence: a delta push's ops only make
-//     sense applied in order, a "full" push is what resets a delta reader's
-//     state, and an approval or an ask that never arrives leaves a session
-//     waiting forever. These are never merged, never reordered and never
-//     dropped for want of room.
+//   - A conversation's whole view is its state, and one task's or one process's
+//     news is that entry's state: the newest one supersedes the earlier one the
+//     reader has not taken, and how many it replaced travels in Folded.
+//   - An approval or an ask is a question a session is waiting for. It is queued
+//     as it arrives, and when its bucket is full the connection ends rather than
+//     dropping it: a reconnect re-opens the conversations, and the session asks
+//     again. A resolution keeps one entry per request.
+//   - Warnings are advice: the newest are kept and the count of the ones lost
+//     travels in Dropped.
 //
-// Nothing is ever dropped for want of room, because there is nothing left to
-// drop: a step the reader has not applied cannot be rebuilt, and a whole view is
-// the conversation's state — an idle conversation's last one would leave a
-// reader stale with nothing to trigger a rebuild (no push, no open). The cap is
-// therefore a backlog threshold rather than a hard bound: past it the reader is
-// behind, the queue keeps everything, and overLocked says so.
-//
-// It stays bounded in the way that matters. A stuck reader costs at most one
-// state per conversation, because a conversation's newer whole view replaces its
-// own queued one instead of adding another — and the number of conversations is
-// what a reader subscribed to. Steps are what can pile up under a flood, and
-// that is the contract's own trade: an approval or an ask that is dropped waits
-// for the session forever.
+// The read loop is one goroutine for both answers and notifications, which is
+// why this never blocks: blocking here would make every call wait behind a
+// reader that stopped reading.
 func (c *Client) enqueue(n Notification) {
-	c.queuedMu.Lock()
-	if _, superseded := c.supersedesLocked(n); superseded {
-		c.queuedMu.Unlock()
-		c.signal()
+	if c.queue.put(n) {
+		c.overflow(n.Method)
 		return
 	}
-	if len(c.queued) >= c.opts.maxQueuedNotes() {
-		c.overLocked()
-	}
-	c.queued = append(c.queued, n)
-	c.queuedMu.Unlock()
 	c.signal()
 }
 
-// supersedesLocked reports whether n replaces an earlier queued whole view of
-// the same conversation, which the reader has not taken yet.
+// overflow ends the connection because the queue could not hold a notification
+// that must not be dropped.
 //
-// Only a whole view may be replaced, and only the newest queued notification of
-// its conversation may be: anything behind a "full" push or a delta push is
-// separated from n by a step the reader must apply. Replacing across one would
-// hand the reader latest → reset and leave it on the state before latest, which
-// is exactly what the review found.
-//
-// The holder must hold c.queuedMu.
-func (c *Client) supersedesLocked(n Notification) (ID, bool) {
-	id, ok := wholeView(n)
-	if !ok {
-		return 0, false
-	}
-	for i := len(c.queued) - 1; i >= 0; i-- {
-		earlier, sameConversation := notificationID(c.queued[i])
-		if !sameConversation || earlier != id {
-			continue
-		}
-		// The newest notification of this conversation. It may give way only
-		// when it is a whole view itself.
-		if _, isWhole := wholeView(c.queued[i]); !isWhole {
-			return 0, false
-		}
-		c.queued[i] = n
-		return id, true
-	}
-	return 0, false
+// Ending it is the point: the alternative is a session waiting for an approval
+// that never comes, and a Client that reconnects opens the conversations it had
+// and is told about them again.
+func (c *Client) overflow(method string) {
+	err := fmt.Errorf("kernel: the notification queue cannot hold another %s without dropping one a reader cannot rebuild (approvals and asks: %d, view steps: %d); the connection is closed so a new one can open its conversations again", method, queueMaxRequests, queueMaxViewSteps)
+	c.logf("%v", err)
+	c.shut(err)
+	_ = c.conn.Close(websocket.StatusPolicyViolation, "notification queue full")
 }
 
 // notificationID is the conversation a notification is about, for any
@@ -567,17 +524,6 @@ func notificationID(n Notification) (ID, bool) {
 		return 0, false
 	}
 	return p.ID, true
-}
-
-// overLocked counts a notification that arrived while the queue already held
-// its cap: the reader is behind, and nothing gives way any more.
-//
-// The holder must hold c.queuedMu.
-func (c *Client) overLocked() {
-	c.over++
-	if c.over == 1 || c.over%1000 == 0 {
-		c.logf("kernel: the reader is %d notifications behind its cap of %d (past it %d times); it keeps them all, one state per conversation and every step in order", len(c.queued), c.opts.maxQueuedNotes(), c.over)
-	}
 }
 
 // wholeView is a conversation.view push that carries a whole view: kind
@@ -609,32 +555,26 @@ func (c *Client) signal() {
 	}
 }
 
-// deliver hands queued notifications to the reader, in the order they arrived,
-// on a goroutine of its own: it is the only sender on notes and the only one
-// that closes it.
+// deliver hands queued notifications to the reader, one at a time, on a
+// goroutine of its own: it is the only sender on notes and the only one that
+// closes it.
+//
+// The order is the queue's: a question that needs an answer first, then the
+// conversation state, then the rest. A reader that was stuck for a while
+// therefore wakes to the approvals, not to the frame that happened to be first.
 func (c *Client) deliver() {
 	defer close(c.notes)
 	for {
-		select {
-		case <-c.done:
-			return
-		default:
-		}
-		c.queuedMu.Lock()
-		if len(c.queued) == 0 {
-			c.queuedMu.Unlock()
+		if n, ok := c.queue.take(); ok {
 			select {
-			case <-c.wake:
+			case c.notes <- n:
 				continue
 			case <-c.done:
 				return
 			}
 		}
-		n := c.queued[0]
-		c.queued = c.queued[1:]
-		c.queuedMu.Unlock()
 		select {
-		case c.notes <- n:
+		case <-c.wake:
 		case <-c.done:
 			return
 		}

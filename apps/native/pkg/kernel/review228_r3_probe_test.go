@@ -3,12 +3,16 @@ package kernel
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
 
+// A mixed subscription's pushes all reach the reader, in the order that makes
+// them apply: the whole view the reader missed, the reset, the step, and then
+// the conversation's latest state — which nothing may evict.
 func TestReview228R3MixedSubscriptionOrder(t *testing.T) {
-	c := &Client{opts: Options{MaxQueuedNotes: 2}, wake: make(chan struct{}, 1)}
+	c := &Client{queue: newNotifQueue(), wake: make(chan struct{}, 1)}
 	notes := []Notification{
 		review228Note(NotifyConversationView, `{"id":7,"kind":"value","value":{"before":"old"}}`),
 		review228Note(NotifyConversationView, `{"id":7,"kind":"full","value":{"before":"reset"}}`),
@@ -18,8 +22,13 @@ func TestReview228R3MixedSubscriptionOrder(t *testing.T) {
 	for _, n := range notes {
 		c.enqueue(n)
 	}
-	if len(c.queued) == 0 || string(c.queued[len(c.queued)-1].Params) != string(notes[3].Params) {
-		t.Fatalf("overflow dropped the final whole view after full/delta: queue=%v lost=%d", c.queued, c.over)
+	queued := review228Drain(c)
+	if len(queued) == 0 || string(queued[len(queued)-1].Params) != string(notes[3].Params) {
+		t.Fatalf("the conversation's latest state is not the last entry: %v", queued)
+	}
+	// The reset and the step are still in front of it, in the order they came.
+	if !strings.Contains(string(queued[0].Params), `"kind":"full"`) || !strings.Contains(string(queued[1].Params), "delta") {
+		t.Fatalf("the reset and the step were reordered: %v", queued)
 	}
 }
 

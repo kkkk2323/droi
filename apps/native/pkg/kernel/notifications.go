@@ -7,6 +7,18 @@ import "encoding/json"
 type Notification struct {
 	Method string
 	Params json.RawMessage
+
+	// Folded is how many earlier notifications this one stands for: states of
+	// the same conversation, or news of the same task or process, that arrived
+	// while the reader had not taken the previous one. The newest state is the
+	// one that matters, so the earlier ones were folded rather than queued, and
+	// this is the count of what that saved. It is local to this Client and
+	// never part of the wire.
+	Folded int `json:"-"`
+	// Dropped is how many notifications of this kind were lost before this one:
+	// warnings past the newest 256, or unknown methods past the newest 16.
+	// Local to this Client, never part of the wire.
+	Dropped int `json:"-"`
 }
 
 // Decode reads the params into v, which is one of the types below.

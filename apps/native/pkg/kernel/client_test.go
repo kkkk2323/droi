@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -743,175 +742,121 @@ func TestNotificationOrderSurvivesFullAndDeltaPushes(t *testing.T) {
 }
 
 // A whole view supersedes an earlier queued whole view of the same
-// conversation, and only such a push: coalescing anything else loses a step
-// the reader cannot rebuild. The queue is held still here, so the rule is
-// checked rather than raced.
+// conversation, and only such a push: a reset a delta reader must see, and a
+// step it must apply, keep their place. The queue is held still here, so the
+// rule is checked rather than raced.
 func TestWholeViewsCoalesceInTheQueue(t *testing.T) {
-	f := startFakeKernel(t)
-	c := dialFake(t, f)
-	note := func(params map[string]any) Notification {
-		t.Helper()
-		raw, err := json.Marshal(params)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return Notification{Method: NotifyConversationView, Params: raw}
-	}
-	whole := func(id int, marker string) Notification {
-		return note(map[string]any{"id": id, "kind": ViewKindValue, "value": map[string]any{"before": marker}})
-	}
+	q := newNotifQueue()
 	delta := func(op string) Notification {
-		return note(map[string]any{"id": 7, "kind": ViewKindValue, "value": nil, "ops": []any{op}})
+		return note(NotifyConversationView, map[string]any{"id": 7, "kind": ViewKindValue, "value": nil, "ops": []any{op}})
 	}
-	full := note(map[string]any{"id": 7, "kind": ViewKindFull, "value": map[string]any{"before": "full"}})
+	full := note(NotifyConversationView, map[string]any{"id": 7, "kind": ViewKindFull, "value": map[string]any{"before": "full"}})
 
-	c.queuedMu.Lock()
-	defer c.queuedMu.Unlock()
+	q.put(whole(7, "a"))
+	q.put(whole(7, "b"))
+	got := drain(q)
+	if len(got) != 1 || !strings.Contains(string(got[0].Params), `"before":"b"`) {
+		t.Fatalf("two whole views of one conversation came out as %d entries: %v", len(got), got)
+	}
 
-	c.queued = []Notification{whole(7, "a")}
-	if _, ok := c.supersedesLocked(whole(7, "b")); !ok {
-		t.Fatal("a whole view did not supersede an earlier one of its conversation")
-	}
-	if got := len(c.queued); got != 1 {
-		t.Fatalf("the queue holds %d entries after a supersede, want 1", got)
-	}
 	// Another conversation's view is a different state and keeps its place.
-	c.queued = []Notification{whole(8, "other")}
-	if _, ok := c.supersedesLocked(whole(7, "b")); ok {
-		t.Fatal("a view superseded another conversation's")
+	q.put(whole(8, "other"))
+	q.put(whole(7, "c"))
+	if got := drain(q); len(got) != 2 {
+		t.Fatalf("two conversations gave %d entries, want 2", len(got))
 	}
 
-	// A delta push's ops are a sequence: neither may be replaced.
-	c.queued = []Notification{delta("op1")}
-	if _, ok := c.supersedesLocked(delta("op2")); ok {
-		t.Fatal("a delta push superseded another: its ops would be lost")
+	// A delta push's ops are a sequence: neither may be replaced, and neither
+	// may be reordered.
+	q.put(delta("op1"))
+	q.put(delta("op2"))
+	got = drain(q)
+	if len(got) != 2 || !strings.Contains(string(got[0].Params), "op1") || !strings.Contains(string(got[1].Params), "op2") {
+		t.Fatalf("two delta pushes came out as %v", got)
 	}
-	// A "full" push is a reset the reader must see.
-	c.queued = []Notification{full}
-	if _, ok := c.supersedesLocked(whole(7, "after-full")); ok {
-		t.Fatal("a whole view replaced a full push, which resets a delta reader")
+
+	// A "full" push is a reset the reader must see, so a whole view after it is
+	// a second entry rather than a replacement of it.
+	q.put(full)
+	q.put(whole(7, "after-full"))
+	got = drain(q)
+	if len(got) != 2 || !strings.Contains(string(got[0].Params), `"kind":"full"`) {
+		t.Fatalf("a reset and the state after it came out as %v", got)
 	}
-	// And a whole view is not replaced by a delta push or a full push either.
-	c.queued = []Notification{whole(7, "a")}
-	if _, ok := c.supersedesLocked(full); ok {
-		t.Fatal("a full push replaced a queued whole view")
+	if !strings.Contains(string(got[1].Params), "after-full") {
+		t.Fatalf("the state after the reset was lost: %s", got[1].Params)
+	}
+
+	// A whole view is not replaced by a delta push or a reset either.
+	q.put(whole(7, "kept"))
+	q.put(full)
+	q.put(delta("later"))
+	if got := drain(q); len(got) != 3 {
+		t.Fatalf("a state, a reset and a step came out as %v", got)
 	}
 }
 
-// Nothing that reaches the queue is dropped for want of room: a notification
-// that cannot be rebuilt — an approval, an ask, a lifecycle change — would leave
-// a session waiting forever, and a whole view is the only thing a reader that
-// fell behind cannot rebuild either. The cap is a backlog threshold, and past it
-// the queue keeps everything.
-func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
-	f := startFakeKernel(t)
-	c, err := Dial(context.Background(), Options{
-		URL: f.url(), Token: "t-test", RequestTimeout: 5 * time.Second,
-		NotesBuffer: 1, MaxQueuedNotes: 2,
-	})
-	if err != nil {
-		t.Fatal(err)
+// A row of notifications of every kind the contract has: the queue keeps each
+// of them, folded to one per conversation, task, process or request, and an
+// approval or an ask is never dropped.
+func TestEveryKindIsKeptAndFolded(t *testing.T) {
+	q := newNotifQueue()
+	for i := 0; i < 5; i++ {
+		q.put(whole(7, "state"))
+		q.put(note(NotifyConversationBusy, map[string]any{"id": 7, "run": map[string]any{"id": i}}))
+		q.put(note(NotifyIndexChanged, map[string]any{"id": 7, "title": "t"}))
+		q.put(note(NotifyTaskChanged, map[string]any{"taskId": "t-1", "status": "running"}))
+		q.put(note(NotifyProcessChanged, map[string]any{"id": 7, "processId": "p-1", "status": "running"}))
+		q.put(note(NotifyMCPChanged, map[string]any{"servers": []any{}}))
 	}
-	defer c.Close()
-	view := func(id int, marker string) map[string]any {
-		return map[string]any{"id": id, "kind": ViewKindValue, "value": map[string]any{"conversation": map[string]any{"id": id}, "before": marker}}
-	}
-	// The policy is exercised where it can be counted: enqueue directly, with
-	// the reader's one slot already full so nothing drains the queue.
-	say := func(method string, params any) {
-		raw, err := json.Marshal(params)
-		if err != nil {
-			t.Fatal(err)
-		}
-		c.enqueue(Notification{Method: method, Params: raw})
-	}
-	say(NotifyConversationView, view(1, "held"))
-	for deadline := time.Now().Add(5 * time.Second); len(c.notes) == 0; {
-		if time.Now().After(deadline) {
-			t.Fatal("the first view never reached the reader's slot")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	// Eight more views of conversations of their own: none coalesces with
-	// another, so the queue grows past its cap rather than lose the last state
-	// of eight conversations — and the approval and the ask that follow are
-	// kept too, in the order they arrived.
-	for id := 2; id <= 9; id++ {
-		say(NotifyConversationView, view(id, "waiting"))
-	}
-	say(NotifyApprovalRequested, map[string]any{"requestId": "a-1", "id": 2, "tool": "bash", "args": map[string]any{"command": "rm -rf build"}})
-	say(NotifyAskRequested, map[string]any{"requestId": "q-1", "id": 2, "questions": []any{}, "context": "why"})
+	q.put(note(NotifyApprovalRequested, map[string]any{"requestId": "a-1", "id": 7, "tool": "bash"}))
+	q.put(note(NotifyAskRequested, map[string]any{"requestId": "q-1", "id": 7, "questions": []any{}}))
 
-	sawApproval, sawAsk, views := false, false, map[string]bool{}
-	deadline := time.Now().Add(5 * time.Second)
-	for (!sawApproval || !sawAsk || len(views) < 8) && time.Now().Before(deadline) {
-		select {
-		case n := <-c.Notifications():
-			switch n.Method {
-			case NotifyApprovalRequested:
-				sawApproval = true
-			case NotifyAskRequested:
-				sawAsk = true
-			case NotifyConversationView:
-				var params struct {
-					ID    int `json:"id"`
-					Value struct {
-						Before string `json:"before"`
-					} `json:"value"`
-				}
-				if json.Unmarshal(n.Params, &params) == nil && params.Value.Before == "waiting" {
-					views[strconv.Itoa(params.ID)] = true
-				}
-			}
-		case <-time.After(100 * time.Millisecond):
+	counts := map[string]int{}
+	for _, n := range drain(q) {
+		counts[n.Method]++
+	}
+	want := map[string]int{
+		NotifyApprovalRequested: 1,
+		NotifyAskRequested:      1,
+		NotifyConversationView:  1,
+		NotifyConversationBusy:  1,
+		NotifyIndexChanged:      1,
+		NotifyTaskChanged:       1,
+		NotifyProcessChanged:    1,
+		NotifyMCPChanged:        1,
+	}
+	for method, n := range want {
+		if counts[method] != n {
+			t.Fatalf("%s was queued %d times, want %d (all: %v)", method, counts[method], n, counts)
 		}
-	}
-	if !sawApproval || !sawAsk {
-		t.Fatalf("the approval arrived: %v, the ask: %v — neither may be dropped", sawApproval, sawAsk)
-	}
-	// Eight conversations that were not coalesced away, each with its own final
-	// state: a reader behind loses none of them, and the cap only counts.
-	if len(views) != 8 {
-		t.Fatalf("%d of the eight waiting views arrived: %v", len(views), views)
-	}
-	c.queuedMu.Lock()
-	over := c.over
-	c.queuedMu.Unlock()
-	if over == 0 {
-		t.Fatal("the cap was never reached, so the policy was not exercised")
 	}
 }
 
-// A whole view is the conversation's last word, so a full queue grows for it
-// rather than lose it: an idle conversation whose final state was dropped would
-// never be rebuilt, and nothing would trigger the rebuild.
+// TestAWholeViewSurvivesAFullQueue: a whole view is the conversation's last
+// word, so nothing about the queue's other buckets can evict it — it has a slot
+// of its own, per conversation.
 func TestAWholeViewSurvivesAFullQueue(t *testing.T) {
-	c := &Client{opts: Options{MaxQueuedNotes: 2}, wake: make(chan struct{}, 1)}
-	note := func(kind, value string) Notification {
-		return Notification{Method: NotifyConversationView, Params: json.RawMessage(
-			`{"id":7,"kind":"` + kind + `","value":` + value + `}`)}
+	q := newNotifQueue()
+	for i := 0; i < queueMaxWarnings*2; i++ {
+		q.put(note(NotifyWarning, map[string]any{"message": "noise"}))
 	}
-	// A reset and a delta are steps the reader must apply, so neither can be
-	// traded for room.
-	c.enqueue(note("full", `{"before":"reset"}`))
-	c.enqueue(note("value", `null`))
-	latest := note("value", `{"before":"latest"}`)
-	c.enqueue(latest)
-	if got := len(c.queued); got != 3 {
-		t.Fatalf("queue holds %d notifications, want the full push, the delta and the latest view", got)
+	for i := 0; i < queueMaxSteps*2; i++ {
+		q.put(note(NotifyTaskChanged, map[string]any{"taskId": fmt.Sprintf("t-%d", i)}))
 	}
-	if last := c.queued[len(c.queued)-1]; string(last.Params) != string(latest.Params) {
-		t.Fatalf("the latest view is not last: %+v", c.queued)
+	q.put(note(NotifyConversationView, map[string]any{"id": 7, "kind": ViewKindFull, "value": map[string]any{"before": "reset"}}))
+	q.put(note(NotifyConversationView, map[string]any{"id": 7, "kind": ViewKindValue, "value": nil, "ops": []any{"delta"}}))
+	latest := note(NotifyConversationView, map[string]any{"id": 7, "kind": ViewKindValue, "value": map[string]any{"before": "latest"}})
+	q.put(latest)
+
+	var found []Notification
+	for _, n := range drain(q) {
+		if n.Method == NotifyConversationView && strings.Contains(string(n.Params), "latest") {
+			found = append(found, n)
+		}
 	}
-	// The next push of the same conversation replaces it in place, so the
-	// growth stays one view per conversation.
-	again := note("value", `{"before":"again"}`)
-	c.enqueue(again)
-	if got := len(c.queued); got != 3 {
-		t.Fatalf("a second view of the same conversation grew the queue to %d", got)
-	}
-	if last := c.queued[2]; string(last.Params) != string(again.Params) {
-		t.Fatalf("the newest view did not replace the one before it: %+v", c.queued)
+	if len(found) != 1 {
+		t.Fatalf("the conversation's latest state is in the queue %d times after a flood of other kinds", len(found))
 	}
 }
 
@@ -1007,9 +952,10 @@ func TestStalledPeerDoesNotHoldTheWriter(t *testing.T) {
 	}
 }
 
-// A slow reader that falls far behind must not lose a step that cannot be
-// rebuilt: an approval or an ask lost leaves a session waiting forever, and a
-// delta push's ops lost leaves the state wrong. Whole views are what give way.
+// Every step the reader has not applied arrives, in order, and an approval or
+// an ask is never dropped: those are the notifications that cannot be
+// rebuilt — a lost approval leaves a session waiting forever, and a lost step
+// leaves a delta reader's state wrong.
 //
 // The reader's slot is filled first, so nothing drains the queue while the
 // flood arrives.
@@ -1017,7 +963,7 @@ func TestAMustArriveFloodKeepsEveryStep(t *testing.T) {
 	f := startFakeKernel(t)
 	c, err := Dial(context.Background(), Options{
 		URL: f.url(), Token: "t-test", RequestTimeout: 5 * time.Second,
-		NotesBuffer: 1, MaxQueuedNotes: 4,
+		NotesBuffer: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1041,17 +987,20 @@ func TestAMustArriveFloodKeepsEveryStep(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	// More than the cap of steps that must all arrive.
-	const ops = 10
+	// More steps than the notes buffer, all of which must arrive, and a whole
+	// view in the middle of them, which must not swallow them.
+	const ops = 32
 	for i := 0; i < ops; i++ {
 		say(NotifyConversationView, delta(fmt.Sprintf("op%d", i)))
 	}
+	say(NotifyConversationView, map[string]any{"id": 7, "kind": ViewKindValue, "value": map[string]any{"before": "middle"}})
+	say(NotifyConversationView, delta("op-last"))
 	say(NotifyApprovalRequested, map[string]any{"requestId": "a-1", "id": 7, "tool": "bash"})
 	say(NotifyAskRequested, map[string]any{"requestId": "q-1", "id": 7, "questions": []any{}, "context": "why"})
 
 	deadline := time.Now().Add(10 * time.Second)
 	seen := map[string]bool{}
-	for !(seen["a-1"] && seen["q-1"]) && time.Now().Before(deadline) {
+	for !(seen["a-1"] && seen["q-1"] && seen["op-last"]) && time.Now().Before(deadline) {
 		select {
 		case n := <-c.Notifications():
 			var p struct {
@@ -1075,6 +1024,9 @@ func TestAMustArriveFloodKeepsEveryStep(t *testing.T) {
 		if !seen[fmt.Sprintf("op%d", i)] {
 			t.Fatalf("op%d was dropped; a delta reader cannot rebuild it (%v)", i, seen)
 		}
+	}
+	if !seen["op-last"] {
+		t.Fatalf("the step after a whole view was dropped (%v)", seen)
 	}
 }
 
