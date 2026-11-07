@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Harness, createRegistry } from '@earendil-works/pi-durable'
-import type { HarnessSettings, Registry, Storage } from '@earendil-works/pi-durable'
+import type { Extension, HarnessSettings, Registry, Storage } from '@earendil-works/pi-durable'
 import { SqliteStorage } from '@earendil-works/pi-durable/storage/sqlite'
 import { createToolProcesses, type ToolProcesses } from './tool-processes.ts'
 import type { MutableModels } from '@earendil-works/pi-ai'
@@ -59,6 +59,8 @@ export type StartOptions = {
   /** For tests and for a future M1 image measurement: the processor to use for `read`. */
   images?: ReturnType<typeof photonImages>
   platform?: 'darwin' | 'linux' | 'win32'
+  /** For tests: extensions installed beside the coding one, such as a tool that makes a nested call. */
+  extensions?: Extension[]
 }
 
 /**
@@ -98,6 +100,7 @@ export async function startKernel(
     })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
+    for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
     tools = createToolProcesses({
@@ -106,7 +109,7 @@ export async function startKernel(
     })
 
     const settings: HarnessSettings = {
-      extensions: [coding.extension],
+      extensions: [coding.extension, ...(options.extensions ?? [])],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
       // own, and on Windows each costs about 16 ms, so they stay at Pi's defaults, not faster.
       ...(config.progress === undefined ? {} : { progress: config.progress }),
