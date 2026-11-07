@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Harness, createRegistry } from '@earendil-works/pi-durable'
 import type { HarnessSettings, Registry, Storage } from '@earendil-works/pi-durable'
@@ -14,6 +14,7 @@ import { buildModels } from './models.ts'
 import { serve, type ServerHandle } from './protocol/server.ts'
 import { BunSqliteDatabase } from './storage/facade.ts'
 import { Kernel, context } from './session/service.ts'
+import { releaseLock, takeLock } from './lock.ts'
 import { reconcilePending } from './reconcile.ts'
 
 /** What this build is, for `harness.info` and the handshake. Bumped with a Pi upgrade or our own fix. */
@@ -249,13 +250,7 @@ export async function startKernel(
       await harness?.close(context).catch(() => undefined)
       await storage?.close(context).catch(() => undefined)
       await db.close().catch(() => undefined)
-      if (options.noLock !== true) {
-        try {
-          rmSync(lockPath)
-        } catch {
-          // A lock left behind is harmless: the next start checks whether its process is alive.
-        }
-      }
+      if (options.noLock !== true) releaseLock(lockPath)
     }
     return {
       get port() {
@@ -278,61 +273,5 @@ export async function startKernel(
     await db.close().catch(() => undefined)
     await server?.stop().catch(() => undefined)
     throw cause
-  }
-}
-
-/**
- * One kernel per data directory: a second one would open a second connection to the same SQLite file,
- * and a synchronous `busy_timeout` wait there blocks the whole event loop.
- */
-function takeLock(path: string): void {
-  // Exclusive create: two kernels starting at once cannot both win.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      writeFileSync(path, String(process.pid), { flag: 'wx' })
-      return
-    } catch (cause) {
-      if ((cause as { code?: string }).code !== 'EEXIST') throw cause
-    }
-    let existing: number
-    try {
-      existing = Number(readFileSync(path, 'utf8').trim())
-    } catch {
-      // Gone between the two calls: try the exclusive create again.
-      continue
-    }
-    if (Number.isInteger(existing) && existing > 0 && isAlive(existing)) {
-      throw new Error(`another kernel (pid ${existing}) is using this data directory`)
-    }
-    // A lock from a process that is gone. It is **claimed by rename**, not deleted: `rename` is atomic, so
-    // of two starters that both saw the same dead PID only one wins the rename, and the loser's retry sees
-    // the winner's fresh lock. Deleting would let both proceed and one could delete the other's lock.
-    const claimed = `${path}.${process.pid}.stale`
-    try {
-      renameSync(path, claimed)
-    } catch {
-      // Somebody else claimed it first; try to create our own again.
-      continue
-    }
-    // The claim may have taken a live lock that its owner wrote between our read and our rename.
-    try {
-      const stolen = Number(readFileSync(claimed, 'utf8').trim())
-      if (Number.isInteger(stolen) && stolen > 0 && stolen !== existing && isAlive(stolen)) {
-        renameSync(claimed, path)
-        throw new Error(`another kernel (pid ${stolen}) is using this data directory`)
-      }
-    } finally {
-      rmSync(claimed, { force: true })
-    }
-  }
-  throw new Error('could not take the data directory lock')
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch {
-    return false
   }
 }

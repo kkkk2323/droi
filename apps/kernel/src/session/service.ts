@@ -212,10 +212,19 @@ export class Kernel implements Dispatcher {
     this.#options.onFailed?.(error)
   }
 
-  /** The reason the Session failed, for the dispatcher: a failing request answers `-32010` too. */
-  failureReason(): string | undefined {
-    if (this.#failure === undefined) return undefined
-    return this.#failure instanceof Error ? this.#failure.message : String(this.#failure)
+  /**
+   * The gate every request passes before its method is even looked up.
+   *
+   * A failed Session is not a working kernel, so nothing is answered from it — not `harness.info`, not a
+   * write-gated method (`-32009` would say "this build lacks the feature", which is false), not an unknown
+   * method (`-32601` says the same), and not `kernel.shutdown`, which must not be able to turn a fatal
+   * exit into a clean one.
+   */
+  gate(): void {
+    if (this.#failure === undefined) return
+    throw new RpcError(Code.kernelFailed, 'the kernel failed and is being restarted', {
+      reason: this.#failure instanceof Error ? this.#failure.message : String(this.#failure),
+    })
   }
 
   /** How many conversations the kernel is observing, for a test that pins the release. */
@@ -485,6 +494,8 @@ export class Kernel implements Dispatcher {
     do {
       const page = await conversation.entries({ order: 'descending' }, MAX_PAGE, cursor, context)
       for (const entry of page.items) {
+        // The inherited transcript of a fork carries its parent's memos; they belong to the parent.
+        if ((entry.conversationId as unknown as number) !== id) continue
         if (entry.kind !== 'droi.request') continue
         const data = entry.data as {
           requestId?: unknown
@@ -553,8 +564,13 @@ export class Kernel implements Dispatcher {
       perSecond: this.#options.config.viewPushesPerSecond ?? 5,
     })
     // A second open on one connection replaces its window: stop the old watch first, so the viewer count
-    // never sees a release for a viewer that is still there.
+    // never sees a release for a viewer that is still there. The socket can close while that awaits —
+    // its close handler releases this connection's viewers — so the state is checked again after it.
     await connection.unsubscribe(id)
+    if (this.#closing || !connection.open) {
+      await watch.stop()
+      return { view }
+    }
     connection.subscribe(id, async () => {
       pusher.stop()
       await watch.stop()
@@ -731,7 +747,7 @@ export class Kernel implements Dispatcher {
     const at = requiredEntry(params, 'at')
     const conversation = await this.#conversation(id)
     // Asked by ID, not by page: a valid target may be older than the newest page, and the newest page is
-    // not a window onto the whole transcript. This read is the conversation's own visible range.
+    // not a window onto the whole transcript.
     const probe = await conversation.entries(
       { order: 'ascending', minEntryId: at as EntryId, maxEntryId: at as EntryId },
       1,
@@ -741,13 +757,25 @@ export class Kernel implements Dispatcher {
     if (probe.items.length === 0) {
       throw invalidParams([{ path: 'at', message: `entry ${at} is not in this conversation` }])
     }
+    const createdAt = Date.now()
     const forked = await conversation.fork(
       at as EntryId,
-      { ownership: { kind: 'ownerless' } },
+      {
+        ownership: { kind: 'ownerless' },
+        // A fork's identity is its own. The parent's `droi.meta` is in the inherited transcript, and taking
+        // it would give the fork the parent's requestId — which collides on the unique index at the next
+        // start — and the parent's submissions. So the fork writes its own, with the link back.
+        init: async (tx, conversationId) => {
+          await tx.appendEntry(conversationId, {
+            kind: 'droi.meta',
+            data: { parentId: id, createdAt } satisfies ConversationMeta,
+          })
+        },
+      },
       context,
     )
     const forkedId = forked.id as unknown as number
-    await this.#options.indexer.touch(forkedId, Date.now(), { parentId: id })
+    await this.#options.indexer.touch(forkedId, createdAt, { parentId: id, createdAt })
     await this.track(forkedId)
     return { conversationId: forkedId, view: await this.#view(forkedId, DEFAULT_WINDOW) }
   }
@@ -868,6 +896,8 @@ export class Kernel implements Dispatcher {
    * write is refused, because `#closing` is already set.
    */
   #shutdown(): Record<string, unknown> {
+    // Belt and braces with the gate: a failed kernel keeps its exit status 3, whatever a client asks.
+    this.gate()
     if (this.#closing) return { status: 'closing' }
     this.#closing = true
     setTimeout(() => {

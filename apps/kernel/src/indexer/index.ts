@@ -137,10 +137,21 @@ export class Indexer {
       }
       cursor = page.next as never
     } while (cursor !== undefined)
-    await this.flush()
+    // A flush that fails keeps its batch queued; the start reports it and carries on, and the next flush
+    // retries. Failing the start over a transient lock would leave the Host with no kernel at all.
+    await this.flush().catch((cause: unknown) => this.#onError?.(cause))
     return indexed
   }
 
+  /**
+   * One conversation's own entries above its watermark.
+   *
+   * Pi's scan of a conversation **includes its ancestors' transcript** — a fork inherits its parent's
+   * entries — and every entry keeps its original `conversationId`. Only the entries whose
+   * `conversationId` is this conversation belong here: the parent's are already indexed under the parent,
+   * and taking them would give the fork its parent's requestId (a unique-index crash on the next start) and
+   * overwrite the parent's search rows, since an FTS rowid is the entry ID and IDs are global.
+   */
   async #catchUpConversation(id: number, parentId: number | undefined): Promise<number> {
     const row = await this.#db.get<ConversationRow>(
       'SELECT * FROM droi_conversations WHERE id = ?',
@@ -168,12 +179,13 @@ export class Indexer {
         context,
       )
       for (const entry of entries.items) {
+        // Inherited entries belong to the conversation that wrote them.
+        if ((entry.conversationId as unknown as number) !== id) continue
         const entryId = entry.id as unknown as number
         if (entryId <= from) continue
         const at = entryTimestamp(entry)
         firstEntryAt ??= at
-        newest = Math.max(newest ?? 0, at)
-        const text = entryText(entry)
+        if (at !== undefined) newest = Math.max(newest ?? 0, at)
         if (entry.kind === 'droi.meta') meta ??= entry.data as ConversationMeta
         if (entry.kind === 'droi.request') {
           const request = entry.data as {
@@ -191,6 +203,7 @@ export class Indexer {
             })
           }
         }
+        const text = entryText(entry)
         if (text !== '') {
           this.#entries.push({ id: entryId, conversation: id, text })
           count++
@@ -219,9 +232,18 @@ export class Indexer {
     }
 
     // A conversation with no row at all — an index rebuilt from scratch, or a database whose row was
-    // lost — is rebuilt from its own `droi.meta` entry and its oldest entry's time.
+    // lost — is rebuilt from its own `droi.meta` entry and its oldest entry's time. Never `now`: a
+    // restart that found nothing new must not look like activity.
     if (row === undefined) {
-      const createdAt = meta?.createdAt ?? firstEntryAt ?? this.#now()
+      const createdAt = meta?.createdAt ?? firstEntryAt ?? undefined
+      if (createdAt === undefined) {
+        // Nothing at all to date it by: a conversation with only a metadata entry and no timestamp.
+        this.#row(id, {
+          insert: { createdAt: meta?.createdAt ?? 0 },
+          activity: meta?.createdAt ?? 0,
+        })
+        return count
+      }
       this.#row(id, {
         insert: {
           createdAt,
@@ -231,39 +253,44 @@ export class Indexer {
           ...(meta?.requestFingerprint === undefined
             ? {}
             : { requestFingerprint: meta.requestFingerprint }),
-          ...(meta?.parentId !== undefined ? { parentId: meta.parentId } : {}),
-          ...(parentId === undefined ? {} : { parentId }),
+          ...(meta?.parentId !== undefined
+            ? { parentId: meta.parentId }
+            : parentId === undefined
+              ? {}
+              : { parentId }),
         },
-        // A conversation that existed before this index did has no later event to point at, so its own
-        // newest entry is the truth. Never `now`: a restart must not look like activity (F2).
         activity: newest ?? createdAt,
         ...(title === undefined ? {} : { title }),
         ...(preview === undefined ? {} : { preview }),
       })
       return count
     }
-    if (count === 0 && newest === undefined) {
-      // Nothing new: change nothing. Not the activity time, not the title (F2).
+    if (count === 0 && newest === undefined && meta === undefined) {
+      // Nothing new: change nothing. Not the activity time, not the title.
       return 0
     }
     const pending = this.#row(id, {})
     if (newest !== undefined) pending.activity = Math.max(pending.activity ?? 0, newest)
     if (row.title === null && title !== undefined) pending.title = title
+    // The preview is the newest text, so a repair that saw later entries refreshes it; a `droi.meta` entry
+    // carries no text and cannot blank it.
     if (preview !== undefined) pending.preview = preview
     // A row written before the crash may lack what the meta entry records; fill it rather than trust a row.
     if (meta !== undefined) {
       pending.insert ??= { createdAt: meta.createdAt }
       if (row.kind === null && meta.kind !== undefined) pending.insert.kind = meta.kind
-      if (row.workspace === null && meta.workspace !== undefined)
+      if (row.workspace === null && meta.workspace !== undefined) {
         pending.insert.workspace = meta.workspace
+      }
       if (row.request_id === null && meta.requestId !== undefined) {
         pending.insert.requestId = meta.requestId
         if (meta.requestFingerprint !== undefined) {
           pending.insert.requestFingerprint = meta.requestFingerprint
         }
       }
-      if (row.parent_id === null && meta.parentId !== undefined)
+      if (row.parent_id === null && meta.parentId !== undefined) {
         pending.insert.parentId = meta.parentId
+      }
     }
     return count
   }
@@ -326,6 +353,11 @@ export class Indexer {
       this.#entries.push({ id: entryId, conversation: id, text })
     }
     const pending = this.#row(id, {})
+    // The entry's own timestamp moves the conversation's activity: a long run's assistant and tool output
+    // arrive long after the submission that started it, and a list sorted by admission time would put a
+    // busy conversation below an idle one.
+    const at = entryTimestamp(entry)
+    if (at !== undefined) pending.activity = Math.max(pending.activity ?? 0, at)
     if (entry.kind === 'pi.user' && pending.title === undefined && text !== '') {
       pending.title = firstLine(text, TITLE_LIMIT)
     }
@@ -364,7 +396,14 @@ export class Indexer {
     return Promise.resolve()
   }
 
-  /** Store everything queued, in one transaction, with the watermarks it covers. */
+  /**
+   * Store everything queued, in one transaction, with the watermarks it covers.
+   *
+   * A failure puts the batch back: the entries and rows it was going to write are merged into the queue
+   * again, so the next flush writes them along with anything newer. Dropping them would be worse than a
+   * warning — the next successful flush would move the conversation's watermark past the gap, and the
+   * startup repair, which never looks below a watermark, would skip them for good.
+   */
   async flush(): Promise<void> {
     if (this.#flush !== undefined) {
       await this.#flush
@@ -381,7 +420,7 @@ export class Indexer {
     this.#rows.clear()
 
     // The watermark a flush may write is the highest entry it stored **per conversation**, and only over
-    // entries contiguous with what that conversation already had.
+    // entries it actually wrote.
     const next = new Map<number, number>()
     for (const entry of entries) {
       next.set(entry.conversation, Math.max(next.get(entry.conversation) ?? 0, entry.id))
@@ -420,8 +459,30 @@ export class Indexer {
         this.#watermarks.set(conversationId, entryId)
       }
       if (changed.length > 0) this.#onChange?.(changed)
+    } catch (error) {
+      this.#requeue(entries, rows)
+      throw error
     } finally {
       this.#flush = undefined
+    }
+  }
+
+  /** Put a failed batch back in front of whatever arrived while it was being written. */
+  #requeue(entries: readonly PendingEntry[], rows: readonly PendingRow[]): void {
+    this.#entries = [...entries, ...this.#entries]
+    for (const row of rows) {
+      const pending = this.#rows.get(row.id)
+      if (pending === undefined) {
+        this.#rows.set(row.id, { ...row })
+        continue
+      }
+      // The newer row wins for activity; the failed batch's creation fields may still be the only ones.
+      pending.activity = Math.max(pending.activity ?? 0, row.activity ?? 0) || undefined
+      pending.eventAt = Math.max(pending.eventAt ?? 0, row.eventAt ?? 0) || undefined
+      if (pending.insert === undefined) pending.insert = row.insert
+      else if (row.insert !== undefined) pending.insert = { ...row.insert, ...pending.insert }
+      pending.title = pending.title ?? row.title
+      pending.preview = pending.preview ?? row.preview
     }
   }
 
@@ -656,17 +717,33 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
   }
 }
 
-/** Text an entry contributes to search: its messages, and the note a `droi.` entry carries. */
+/**
+ * Text an entry contributes to search: its messages, and the note a `droi.` entry carries.
+ *
+ * `droi.meta` and `droi.request` are bookkeeping — a requestId, a fingerprint, a working directory — and
+ * contribute nothing: indexing them would put a requestId in the search index and a stray empty line in a
+ * conversation's preview.
+ */
 export function entryText(entry: EntryRecord): string {
-  return messageTextOf(entry.model) + '\n' + dataText(entry.data)
+  if (BOOKKEEPING.has(entry.kind)) return ''
+  const text = messageTextOf(entry.model) + '\n' + dataText(entry.data)
+  return text.trim() === '' ? '' : text
 }
 
-/** When an entry was written, from its own message: the only time an entry can honestly report. */
-function entryTimestamp(entry: EntryRecord): number {
-  let newest = 0
+/** Entry kinds the kernel writes for its own records, never as conversation text. */
+const BOOKKEEPING = new Set(['droi.meta', 'droi.request'])
+
+/**
+ * When an entry was written, from its own message. `undefined` when it has none — a `droi.meta` entry is
+ * only data — so a caller can tell "no time" from "time zero", which is what gave metadata-only
+ * conversations a `lastActivityAt` of 1970.
+ */
+function entryTimestamp(entry: EntryRecord): number | undefined {
+  let newest: number | undefined
   for (const message of entry.model ?? []) {
     const timestamp = (message as { timestamp?: unknown }).timestamp
-    if (typeof timestamp === 'number') newest = Math.max(newest, timestamp)
+    if (typeof timestamp !== 'number') continue
+    newest = Math.max(newest ?? 0, timestamp)
   }
   return newest
 }
@@ -755,8 +832,11 @@ export function likeClauses(words: readonly string[]): {
       clauses.push("text LIKE ? ESCAPE '\\'")
       values.push(`%${escapeLike(word)}%`)
     } else {
+      // Bounded by **row count**, not by an ID arithmetic: Pi mints IDs for conversations, documents,
+      // tasks and submissions too, so `MAX(rowid) - 50000` is not "the last 50,000 entries".
       clauses.push(
-        "text LIKE ? ESCAPE '\\' AND rowid > (SELECT MAX(rowid) - ? FROM droi_entries_fts)",
+        "text LIKE ? ESCAPE '\\' AND rowid >= (" +
+          'SELECT MIN(rowid) FROM (SELECT rowid FROM droi_entries_fts ORDER BY rowid DESC LIMIT ?))',
       )
       values.push(`%${escapeLike(word)}%`, SHORT_TERM_WINDOW)
     }

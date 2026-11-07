@@ -20,6 +20,12 @@ export type Handler = (
 ) => Promise<unknown> | unknown
 
 export type Dispatcher = {
+  /**
+   * Checked before the method is looked up: a kernel that has failed answers every request the same way,
+   * whether the method exists, is gated by a capability, or would have been a plain write. Without this a
+   * `-32601` or a `-32009` would tell a client the kernel is fine.
+   */
+  gate?: () => void
   /** Every method this build answers. */
   methods: ReadonlyMap<string, Handler>
   /** The capability gating a method this build does not implement: `-32009` names it. */
@@ -150,6 +156,7 @@ export function serve(options: ServerOptions): ServerHandle {
     const isNotification = request.id === undefined
     const id = request.id as RequestId
     const run = async (): Promise<unknown> => {
+      options.dispatch.gate?.()
       const handler = options.dispatch.methods.get(request.method)
       if (handler === undefined) {
         const capability = options.dispatch.gated(request.method)

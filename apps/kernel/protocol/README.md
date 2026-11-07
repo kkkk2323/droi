@@ -209,6 +209,13 @@ The settings a test needs beyond that:
 | `DROI_KERNEL_TOKEN`     | The launch token. Required; never on the command line.                       |
 | `DROI_KERNEL_LOG=debug` | Log every frame and every commit to stderr.                                  |
 
+One kernel per data directory: `<data>/kernel.lock` holds the owner's PID, and a start whose owner is alive
+is refused (status `2`). Taking over a lock left by a dead process never lets the file be **absent** — a
+second starter would then win it with a plain exclusive create — so the takeover holds
+`kernel.lock.guard` (exclusive create), re-reads the lock, and `rename`s its own file over it, which
+replaces it atomically. `kernel.lock.guard` carries its owner's PID too, so a guard left by a dead
+process does not block the next start.
+
 ### Page sizes
 
 Two caps keep one answer from carrying a whole history, and both are published so a client never has to
@@ -245,6 +252,21 @@ The short-term bound is the one place a search can miss something: a two-charact
 entry older than the last 50,000 is not found. Measured, the scan over that window takes about 5 ms.
 A title is matched with the whole query as one phrase, so a renamed conversation is found even when its
 transcript holds nothing.
+
+### The index
+
+Pi's SQLite file holds the transcripts; Droi's own tables (`droi_` prefix) hold what a list, a search and
+a restart need, and the kernel rebuilds every one of them from the transcripts when it has to
+(`shared/design/kernel-index-ownership.md` has the rules and their reasons):
+
+| Rule                                           | What it means                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An entry belongs to `entry.conversationId`     | Pi's scan of a conversation **includes its ancestors' transcript**, and those entries keep their original `conversationId`. Indexing them again under the fork would give it its parent's `requestId` (a unique-index failure on the next start) and move the parent's search rows, because an FTS rowid is the entry ID and IDs are global.                                            |
+| A fork writes its own `droi.meta`              | `{parentId, createdAt}`, and no `requestId`: its identity is its own, from its first entry.                                                                                                                                                                                                                                                                                             |
+| Watermarks are per conversation                | A single number would have to pass every conversation at once, so a flush in the middle of a catch-up would skip the ones not read yet. The startup repair reads only above the watermark, which is why a failed flush puts its batch **back in the queue** instead of dropping it.                                                                                                     |
+| `lastActivityAt` comes from entries            | Each persisted entry advances it with the entry's own message timestamp, so a long run's tool output keeps the conversation at the top while it works.                                                                                                                                                                                                                                  |
+| `droi.meta` and `droi.request` are bookkeeping | They contribute no search text and no preview, and their timestamps are the conversation's `createdAt`, not its activity: a conversation holding only a `droi.meta` must not report 1970.                                                                                                                                                                                               |
+| `index.version` (`INDEX_VERSION`)              | Kept in `droi_meta`, with `index.tokenizer`. A build whose value differs drops the caches (`droi_entries_fts`, `droi_index_watermarks`, `droi_requests`, the fingerprint columns) and rebuilds them from the transcripts on the next start. M1's databases are not a compatibility promise: the kernel has not shipped, and a migration for a shape nobody has is worse than a rebuild. |
 
 ### Read-only
 

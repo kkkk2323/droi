@@ -1,5 +1,8 @@
 import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
 
+/** The shape of the index's own tables. A different value clears the caches and rebuilds them. */
+export const INDEX_VERSION = '2'
+
 /**
  * Droi's own tables, in the same SQLite file as Pi's (`pi_` prefix), so a conversation's metadata and
  * the entries that move it commit against the same file and one backup covers both.
@@ -10,12 +13,14 @@ import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
  * characters is one token: searching 内存 in 这是内存里的摘要 would find nothing, because the whole clause is
  * a single token. Trigram indexes every three-character sequence instead, so `text LIKE '%…%'` is answered
  * by the index — for Chinese, Japanese and Korean as well as for English, where it also matches inside a
- * word (parseConfig for "seConfig"). A pattern shorter than three characters cannot use the index and
- * scans the vtable; that is still correct, and the scan is bounded below.
+ * word (parseConfig for "seConfig").
  *
  * `droi_index_watermarks` remembers, **per conversation**, the highest entry ID whose text is indexed. Per
  * conversation, not one number: a single number would have to advance past every conversation at once, and
  * a flush in the middle of a catch-up would then skip the conversations not yet read.
+ *
+ * The caches here — the rows, the search index, the watermarks and `droi_requests` — are all rebuildable
+ * from the transcripts (`droi.meta`, `droi.request`). That is what makes `INDEX_VERSION` a safe reset.
  */
 const statements = [
   `CREATE TABLE IF NOT EXISTS droi_meta (
@@ -60,41 +65,49 @@ const statements = [
   )`,
 ]
 
-/** The tokenizer the index was built with; a database built with another one is rebuilt. */
+/** The tokenizer the index was built with; a database built another way is rebuilt. */
 const TOKENIZER = 'trigram'
 
-/** Create whatever the database lacks. Idempotent: it runs on every start. */
+/**
+ * Create whatever the database lacks, and reset the caches when this build's index differs from the one
+ * that wrote them.
+ *
+ * The reset keeps what a person chose — a title, an archive flag, the time they last looked — and drops
+ * what can be recomputed: the search rows, the watermarks, the `droi_requests` cache and the identity
+ * columns, so a `requestId` fingerprint is recomputed in this build's format rather than compared against
+ * an older one. M1's databases before this build are not a compatibility promise: the kernel has not
+ * shipped, and the alternative is carrying a migration for a shape nobody has.
+ */
 export async function migrate(db: SqliteExecutor): Promise<void> {
   for (const sql of statements) await db.exec(sql)
-  // A database from an earlier M1 build lacks the fingerprint column.
   const columns = await db.all<{ name: string }>('PRAGMA table_info(droi_conversations)')
   if (!columns.some((column) => column.name === 'request_fingerprint')) {
     await db.exec('ALTER TABLE droi_conversations ADD COLUMN request_fingerprint TEXT')
   }
-  const recorded = await readMeta(db, 'index.tokenizer')
-  if (recorded !== TOKENIZER) {
-    if (recorded !== undefined) {
-      // An index from an older build cannot be searched the way this one builds queries: drop it and
-      // re-read everything, rather than keep a table whose results would be wrong.
-      await db.exec('DROP TABLE IF EXISTS droi_entries_fts')
-      await db.exec(
-        `CREATE VIRTUAL TABLE droi_entries_fts USING fts5(
-          text,
-          conversation UNINDEXED,
-          tokenize = '${TOKENIZER}'
-        )`,
-      )
-      await db.exec('DELETE FROM droi_index_watermarks')
-    }
-    await writeMeta(db, 'index.tokenizer', TOKENIZER)
+  const version = await readMeta(db, 'index.version')
+  const tokenizer = await readMeta(db, 'index.tokenizer')
+  if (version === INDEX_VERSION && tokenizer === TOKENIZER) return
+
+  // One connection and one transaction: either the whole reset lands or none of it does.
+  const reset = async (tx: SqliteExecutor): Promise<void> => {
+    await tx.exec('DELETE FROM droi_entries_fts')
+    await tx.exec('DELETE FROM droi_index_watermarks')
+    await tx.exec('DELETE FROM droi_requests')
+    await tx.exec('UPDATE droi_conversations SET request_id = NULL, request_fingerprint = NULL')
+    await writeMeta(tx, 'index.version', INDEX_VERSION)
+    await writeMeta(tx, 'index.tokenizer', TOKENIZER)
+    // The M1 build before this one kept a single global watermark; it says nothing about the per-
+    // conversation ones, so forget it.
+    await tx.run("DELETE FROM droi_meta WHERE key = 'index.entryWatermark'")
+    await tx.run("DELETE FROM droi_meta WHERE key = 'index.backfilled'")
   }
-  // The global watermark of the first M1 build is not a per-conversation one; forget it, so every
-  // conversation is re-read once. Writing the same rows twice changes nothing.
-  const legacy = await readMeta(db, 'index.entryWatermark')
-  if (legacy !== undefined) {
-    await db.exec('DELETE FROM droi_index_watermarks')
-    await db.run("DELETE FROM droi_meta WHERE key = 'index.entryWatermark'")
+  // `migrate` is called with the pooled facade, which serialises the transaction; a bare executor has no
+  // transactions, so the reset degrades to statements in order.
+  const transactional = db as SqliteExecutor & {
+    transaction?: (fn: (tx: SqliteExecutor) => Promise<void>) => Promise<void>
   }
+  if (transactional.transaction === undefined) await reset(db)
+  else await transactional.transaction(reset)
 }
 
 export async function readMeta(db: SqliteExecutor, key: string): Promise<string | undefined> {
@@ -130,9 +143,11 @@ export type ConversationRow = {
 /**
  * Why a conversation exists, as the kernel records it in the conversation's own transcript.
  *
- * It is a `droi.meta` entry, appended in the commit that creates the conversation, so the answer survives
- * anything that happens to `droi_conversations`: a crash before the index flush, a rebuilt index, a
- * requestId retried after the process died. The list row is the fast path; this is the record.
+ * It is a `droi.meta` entry, appended in the commit that creates the conversation (or forks it), so the
+ * answer survives anything that happens to `droi_conversations`: a crash before the index flush, a rebuilt
+ * index, a requestId retried after the process died. The list row is the fast path; this is the record.
+ *
+ * A fork writes its own, with `parentId` and no `requestId`: its identity is its own, never its parent's.
  */
 export type ConversationMeta = {
   requestId?: string

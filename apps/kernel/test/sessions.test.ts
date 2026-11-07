@@ -278,8 +278,14 @@ describe('conversations', () => {
       at: firstUser.id,
     })
     expect(forked['conversationId']).not.toBe(only!.conversationId)
-    const view = forked['view'] as { entries: { id: number }[]; conversation: { parent?: unknown } }
+    const view = forked['view'] as {
+      entries: { id: number; kind: string }[]
+      conversation: { parent?: unknown }
+    }
     expect(view.conversation.parent).toBeDefined()
-    expect(view.entries.at(-1)?.id).toBe(firstUser.id)
+    // The fork writes a `droi.meta` of its own as its first entry — its identity, not the parent's — so the
+    // last entry is that record and the transcript stops at the fork point.
+    const transcript = view.entries.filter((entry) => entry.kind !== 'droi.meta')
+    expect(transcript.at(-1)?.id).toBe(firstUser.id)
   })
 })
