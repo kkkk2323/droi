@@ -350,6 +350,11 @@ func TestObserverWaitForCallRespectsTheTestDeadline(t *testing.T) {
 	if !strings.Contains(recorded.message, kernel.MethodConversationSubmit) {
 		t.Errorf("the failure does not name the method: %q", recorded.message)
 	}
+	// The message names the bound the wait actually had, not the within it was given, so a reader is not sent
+	// looking for a 30s wait that ended in 300ms.
+	if !strings.Contains(recorded.message, "shortened from 30s") {
+		t.Errorf("the failure is %q, want it to say the test's deadline shortened the wait", recorded.message)
+	}
 
 	// Already inside the reporting margin: the wait gives up at once rather than poll.
 	recorded = &recordingTB{TB: t}
@@ -361,5 +366,58 @@ func TestObserverWaitForCallRespectsTheTestDeadline(t *testing.T) {
 	}
 	if !recorded.failed {
 		t.Fatal("the wait did not fail with its deadline inside the margin")
+	}
+}
+
+// TestObserverWaitForCallRejectsANonPositiveNth: counting is one-based, so zero and negative are mistakes in
+// the test, not an empty answer. They must fail with a sentence, not panic on an out-of-range index — a panic
+// in the test's goroutine reads as a crash and hides which assertion asked.
+func TestObserverWaitForCallRejectsANonPositiveNth(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{})
+	o := k.Observe(k.Dial(t))
+	for _, nth := range []int{0, -1} {
+		recorded := &recordingTB{TB: t}
+		o.WaitForCall(recorded, kernel.MethodConversationList, nth, time.Second)
+		if !recorded.failed {
+			t.Fatalf("nth %d did not fail the test", nth)
+		}
+		if !strings.Contains(recorded.message, "from 1") {
+			t.Errorf("nth %d: the failure is %q, want it to say the count starts at 1", nth, recorded.message)
+		}
+	}
+}
+
+// TestObserverRecordsAMarshalFailure: a call whose params cannot be serialized is still a call the window
+// sent. Recording it with empty params would read like a method that takes none; the reason goes with it.
+func TestObserverRecordsAMarshalFailure(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{})
+	c := k.Dial(t)
+	o := k.Observe(c)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// A channel has no JSON form, so the Observer cannot record these params as they were sent.
+	_, _ = o.Submit(ctx, kernel.SubmitParams{ID: missingID, Input: make(chan int)})
+
+	calls := o.CallsOf(kernel.MethodConversationSubmit)
+	if len(calls) != 1 {
+		t.Fatalf("%d calls recorded, want the one that was sent: %+v", len(calls), o.Calls())
+	}
+	if calls[0].Encode == "" {
+		t.Error("the encoding failure was dropped: a test reading Params would see nothing and blame the method")
+	}
+	if !strings.Contains(calls[0].Encode, "chan int") {
+		t.Errorf("the reason is %q, want the encoder's own words", calls[0].Encode)
+	}
+	if len(calls[0].Params) != 0 {
+		t.Errorf("params are %s for a failed encode, want none", calls[0].Params)
+	}
+
+	// A call that serializes keeps Encode empty, so the field means one thing.
+	if _, err := o.List(ctx, kernel.ListParams{Limit: 1}); err != nil {
+		t.Fatalf("conversation.list: %v", err)
+	}
+	if got := o.CallsOf(kernel.MethodConversationList)[0]; got.Encode != "" || got.Params == nil {
+		t.Errorf("a serializable call reads %+v", got)
 	}
 }
