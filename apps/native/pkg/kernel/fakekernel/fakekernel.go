@@ -2,18 +2,25 @@
 //
 // There is no test-only mode in the Kernel: this starts the production sidecar and points its provider at
 // an OpenAI-compatible endpoint the test itself serves. So a test drives the real protocol — real
-// conversations, real transcripts, real view pushes — and the model is the only thing that is fake. The
-// script is Go, which means the compiler checks it and the test can also read back what the Kernel sent.
+// conversations, real transcripts, real tool execution, real view pushes — and the model is the only fake
+// part. The script is Go, which means the compiler checks it and the test can read back what the Kernel
+// sent.
 //
 // The binary comes from DROI_KERNEL_BIN, or else the build in apps/native/assets/kernel/<goos>-<goarch>
-// that `pnpm build:kernel` writes; without one the test is skipped rather than failed, so `go test
-// ./apps/native/...` works on a checkout with no Kernel built.
+// that `pnpm build:kernel` writes. Without one the test is skipped, because `go test ./apps/native/...`
+// has to work on a checkout with no Kernel built; set DROI_FAKEKERNEL_REQUIRED=1 (which CI does) to turn
+// that skip into a failure, since a skipped test proves nothing.
+//
+// A test's Kernel gets its own world: a temporary HOME, a temporary working directory, and only a
+// whitelisted slice of the parent's environment. A test must never read or write the real ~, and must never
+// inherit a key.
 package fakekernel
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -36,6 +43,10 @@ const (
 	ModelID    = "fake-1"
 )
 
+// RequiredEnv turns a missing Kernel binary from a skip into a failure. CI sets it: a package whose tests
+// all skip is a package with no tests.
+const RequiredEnv = "DROI_FAKEKERNEL_REQUIRED"
+
 // Call is one tool the model asks the Kernel to run.
 type Call struct {
 	Name      string         `json:"name"`
@@ -45,21 +56,24 @@ type Call struct {
 
 // Failure is a model request that fails the way a provider does.
 type Failure struct {
-	// Status is the HTTP status to answer with; 0 means the connection is closed instead, which is what a
-	// network drop looks like to the Kernel.
+	// Status is the HTTP status to answer with; 0 closes the connection instead, which is what a network
+	// drop looks like to the Kernel.
 	Status int    `json:"status,omitempty"`
 	Body   string `json:"body,omitempty"`
 }
 
 // Step is one model answer, matched to the request that asks for it.
 type Step struct {
-	// Match is a substring of the last user message; "" matches any request. A request takes the first
-	// step that matches it and never takes it again.
+	// Match is a substring of the last user message; "" matches any request. A request takes the first step
+	// that matches it, and never takes it again.
+	//
+	// Note the one rule that surprises people: a tool result is a `tool` message, not a user one, so the
+	// step that follows a tool call matches the same prompt as the step that asked for it.
 	Match string `json:"match,omitempty"`
 	// Text is the reply, streamed as deltas.
 	Text string `json:"text,omitempty"`
-	// Chunks splits Text into these deltas instead of a fixed 40-character split, so a test can assert
-	// what a viewer sees between deltas.
+	// Chunks splits Text into these deltas instead of a fixed 40-character split, so a test can assert what
+	// a viewer sees between deltas.
 	Chunks []string `json:"chunks,omitempty"`
 	// Call, when set, is a tool call instead of text.
 	Call *Call `json:"call,omitempty"`
@@ -72,8 +86,12 @@ type Step struct {
 // Scenario is everything the scripted model answers, in order.
 type Scenario struct {
 	Steps []Step `json:"steps,omitempty"`
-	// Fallback is the text for a request no step matched; "" is "done". A test that would rather know
-	// reads Unmatched.
+	// AllowUnmatched accepts a model request that no step matched, answering it with Fallback. It is off by
+	// default and the test **fails** instead: an unscripted request means the test is driving a path its
+	// script does not describe, and its assertions would be checking the nothing that came back.
+	AllowUnmatched bool `json:"allowUnmatched,omitempty"`
+	// Fallback is the text for an unmatched request when AllowUnmatched is set; "" answers with a line that
+	// says the request was not scripted, so a test that forgot AllowUnmatched sees why.
 	Fallback string `json:"fallback,omitempty"`
 }
 
@@ -106,11 +124,16 @@ type Kernel struct {
 	Token string
 	// DataDir is the throwaway data directory, kept until the test ends.
 	DataDir string
+	// HomeDir is the Kernel's HOME, and its tools'; never the user's.
+	HomeDir string
+	// Workspace is the default working directory for conversations and tools.
+	Workspace string
 	// Version is the Kernel's version, from its handshake.
 	Version string
 
 	model     *scriptedModel
 	cmd       *exec.Cmd
+	tree      processTree
 	logs      *lockedBuffer
 	wait      chan struct{}
 	closeOnce sync.Once
@@ -118,28 +141,41 @@ type Kernel struct {
 
 // Start runs a Kernel with the scenario's model and stops both when the test ends.
 //
-// It skips the test when no Kernel binary is available: that is a checkout without `pnpm build:kernel`,
-// not a failure of the code under test.
+// It skips the test when no Kernel binary is available — a checkout without `pnpm build:kernel` — unless
+// DROI_FAKEKERNEL_REQUIRED=1, which makes that a failure instead: CI must not pass because every test in
+// the package skipped.
 func Start(t testing.TB, sc Scenario) *Kernel {
 	t.Helper()
 	bin := binary(t)
 	if bin == "" {
+		if os.Getenv(RequiredEnv) != "" {
+			t.Fatalf("fakekernel: no Kernel binary and %s is set: run pnpm build:kernel, or set DROI_KERNEL_BIN", RequiredEnv)
+		}
 		t.Skip("no Kernel binary: set DROI_KERNEL_BIN or run pnpm build:kernel")
 	}
 
 	model := startScriptedModel(t, sc)
 	data := t.TempDir()
+	home := t.TempDir()
+	workspace := t.TempDir()
 	token, err := kernel.NewToken()
 	if err != nil {
 		t.Fatalf("fakekernel: token: %v", err)
 	}
 
 	cmd := exec.Command(bin, "--data", data, "--port", "0", "--host", "127.0.0.1")
-	cmd.Env = append(os.Environ(),
+	// A whole temporary environment: the Kernel and every tool it runs see this HOME, these temp
+	// directories and this PATH, and nothing else from the parent — no FACTORY_*, no *_API_KEY.
+	cmd.Env = isolatedEnv(home)
+	cmd.Env = append(cmd.Env,
 		kernel.TokenEnv+"="+token,
 		"DROI_KERNEL_PROVIDERS="+providersJSON(model.baseURL),
 		"FAKE_PROVIDER_KEY=fake-key",
 	)
+	// Start it in the workspace, not in this package's source directory: a tool that runs `pwd` or writes a
+	// relative path must land in a throwaway directory.
+	cmd.Dir = workspace
+	prepareProcess(cmd)
 	logs := &lockedBuffer{}
 	cmd.Stderr = logs
 	stdout, err := cmd.StdoutPipe()
@@ -150,15 +186,24 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 		t.Fatalf("fakekernel: start %s: %v", bin, err)
 	}
 
-	k := &Kernel{Token: token, DataDir: data, model: model, cmd: cmd, logs: logs, wait: make(chan struct{})}
+	k := &Kernel{
+		Token: token, DataDir: data, HomeDir: home, Workspace: workspace,
+		model: model, cmd: cmd, logs: logs, wait: make(chan struct{}),
+	}
+	tree, err := newProcessTree(cmd)
+	if err != nil {
+		_ = cmd.Process.Kill()
+		t.Fatalf("fakekernel: process tree: %v", err)
+	}
+	k.tree = tree
 	go func() {
 		_ = cmd.Wait()
 		close(k.wait)
 	}()
 	t.Cleanup(k.Close)
 
-	// The handshake is the first line of stdout: the port is the Kernel's to choose, so no test has to
-	// probe for a free one (and race whoever takes it next).
+	// The handshake is the first line of stdout: the port is the Kernel's to choose, so no test has to probe
+	// for a free one (and race whoever takes it next).
 	handshake, err := readHandshake(stdout, 30*time.Second)
 	if err != nil {
 		t.Fatalf("fakekernel: %v\n%s", err, logs.String())
@@ -168,10 +213,27 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 	return k
 }
 
-// Close stops the Kernel and the scripted model. It is called when the test ends; calling it twice is
-// harmless.
+// Close stops the Kernel, everything it started, and the scripted model. It runs when the test ends;
+// calling it twice is harmless.
+//
+// Order matters, and it is the whole point of the process tree: the Kernel's tools are its children in a
+// process group (Unix) or a job (Windows), so ending the group before the Kernel — or with it — is what
+// stops a `sleep 60` a tool started. Killing only the Kernel leaves that process running with a closed
+// stdin, which is how the first version of this package leaked one per test.
 func (k *Kernel) Close() {
 	k.closeOnce.Do(func() {
+		// Let the Kernel close its own storage first: a SIGKILL leaves SQLite a hot journal, which is
+		// fine, but a graceful stop also lets the harness settle its writes and costs little.
+		if k.cmd.Process != nil {
+			_ = k.cmd.Process.Signal(os.Interrupt)
+		}
+		select {
+		case <-k.wait:
+		case <-time.After(2 * time.Second):
+		}
+		// Whatever is left of the tree, including a tool the Kernel started and did not finish.
+		k.tree.kill()
+		k.tree.close()
 		if k.cmd.Process != nil {
 			_ = k.cmd.Process.Kill()
 		}
@@ -189,15 +251,15 @@ func (k *Kernel) Logs() string { return k.logs.String() }
 // Requests are the model requests the Kernel made, in order.
 func (k *Kernel) Requests() []Request { return k.model.requests() }
 
-// Unmatched is how many requests no step matched and the fallback answered: a test that expects every
-// turn to be scripted asserts it is zero.
+// Unmatched is how many requests no step matched. A strict scenario reports them as a test failure on its
+// own; this is for a test that wants to say something more specific.
 func (k *Kernel) Unmatched() int { return k.model.unmatched() }
 
 // Dial connects a client to the Kernel, waits for its health check, and closes the client when the test
 // ends.
 func (k *Kernel) Dial(t testing.TB) *kernel.Client {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	ctx, cancel := k.context(t, 60*time.Second)
 	defer cancel()
 	for {
 		if _, err := kernel.CheckHealth(ctx, k.Port); err == nil {
@@ -206,7 +268,11 @@ func (k *Kernel) Dial(t testing.TB) *kernel.Client {
 		if ctx.Err() != nil {
 			t.Fatalf("fakekernel: no health answer in 60 s:\n%s", k.Logs())
 		}
-		time.Sleep(20 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			t.Fatalf("fakekernel: the test ended before the Kernel answered: %v\n%s", ctx.Err(), k.Logs())
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 	client, err := kernel.Dial(ctx, kernel.Options{
 		URL:            kernel.URL(k.Port),
@@ -220,6 +286,31 @@ func (k *Kernel) Dial(t testing.TB) *kernel.Client {
 	return client
 }
 
+// context is what every RPC and every wait uses: bounded by the caller's `within` **and** by the test's own
+// deadline, whichever is sooner. Without the second, a stalled RPC can outlive the test, and the panic the
+// runner raises for a dead test is what skips a cleanup that was about to assert something.
+func (k *Kernel) context(t testing.TB, within time.Duration) (context.Context, context.CancelFunc) {
+	t.Helper()
+	limit := within
+	// testing.TB has no Deadline; testing.T does, and it is what a test runner passes.
+	if withDeadline, ok := t.(interface{ Deadline() (time.Time, bool) }); ok {
+		deadline, ok := withDeadline.Deadline()
+		if !ok {
+			return context.WithTimeout(context.Background(), limit)
+		}
+		// Leave a moment to report: a context that expires with the test fails the test with a signal
+		// instead of a message from our own assertion.
+		remaining := time.Until(deadline) - time.Second
+		if remaining <= 0 {
+			remaining = time.Until(deadline)
+		}
+		if remaining < limit {
+			limit = remaining
+		}
+	}
+	return context.WithTimeout(context.Background(), limit)
+}
+
 // ── the scripted model ────────────────────────────────────────────────────────────────────────────
 
 type scriptedModel struct {
@@ -228,10 +319,16 @@ type scriptedModel struct {
 	listener net.Listener
 	baseURL  string
 
+	// closed stops a handler that is sleeping between deltas; handlers runs the count Close waits on.
+	closed   chan struct{}
+	closeOne sync.Once
+	handlers sync.WaitGroup
+
 	mu     sync.Mutex
 	steps  []Step
 	seen   []Request
-	misses int
+	misses []string
+	t      testing.TB
 }
 
 func startScriptedModel(t testing.TB, sc Scenario) *scriptedModel {
@@ -240,18 +337,46 @@ func startScriptedModel(t testing.TB, sc Scenario) *scriptedModel {
 	if err != nil {
 		t.Fatalf("fakekernel: listen: %v", err)
 	}
-	m := &scriptedModel{scenario: sc, steps: append([]Step(nil), sc.Steps...), listener: listener}
+	m := &scriptedModel{
+		scenario: sc,
+		steps:    append([]Step(nil), sc.Steps...),
+		listener: listener,
+		closed:   make(chan struct{}),
+		t:        t,
+	}
 	m.baseURL = "http://" + listener.Addr().String() + "/v1"
 	m.server = &http.Server{Handler: http.HandlerFunc(m.serve), ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = m.server.Serve(listener) }()
 	t.Cleanup(m.stop)
+	if !sc.AllowUnmatched {
+		// Strict by default: a request the script does not describe is a test that is not testing what it
+		// says. Reported here rather than inside the handler so the message lands on the test that started
+		// the Kernel, with its name.
+		t.Cleanup(func() {
+			for _, prompt := range m.unmatchedList() {
+				t.Errorf("fakekernel: no Step matched the prompt %q; add a step, or set Scenario.AllowUnmatched", prompt)
+			}
+		})
+	}
 	return m
 }
 
+// stop cancels every handler and waits for it. A handler is a goroutine sleeping between deltas; returning
+// before it has noticed would leave it writing to a closed server.
 func (m *scriptedModel) stop() {
+	m.closeOne.Do(func() { close(m.closed) })
 	if m.server != nil {
 		_ = m.server.Close()
 		m.server = nil
+	}
+	joined := make(chan struct{})
+	go func() {
+		m.handlers.Wait()
+		close(joined)
+	}()
+	select {
+	case <-joined:
+	case <-time.After(5 * time.Second):
 	}
 }
 
@@ -264,7 +389,13 @@ func (m *scriptedModel) requests() []Request {
 func (m *scriptedModel) unmatched() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.misses
+	return len(m.misses)
+}
+
+func (m *scriptedModel) unmatchedList() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.misses...)
 }
 
 // take picks the first step whose Match the prompt satisfies, and consumes it.
@@ -278,7 +409,7 @@ func (m *scriptedModel) take(prompt string) (Step, bool) {
 		m.steps = append(m.steps[:i], m.steps[i+1:]...)
 		return step, true
 	}
-	m.misses++
+	m.misses = append(m.misses, prompt)
 	return Step{Text: m.scenario.Fallback}, false
 }
 
@@ -287,7 +418,7 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	body, _ := io.ReadAll(r.Body)
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 32<<20))
 	var request Request
 	if err := json.Unmarshal(body, &request); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -298,6 +429,11 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 	m.mu.Unlock()
 
 	step, matched := m.take(request.Prompt())
+	if !matched && !m.scenario.AllowUnmatched && step.Text == "" {
+		// Say it in the answer too: a test that asserts on the reply then sees the reason, instead of an
+		// empty assistant message it might accept.
+		step.Text = fmt.Sprintf("[fakekernel: the prompt %q matched no Step]", request.Prompt())
+	}
 	if step.Failure != nil {
 		if step.Failure.Status == 0 {
 			// A dropped connection: no response at all, which the Kernel sees as the network failing.
@@ -310,19 +446,20 @@ func (m *scriptedModel) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(step.Failure.Status)
-		body := step.Failure.Body
-		if body == "" {
-			body = http.StatusText(step.Failure.Status)
+		text := step.Failure.Body
+		if text == "" {
+			text = http.StatusText(step.Failure.Status)
 		}
-		_, _ = io.WriteString(w, `{"error":{"message":`+quote(body)+`}}`)
+		_, _ = io.WriteString(w, `{"error":{"message":`+quote(text)+`}}`)
 		return
 	}
-	_ = matched
+	m.handlers.Add(1)
+	defer m.handlers.Done()
 	if !request.Stream {
 		m.whole(w, step)
 		return
 	}
-	m.stream(w, step)
+	m.stream(r.Context(), w, step)
 }
 
 // whole answers without SSE, which a Kernel that asks for stream=false reads.
@@ -345,14 +482,20 @@ func (m *scriptedModel) whole(w http.ResponseWriter, step Step) {
 	})
 }
 
-// stream writes the reply as the SSE chunks pi-ai parses.
-func (m *scriptedModel) stream(w http.ResponseWriter, step Step) {
+// stream writes the reply as the SSE chunks pi-ai parses, stopping the moment the request or the model is
+// cancelled — a delay is a sleep between deltas, and a sleep nobody can interrupt is a goroutine that
+// outlives its test.
+func (m *scriptedModel) stream(ctx context.Context, w http.ResponseWriter, step Step) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	flusher, _ := w.(http.Flusher)
 
+	failed := false
 	send := func(delta map[string]any, finish any, extra map[string]any) {
+		if failed {
+			return
+		}
 		chunk := map[string]any{
 			"id": "chatcmpl-fake", "object": "chat.completion.chunk", "created": 1, "model": ModelID,
 			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
@@ -361,27 +504,53 @@ func (m *scriptedModel) stream(w http.ResponseWriter, step Step) {
 			chunk[key] = value
 		}
 		encoded, _ := json.Marshal(chunk)
-		fmt.Fprintf(w, "data: %s\n\n", encoded)
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", encoded); err != nil {
+			failed = true
+			return
+		}
 		if flusher != nil {
 			flusher.Flush()
 		}
 	}
-	pause := func() {
-		if step.Delay > 0 {
-			time.Sleep(step.Delay)
+	// pause is the step's delay, or a stop: the Kernel closed the connection, the test ended, or the model
+	// was closed. A cancelled stream returns at once instead of finishing its script.
+	pause := func() bool {
+		if step.Delay <= 0 {
+			select {
+			case <-ctx.Done():
+				return false
+			case <-m.closed:
+				return false
+			default:
+				return true
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-m.closed:
+			return false
+		case <-time.After(step.Delay):
+			return true
 		}
 	}
 
-	pause()
+	if !pause() {
+		return
+	}
 	send(map[string]any{"role": "assistant", "content": ""}, nil, nil)
 	if step.Call != nil {
 		args, _ := json.Marshal(step.Call.Arguments)
-		pause()
+		if !pause() {
+			return
+		}
 		send(map[string]any{"tool_calls": []any{map[string]any{
 			"index": 0, "id": callID(step), "type": "function",
 			"function": map[string]any{"name": step.Call.Name, "arguments": string(args)},
 		}}}, nil, nil)
-		pause()
+		if !pause() {
+			return
+		}
 		send(map[string]any{}, "tool_calls", nil)
 	} else {
 		pieces := step.Chunks
@@ -389,7 +558,9 @@ func (m *scriptedModel) stream(w http.ResponseWriter, step Step) {
 			pieces = split(step.Text, 40)
 		}
 		for _, piece := range pieces {
-			pause()
+			if !pause() {
+				return
+			}
 			if piece == "" {
 				continue
 			}
@@ -399,9 +570,11 @@ func (m *scriptedModel) stream(w http.ResponseWriter, step Step) {
 	}
 	// Usage comes in a chunk with no choices, which is where OpenAI puts it.
 	send(map[string]any{}, nil, map[string]any{"choices": []any{}, "usage": usage()})
-	fmt.Fprint(w, "data: [DONE]\n\n")
-	if flusher != nil {
-		flusher.Flush()
+	if !failed {
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
 	}
 }
 
@@ -431,12 +604,114 @@ func providersJSON(baseURL string) string {
 	return string(encoded)
 }
 
-// ── small helpers ─────────────────────────────────────────────────────────────────────────────────
+// isolatedEnv is the environment a test's Kernel gets: a whitelist, plus a HOME and temp directories of its
+// own. A whitelist rather than a blocklist, because the thing to avoid is not one variable but the class of
+// them — a key in FACTORY_API_KEY, in *_API_KEY, in a config path that points at the user's real files.
+//
+// PATH, SHELL and the Windows system variables stay because a tool needs to start a shell; LANG and TERM
+// because output should not depend on the locale of whoever ran the test.
+func isolatedEnv(home string) []string {
+	passthrough := []string{
+		"PATH", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ",
+		"SystemRoot", "SystemDrive", "windir", "COMSPEC", "PATHEXT", "PROCESSOR_ARCHITECTURE",
+	}
+	env := make([]string, 0, len(passthrough)+10)
+	for _, key := range passthrough {
+		if value, ok := os.LookupEnv(key); ok && value != "" {
+			env = append(env, key+"="+value)
+		}
+	}
+	temp := filepath.Join(home, "tmp")
+	_ = os.MkdirAll(temp, 0o700)
+	env = append(env,
+		"HOME="+home,
+		"USERPROFILE="+home,
+		"APPDATA="+filepath.Join(home, "AppData", "Roaming"),
+		"LOCALAPPDATA="+filepath.Join(home, "AppData", "Local"),
+		"TMPDIR="+temp,
+		"TMP="+temp,
+		"TEMP="+temp,
+		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		"XDG_DATA_HOME="+filepath.Join(home, ".local", "share"),
+		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
+	)
+	_ = os.MkdirAll(filepath.Join(home, ".config"), 0o700)
+	_ = os.MkdirAll(filepath.Join(home, ".local", "share"), 0o700)
+	_ = os.MkdirAll(filepath.Join(home, ".cache"), 0o700)
+	return env
+}
+
+// ── the binary ───────────────────────────────────────────────────────────────────────────────────
 
 type handshake struct {
 	Port    int    `json:"port"`
 	Pid     int    `json:"pid"`
 	Version string `json:"version"`
+}
+
+// binary is the Kernel to run: DROI_KERNEL_BIN, or the build the release packs.
+func binary(t testing.TB) string {
+	t.Helper()
+	if bin := os.Getenv("DROI_KERNEL_BIN"); bin != "" {
+		return bin
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return findBinary(wd, runtime.GOOS, runtime.GOARCH)
+}
+
+// platformDir is the name `apps/kernel/build.ts` writes for a Go platform. The two disagree on one
+// architecture and it is the common one: Go says `amd64`, the build says `x64`. Without this mapping every
+// Intel Mac, and Windows and Linux x64 with it, found no binary and silently skipped.
+func platformDir(goos, goarch string) (string, bool) {
+	arch := goarch
+	switch goarch {
+	case "amd64":
+		arch = "x64"
+	case "arm64":
+		arch = "arm64"
+	default:
+		return "", false
+	}
+	switch goos {
+	case "darwin", "windows", "linux":
+		return goos + "-" + arch, true
+	}
+	return "", false
+}
+
+// findBinary walks up from start looking for apps/native's build of this platform, and stops at the
+// filesystem root.
+//
+// The root test is `filepath.Dir(dir) == dir`, not a string comparison against "/": on Windows the walk
+// arrives at `C:\`, whose parent is itself, and comparing to "/" there never matched — the loop spun
+// forever instead of skipping.
+func findBinary(start, goos, goarch string) string {
+	platform, ok := platformDir(goos, goarch)
+	if !ok {
+		return ""
+	}
+	exe := "kernel"
+	if goos == "windows" {
+		exe += ".exe"
+	}
+	dir, err := filepath.Abs(start)
+	if err != nil {
+		return ""
+	}
+	for {
+		candidate := filepath.Join(dir, "assets", "kernel", platform, exe)
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 func readHandshake(stdout io.Reader, within time.Duration) (handshake, error) {
@@ -472,30 +747,6 @@ func readHandshake(stdout io.Reader, within time.Duration) (handshake, error) {
 	}
 }
 
-// binary is the Kernel to run: DROI_KERNEL_BIN, or the build the release packs.
-func binary(t testing.TB) string {
-	t.Helper()
-	if bin := os.Getenv("DROI_KERNEL_BIN"); bin != "" {
-		return bin
-	}
-	exe := "kernel"
-	if runtime.GOOS == "windows" {
-		exe += ".exe"
-	}
-	// packages run from their own directory: walk up to apps/native, where the release's build sits.
-	for dir := "."; ; {
-		candidate := filepath.Join(dir, "assets", "kernel", runtime.GOOS+"-"+runtime.GOARCH, exe)
-		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
-			return candidate
-		}
-		next := filepath.Join(dir, "..")
-		if abs, err := filepath.Abs(next); err != nil || abs == "/" || strings.HasSuffix(abs, "/..") {
-			return ""
-		}
-		dir = next
-	}
-}
-
 func textOf(raw json.RawMessage) string {
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
@@ -517,7 +768,7 @@ func textOf(raw json.RawMessage) string {
 	return ""
 }
 
-// split cuts text into pieces of at most width bytes, on rune boundaries.
+// split cuts text into pieces of at most width runes.
 func split(text string, width int) []string {
 	var pieces []string
 	runes := []rune(text)
@@ -553,3 +804,6 @@ func (b *lockedBuffer) String() string {
 	defer b.mu.Unlock()
 	return string(b.data)
 }
+
+// errClosed is what a helper reports when the model went away before the Kernel asked it anything.
+var errClosed = errors.New("fakekernel: the scripted model is closed")
