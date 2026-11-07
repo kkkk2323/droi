@@ -42,6 +42,10 @@ type ToolCall struct {
 	RawInput json.RawMessage
 	Keys     []string
 	Result   *protocol.ToolResult
+	// ResultView is the result as this package already read it, for a call that came from the Kernel: Pi
+	// writes one entry per result, so BuildView has the result before the row asks for it. The Daemon's
+	// path leaves it nil and ReadResult derives the same shape from Result.
+	ResultView *ToolResultView
 	// Set on a Script or WaitForScript call (Lifecycle): the calls its run made
 	// while this call was the latest one watching it.
 	Nested    []*ToolCall
@@ -177,6 +181,9 @@ func LatestTool(messages []protocol.FactoryDroidMessage) (*ToolCall, int) {
 type Builder struct {
 	messages map[string]*seenMessage
 	gen      uint64
+	// view is the same cache for the Kernel's entries, which BuildView reads.
+	view    map[string]*seenViewEntry
+	viewGen uint64
 }
 
 // seenMessage is a message's blocks as the last Build decoded them.

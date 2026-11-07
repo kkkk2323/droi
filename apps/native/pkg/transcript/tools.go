@@ -311,7 +311,7 @@ func ParseScriptPermission(details json.RawMessage) *ScriptPermission {
 func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 	leaves := LeafCalls(calls)
 	for _, c := range append(append([]*ToolCall{}, calls...), leaves...) {
-		if c.Result == nil {
+		if callPending(c) {
 			pending = true
 		}
 	}
@@ -335,22 +335,44 @@ func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 	return l10n.L("Used %s", name), false
 }
 
+// callPending says whether a call is still to be answered.
+//
+// Two shapes carry a call's result: the Daemon attaches it to the call (Result), and the Kernel hands it over as
+// its own entry, which BuildView reads into ResultView. A reader that looked only at Result called every Kernel
+// call unfinished, so a cluster said "Running read" long after the result had arrived.
+func callPending(c *ToolCall) bool {
+	if c.ResultView != nil {
+		return c.ResultView.Pending
+	}
+	return c.Result == nil
+}
+
 // ToolResultView is the result's text and how it reads, for the row and its detail.
 type ToolResultView struct {
 	Text    string
 	Images  []Image
 	Pending bool
 	IsError bool
-	Diff    *Diff
-	Status  *Status
+	// Interrupted says the turn was stopped before this call answered: it will not run again, and it did not
+	// fail. A row that showed it as running would promise an answer that is never coming.
+	Interrupted bool
+	Diff        *Diff
+	Status      *Status
 }
 
 func ReadResult(c *ToolCall) ToolResultView {
-	v := ToolResultView{
-		Text:    ResultText(c.Result),
-		Images:  ResultImages(c.Result),
-		Pending: c.Result == nil,
-		IsError: c.Result != nil && c.Result.IsError != nil && *c.Result.IsError,
+	// The Kernel hands a result over as its own entry, which BuildView already read; the Daemon's path hands
+	// over a tool message the call was attached to, which is read here.
+	var v ToolResultView
+	if c.ResultView != nil {
+		v = *c.ResultView
+	} else {
+		v = ToolResultView{
+			Text:    ResultText(c.Result),
+			Images:  ResultImages(c.Result),
+			Pending: c.Result == nil,
+			IsError: c.Result != nil && c.Result.IsError != nil && *c.Result.IsError,
+		}
 	}
 	v.Diff = ParseDiff(v.Text)
 	if v.Diff == nil && !v.IsError {

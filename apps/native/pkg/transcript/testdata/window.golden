@@ -1,0 +1,16 @@
+entry id=1 user=true error=false at=1000 blocks=1
+  block kind=text id=1:0:0 text="fix the login race"
+entry id=2 user=false error=false at=4000 blocks=4
+  block kind=thinking id=2:0:0 text="read the file first"
+  block kind=text id=2:0:1 text="let me look at it"
+  block kind=tools id=2:0:2
+    call id=c1 name=read input={"path":"src/auth/login.ts"} result={text="export async function login() {}" pending=false error=false images=image/png/aGk=}
+  block kind=text id=4:0:0 text="`refreshToken()` is not awaited."
+entry id=5 user=true error=false at=5000 blocks=1
+  block kind=text id=5:0:0 text="now run the tests"
+entry id=6 user=false error=false at=6000 blocks=1
+  block kind=tools id=6:0:0
+    call id=c2 name=bash input={"command":"go test ./..."} result={text="exit status 1" pending=false error=true}
+entry id=9 user=false error=true at=10000 blocks=2
+  block kind=text id=9:0:0 text="and the changelog"
+  block kind=text id=10:0:0 text="The model could not answer this turn."
