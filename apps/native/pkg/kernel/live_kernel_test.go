@@ -227,7 +227,7 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 		{"task.abort", func() error { _, err := c.AbortTask(ctx, AbortTaskParams{TaskID: 999999}); return err }, CodeTaskGone},
 		{"index.update", func() error {
 			title := "walked"
-			return c.UpdateIndex(ctx, IndexUpdateParams{ID: id, Title: &title})
+			return c.UpdateIndex(ctx, IndexUpdateParams{ID: id, Title: TitleText(title)})
 		}, 0},
 		{"process.list", func() error { _, err := c.Processes(ctx, id); return err }, 0},
 		// M1 answers the write methods of a capability it does not have with

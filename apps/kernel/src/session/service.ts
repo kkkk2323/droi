@@ -474,11 +474,11 @@ export class Kernel implements Dispatcher {
         context,
       )
       const id = conversation.id as unknown as number
+      const repoRoot = resolved.cwd === undefined ? undefined : await repoRootOf(resolved.cwd)
       await this.#options.indexer.touch(id, createdAt, {
         ...(kind === undefined ? {} : { kind }),
-        ...(resolved.cwd === undefined
-          ? {}
-          : { workspace: resolved.cwd, repoRoot: repoRootOf(resolved.cwd) }),
+        ...(resolved.cwd === undefined ? {} : { workspace: resolved.cwd }),
+        ...(repoRoot === undefined ? {} : { repoRoot }),
         ...(requestId === undefined ? {} : { requestId, requestFingerprint: fingerprint }),
         createdAt,
       })
@@ -673,12 +673,12 @@ export class Kernel implements Dispatcher {
     const newest = latestMessageTime(entries)
     const activityAt = newest ?? fixed.createdAt
     if (fixed.createdAt !== undefined) {
+      const repoRoot = fixed.cwd === undefined ? undefined : await repoRootOf(fixed.cwd)
       await this.#options.indexer.touch(id, activityAt ?? fixed.createdAt, {
         createdAt: fixed.createdAt,
         ...(fixed.kind === undefined ? {} : { kind: fixed.kind }),
-        ...(fixed.cwd === undefined
-          ? {}
-          : { workspace: fixed.cwd, repoRoot: repoRootOf(fixed.cwd) }),
+        ...(fixed.cwd === undefined ? {} : { workspace: fixed.cwd }),
+        ...(repoRoot === undefined ? {} : { repoRoot }),
       })
     } else if (activityAt !== undefined) {
       await this.#options.indexer.touch(id, activityAt, {})
@@ -1056,12 +1056,15 @@ export class Kernel implements Dispatcher {
     const resolved = this.#agentChange(change, 'change')
     await conversation.configure(resolved, context)
     // The row's workspace is where the tools run, so a new cwd is a new row as well: the index groups
-    // conversations by it, and the repository it belongs to can change with it.
+    // conversations by it, and the repository it belongs to can change with it. A cleared cwd clears both,
+    // rather than leave the row claiming a directory the conversation no longer runs in.
     if (typeof resolved.cwd === 'string') {
       await this.#options.indexer.update(id, {
         workspace: resolved.cwd,
-        repoRoot: repoRootOf(resolved.cwd),
+        repoRoot: (await repoRootOf(resolved.cwd)) ?? null,
       })
+    } else if (resolved.cwd === null) {
+      await this.#options.indexer.update(id, { workspace: null, repoRoot: null })
     }
     const agent = await conversation.agent(context)
     return { agent: wireAgent(agent) }
@@ -1095,6 +1098,18 @@ export class Kernel implements Dispatcher {
       throw invalidParams([{ path: 'at', message: `entry ${at} is not in this conversation` }])
     }
     const createdAt = Date.now()
+    // A fork runs where its source runs, and is the same kind of conversation: its row says so, so the
+    // sidebar puts it in the source's repository and a list filtered by workspace finds it.
+    const source = await this.#options.indexer.conversation(id)
+    const workspace = source?.workspace ?? undefined
+    const kind = source?.kind ?? undefined
+    const title = source?.title === null || source?.title === '' ? undefined : source?.title
+    const meta: ConversationMeta = {
+      parentId: id,
+      createdAt,
+      ...(kind === undefined ? {} : { kind }),
+      ...(workspace === undefined ? {} : { workspace }),
+    }
     const forked = await conversation.fork(
       at as EntryId,
       {
@@ -1103,16 +1118,22 @@ export class Kernel implements Dispatcher {
         // it would give the fork the parent's requestId — which collides on the unique index at the next
         // start — and the parent's submissions. So the fork writes its own, with the link back.
         init: async (tx, conversationId) => {
-          await tx.appendEntry(conversationId, {
-            kind: 'droi.meta',
-            data: { parentId: id, createdAt } satisfies ConversationMeta,
-          })
+          await tx.appendEntry(conversationId, { kind: 'droi.meta', data: meta })
         },
       },
       context,
     )
     const forkedId = forked.id as unknown as number
-    await this.#options.indexer.touch(forkedId, createdAt, { parentId: id, createdAt })
+    const repoRoot = workspace === undefined ? undefined : await repoRootOf(workspace)
+    await this.#options.indexer.touch(forkedId, createdAt, {
+      parentId: id,
+      createdAt,
+      ...(kind === undefined ? {} : { kind }),
+      ...(workspace === undefined ? {} : { workspace }),
+      ...(repoRoot === undefined ? {} : { repoRoot }),
+      // The source's name, as a name to replace: the title generator may name the fork once it differs.
+      ...(title === undefined ? {} : { title }),
+    })
     await this.track(forkedId)
     return { conversationId: forkedId, view: await this.#view(forkedId, DEFAULT_WINDOW) }
   }
@@ -1243,7 +1264,10 @@ export class Kernel implements Dispatcher {
     const row = await this.#options.indexer.conversation(id)
     this.#notifier?.broadcast('index.changed', {
       id,
-      ...(row?.title === undefined ? {} : { title: row.title }),
+      ...(row?.title === undefined || row.title === null ? {} : { title: row.title }),
+      ...(row?.title_source === undefined || row.title_source === null
+        ? {}
+        : { titleSource: row.title_source }),
       ...(row?.archived_at === undefined ? {} : { archived: row.archived_at !== null }),
       lastActivityAt: row?.last_activity_at ?? Date.now(),
     })

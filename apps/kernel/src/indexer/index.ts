@@ -640,13 +640,21 @@ export class Indexer {
       )
     }
     // A title the user chose must survive the next repair, so an empty title stands for "chosen".
-    if (change.title !== undefined) {
-      // A cleared title has no source: the next automatic one may fill it again, as `auto`.
-      const source = change.title === null ? null : (change.titleSource ?? 'chosen')
+    if (change.title === null) {
+      // Cleared: the conversation goes back to the name it would have had, its first message, as `auto`
+      // so the generator may replace it. With no message yet it has none, and the first one fills it.
+      const first = await this.#firstUserTitle(id)
       await this.#db.run(
         'UPDATE droi_conversations SET title = ?, title_source = ? WHERE id = ?',
-        change.title ?? '',
-        source,
+        first ?? null,
+        first === undefined ? null : 'auto',
+        id,
+      )
+    } else if (change.title !== undefined) {
+      await this.#db.run(
+        'UPDATE droi_conversations SET title = ?, title_source = ? WHERE id = ?',
+        change.title,
+        change.titleSource ?? 'chosen',
         id,
       )
     }
@@ -675,6 +683,27 @@ export class Indexer {
   async setViewed(id: number, at: number | null): Promise<void> {
     await this.flush()
     await this.#db.run('UPDATE droi_conversations SET viewed_at = ? WHERE id = ?', at, id)
+  }
+
+  /** The first line of a conversation's own first user message, as the automatic title. */
+  async #firstUserTitle(id: number): Promise<string | undefined> {
+    let cursor: never | undefined
+    do {
+      const entries = await this.#storage.scanEntries(
+        { conversationId: id as never, order: 'ascending' },
+        SCAN,
+        cursor,
+        context,
+      )
+      for (const entry of entries.items) {
+        // A fork's inherited entries are its source's words, not its own.
+        if ((entry.conversationId as unknown as number) !== id || entry.kind !== 'pi.user') continue
+        const text = entryText(entry)
+        if (text !== '') return firstLine(text, TITLE_LIMIT)
+      }
+      cursor = entries.next as never
+    } while (cursor !== undefined)
+    return undefined
   }
 
   async conversation(id: number): Promise<ConversationRow | undefined> {
@@ -872,18 +901,22 @@ export class Indexer {
    * Work out the repository of every conversation that has a `workspace` but no `repo_root` yet: the
    * rows a build before this one wrote, and the rows a rebuilt index has just recomputed.
    *
-   * Once per process, before the kernel serves anything, and one `resolve` call per distinct directory —
-   * `repoRootOf` answers a non-repository with the directory itself, so a machine without git only pays
-   * one launch per workspace per start.
+   * Once per process, after the kernel serves (it runs git, and a slow git must not delay the first
+   * answer), and one `resolve` call per distinct directory. A directory git could not be asked about is
+   * left without one, so the next start asks again: a volume mounted late must not decide the grouping.
    */
-  async backfillRepoRoots(resolve: (directory: string) => string): Promise<void> {
+  async backfillRepoRoots(
+    resolve: (directory: string) => Promise<string | undefined>,
+  ): Promise<void> {
     await this.flush()
     const rows = await this.#db.all<{ workspace: string }>(
       `SELECT DISTINCT workspace FROM droi_conversations
        WHERE repo_root IS NULL AND workspace IS NOT NULL`,
     )
     for (const row of rows) {
-      const root = resolve(row.workspace)
+      if (this.#closed) return
+      const root = await resolve(row.workspace)
+      if (root === undefined) continue
       await this.#db.run(
         `UPDATE droi_conversations SET repo_root = ?
          WHERE repo_root IS NULL AND workspace = ?`,
@@ -969,10 +1002,10 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     await exec.run('UPDATE droi_conversations SET preview = ? WHERE id = ?', row.preview, row.id)
   }
   if (row.title !== undefined) {
-    // A title that has been *taken* — set by a person — is not overwritten by the automatic one; an empty
-    // title stands for "chosen, deliberately blank", which is why the condition is on NULL and ''.
+    // Only a conversation that never had a name gets the automatic one here: an empty title is "chosen,
+    // deliberately blank", and a cleared one was named again when it was cleared.
     await exec.run(
-      "UPDATE droi_conversations SET title = ?, title_source = COALESCE(title_source, 'auto') WHERE id = ? AND (title IS NULL OR title = '')",
+      "UPDATE droi_conversations SET title = ?, title_source = COALESCE(title_source, 'auto') WHERE id = ? AND title IS NULL",
       row.title,
       row.id,
     )

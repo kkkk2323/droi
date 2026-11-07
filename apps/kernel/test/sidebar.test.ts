@@ -165,7 +165,7 @@ describe('conversation.list', () => {
     // `git rev-parse` walks up, and the temp dir may itself sit in a repository (a worktree, or a
     // checkout under $HOME). Either answer is the rule: the repository root when there is one, the
     // directory when there is not.
-    const expected = repoRootOf(plain)
+    const expected = await repoRootOf(plain)
     expect(row?.repoRoot).toBe(expected)
     expect(row?.workspace).toBe(plain)
   })
@@ -279,7 +279,7 @@ describe('a start fills in what a build before it could not', () => {
       await db.run('UPDATE droi_conversations SET repo_root = ? WHERE id = 2', '/somewhere/main')
 
       const asked: string[] = []
-      await indexer.backfillRepoRoots((directory) => {
+      await indexer.backfillRepoRoots(async (directory) => {
         asked.push(directory)
         return '/the/repository'
       })
@@ -291,7 +291,7 @@ describe('a start fills in what a build before it could not', () => {
       expect(rows.map((row) => row.repo_root)).toEqual(['/the/repository', '/somewhere/main'])
       // Nothing is left to do, so a second start asks nothing.
       asked.length = 0
-      await indexer.backfillRepoRoots((directory) => {
+      await indexer.backfillRepoRoots(async (directory) => {
         asked.push(directory)
         return '/the/repository'
       })
@@ -350,9 +350,9 @@ describe('titleSource', () => {
     await client.call('index.update', { id, title: 'A generated name', titleSource: 'auto' })
     expect(await read()).toMatchObject({ title: 'A generated name', titleSource: 'auto' })
 
-    // Clearing it drops the source too, so the next automatic title is welcome.
+    // Clearing it goes back to the kernel's own name, the first message, which a generator may replace.
     await client.call('index.update', { id, title: null })
-    expect((await read()).titleSource).toBeUndefined()
+    expect(await read()).toMatchObject({ title: 'the first user message', titleSource: 'auto' })
 
     const bad = await client.fails('index.update', { id, title: 'x', titleSource: 'guessed' })
     expect(bad.code).toBe(-32602)

@@ -468,14 +468,21 @@ asked for, so it is a row of its own; a subagent's conversation is not.
 Three fields a sidebar groups and sorts by:
 
 - `workspace` is the conversation's `cwd`, exactly as it was resolved: the directory its tools run in.
-- `repoRoot` is the working tree that `cwd` sits in (`git rev-parse --show-toplevel`, resolved), and the
-  directory itself when it is not inside one. It is worked out when the conversation is created or its `cwd`
-  changes, and stored in the index, so listing never launches git. A worktree's conversations share their
-  main checkout's `repoRoot`, which is what makes one repository one group.
+- `repoRoot` is the repository that `cwd` sits in: the parent of
+  `git rev-parse --path-format=absolute --git-common-dir`, or `--show-toplevel` for a submodule or a bare
+  repository, and the directory itself when git says it is not inside one. It is **not** `--show-toplevel`
+  of the `cwd`: that gives every worktree a group of its own, where the common directory gives a worktree
+  its main checkout's `repoRoot`, which is what makes one repository one group. It is worked out when the
+  conversation is created, forked or its `cwd` changes, and stored in the index, so listing never launches
+  git. Absent when git could not be asked (no git, a directory not there yet, a timeout); the next start
+  asks again. Needs git 2.31 or newer (`--path-format`). A fork has its source's `workspace`, `repoRoot`
+  and `kind`, and its source's title as `auto`. A `cwd` set to `null` clears `workspace` and `repoRoot`.
 - `titleSource` says where `title` came from: `auto` is the kernel's own guess (the first line of
   the first user message), `chosen` is a title a person set through `index.update` or a generator that said
   so. Absent while a conversation has no title at all. The text alone cannot be compared against the kernel's
-  truncation rule — a person may type exactly what the kernel would have guessed.
+  truncation rule — a person may type exactly what the kernel would have guessed. `index.update` with
+  `title: null` gives the conversation back its automatic name, the first line of its first user message,
+  as `auto` (or no title, until there is a message). An empty string is a title a person chose.
 - `preview` is the first line of the newest message in the transcript — the answer once there is one, the
   question while it is still being written — cut to 200 characters with an ellipsis. It is plain text: no
   search marks, no entry kinds.
@@ -751,7 +758,7 @@ writes no usage row of its own — the `usage` in the result is the record.
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |
 | `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                                          |
-| `index.changed`      | `{id, title?, archived?, lastActivityAt?}`                                                                                                                                                                           |
+| `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?}`                                                                                                                                                             |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only
