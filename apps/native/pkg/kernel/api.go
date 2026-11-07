@@ -28,19 +28,18 @@ func (c *Client) Open(ctx context.Context, p OpenParams) (OpenResult, error) {
 	if err != nil {
 		return res, err
 	}
-	c.mu.Lock()
-	c.opened[p.ID] = struct{}{}
-	c.mu.Unlock()
+	c.watch(p.ID)
 	return res, nil
 }
 
 // Unwatch stops this connection's subscription; the conversation, and every
-// other connection's subscription, stay.
+// other connection's subscription, stay. A failed unwatch keeps counting the
+// conversation as watched, because Kernel still sends its views.
 func (c *Client) Unwatch(ctx context.Context, id ID) error {
 	err := c.Call(ctx, MethodConversationUnwatch, IDParams{ID: id}, nil)
-	c.mu.Lock()
-	delete(c.opened, id)
-	c.mu.Unlock()
+	if err == nil {
+		c.forget(id)
+	}
 	return err
 }
 
@@ -59,6 +58,14 @@ func (c *Client) Abort(ctx context.Context, p AbortParams) error {
 // AbortSubmission stops one submission of a conversation.
 func (c *Client) AbortSubmission(ctx context.Context, p AbortSubmissionParams) (Status, error) {
 	return call[Status](c, ctx, MethodSubmissionAbort, p)
+}
+
+// SubmissionGet answers where one submission of a conversation got to: its
+// status, the user entry it produced and the answer it got. A turn's entries
+// name the task that wrote them rather than the submission, so this is the only
+// exact boundary for "which entries did this submit produce".
+func (c *Client) SubmissionGet(ctx context.Context, p AbortSubmissionParams) (SubmissionGet, error) {
+	return call[SubmissionGet](c, ctx, MethodSubmissionGet, p)
 }
 
 // Configure changes the agent a conversation runs with and answers it
@@ -154,4 +161,11 @@ func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams
 // capabilities.models.
 func (c *Client) ModelComplete(ctx context.Context, p ModelCompleteParams) (ModelCompleteResult, error) {
 	return call[ModelCompleteResult](c, ctx, MethodModelComplete, p)
+}
+
+// Shutdown asks Kernel to close in order and end: it answers {status: "closing"}
+// first, so this call returns while the close is still running. Wait on Done
+// (or the process) for it to be over.
+func (c *Client) Shutdown(ctx context.Context) (ShutdownResult, error) {
+	return call[ShutdownResult](c, ctx, MethodKernelShutdown, nil)
 }
