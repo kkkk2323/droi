@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Droi does its own model work in hidden Sessions on the Daemon
+
+_Droi still does its own model work away from the user's turn, in a Conversation of its own; it is now an ordinary Conversation with a `submit_result` tool and a policy that denies it the write tools, not a Daemon hidden Session._
 
 _The Memory work changed with ADR 0031: Memory Sessions write Session Summaries and the Memory Summary instead of consolidating and extracting entries, and Settings → Memory can open them. How they run on the Daemon stands._
 

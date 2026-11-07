@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # Session Defaults live in the Daemon; the Gateway adds to the system prompt
+
+_Session Defaults are Droi's own settings file, and the System Prompt Addition is an extension `section` the Kernel evaluates; the Gateway no longer rewrites a Session's prompt._
 
 Users wanted to choose what new Sessions start with, as the Factory App's Settings → Session Defaults page allows, and to add their own instructions to Droid's system prompt.
 

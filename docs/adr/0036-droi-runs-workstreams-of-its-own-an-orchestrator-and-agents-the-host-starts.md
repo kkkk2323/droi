@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Droi runs Workstreams of its own: an Orchestrator and Workstream Agents the Host starts
+
+_The Workstream tools are Kernel extension tools that call the Host, not an MCP Server Droi carries, and a Workstream Agent's Session is a Conversation. The Workstream as Droi's own stands._
 
 Factory's Workstreams (Missions 2.0, `mission-v2` in droid) let one Session, the orchestrator, split a long goal among agent Sessions it spawns and keeps. Droi could start one through the Daemon alone (`interactionMode: "mission"` and a `mission-v2` tag), but only for an organization with the `missions_v2` flag. The roster then comes from Factory's backend whenever Cloud Sync is on, every local agent works in the orchestrator's one directory, agents are created inside the Daemon without the Gateway's System Prompt Addition, and Droi can neither see nor change the prompts and behavior. What the user would use it for is narrower than Factory's pitch. Over two months (September 5 to November 5, 2026), 15% of the Sessions the user started spanned two days or more and held 49% of the messages the user wrote; across all of them the user nudged with "check" or "continue" 198 times and handed context over by pasting another Session's id 61 times. Three Sessions at once in one repository happened in 11 of 941 active half-hours. So the value is a long-lived lead, standing helpers that keep their context, being told when something waits, and hand-overs without pasted ids, not many agents at once. A spike on a bare Daemon (2026-11-05, branch `spike/droi-workstream`) ran MCP tools → Host → agent Sessions in Worktrees of their own → reports back, and passed in each of its three recorded runs.
 

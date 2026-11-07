@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038, ADR-0041
 ---
 
 # Droi runs as a library under another app's brand, with extensions
+
+_The library shape, the brand and the shell of the Extension stand. What an Extension added to a Conversation — an overlay of MCP servers and hooks, and its own system prompt text — becomes one `Agent` of MCP servers, always-allowed tools and a prompt section; hooks and `OverlayOptions` go, and `droidhook` with them (ADRs 0038, 0041). Neither downstream app is ported in 2.0._
 
 _Partly superseded by ADR 0033: a mirror holds Factory's droid builds and `LATEST` only, for Droi's droid; there are no recipes, and `Options.RecipesURL` is ignored._
 

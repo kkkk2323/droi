@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # Droi asks for a minimum droid before it pins one
+
+_There is no Minimum Droid to check for: the Kernel comes with the app, and `droid --version` is no longer read._
 
 ADR 0013 decided that a release would download and run a Pinned Droid. It was never built: the native Host starts the Daemon from whatever `droid` it finds (the `droidPath` setting, then `PATH`, then the installer's folders). What we actually feared was an old droid under a new Droi: a Daemon that lacks what the Client calls. A Daemon the Host starts already updates its own droid at startup (`runConditionalUpdate` in droid 0.238.0), so most computers follow the latest droid. The ones that stay behind are those where droid cannot update itself: an npm install, a folder droid cannot write to, an organization that turned updates off, Airgap Mode, or a `droidPath` that points at an old copy.
 

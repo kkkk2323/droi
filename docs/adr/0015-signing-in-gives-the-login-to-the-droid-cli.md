@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0039
 ---
 
 # Signing in gives the login to the droid CLI
+
+_There is no sign-in and no `~/.factory` credential store to hand it to: the Key Pool holds `fk-` keys and the LLM Proxy stamps one on each Factory request._
 
 The Daemon authenticates a Client by comparing it with its own identity, which it reads from droid's credential store in `~/.factory` (or `FACTORY_API_KEY`). Under ADR 0005 Droi kept the device-flow login in its own settings and sent its token in `daemon.authenticate`, which only worked where `droid` was already signed in as the same account. On a computer without that login (a fresh Windows install, say) every authenticate failed with "Daemon not authenticated", and the window waited forever.
 

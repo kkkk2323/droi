@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0039
 ---
 
 # The Desktop Shell signs in with Factory the way the `droid` CLI does
+
+_There is no sign-in at all: the Key Pool holds `fk-` keys, and the LLM Proxy stamps one on each Factory request. ADR 0015 replaced this decision for the native app, and ADR 0039 replaces it for Droi._
 
 Until now the Gateway authenticated every Client connection with a Factory API key (ADR 0003), and the Desktop Shell handed the same key to the Daemon through `FACTORY_API_KEY`. Two things broke that model in practice.
 

@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Droi keeps the Session Times and orders every Client's list by them
+
+_Ordering by the last message the user wrote, and Unread, stand; Session Times as a store of their own go, since the Kernel derives them from entry timestamps and keeps one `viewedAt` column._
 
 The Session list dated each Session by the Daemon's `updatedAt`, which is the modified time of the Session's transcript file. Much more than the user writes to that file: every hook run, opening an old Session (the SessionStart hook's "resume"), and every step of a turn. Each fix patched the date in a Client: 0feb4b8 moved a Session up when its turn began and held the places of working Sessions in memory, f5249d7 kept an older read of the list from overwriting a newer one, 101fd64 kept the Memory hook from writing at "resume". The window and the Phone App each kept such a patch of their own (`touch` and `holdTurns` in the window, `activeAt` on the phone). A patch was gone at a restart, it was different on each Client, and the next writer of the file broke it again. Unread marks were each Client's own as well: a Session read on the computer stayed unread on the phone.
 

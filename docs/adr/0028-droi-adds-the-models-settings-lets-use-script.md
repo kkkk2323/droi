@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # Droi adds the models Settings lets use Script
+
+_There is no Script and no `/api/feature-flags` rewrite: codemode is a Kernel extension, on by default, and its nested tool calls are listed inside the outer card._
 
 droid 0.249 decides whether a Session may call tools from a Script program by looking its model up in
 `configs.script_tool_models.models`, a dynamic config it fetches from `/api/feature-flags`. A model
