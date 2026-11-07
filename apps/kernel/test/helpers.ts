@@ -8,6 +8,7 @@ import {
   fauxToolCall,
 } from '@earendil-works/pi-ai'
 import type { MutableModels } from '@earendil-works/pi-ai'
+import type { Extension } from '@earendil-works/pi-durable'
 import type { KernelConfig } from '../src/config.ts'
 import { startKernel, type KernelHandle } from '../src/kernel.ts'
 
@@ -59,12 +60,15 @@ export async function start(options: {
   faux: Faux
   overrides?: Partial<KernelConfig>
   platform?: 'darwin' | 'linux' | 'win32'
+  /** Extensions installed beside the coding one, such as a tool that makes a nested call. */
+  extensions?: Extension[]
 }): Promise<KernelHandle> {
   return startKernel(config(options.dir, options.overrides), {
     token: TOKEN,
     models: options.faux.models,
     noLock: true,
     platform: options.platform,
+    ...(options.extensions === undefined ? {} : { extensions: options.extensions }),
   })
 }
 

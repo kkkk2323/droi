@@ -372,12 +372,13 @@ numbers (Pi's durable IDs, which are int64 and read as `bigint` in SQLite; the
 kernel serializes them as numbers, so they are exact below 2^53, which is far
 beyond any realistic count).
 
-`conversation.create` takes `kind` and `instructions` at the top level as well as inside `agent`; both are
-accepted and both are stored. `kind` is Droi's own label (`chat`, `automation`, `section`, …): it goes into the
+`conversation.create` takes `kind` and `instructions`; both are stored. **`kind` is read only at the top
+level** — it is a property of the conversation, not of its agent, so a `kind` inside `agent` is ignored rather
+than stored or applied. It is Droi's own label (`chat`, `automation`, `section`, …): it goes into the
 conversation's `droi.meta` entry and the index row, `conversation.list` filters on it, and Pi never sees it.
-`instructions` is the agent's, and `conversation.configure` answers it back. A top-level field beats the config
-file's agent defaults, and `agent` beats the top level, so a Host can set a default and a caller can still
-override one field of it.
+`instructions` is the agent's, and it is read from the top level and from inside `agent`.
+A top-level field beats the config file's agent defaults, and `agent` beats the top level, so a Host can set a
+default and a caller can still override one field of it.
 
 `requestId` on `conversation.create` and `conversation.submit` is the client's
 own deduplication key, scoped to the conversation. Repeating it returns the same
@@ -494,7 +495,9 @@ the kinds are the ones a client renders from, and their fields are Pi 1.5.0's ow
 removes nothing, so what is missing here is missing in the store rather than in the wire.
 
 **`pi.agent`** — `{model?: {provider, modelId}, thinkingLevel?, instructions?, cwd?, maxTurns?, tools?, ...}`:
-the agent as Pi resolved it. `conversation.configure` answers the same fields in its own shape.
+the agent **as it is stored**, not the resolved view — it holds what the conversation was configured with,
+while `conversation.configure` answers that configuration resolved against the registry (extension names
+expanded to tools, defaults filled in). A field absent here is one that was never set.
 
 **`pi.inbox`** — the messages waiting for the running turn, in submission-ID order:
 
@@ -534,6 +537,16 @@ it settles.
 
 **`pi.usage`** — `{models: {"provider/model": {input, output, cacheRead, cacheWrite, totalTokens, cost}},
 tools: {...}}`, the ledger `conversation.usage` reads.
+
+Two parts of this section are **not pinned by a test**, because M1 has no way to reach them:
+
+- a `pi.inbox` item with `mode: "write"` — the kernel never submits a write (only Pi's own tools and a
+  future `conversation.submit` with a draft would), so the shape is Pi's (`harness/inbox.d.ts:5-20`) and is
+  documented rather than observed;
+- `nestedTools` for a call a **model-issued tool** makes of itself — the two nested-tool tests use a test
+  extension, which is what the field is for, but no shipped M1 tool makes a nested call.
+
+Everything else in this section is asserted by `apps/kernel/test/documents.test.ts`.
 
 ### The `droi.` entries
 
