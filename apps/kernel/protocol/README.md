@@ -391,15 +391,15 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 
 ## Methods
 
-28 methods. "Capability" names the `harness.info.capabilities` flag that says
+31 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
 | Method                 | Params                                                                        | Result                                                           | Capability      | M1  |
 | ---------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
-| `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions}` | —               | yes |
+| `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?}` | —               | yes |
 | `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                         | `conversations` | yes |
 | `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.open`    | `{id, window?, subscribe?}`                                                   | `{view}`                                                         | `conversations` | yes |
+| `conversation.open`    | `{id, window?, subscribe?}`                                                   | `{view, policy?, pending[]?}`                                                         | `conversations` | yes |
 | `conversation.unwatch` | `{id}`                                                                        | `{}`                                                             | `conversations` | yes |
 | `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                 | `conversations` | yes |
 | `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                             | `conversations` | yes |
@@ -438,19 +438,21 @@ Three qualifications a client that reads a range needs:
 | `index.update` | `{id, title?, titleSource?, archived?, kind?, viewedAt?, ownerId?}` | `{}` | `index` | yes |
 | `process.list` | `{id}` | `{processes[]}` | `processes` | no |
 | `process.stop` | `{id, processId}` | `{status}` | `processes` | no |
+| `policy.set` | `{id?, policy: {autonomy?, rules?}}` | `{policy}` | `approvals` | no |
 | `approval.respond` | `{requestId, outcome, scope?}` | `{status}` | `approvals` | no |
 | `ask.respond` | `{requestId, answers?, cancelled?}` | `{status}` | `asks` | no |
-| `mcp.list` | — | `{servers[]}` | `mcp` | no |
-| `mcp.set` | `{name, server?, enabled?, remove?}` | `{servers[]}` | `mcp` | no |
+| `mcp.list` | `{repoRoot?}` | `{servers[]}` | `mcp` | no |
+| `mcp.set` | `{name, server?, enabled?, remove?, repoRoot?, trust?}` | `{servers[]}` | `mcp` | no |
 | `mcp.authorize` | `{name}` | `{authorizationUrl}` | `mcp` | no |
 | `mcp.authorize.cancel` | `{name}` | `{}` | `mcp` | no |
 | `skills.list` | — | `{skills[]}` | `skills` | no |
 | `skills.setDisabled` | `{name, disabled}` | `{skills[]}` | `skills` | no |
+| `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
 M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
-`mcp.list` and `skills.list` return an empty list, and the write methods and the
-two `*.respond` methods are `-32009`. `model.complete` is built: it reports
+`mcp.list` and `skills.list` return an empty list, and `policy.set`, `resources.list`, the write
+methods and the two `*.respond` methods are `-32009` until their capability is true. `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
 
@@ -745,6 +747,128 @@ for the whole answer and the answer is small), it keeps no history (a caller
 that wants one passes the earlier turns in `input`), it runs no tool, and it
 writes no usage row of its own — the `usage` in the result is the record.
 
+### What `conversation.open` also answers: `pending`
+
+A request for an answer reaches every connection **once**, as `approval.requested` or `ask.requested`. A
+connection that was not there when it went out — the window reconnected, the kernel restarted after the
+computer slept — would never learn about it, and the card that is waiting for a person would be a card
+nobody sees.
+
+So `conversation.open` answers the requests still waiting on that conversation:
+
+```json
+"pending": [
+  {"kind": "approval", "requestId": "req-x3rtg4", "id": 7, "tool": "bash",
+   "args": {"command": "rm -rf build"}, "options": [...], "scopeHint": "ask"},
+  {"kind": "ask", "requestId": "req-ask-77", "id": 7,
+   "questions": [...], "context": "Asked while running the test command."}
+]
+```
+
+Each entry carries exactly the fields its notification carries, plus `kind` to say which one it is. An empty
+list is the normal answer. It is a snapshot of the kernel's own table of open requests, so it is right at the
+moment of the call and no older: a client rebuilds its cards from every `conversation.open` (the first one,
+and the one after a reconnect), and keeps them current with the two notifications as before.
+
+Answering is unchanged: `approval.respond` / `ask.respond` with the `requestId`, first answer wins, a later
+one is `-32007`.
+
+### MCP servers, and the ones a repository brings
+
+`mcp.list` answers every configured server with `{name, transport, status, enabled, tools[], error}`.
+`status` is `connected`, `connecting`, `failed` or `disabled`, plus `untrusted` (below). `mcp.set` adds,
+changes, enables, disables or removes one, and takes effect at once: a change reconnects, a removal
+disconnects and closes the server's process. A `mcp.changed` notification carries the whole list after any
+change, so a client never has to ask twice.
+
+Two files feed the list, the global `<userDir>/mcp.json` and the repository's `<cwd>/.factory/mcp.json`, in
+the `{"mcpServers": {…}}` shape every MCP client uses. A repository entry overrides the global one of the
+same name, and may carry only `enabled` to switch a global server off in that repository.
+
+**A repository's servers are code the repository chose.** A `command` with `args` is a process on this
+machine, so a server that comes from a repository's own file is not started until the user allows it:
+
+- `mcp.list` reports it `status: "untrusted"` and includes the `command`/`args` or `url` it would run, which
+  is what a client shows in the confirmation.
+- `mcp.set {name, repoRoot, trust: true}` allows it: the kernel records the repository's real path and a
+  SHA-256 of that entry, connects at once, and broadcasts. `trust: false` revokes, and disconnects it.
+- The record is kept across restarts and across an index reset: it is a decision, not a cache. Any change to
+  the entry's own config changes its hash, so it is `untrusted` again — the same repository asking a
+  different question gets asked again.
+- A server in the global file is the user's own, and connects without this step.
+
+`mcp.list` takes an optional `repoRoot` and answers each repository's servers with their own `repoRoot` and
+`trusted`; without it, every repository this kernel has seen is included. The kernel does not guess which
+repository a client is looking at.
+
+### The approval policy
+
+A call a person has to allow waits for that answer. What decides is a **policy**: an autonomy level, and a
+list of rules.
+
+| Autonomy | Runs without asking                                             | Asks                      |
+| -------- | --------------------------------------------------------------- | ------------------------- |
+| `ask`    | only the tools that ask the user themselves (`ask_user`)        | everything else           |
+| `edits`  | the read-only tools, `edit` and `write`                         | commands                  |
+| `safe`   | the same, and commands that are **not** on the destructive list | the commands on that list |
+| `all`    | everything                                                      | nothing                   |
+
+The **destructive list** is matched by command position, never by substring: a line is split on `;`, `&&`,
+`||`, `|`, `&`, `$(`, a backtick and a newline, the leading `VAR=value`, `sudo`, `env`, `command`, `nohup`,
+`time`, `nice`, `stdbuf` and `xargs` are skipped, and the first word — the first two for `git push`,
+`git clean`, `git reset`, `npm publish` and `pip install` — decides. `npm run format` does not ask;
+`sh -c "rm -rf x"` and a pipe into `sh` do. **A command the list does not name does not ask under `safe`**;
+a user who wants to be asked about everything chooses `ask`.
+
+The policy lives in the Host. The kernel keeps a snapshot of it, and answers nothing from an empty one:
+
+- `policy.set` fills the snapshot: the default when `id` is absent, that conversation's own when it is.
+  `autonomy` left out changes nothing; `rules` replaces the whole list.
+- A rule is `{"kind":"tool","tool":"bash"}` or `{"kind":"file","path":"/abs/path"}`; a matching rule allows
+  without asking.
+- Every change to the snapshot — this call, or a "always allow this file" answer — broadcasts one
+  `policy.changed` carrying the **whole** snapshot for that scope. That notification is the only record: a
+  Host stores what it hears and never pushes it back.
+- Before the first `policy.set` arrives, nothing above `ask` runs without asking. It matters after a
+  restart: Pi resumes a run on its own, and that can happen before the Host has sent the policy. Thirty
+  seconds without one settles the level at `ask`.
+
+`conversation.open` answers the policy in effect for its conversation as `policy`, and `harness.info` answers the default one, so a client does not have to ask for either.
+A read-only kernel (`--read-only`) refuses `policy.set` with `-32008` and reports no policy at all.
+
+### `resources.list`
+
+What the kernel would load for a conversation, for a client that shows a slash menu or explains where the
+instructions came from. `id` names the conversation whose `cwd` decides the workspace half; without one
+only the personal half is read.
+
+```json
+{
+  "skills": [
+    {
+      "name": "code-review",
+      "scope": "personal",
+      "path": "…/SKILL.md",
+      "description": "…",
+      "enabled": true
+    }
+  ],
+  "prompts": [
+    { "name": "fix-bug", "scope": "workspace", "path": "…/fix-bug.md", "description": "…" }
+  ],
+  "contextFiles": [{ "path": "/Users/me/AGENTS.md", "bytes": 812 }]
+}
+```
+
+The capabilities are `skills` for `skills.list` and `skills.setDisabled`, and `resources` for this method;
+a build without the resource loader leaves both false. `scope` is `personal` (the user's own directory) or
+`workspace` (the conversation's `cwd` and its parents). `contextFiles` is the `AGENTS.md` chain in the order
+it is applied: personal first, then from the outermost directory in. **Paths are advisory** — a client shows
+them, and never reads them itself.
+
+The slash commands the kernel expands are exactly `prompts[].name` and `skills[].name`. A client's own
+commands (a new conversation, a compaction, a model change) never reach the kernel.
+
 ## Notifications
 
 | Notification         | Payload                                                                                                                                                                                                              |
@@ -757,8 +881,9 @@ writes no usage row of its own — the `usage` in the result is the record.
 | `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                                               |
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |
-| `process.changed`    | `{id, processId, status, exitCode?, tail?}`                                                                                                                                                                          |
+| `process.changed`    | `{id, processId, status, exitCode?, tail?}` — `status` is `running`, `exited`, `stopped` or `failed`; a `droi.process` entry says `done` where a notice says `exited`                                                |
 | `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?}`                                                                                                                                                             |
+| `policy.changed`     | `{id, policy}` — the whole snapshot of that scope; `id` is `null` for the default policy                                                                                                                             |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only

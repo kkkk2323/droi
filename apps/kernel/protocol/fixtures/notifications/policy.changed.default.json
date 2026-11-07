@@ -1,0 +1,15 @@
+{
+  "kind": "notification",
+  "method": "policy.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "policy.changed",
+    "params": {
+      "id": null,
+      "policy": {
+        "autonomy": "ask",
+        "rules": []
+      }
+    }
+  }
+}

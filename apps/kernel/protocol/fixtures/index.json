@@ -24,8 +24,10 @@
     "methods/mcp.list.json",
     "methods/mcp.set.json",
     "methods/model.complete.json",
+    "methods/policy.set.json",
     "methods/process.list.json",
     "methods/process.stop.json",
+    "methods/resources.list.json",
     "methods/skills.list.json",
     "methods/skills.setDisabled.json",
     "methods/submission.abort.json",
@@ -48,6 +50,8 @@
     "notifications/mcp.changed.json",
     "notifications/process.changed.json",
     "notifications/index.changed.json",
+    "notifications/policy.changed.json",
+    "notifications/policy.changed.default.json",
     "notifications/warning.json"
   ],
   "errors": [

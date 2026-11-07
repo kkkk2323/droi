@@ -131,9 +131,10 @@ func (c *Client) RespondAsk(ctx context.Context, p AskRespondParams) (Status, er
 	return call[Status](c, ctx, MethodAskRespond, p)
 }
 
-// MCP is the MCP server list.
-func (c *Client) MCP(ctx context.Context) (MCPServers, error) {
-	return call[MCPServers](c, ctx, MethodMCPList, nil)
+// MCP is the MCP server list. A repository's own servers are included when
+// MCPListParams names it; without one, every repository the kernel has seen.
+func (c *Client) MCP(ctx context.Context, p MCPListParams) (MCPServers, error) {
+	return call[MCPServers](c, ctx, MethodMCPList, p)
 }
 
 // SetMCP adds or changes one MCP server, or removes it, and answers the list.
@@ -167,6 +168,20 @@ func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams
 // capabilities.models.
 func (c *Client) ModelComplete(ctx context.Context, p ModelCompleteParams) (ModelCompleteResult, error) {
 	return call[ModelCompleteResult](c, ctx, MethodModelComplete, p)
+}
+
+// PolicySet fills the kernel's snapshot of the approval policy. A missing ID is
+// the default policy, a number is that conversation's own; the answer is the
+// policy in effect. The policy lives in the Host: the kernel answers nothing
+// from an empty snapshot, and broadcasts policy.changed after every change.
+func (c *Client) PolicySet(ctx context.Context, p PolicySetParams) (PolicyResult, error) {
+	return call[PolicyResult](c, ctx, MethodPolicySet, p)
+}
+
+// Resources asks what the kernel would load for a conversation: its skills, the
+// slash commands it will expand, and the AGENTS.md chain it applies.
+func (c *Client) Resources(ctx context.Context, p ResourcesListParams) (ResourcesResult, error) {
+	return call[ResourcesResult](c, ctx, MethodResourcesList, p)
 }
 
 // Shutdown asks Kernel to close in order and end: it answers {status: "closing"}

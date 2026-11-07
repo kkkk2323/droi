@@ -241,7 +241,7 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			_, err := c.RespondAsk(ctx, AskRespondParams{RequestID: "nope", Cancelled: boolPtr(true)})
 			return err
 		}, CodeUnsupported},
-		{"mcp.list", func() error { _, err := c.MCP(ctx); return err }, 0},
+		{"mcp.list", func() error { _, err := c.MCP(ctx, MCPListParams{}); return err }, 0},
 		{"mcp.set", func() error {
 			_, err := c.SetMCP(ctx, MCPSetParams{Name: "walk", Server: &MCPServerConfig{Transport: "http", URL: "https://example.invalid/mcp"}})
 			return err
@@ -253,6 +253,14 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			_, err := c.SetSkillDisabled(ctx, SkillsSetDisabledParams{Name: "walk", Disabled: true})
 			return err
 		}, CodeUnsupported},
+		{"policy.set", func() error {
+			_, err := c.PolicySet(ctx, PolicySetParams{Policy: Policy{Autonomy: "ask"}})
+			return err
+		}, 0},
+		{"resources.list", func() error {
+			_, err := c.Resources(ctx, ResourcesListParams{ID: &id})
+			return err
+		}, 0},
 		{"model.complete", func() error {
 			// A real answer, not a refusal: the method is built, so its text must be the model's.
 			answer, err := c.ModelComplete(ctx, ModelCompleteParams{Model: model, Input: "say hi"})
