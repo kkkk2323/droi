@@ -30,8 +30,12 @@ export type IndexerOptions = {
   onChange?: (conversations: readonly number[]) => void
   /** Called when a flush fails. A storage error here is worth a warning, not a crash. */
   onError?: (error: unknown) => void
+  /**
+   * Pi's own table of entries. Only the import-key repair reads it, to recover a key whose cache row is gone:
+   * an entry's kind lives in its JSON, which the index's own tables do not keep.
+   */
+  entriesTable?: string
 }
-
 /** A conversation's row as a flush will write it. */
 type PendingRow = {
   id: number
@@ -52,8 +56,25 @@ type PendingRow = {
   eventAt?: number
 }
 
-type PendingEntry = { id: number; conversation: number; text: string }
+/** One indexed entry, with what an import memo carries for the key cache. */
+type PendingEntry = {
+  id: number
+  conversation: number
+  text: string
+  import?: { key: string; fingerprint: string; entryIds: number[] }
+}
 
+/** An import memo's key record, or undefined when the entry is not one or does not carry it. */
+function importMemo(
+  entry: EntryRecord,
+): { key: string; fingerprint: string; entryIds: number[] } | undefined {
+  const data = entry.data as
+    | { key?: unknown; fingerprint?: unknown; entryIds?: unknown }
+    | undefined
+  if (typeof data?.key !== 'string' || typeof data.fingerprint !== 'string') return undefined
+  if (!Array.isArray(data.entryIds)) return undefined
+  return { key: data.key, fingerprint: data.fingerprint, entryIds: data.entryIds as number[] }
+}
 const TITLE_LIMIT = 120
 const PREVIEW_LIMIT = 200
 const SCAN = 500
@@ -82,6 +103,8 @@ export class Indexer {
   #flush: Promise<void> | undefined
   #watermarks = new Map<number, number>()
   #closed = false
+  /** Pi's entries table, for the import-key repair that has to read an entry's JSON. */
+  #entriesTable: string | undefined
 
   constructor(db: BunSqliteDatabase, storage: Storage, options: IndexerOptions = {}) {
     this.#db = db
@@ -90,6 +113,7 @@ export class Indexer {
     this.#now = options.now ?? Date.now
     this.#onChange = options.onChange
     this.#onError = options.onError
+    this.#entriesTable = options.entriesTable
   }
 
   async open(): Promise<void> {
@@ -351,9 +375,17 @@ export class Indexer {
     const id = entry.conversationId as unknown as number
     const entryId = entry.id as unknown as number
     if (entryId <= this.watermark(id)) return
+    // An import's memo is what `droi_import_keys` caches: the key travels with the entry that records it, so
+    // the table is written in the same flush as the watermark covering that entry.
+    const imported = entry.kind === 'droi.import' ? importMemo(entry) : undefined
     const text = entryText(entry)
-    if (text !== '') {
-      this.#entries.push({ id: entryId, conversation: id, text })
+    if (text !== '' || imported !== undefined) {
+      this.#entries.push({
+        id: entryId,
+        conversation: id,
+        text,
+        ...(imported === undefined ? {} : { import: imported }),
+      })
     }
     const pending = this.#row(id, {})
     // The entry's own timestamp moves the conversation's activity: a long run's assistant and tool output
@@ -416,16 +448,16 @@ export class Indexer {
       clearTimeout(this.#timer)
       this.#timer = undefined
     }
-    const entries = this.#entries
     const rows = [...this.#rows.values()]
-    if (entries.length === 0 && rows.length === 0) return
+    if (this.#entries.length === 0 && rows.length === 0) return
+    const entriesToWrite = this.#entries
     this.#entries = []
     this.#rows.clear()
 
     // The watermark a flush may write is the highest entry it stored **per conversation**, and only over
     // entries it actually wrote.
     const next = new Map<number, number>()
-    for (const entry of entries) {
+    for (const entry of entriesToWrite) {
       next.set(entry.conversation, Math.max(next.get(entry.conversation) ?? 0, entry.id))
     }
     for (const [conversationId, entryId] of next) {
@@ -434,7 +466,23 @@ export class Indexer {
     const changed = rows.map((row) => row.id)
     const run = this.#db.transaction(async (tx) => {
       for (const row of rows) await writeRow(tx, row)
-      for (const entry of entries) {
+      for (const entry of entriesToWrite) {
+        // An import's identity is in the same commit Pi stored, so the cache is written in the same flush as
+        // the watermark that covers it: losing one loses both, and the next catch-up rebuilds both.
+        if (entry.import === undefined) continue
+        await tx.run(
+          `INSERT INTO droi_import_keys (key, conversation_id, fingerprint, entry_ids) VALUES (?, ?, ?, ?)
+           ON CONFLICT (key) DO UPDATE SET
+             conversation_id = excluded.conversation_id,
+             fingerprint = excluded.fingerprint,
+             entry_ids = excluded.entry_ids`,
+          entry.import.key,
+          entry.conversation,
+          entry.import.fingerprint,
+          JSON.stringify(entry.import.entryIds),
+        )
+      }
+      for (const entry of entriesToWrite) {
         // FTS5 has no UPSERT; REPLACE is its own conflict handling, and an entry ID is never reused.
         await tx.run(
           'INSERT OR REPLACE INTO droi_entries_fts (rowid, text, conversation) VALUES (?, ?, ?)',
@@ -463,7 +511,7 @@ export class Indexer {
       }
       if (changed.length > 0) this.#onChange?.(changed)
     } catch (error) {
-      this.#requeue(entries, rows)
+      this.#requeue(entriesToWrite, rows)
       throw error
     } finally {
       this.#flush = undefined
@@ -524,11 +572,30 @@ export class Indexer {
     return this.#db.get<ConversationRow>('SELECT * FROM droi_conversations WHERE id = ?', id)
   }
 
-  /** The conversation one import key created, with the fingerprint of the call that did it. */
+  /**
+   * The conversation one import key created, with the fingerprint of the call that did it.
+   *
+   * A cache over the transcripts: every `droi.import` entry records its key, and `entry()` fills this table in
+   * the same flush as the watermark that covers it. A row that is missing while its entry is stored — a manual
+   * delete, a reset the catch-up has not caught up from — is rebuilt from the entry itself, so the identity can
+   * never be lost while the transcript holds it.
+   */
   async importKey(
     key: string,
   ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
     await this.flush()
+    const cached = await this.#importKeyRow(key)
+    if (cached !== undefined) return cached
+    const rebuilt = await this.#rebuildImportKey(key)
+    if (rebuilt === undefined) return undefined
+    this.#rememberImport(rebuilt.conversationId, key, rebuilt)
+    await this.flush()
+    return rebuilt
+  }
+
+  async #importKeyRow(
+    key: string,
+  ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
     const row = await this.#db.get<{
       conversation_id: number
       fingerprint: string
@@ -542,21 +609,45 @@ export class Indexer {
     }
   }
 
-  /** Remember that `key` created `conversationId`, so a retried import answers the same conversation. */
-  async rememberImport(
+  /**
+   * One key's identity, read back from the transcript when the cache lacks it.
+   *
+   * The query is on Pi's own table because only an entry's JSON knows its kind; it runs only when a key that is
+   * expected to exist does not, which is the repair path rather than the ordinary one.
+   */
+  async #rebuildImportKey(
     key: string,
+  ): Promise<{ conversationId: number; fingerprint: string; entryIds: number[] } | undefined> {
+    const table = this.#entriesTable
+    if (table === undefined) return undefined
+    const rows = await this.#db.all<{ conversation_id: number; record: string }>(
+      `SELECT conversation_id, record FROM ${table} WHERE record LIKE ?`,
+      `%"droi.import"%${key}%`,
+    )
+    for (const row of rows) {
+      const record = JSON.parse(row.record) as EntryRecord
+      const memo = importMemo(record)
+      if (memo?.key !== key) continue
+      return { conversationId: row.conversation_id, ...memo }
+    }
+    return undefined
+  }
+
+  #rememberImport(
     conversationId: number,
-    fingerprint: string,
-    entryIds: number[],
-  ): Promise<void> {
-    await this.#db.run(
-      `INSERT INTO droi_import_keys (key, conversation_id, fingerprint, entry_ids)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT (key) DO NOTHING`,
+    key: string,
+    memo: { fingerprint: string; entryIds: number[] },
+  ): void {
+    this.#db.run(
+      `INSERT INTO droi_import_keys (key, conversation_id, fingerprint, entry_ids) VALUES (?, ?, ?, ?)
+       ON CONFLICT (key) DO UPDATE SET
+         conversation_id = excluded.conversation_id,
+         fingerprint = excluded.fingerprint,
+         entry_ids = excluded.entry_ids`,
       key,
       conversationId,
-      fingerprint,
-      JSON.stringify(entryIds),
+      memo.fingerprint,
+      JSON.stringify(memo.entryIds),
     )
   }
   async byRequestId(requestId: string): Promise<ConversationRow | undefined> {

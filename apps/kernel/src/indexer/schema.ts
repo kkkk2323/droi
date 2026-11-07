@@ -107,6 +107,9 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
     await tx.exec('DELETE FROM droi_entries_fts')
     await tx.exec('DELETE FROM droi_index_watermarks')
     await tx.exec('DELETE FROM droi_requests')
+    // An import key is rebuilt from the `droi.import` entries the catch-up then re-reads, so this cache goes
+    // with the rest: nothing is lost that the transcript does not hold.
+    await tx.exec('DELETE FROM droi_import_keys')
     await tx.exec('UPDATE droi_conversations SET request_id = NULL, request_fingerprint = NULL')
     await writeMeta(tx, 'index.version', INDEX_VERSION)
     await writeMeta(tx, 'index.tokenizer', TOKENIZER)

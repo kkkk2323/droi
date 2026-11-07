@@ -104,6 +104,8 @@ export class Kernel implements Dispatcher {
   readonly #viewers = new Map<number, Set<number>>()
   /** Creates in flight, by `requestId`: two racing creates converge instead of colliding on the index. */
   readonly #creating = new Map<string, Promise<number>>()
+  /** One import key is admitted once at a time, so two calls with it converge instead of racing. */
+  readonly #importing = new Map<string, Promise<void>>()
   #closing = false
   /** Set when the Session failed: every request answers `-32010` from then on. */
   #failure: unknown
@@ -496,9 +498,42 @@ export class Kernel implements Dispatcher {
     const entries = parseImportedEntries(params['entries'])
     const key = optionalString(params, 'key')
     const id = optionalNumber(params, 'id')
-    return id === undefined
-      ? this.#importCreate(params, key, entries)
-      : this.#importAppend(params, id, key, entries)
+    if (key === undefined) {
+      return id === undefined
+        ? this.#importCreate(params, undefined, entries)
+        : this.#importAppend(params, id, undefined, entries)
+    }
+    return this.#importInTurn(key, () =>
+      id === undefined
+        ? this.#importCreate(params, key, entries)
+        : this.#importAppend(params, id, key, entries),
+    )
+  }
+
+  /**
+   * Run `work` after any other import with the same key, and let the next one start when it settles.
+   *
+   * Two concurrent calls with one key must converge on one conversation, not race into two. It is the same
+   * shape `#creating` gives `conversation.create`, kept here rather than there because an import's identity is
+   * its key.
+   */
+  async #importInTurn<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.#importing.get(key)
+    const run = (async () => {
+      if (previous !== undefined) await previous.catch(() => undefined)
+      return work()
+    })()
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.#importing.set(key, settled)
+    try {
+      return await run
+    } finally {
+      // Only the last holder clears the slot, so an earlier call cannot drop the next one's queue.
+      if (this.#importing.get(key) === settled) this.#importing.delete(key)
+    }
   }
 
   async #importCreate(
@@ -506,21 +541,25 @@ export class Kernel implements Dispatcher {
     key: string | undefined,
     entries: ImportedEntry[],
   ): Promise<unknown> {
-    const createdAt = optionalNumber(params, 'createdAt') ?? Date.now()
     const kind = optionalString(params, 'kind')
     const cwd = optionalString(params, 'cwd')
     const title = optionalString(params, 'title')
     const archived = optionalBoolean(params, 'archived')
+    const agent = this.#importedAgent(params, cwd)
+    // The conversation's own clock. History is dated by its messages: without an explicit `createdAt`, a
+    // history from last year must not land at the top of a list sorted by activity.
+    const createdAt =
+      optionalNumber(params, 'createdAt') ?? earliestMessageTime(entries) ?? Date.now()
+    // Every field that decides what this import is, including what it contains: the same key with different
+    // entries is a different request, not a retry.
     const fingerprint = fingerprintOf({
-      agent: params['agent'] ?? null,
-      cwd: cwd ?? null,
+      agent,
       kind: kind ?? null,
       title: title ?? null,
-      // What the caller said, not what the default made of it: a retry that omits the time must match the
-      // first call rather than look like a different request.
       createdAt: optionalNumber(params, 'createdAt') ?? null,
       archived: archived ?? null,
       instructions: params['instructions'] ?? null,
+      entries: entries.map((entry) => entry.draft),
     })
     if (key !== undefined) {
       const replay = await this.#options.indexer.importKey(key)
@@ -534,22 +573,24 @@ export class Kernel implements Dispatcher {
     const meta: ConversationMeta = {
       createdAt,
       ...(kind === undefined ? {} : { kind }),
-      ...(cwd === undefined ? {} : { workspace: cwd }),
+      // The resolved cwd, not the top-level one: a nested `agent.cwd` decides where the tools run, so it is
+      // also what the index records as the workspace (as `conversation.create` does).
+      ...(typeof agent.cwd === 'string' ? { workspace: agent.cwd } : {}),
     }
     let entryIds: number[] = []
     const conversation = await this.#options.harness.createConversation(
       {
         ownership: { kind: 'ownerless' },
-        agent: this.#importedAgent(params, cwd),
+        agent,
         // Meta, the entries and the replay memo are one commit with the conversation: a crash leaves all of
-        // them or none of them, and the index catches up from what they say.
+        // them or none of them, and the memo — which carries the fingerprint — is what a retry reads.
         init: async (tx, conversationId) => {
           await tx.appendEntry(conversationId, { kind: 'droi.meta', data: meta })
           entryIds = await appendImported(tx, conversationId, entries)
           if (key !== undefined) {
             await tx.appendEntry(conversationId, {
               kind: 'droi.import',
-              data: { key, entryIds, at: createdAt },
+              data: { key, fingerprint, entryIds, at: createdAt },
             })
           }
         },
@@ -557,10 +598,7 @@ export class Kernel implements Dispatcher {
       context,
     )
     const id = conversation.id as unknown as number
-    await this.#importIndex(id, { createdAt, kind, cwd, title, archived }, entries)
-    if (key !== undefined) {
-      await this.#options.indexer.rememberImport(key, id, fingerprint, entryIds)
-    }
+    await this.#importIndex(id, { createdAt, kind, cwd: meta.workspace, title, archived }, entries)
     await this.track(id)
     info('conversation imported', { id, entries: entries.length, key })
     return { conversationId: id, entryIds }
@@ -585,18 +623,23 @@ export class Kernel implements Dispatcher {
       )
     }
     await this.#conversation(id)
+    const fingerprint = fingerprintOf({ entries: entries.map((entry) => entry.draft) })
     if (key !== undefined) {
-      const replay = await this.#importedEntries(id, key)
-      if (replay !== undefined) {
-        return { conversationId: id, entryIds: replay, replayed: true }
-      }
+      const replay = await this.#importedEntries(id, key, fingerprint)
+      if (replay !== undefined) return { conversationId: id, entryIds: replay, replayed: true }
     }
     const entryIds = (await this.#options.harness.commit(async (tx) => {
+      // Busy is decided inside the commit that writes. Checking first would leave the window a submit can
+      // slip through, and an imported entry between a run's question and its answer is corruption.
+      const live = await tx.doc(LiveDoc, id as never)
+      if (live.run !== undefined) {
+        throw new RpcError(Code.conversationBusy, 'conversation is busy', { conversationId: id })
+      }
       const ids = await appendImported(tx, id as never, entries)
       if (key !== undefined) {
         await tx.appendEntry(id as never, {
           kind: 'droi.import',
-          data: { key, entryIds: ids, at: Date.now() },
+          data: { key, fingerprint, entryIds: ids, at: Date.now() },
         })
       }
       return ids
@@ -607,19 +650,28 @@ export class Kernel implements Dispatcher {
     return { conversationId: id, entryIds }
   }
 
-  /** The batch's effect on the conversation's row: its activity time, and a title or archive flag it was given. */
+  /**
+   * The batch's effect on the conversation's row: its activity time, and a title or archive flag it was given.
+   *
+   * Only a message moves activity. A timeless bookkeeping entry (`droi.note`, or a batch of `[]`) must not
+   * push a historical conversation up a list sorted by activity.
+   */
   async #importIndex(
     id: number,
     fixed: { createdAt?: number; kind?: string; cwd?: string; title?: string; archived?: boolean },
     entries: ImportedEntry[],
   ): Promise<void> {
-    // The newest message's own time, so a history sorted by activity sorts as it happened.
-    const activityAt = latestMessageTime(entries) ?? fixed.createdAt ?? Date.now()
-    await this.#options.indexer.touch(id, activityAt, {
-      ...(fixed.createdAt === undefined ? {} : { createdAt: fixed.createdAt }),
-      ...(fixed.kind === undefined ? {} : { kind: fixed.kind }),
-      ...(fixed.cwd === undefined ? {} : { workspace: fixed.cwd }),
-    })
+    const newest = latestMessageTime(entries)
+    const activityAt = newest ?? fixed.createdAt
+    if (fixed.createdAt !== undefined) {
+      await this.#options.indexer.touch(id, activityAt ?? fixed.createdAt, {
+        createdAt: fixed.createdAt,
+        ...(fixed.kind === undefined ? {} : { kind: fixed.kind }),
+        ...(fixed.cwd === undefined ? {} : { workspace: fixed.cwd }),
+      })
+    } else if (activityAt !== undefined) {
+      await this.#options.indexer.touch(id, activityAt, {})
+    }
     if (fixed.title !== undefined || fixed.archived !== undefined) {
       await this.#options.indexer.update(id, {
         ...(fixed.title === undefined ? {} : { title: fixed.title }),
@@ -644,17 +696,32 @@ export class Kernel implements Dispatcher {
     return { ...defaultsAsChange(this.#options.config.agent), ...top, ...nested }
   }
 
-  /** The entry ids a replayed `key` wrote in one conversation, from the memo entry it left there. */
-  async #importedEntries(id: number, key: string): Promise<number[] | undefined> {
+  /**
+   * The entry ids a replayed `key` wrote in one conversation, from the memo it left there.
+   *
+   * Only entries this conversation owns: a fork inherits its parent's transcript, and its parent's memos are
+   * not the fork's own (`#requestMemo` makes the same distinction).
+   */
+  async #importedEntries(
+    id: number,
+    key: string,
+    fingerprint: string,
+  ): Promise<number[] | undefined> {
     const conversation = await this.#options.harness.conversation(id as never, context)
     if (conversation === undefined) return undefined
     let cursor: never | undefined
     do {
       const page = await conversation.entries({ order: 'descending' }, MAX_PAGE, cursor, context)
       for (const entry of page.items) {
+        if ((entry.conversationId as unknown as number) !== id) continue
         if (entry.kind !== 'droi.import') continue
-        const data = entry.data as { key?: unknown; entryIds?: unknown } | undefined
+        const data = entry.data as
+          | { key?: unknown; fingerprint?: unknown; entryIds?: unknown }
+          | undefined
         if (data?.key !== key || !Array.isArray(data.entryIds)) continue
+        // The same key with other entries is a different batch: answering with the old ids would silently
+        // discard what the caller asked to append.
+        if (data.fingerprint !== fingerprint) throw conflict(key)
         return data.entryIds as number[]
       }
       cursor = page.next as never
@@ -1472,6 +1539,9 @@ type ImportedUsage = {
   cacheWrite: number
   totalTokens: number
   cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
+  /** Optional counters, kept when a provider reports them (Pi's `Usage` names them). */
+  cacheWrite1h?: number
+  reasoning?: number
 }
 
 /** The kinds an import may not write: the kernel's own identity, memo and bookkeeping entries. */
@@ -1513,6 +1583,12 @@ function parseImportedEntries(value: unknown): ImportedEntry[] {
     const usage: ImportedEntry['usage'] = []
     let problem: { path: string; message: string } | undefined
     if (model !== undefined) problem = importedModelProblem(model, path)
+    if (problem === undefined && entry['edits'] !== undefined) {
+      problem = importedEditsProblem(entry['edits'], path)
+    }
+    if (problem === undefined && entry['head'] !== undefined) {
+      problem = importedHeadProblem(entry['head'], path)
+    }
     if (problem !== undefined) {
       issues.push(problem)
       continue
@@ -1582,27 +1658,33 @@ function importedModelProblem(
 function readImportedUsage(value: unknown, path: string): ImportedUsage | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const usage = value as Record<string, unknown>
-  const number = (source: Record<string, unknown>, field: string): number => {
+  const count = (source: Record<string, unknown>, field: string): number => {
     const raw = source[field]
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0
+  }
+  const optional = (field: string): number | undefined => {
+    const raw = usage[field]
+    return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
   }
   const cost = (
     typeof usage['cost'] === 'object' && usage['cost'] !== null ? usage['cost'] : {}
   ) as Record<string, unknown>
   void path
   return {
-    input: number(usage, 'input'),
-    output: number(usage, 'output'),
-    cacheRead: number(usage, 'cacheRead'),
-    cacheWrite: number(usage, 'cacheWrite'),
-    totalTokens: number(usage, 'totalTokens'),
+    input: count(usage, 'input'),
+    output: count(usage, 'output'),
+    cacheRead: count(usage, 'cacheRead'),
+    cacheWrite: count(usage, 'cacheWrite'),
+    totalTokens: count(usage, 'totalTokens'),
     cost: {
-      input: number(cost, 'input'),
-      output: number(cost, 'output'),
-      cacheRead: number(cost, 'cacheRead'),
-      cacheWrite: number(cost, 'cacheWrite'),
-      total: number(cost, 'total'),
+      input: count(cost, 'input'),
+      output: count(cost, 'output'),
+      cacheRead: count(cost, 'cacheRead'),
+      cacheWrite: count(cost, 'cacheWrite'),
+      total: count(cost, 'total'),
     },
+    ...(optional('cacheWrite1h') === undefined ? {} : { cacheWrite1h: optional('cacheWrite1h') }),
+    ...(optional('reasoning') === undefined ? {} : { reasoning: optional('reasoning') }),
   }
 }
 
@@ -1627,6 +1709,8 @@ async function appendImported(
 function addImportedUsage(state: UsageState, key: string, usage: ImportedUsage): void {
   const total = Object.hasOwn(state.models, key) ? state.models[key] : undefined
   if (total === undefined) {
+    // The key is always `provider/model`, so it can never be `__proto__`; assignment on the draft is what Pi
+    // does through `copyJson`, and a plain object is what the draft accepts.
     state.models[key] = { ...usage, cost: { ...usage.cost } }
     return
   }
@@ -1635,11 +1719,75 @@ function addImportedUsage(state: UsageState, key: string, usage: ImportedUsage):
   total.cacheRead += usage.cacheRead
   total.cacheWrite += usage.cacheWrite
   total.totalTokens += usage.totalTokens
+  // Pi adds a counter once either side reports it; a provider that omits it must not read as zero later.
+  if (usage.cacheWrite1h !== undefined)
+    total.cacheWrite1h = (total.cacheWrite1h ?? 0) + usage.cacheWrite1h
+  if (usage.reasoning !== undefined) total.reasoning = (total.reasoning ?? 0) + usage.reasoning
   total.cost.input += usage.cost.input
   total.cost.output += usage.cost.output
   total.cost.cacheRead += usage.cost.cacheRead
   total.cost.cacheWrite += usage.cost.cacheWrite
   total.cost.total += usage.cost.total
+}
+
+/** The oldest message time in a batch: the conversation's own beginning when it is imported without one. */
+function earliestMessageTime(entries: ImportedEntry[]): number | undefined {
+  let oldest: number | undefined
+  for (const entry of entries) {
+    for (const message of (entry.draft.model as { timestamp?: unknown }[] | undefined) ?? []) {
+      const at = message.timestamp
+      if (typeof at !== 'number') continue
+      if (oldest === undefined || at < oldest) oldest = at
+    }
+  }
+  return oldest
+}
+
+/** What is wrong with an imported entry's `edits`, or undefined when nothing is. */
+function importedEditsProblem(
+  value: unknown,
+  path: string,
+): { path: string; message: string } | undefined {
+  // `edits` reaches Pi's context derivation, which calls array methods on it: a string here throws there,
+  // far from the request that caused it.
+  if (!Array.isArray(value))
+    return { path: `${path}.edits`, message: 'an array of edits is required' }
+  for (const [index, raw] of value.entries()) {
+    const at = `${path}.edits[${index}]`
+    if (typeof raw !== 'object' || raw === null)
+      return { path: at, message: 'an edit object is required' }
+    const edit = raw as Record<string, unknown>
+    if (
+      typeof edit['target'] !== 'number' ||
+      !Number.isInteger(edit['target']) ||
+      edit['target'] < 1
+    ) {
+      return { path: `${at}.target`, message: 'an entry ID of 1 or more is required' }
+    }
+    const action = edit['action']
+    if (action !== 'omit' && action !== 'replace') {
+      return { path: `${at}.action`, message: 'omit or replace' }
+    }
+    if (action === 'replace' && !Array.isArray(edit['messages'])) {
+      return { path: `${at}.messages`, message: 'an array of messages is required' }
+    }
+    if (action === 'omit' && edit['messages'] !== undefined) {
+      return { path: `${at}.messages`, message: 'an omit edit contributes no messages' }
+    }
+  }
+  return undefined
+}
+
+/** What is wrong with an imported entry's `head`, or undefined when nothing is. */
+function importedHeadProblem(
+  value: unknown,
+  path: string,
+): { path: string; message: string } | undefined {
+  // `head` decides where the active context starts. A string reaches Pi's resolution, which poisons the
+  // Session; a reset's `"self"` is the only non-numeric value it takes.
+  if (value === 'self') return undefined
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return undefined
+  return { path: `${path}.head`, message: '`"self"` or an entry ID of 1 or more is required' }
 }
 
 /** The newest message time in a batch, which is the conversation's activity at that point in its history. */

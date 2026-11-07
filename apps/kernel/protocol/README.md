@@ -605,12 +605,35 @@ it, or an answer that follows no user message, is preserved rather than refused.
 kernel owns — `droi.meta`, `droi.request` and `droi.import` (`issues[].path` is `entries[i].kind`) — because
 writing one would forge an identity or a memo.
 
-**Idempotency.** Without `key`, every call writes. With it, a replay answers the first call's `conversationId`
-and `entryIds` with `replayed: true` and writes nothing: for an append the transcript's own `droi.import` memo
-is the record, and for a create the kernel keeps the key with the conversation it made, so a retried create
-converges instead of importing a second conversation. A create that reuses a key with other fields is
-`-32013 conflict`, `requestId` being that key. The `droi.import` entry is bookkeeping: it adds no search text,
-no preview and no activity, like `droi.meta`.
+**The key travels in the same commit as the conversation.** A create's `droi.import` memo holds
+`{key, fingerprint, entryIds, at}` — written with Pi's own conversation, its meta and its entries, so a crash
+cannot separate them. `droi_import_keys` is a cache over those memos, written in the same index flush as the
+watermark covering the entry and rebuilt from the transcript when a row is missing (a reset, a lost table).
+Losing the cache costs a rebuild; it can never produce a second conversation. An append's memo is the record
+itself, since it lives in the conversation it wrote.
+
+**The fingerprint covers the entries.** The same key with different entries is a different request and answers
+`-32013`, on both paths: a create that would otherwise silently keep the first history, and an append that would
+otherwise answer with the old ids and drop what was asked for.
+
+**An append into a busy conversation is `-32001`.** The check runs inside the commit that writes, against
+`pi.live.run`: a check before it would leave the window a submission can slip through, and an imported entry
+between a run's question and its answer is a transcript that never happened. The conversation's own clock is
+unaffected, and the batch writes nothing.
+
+**One key is admitted once at a time.** Two concurrent calls with the same key converge on one conversation
+rather than race into two.
+
+**Validation is structural, for every field Pi reads.** `kind` must be a non-empty string; `model` must be Pi's
+messages with a numeric `timestamp`; `edits` must be `{target, action: "omit" | "replace", messages?}`; `head`
+must be `"self"` or an entry ID. A string where Pi expects an array poisons its context derivation, and a bad
+`head` poisons the Session — both are `-32602` with the field's path, never stored.
+
+**Activity follows messages only.** A batch with no message time (a `droi.note`, an empty append) leaves
+`lastActivityAt` where it was, and a history imported without `createdAt` takes its clock from its first message,
+not from the time of the import. The workspace is the resolved `cwd` — `agent.cwd` over the top-level one — the
+same value `conversation.create` records. Every usage counter Pi keeps survives (`cacheWrite1h`, `reasoning`
+included), so `conversation.usage` on an imported history matches a real one.
 
 **Documents are not imported.** `pi.agent` comes from `agent`, `pi.usage` from the messages' usage, and
 `pi.live` / `pi.inbox` are run state that only a real run produces — a test that needs those states drives the
