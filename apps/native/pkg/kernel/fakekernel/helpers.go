@@ -58,8 +58,10 @@ func (k *Kernel) CreateConversationIn(t testing.TB, c *kernel.Client, dir string
 	if dir == "" {
 		dir = k.Workspace
 	}
+	// The agent's fields are three-state since the client grew Field: Some sets one, None clears it, and an
+	// absent field leaves it as it was.
 	created, err := c.Create(ctx, kernel.CreateParams{
-		Agent: &kernel.AgentChange{Model: &kernel.ModelRef{Provider: ProviderID, ModelID: ModelID}},
+		Agent: &kernel.AgentChange{Model: kernel.Some(kernel.ModelRef{Provider: ProviderID, ModelID: ModelID})},
 		Kind:  "chat",
 		Cwd:   dir,
 	})
