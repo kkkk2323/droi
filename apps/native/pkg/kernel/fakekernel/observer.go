@@ -37,6 +37,10 @@ type RPC struct {
 	// Params is the request's params JSON, absent for a method that takes none. It is the caller's own
 	// serialization, so a test asserting on it asserts on the wire.
 	Params json.RawMessage
+	// Encode is why the params could not be serialized, "" when they could. The call is still recorded: a
+	// test asking what the window sent should see the call and this sentence, not an absence that reads like
+	// a method with no params.
+	Encode string
 	At     time.Time
 }
 
@@ -119,7 +123,13 @@ func (o *Observer) Count(method string) int { return len(o.CallsOf(method)) }
 // off by the runner's hard timeout in the middle of the wait.
 func (o *Observer) WaitForCall(t testing.TB, method string, nth int, within time.Duration) RPC {
 	t.Helper()
-	ctx, cancel := o.budget(t, within)
+	if nth < 1 {
+		// Counting is one-based: the first call is 1. A zero or negative number would index the list out of
+		// range and panic in the test's goroutine, which reads as a crash rather than an assertion.
+		t.Fatalf("WaitForCall counts calls from 1; nth is %d", nth)
+		return RPC{}
+	}
+	ctx, cancel, bound := o.budget(t, within)
 	defer cancel()
 	for {
 		if calls := o.CallsOf(method); len(calls) >= nth {
@@ -132,12 +142,22 @@ func (o *Observer) WaitForCall(t testing.TB, method string, nth int, within time
 			for i, call := range seen {
 				names[i] = call.Method
 			}
-			t.Fatalf("no call %d of %s within %s; %d calls were made: %s",
-				nth, method, within, len(seen), strings.Join(names, ", "))
+			// The bound, not the request: a wait shortens itself to the test's deadline, and a message that
+			// named only `within` would send the reader looking for a 30s wait that ended in 300ms.
+			t.Fatalf("no call %d of %s within %s%s; %d calls were made: %s",
+				nth, method, bound, shortened(bound, within), len(seen), strings.Join(names, ", "))
 			return RPC{}
 		case <-time.After(time.Millisecond):
 		}
 	}
+}
+
+// shortened says so when a wait's bound is not the within it was given.
+func shortened(bound, within time.Duration) string {
+	if bound >= within {
+		return ""
+	}
+	return " (shortened from " + within.String() + " by the test's deadline)"
 }
 
 // budget is how long a wait may last: within, or less when the test's own deadline is nearer.
@@ -145,7 +165,7 @@ func (o *Observer) WaitForCall(t testing.TB, method string, nth int, within time
 // It follows the rule the Fake Kernel's other waits already use (Kernel.context): leave a second to report,
 // and when that margin is already gone hand back an expired context, so the wait gives up at once and the
 // test's cleanups still run.
-func (o *Observer) budget(t testing.TB, within time.Duration) (context.Context, context.CancelFunc) {
+func (o *Observer) budget(t testing.TB, within time.Duration) (context.Context, context.CancelFunc, time.Duration) {
 	t.Helper()
 	limit := within
 	// testing.TB has no Deadline; testing.T does, and it is what a test runner passes.
@@ -155,12 +175,13 @@ func (o *Observer) budget(t testing.TB, within time.Duration) (context.Context, 
 			if remaining <= 0 {
 				expired, cancel := context.WithCancel(context.Background())
 				cancel()
-				return expired, func() {}
+				return expired, func() {}, 0
 			}
 			limit = min(limit, remaining)
 		}
 	}
-	return context.WithTimeout(context.Background(), limit)
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	return ctx, cancel, limit
 }
 
 // The protocol's methods, in the contract's order, each recorded then forwarded.
@@ -337,13 +358,17 @@ func (o *Observer) Shutdown(ctx context.Context) (kernel.ShutdownResult, error) 
 // asked for, and a call that the Kernel refused was still sent.
 func (o *Observer) record(method string, params any) {
 	var raw json.RawMessage
+	var encode string
 	if params != nil {
-		if b, err := json.Marshal(params); err == nil {
+		b, err := json.Marshal(params)
+		if err != nil {
+			encode = err.Error()
+		} else {
 			raw = b
 		}
 	}
 	o.mu.Lock()
-	o.calls = append(o.calls, RPC{Method: method, Params: raw, At: time.Now()})
+	o.calls = append(o.calls, RPC{Method: method, Params: raw, Encode: encode, At: time.Now()})
 	o.mu.Unlock()
 }
 
