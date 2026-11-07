@@ -10,19 +10,22 @@ import { error, info } from './log.ts'
  * else goes to stderr as JSON lines.
  */
 async function main(argv: readonly string[]): Promise<number> {
+  // Status `1` is "this start cannot succeed", and status `2` is reserved for the one case a Supervisor may
+  // retry — another Kernel holding the data directory. Bad arguments and a missing token are the first kind:
+  // starting again the same way fails the same way.
   let config
   try {
     config = loadConfig(parseArgs(argv))
   } catch (cause) {
     process.stderr.write(`${cause instanceof Error ? cause.message : String(cause)}\n`)
-    return 2
+    return 1
   }
   const token = process.env['DROI_KERNEL_TOKEN']
   if (token === undefined || token === '') {
     process.stderr.write(
       "DROI_KERNEL_TOKEN is required: the token travels in the environment, never in argv (ps shows every user's arguments)\n",
     )
-    return 2
+    return 1
   }
 
   const kernel = await startKernel(config, { token })

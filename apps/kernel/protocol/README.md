@@ -21,7 +21,7 @@ secret the Host generates, and it arrives in the environment, never on the
 command line: on macOS `ps` shows the arguments of every user's processes, so a
 token there is readable by any local user, while a process's environment is not.
 A kernel started without `DROI_KERNEL_TOKEN` writes a line to stderr and exits
-with status `2`.
+with status `1`: no retry supplies a token.
 
 | Endpoint      | Purpose                                                                                                                                                              |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -194,7 +194,7 @@ kernel --data <tmp dir> --port 0
 port, the data directory, the read-only flag and the token still come from the command line and the
 environment. **It is not a way in.** Every connection needs `Authorization: Bearer <DROI_KERNEL_TOKEN>`,
 and a token in the query string is refused like a wrong one — the header is the only place it is read.
-An empty or malformed value is a start-up failure with status `2` rather than a silently unconfigured
+An empty or malformed value is a start-up failure with status `1` rather than a silently unconfigured
 kernel.
 
 The settings a test needs beyond that:

@@ -265,6 +265,38 @@ test('R4 a lock database left in WAL mode is normalized, and still excludes', as
   }
 }, 40_000)
 
+test('R4 a start with no token, or bad arguments, exits 1 and not 2', async () => {
+  const data = tempData()
+  const main = new URL('../src/main.ts', import.meta.url).pathname
+  const run = (args: string[], env: NodeJS.ProcessEnv) => {
+    const child = spawn(process.execPath, [main, ...args], { env })
+    let stderr = ''
+    child.stderr.on('data', (chunk) => (stderr += chunk))
+    const done = new Promise<{ code: number | null; stderr: string }>((resolve) => {
+      child.once('exit', (code) => resolve({ code, stderr }))
+    })
+    return done
+  }
+  const withoutToken = { ...process.env }
+  delete withoutToken['DROI_KERNEL_TOKEN']
+  try {
+    // Exit 2 means "another kernel holds the directory, try later". Neither of these starts can be fixed by
+    // starting again, so both are exit 1 — and a Supervisor must not queue a restart for them.
+    const noToken = await run(['--data', data.dir], withoutToken)
+    expect(noToken.code).toBe(1)
+    expect(noToken.stderr).toContain('DROI_KERNEL_TOKEN')
+
+    const badArgs = await run(['--data', data.dir, '--port', 'nonsense'], {
+      ...process.env,
+      DROI_KERNEL_TOKEN: TOKEN,
+    })
+    expect(badArgs.code).toBe(1)
+    expect(badArgs.stderr).toContain('--port')
+  } finally {
+    data.cleanup()
+  }
+}, 30_000)
+
 test('R4 a lock database that cannot be opened fails the start with exit 1', async () => {
   const data = tempData()
   // Not a database at all: no retry fixes this, so it must not be reported as "another kernel is using
