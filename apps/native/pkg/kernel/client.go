@@ -306,14 +306,24 @@ func (c *Client) dispatch(f rpcFrame) {
 		return
 	}
 	id := normalizeID(f.ID)
-	if id == "" {
-		c.logf("kernel: dropped an answer without an id")
-		return
-	}
 	c.mu.Lock()
 	waiting := c.pending[id]
+	// An answer with no id is JSON-RPC's parse error (-32700), which the
+	// contract sends when it cannot read a frame at all. One call in flight
+	// must hear it rather than wait out its timeout; with several, nothing
+	// says which one it belonged to, so it is logged and each call answers
+	// for itself.
+	if id == "" && f.Error != nil && len(c.pending) == 1 {
+		for _, only := range c.pending {
+			waiting = only
+		}
+	}
 	c.mu.Unlock()
 	if waiting == nil {
+		if id == "" {
+			c.logf("kernel: dropped an answer without an id: %v", f.Error)
+			return
+		}
 		c.logf("kernel: dropped the answer to call %s, which is gone", id)
 		return
 	}

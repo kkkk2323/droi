@@ -245,6 +245,9 @@ var callers = []caller{
 	{MethodModelComplete, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.ModelComplete(ctx, *decodeParams[ModelCompleteParams](t, raw))
 	}},
+	{MethodKernelShutdown, func(t *testing.T, ctx context.Context, c *Client, _ json.RawMessage) (any, error) {
+		return c.Shutdown(ctx)
+	}},
 }
 
 // Every method goes over the wire in the contract's shape: the params the
@@ -1033,5 +1036,89 @@ func TestAMustArriveFloodKeepsEveryStep(t *testing.T) {
 		if !seen[fmt.Sprintf("op%d", i)] {
 			t.Fatalf("op%d was dropped; a delta reader cannot rebuild it (%v)", i, seen)
 		}
+	}
+}
+
+// An answer with no id is the contract's parse error: the only call in flight
+// must hear it at once, not wait out its timeout.
+func TestClientFailsTheOnlyCallOnAnAnswerWithoutAnId(t *testing.T) {
+	f := startFakeKernel(t)
+	c := dialFake(t, f)
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Harness(context.Background())
+		done <- err
+	}()
+	f.next(t)
+	// A frame Kernel could not parse costs this call, and it cannot name it.
+	f.write(t, outFrame{JSONRPC: "2.0", Error: &RPCError{Code: CodeParseError, Message: "parse error"}})
+	select {
+	case err := <-done:
+		if !Is(err, CodeParseError) {
+			t.Fatalf("the call answered %v, want -32700", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the call is still waiting after a parse error")
+	}
+}
+
+// An answer without an id while no call is in flight is dropped, and the
+// connection stays up for the next call.
+func TestClientDropsAnAnswerWithoutAnIdWhenIdle(t *testing.T) {
+	f := startFakeKernel(t)
+	c := dialFake(t, f)
+	f.write(t, outFrame{JSONRPC: "2.0", Error: &RPCError{Code: CodeParseError, Message: "parse error"}})
+	time.Sleep(100 * time.Millisecond)
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Harness(context.Background())
+		done <- err
+	}()
+	sent := f.next(t)
+	f.reply(t, sent.ID, map[string]any{"version": "kernel-1.5.0-1"})
+	if err := <-done; err != nil {
+		t.Fatalf("the call after a dropped frame: %v", err)
+	}
+}
+
+// kernel.shutdown answers first and closes after, so the call returns while
+// the close is still running: the caller waits on Done, not on the call.
+func TestShutdownAnswersWhileTheCloseRuns(t *testing.T) {
+	f := startFakeKernel(t)
+	c := dialFake(t, f)
+	type outcome struct {
+		result ShutdownResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := c.Shutdown(context.Background())
+		done <- outcome{result, err}
+	}()
+	sent := f.next(t)
+	if sent.Method != MethodKernelShutdown {
+		t.Fatalf("sent %s", sent.Method)
+	}
+	if len(sent.Params) > 0 {
+		t.Fatalf("kernel.shutdown takes no params, sent %s", sent.Params)
+	}
+	f.reply(t, sent.ID, map[string]any{"status": ShutdownClosing})
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if got.result.Status != ShutdownClosing {
+			t.Fatalf("status = %q", got.result.Status)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the shutdown call never answered")
+	}
+	// Kernel then goes away, as it does after answering.
+	f.hangUp()
+	select {
+	case <-c.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the connection did not end after Kernel closed")
 	}
 }

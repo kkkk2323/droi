@@ -154,3 +154,10 @@ func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams
 func (c *Client) ModelComplete(ctx context.Context, p ModelCompleteParams) (ModelCompleteResult, error) {
 	return call[ModelCompleteResult](c, ctx, MethodModelComplete, p)
 }
+
+// Shutdown asks Kernel to close in order and end: it answers {status: "closing"}
+// first, so this call returns while the close is still running. Wait on Done
+// (or the process) for it to be over.
+func (c *Client) Shutdown(ctx context.Context) (ShutdownResult, error) {
+	return call[ShutdownResult](c, ctx, MethodKernelShutdown, nil)
+}

@@ -87,6 +87,8 @@ var methodParams = map[string]any{
 	MethodSkillsList:          nil,
 	MethodSkillsSetDisabled:   &SkillsSetDisabledParams{},
 	MethodModelComplete:       &ModelCompleteParams{},
+	// kernel.shutdown takes no params.
+	MethodKernelShutdown: nil,
 }
 
 // methodResults is the result type of a method. An empty result is struct{}.
@@ -117,6 +119,7 @@ var methodResults = map[string]any{
 	MethodSkillsList:          &Skills{},
 	MethodSkillsSetDisabled:   &Skills{},
 	MethodModelComplete:       &ModelCompleteResult{},
+	MethodKernelShutdown:      &ShutdownResult{},
 }
 
 // notificationTypes is the type conversation.view's and the rest's params
@@ -517,5 +520,118 @@ func TestHarnessInfoCarriesThePushRate(t *testing.T) {
 	}
 	if info.Capabilities.Models {
 		t.Fatal("the sample says models is available: M1 does not implement model.complete")
+	}
+}
+
+// The contract gives a change's field three states, and a pointer alone cannot
+// say all three: absent, cleared (null), and set. This is the test the fixtures
+// cannot make, because decoding a sample with `instructions: null` into a
+// pointer field leaves it nil — the same as absent.
+func TestAgentChangeHasThreeStates(t *testing.T) {
+	absent, err := json.Marshal(AgentChange{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(absent) != "{}" {
+		t.Fatalf("a change that sets nothing sends %s, want {}", absent)
+	}
+	cleared, err := json.Marshal(AgentChange{Instructions: None[string]()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(cleared) != `{"instructions":null}` {
+		t.Fatalf("clearing a field sends %s, want {\"instructions\":null}", cleared)
+	}
+	set, err := json.Marshal(AgentChange{Instructions: Some("be brief"), MaxTurns: Some[int](3)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(set) != `{"instructions":"be brief","maxTurns":3}` {
+		t.Fatalf("setting fields sends %s", set)
+	}
+	// A model is a value too, not a pointer to a pointer.
+	model := Some(ModelRef{Provider: "factory", ModelID: "claude-haiku-5-5"})
+	sent, err := json.Marshal(AgentChange{Model: model})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(sent) != `{"model":{"provider":"factory","modelId":"claude-haiku-5-5"}}` {
+		t.Fatalf("setting the model sends %s", sent)
+	}
+}
+
+// The configure sample carries `instructions: null`, which is the contract's
+// "clear it": this client sends it that way, not by leaving the field out.
+func TestConfigureCanClearInstructions(t *testing.T) {
+	change := AgentChange{Instructions: None[string]()}
+	encoded, err := json.Marshal(ConfigureParams{ID: 7, Change: &change})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Change map[string]json.RawMessage `json:"change"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	raw, ok := decoded.Change["instructions"]
+	if !ok || string(raw) != "null" {
+		t.Fatalf("the change sends %s, want instructions: null", encoded)
+	}
+}
+
+// Limits is what a client reads instead of guessing: the push rate, the page
+// caps and the window a view holds. The kernel publishes all four, and a build
+// that names none is read with the contract's values rather than with zero.
+func TestLimitsCarryThePageCapsAndTheWindow(t *testing.T) {
+	// What the kernel of PR #227 answers, limits included.
+	const published = `{
+		"viewPushesPerSecond": 5,
+		"viewWindowDefault": {"min": 100, "max": 200},
+		"maxEntriesPerPage": 200,
+		"maxConversationsPerPage": 200
+	}`
+	var limits Limits
+	if err := json.Unmarshal([]byte(published), &limits); err != nil {
+		t.Fatal(err)
+	}
+	if got := limits.PushRate(); got != 5 {
+		t.Errorf("PushRate() = %d, want 5", got)
+	}
+	if got := limits.EntriesPerPage(); got != 200 {
+		t.Errorf("EntriesPerPage() = %d, want 200", got)
+	}
+	if got := limits.ConversationsPerPage(); got != 200 {
+		t.Errorf("ConversationsPerPage() = %d, want 200", got)
+	}
+	if got := limits.Window(); got != (Window{Min: 100, Max: 200}) {
+		t.Errorf("Window() = %+v, want {100 200}", got)
+	}
+
+	// A build that names none: the contract's values, not zero. A zero window
+	// would ask Kernel for a view of nothing, and a zero page would look like
+	// an answer with no entries.
+	var none Limits
+	if none.PushRate() != 5 || none.EntriesPerPage() != 200 ||
+		none.ConversationsPerPage() != 200 || none.Window() != (Window{Min: 100, Max: 200}) {
+		t.Fatalf("an empty limits reads as %+v (%d, %d, %d, %+v)", none,
+			none.PushRate(), none.EntriesPerPage(), none.ConversationsPerPage(), none.Window())
+	}
+
+	// And what this client writes back carries only what it was given: the
+	// published caps round-trip, and an empty limits writes nothing at all.
+	encoded, err := json.Marshal(limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"maxEntriesPerPage":200`) {
+		t.Errorf("the published caps do not round-trip: %s", encoded)
+	}
+	empty, err := json.Marshal(none)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(empty) != "{}" {
+		t.Errorf("an empty limits writes %s, want {}", empty)
 	}
 }
