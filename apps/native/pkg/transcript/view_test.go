@@ -546,3 +546,143 @@ func TestAnInterruptedCallIsNotStillRunning(t *testing.T) {
 		t.Errorf("the cluster says %q after the turn was stopped", label)
 	}
 }
+
+// The three shapes review round 2 of this file's PR found in the wild. Each is something a user does every day:
+// pressing Stop while a command runs, reading a note, and cancelling a turn.
+
+// abortedResult is a tool result the harness wrote when a run was stopped: isError, and a diagnostics entry whose
+// code says why. That is what the Kernel really stores — the result-less shape TestAnInterruptedCallIsNotStillRunning
+// covers is the rarer one.
+func abortedResult(t *testing.T, at float64, callID, tool string) kernel.Entry {
+	t.Helper()
+	return entry(t, 99, kernel.EntryToolResult, []map[string]any{{
+		"role": "toolResult", "toolCallId": callID, "toolName": tool,
+		"content": []map[string]any{{"type": "text", "text": "<harness>\n[error] Tool " + tool + " was aborted\n</harness>"}},
+		"isError": true, "timestamp": at,
+	}}, map[string]any{"diagnostics": []map[string]any{{"severity": "error", "code": "aborted",
+		"message": "Tool " + tool + " was aborted"}}})
+}
+
+// TestAStoppedToolResultReadsAsInterrupted: pressing Stop while `bash sleep 60` runs leaves exactly this: an
+// isError result whose diagnostics say "aborted". A window that drew it as a failure in red tells the user their
+// command broke, when they were the one who stopped it.
+func TestAStoppedToolResultReadsAsInterrupted(t *testing.T) {
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 500, text("run the tests")), nil),
+		entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 1000, "toolUse",
+			map[string]any{"type": "toolCall", "id": "c1", "name": "bash", "arguments": map[string]any{"command": "sleep 60"}}), nil),
+		abortedResult(t, 2000, "c1", "bash"),
+	)
+
+	entries := transcript.BuildView(v)
+	if len(entries) != 2 {
+		t.Fatalf("%d rows: %+v", len(entries), entries)
+	}
+	call := entries[1].Blocks[0].Calls[0]
+	shown := transcript.ReadResult(call)
+	if shown.IsError {
+		t.Error("a result the user stopped reads as a failure")
+	}
+	if !shown.Interrupted {
+		t.Error("a result the user stopped does not read as interrupted")
+	}
+	if shown.Pending {
+		t.Error("a stopped result reads as still running")
+	}
+	if label, pending := toolClusterLabel(call); pending {
+		t.Errorf("the cluster says %q after the user stopped it", label)
+	}
+}
+
+// TestAStoppedToolResultHidesTheHarnessWrapper: the text of a stopped result is the harness talking to the model —
+// `<harness>` tags and an `[error]` prefix. Expanded, the row showed it to the user.
+func TestAStoppedToolResultHidesTheHarnessWrapper(t *testing.T) {
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 500, text("run the tests")), nil),
+		entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 1000, "toolUse",
+			map[string]any{"type": "toolCall", "id": "c1", "name": "bash", "arguments": map[string]any{}}), nil),
+		abortedResult(t, 2000, "c1", "bash"),
+	)
+
+	shown := transcript.ReadResult(transcript.BuildView(v)[1].Blocks[0].Calls[0])
+	if strings.Contains(shown.Text, "<harness>") || strings.Contains(shown.Text, "</harness>") {
+		t.Errorf("the harness wrapper is still in the row: %q", shown.Text)
+	}
+	if strings.HasPrefix(shown.Text, "[error]") {
+		t.Errorf("the harness's severity prefix is still in the row: %q", shown.Text)
+	}
+	if !strings.Contains(shown.Text, "Tool bash was aborted") {
+		t.Errorf("the sentence is gone: %q", shown.Text)
+	}
+}
+
+// TestANoteIsNotTheEndOfATurn: a note left after a finished turn became that turn's closing entry — with time
+// zero, so the answer lost its end row — and Copy took the note with the reply.
+func TestANoteIsNotTheEndOfATurn(t *testing.T) {
+	entries := transcript.BuildView(viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("do it")), nil),
+		entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 2000, "stop", text("done")), nil),
+		entry(t, 3, kernel.EntryNote, nil, map[string]any{"text": "a note about the turn", "at": 3000}),
+	))
+	if len(entries) != 3 {
+		t.Fatalf("%d rows: %+v", len(entries), entries)
+	}
+	if entries[2].CreatedAt != 3000 {
+		t.Errorf("the note's time is %v, want its data's 3000", entries[2].CreatedAt)
+	}
+
+	ends := transcript.TurnEnds(entries, false)
+	if _, ok := ends[entries[2].ID]; ok {
+		t.Errorf("the note closed a turn: %+v", ends)
+	}
+	if _, ok := ends[entries[1].ID]; !ok {
+		t.Errorf("the answer is not a turn's end: %+v", ends)
+	}
+	if end := ends[entries[1].ID]; end.EndedAt != 2000 {
+		t.Errorf("the answer's end is %v, want its own time", end.EndedAt)
+	}
+
+	if got := transcript.ReplyText(entries); strings.Contains(got, "a note about the turn") {
+		t.Errorf("Copy took the note with the reply: %q", got)
+	} else if !strings.Contains(got, "done") {
+		t.Errorf("Copy lost the reply: %q", got)
+	}
+}
+
+// TestAnAnswerAfterANoteIsItsOwnRow: a note is not something to answer, so the answer after it opens a row rather
+// than joining the note's.
+func TestAnAnswerAfterANoteIsItsOwnRow(t *testing.T) {
+	entries := transcript.BuildView(viewOf(
+		entry(t, 1, kernel.EntryNote, nil, map[string]any{"text": "the host noted something", "at": 1000}),
+		entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 2000, "stop", text("an answer")), nil),
+	))
+	if len(entries) != 2 {
+		t.Fatalf("%d rows, want the note and the answer: %+v", len(entries), entries)
+	}
+	if entries[1].Blocks[0].Text != "an answer" {
+		t.Errorf("the second row is %+v", entries[1].Blocks)
+	}
+}
+
+// TestAnEmptyUserEntryStartsANewRow: a handoff or a write submission is written as a user entry with nothing to
+// show, and it is skipped. Without a boundary there, the answer after it joined the turn before — two turns in
+// one row, with the second's time.
+func TestAnEmptyUserEntryStartsANewRow(t *testing.T) {
+	entries := transcript.BuildView(viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("first")), nil),
+		entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 2000, "stop", text("first answer")), nil),
+		entry(t, 3, kernel.EntryUser, userMessage(t, 3000), nil),
+		entry(t, 4, kernel.EntryAssistant, assistantMessage(t, 4000, "stop", text("second answer")), nil),
+	))
+	if len(entries) != 3 {
+		t.Fatalf("%d rows, want the two turns and the second answer: %+v", len(entries), entries)
+	}
+	if entries[2].Blocks[0].Text != "second answer" || entries[2].CreatedAt != 4000 {
+		t.Errorf("the answer after the empty user entry reads %+v", entries[2])
+	}
+}
+
+// toolClusterLabel is ClusterLabel over one call, which is what a row's header asks.
+func toolClusterLabel(c *transcript.ToolCall) (string, bool) {
+	return transcript.ClusterLabel([]*transcript.ToolCall{c})
+}

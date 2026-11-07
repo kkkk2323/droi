@@ -51,6 +51,9 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 			// it while the window shows nothing.
 			blocks := onlyTextAndPictures(bl.blocksOf(entry, results, false))
 			if len(blocks) == 0 {
+				// A handoff or a write submission: the model reads it and the window shows nothing. It is still a
+				// turn's start, so the answer after it must not fold into the turn before.
+				boundary = true
 				continue
 			}
 			entries = append(entries, &Entry{ID: entryID(entry), User: true, Blocks: blocks, CreatedAt: createdAt(entry)})
@@ -84,8 +87,10 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 			if !ok {
 				continue
 			}
-			entries = append(entries, &Entry{ID: entryID(entry), Blocks: []Block{block}, CreatedAt: createdAt(entry)})
-			boundary = false
+			// A note is its own row and nothing answers it: an answer after it opens a new row rather than joining
+			// the note's.
+			entries = append(entries, &Entry{ID: entryID(entry), Note: true, Blocks: []Block{block}, CreatedAt: createdAt(entry)})
+			boundary = true
 		}
 		// Every other kind shows nothing here: a tool result completes a call, a positional system entry is
 		// the prompt rather than the conversation, and Droi's bookkeeping entries are not lines of a transcript.
@@ -181,6 +186,8 @@ func createdAt(e kernel.Entry) float64 {
 	if n := len(msgs); n > 0 {
 		return msgs[n-1].Timestamp
 	}
+	// A droi entry carries no messages, so its own data says when it happened: `at`, which the Host and the Kernel
+	// write for the rows that need a place in time.
 	var data struct {
 		At float64 `json:"at"`
 	}
@@ -196,13 +203,27 @@ func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 		if entry.Kind != kernel.EntryToolResult {
 			continue
 		}
+		diagnostics := diagnosticsOf(entry)
 		for _, m := range bl.messagesOf(entry) {
 			if m.Role == "toolResult" && m.ToolCallID != "" {
+				m.Diagnostics = diagnostics
 				out[m.ToolCallID] = m.resultView()
 			}
 		}
 	}
 	return out
+}
+
+// diagnosticsOf reads a tool-result entry's diagnostics: `data.diagnostics`, the structured list whose rendering
+// closes the message the model reads.
+func diagnosticsOf(entry kernel.Entry) []piDiagnostic {
+	var data struct {
+		Diagnostics []piDiagnostic `json:"diagnostics"`
+	}
+	if len(entry.Data) == 0 || json.Unmarshal(entry.Data, &data) != nil {
+		return nil
+	}
+	return data.Diagnostics
 }
 
 // blocksOf decodes one entry's messages into blocks. answer says the entry is the assistant's, the only side whose
@@ -233,7 +254,7 @@ func (bl *Builder) blocksOf(entry kernel.Entry, results map[string]*ToolResultVi
 					Input: decodeInputObject(c.Arguments), RawInput: c.Arguments, Keys: orderedKeys(c.Arguments),
 					ResultView: results[c.ID]}
 				if call.ResultView == nil {
-					if result := interruptedResult(entry, c.ID); result != nil {
+					if result := interruptedResult(entry); result != nil {
 						call.ResultView = result
 					}
 				}
@@ -283,6 +304,16 @@ type piMessage struct {
 	IsError      bool
 	Text         string
 	Blocks       []piContent
+	// Diagnostics are a tool result's structured findings, from the entry's data: the harness reports a stopped
+	// run there rather than in the result's shape.
+	Diagnostics []piDiagnostic
+}
+
+// piDiagnostic is one finding of a tool result: {severity, code, message}.
+type piDiagnostic struct {
+	Severity string `json:"severity"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
 }
 
 // piContent is one block of a Pi message.
@@ -365,17 +396,21 @@ func decodeContent(raw json.RawMessage) []piContent {
 // interruptedResult is what a call on a stopped answer reads: the turn was cancelled before its result arrived,
 // so the call did not run to an answer. Without this the row says "Running" for ever — a window that never rests.
 // A call whose answer merely stopped on tool calls has not finished either, and keeps waiting: that run is live.
-func interruptedResult(answer kernel.Entry, callID string) *ToolResultView {
+func interruptedResult(answer kernel.Entry) *ToolResultView {
 	if _, stopped := answerEnd(answer); !stopped {
 		return nil
 	}
-	_ = callID
 	return &ToolResultView{Text: l10n.L("Interrupted"), Interrupted: true}
 }
 
 // resultView is a tool-result message as the row reads it.
+//
+// A stopped run comes back as a failure with one diagnostic that says why. Its code is what distinguishes "you
+// stopped me" from "I broke", and the difference is the whole row: a red failed tool the user stopped themselves
+// reads as bad news, and the text the harness wrote for the model (`<harness>[error] …</harness>`) is not something
+// to show them.
 func (m piMessage) resultView() *ToolResultView {
-	v := &ToolResultView{IsError: m.IsError}
+	v := &ToolResultView{}
 	for _, c := range m.Blocks {
 		switch c.Type {
 		case "text":
@@ -390,7 +425,24 @@ func (m piMessage) resultView() *ToolResultView {
 			v.Images = append(v.Images, Image{MediaType: c.MimeType, Data: c.Data})
 		}
 	}
+	if m.aborted() {
+		v.Interrupted = true
+		v.Text = StripHarness(v.Text)
+		return v
+	}
+	v.IsError = m.IsError
 	return v
+}
+
+// aborted says whether a result's diagnostics say the run was stopped: the harness writes one entry whose code is
+// "aborted" for a tool that was cut off, in place of a result of its own.
+func (m piMessage) aborted() bool {
+	for _, d := range m.Diagnostics {
+		if d.Code == "aborted" {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeInputObject reads a tool call's arguments, for the row's summary.
