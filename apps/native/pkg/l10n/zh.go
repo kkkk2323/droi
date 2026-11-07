@@ -740,6 +740,7 @@ var zh = map[string]string{
 	"URL must start with http:// or https://.": "URL 需以 http:// 或 https:// 开头。",
 	"The branch is created in the new worktree when the session starts. Your current checkout stays on its branch.": "会话启动时会在新 worktree 中创建独立分支，不影响当前目录所在的分支。",
 	"The catalogue is not available.":         "服务器目录暂不可用。",
+	"The model could not answer this turn.":   "模型无法回答这一轮。",
 	"The model that writes the summary.":      "用于生成上下文摘要的模型。",
 	"The new session did not start: %s":       "无法启动新会话：%s",
 	"The sign-in code expired.":               "登录码已过期，请重新发起登录。",

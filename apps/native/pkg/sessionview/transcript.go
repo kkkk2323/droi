@@ -444,6 +444,11 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 					k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 					return
 				}
+				if res.Interrupted {
+					// The turn was stopped before this call answered: it is not running and it did not fail.
+					k.Icon(c, "circle-slash", 14, t.MutedForeground).Label(l10n.L("Interrupted"))
+					return
+				}
 				if j, ok := v.job(call.Use.ID); ok && (j.Done || !j.Script) {
 					v.jobMark(c, j)
 				} else if res.IsError {
