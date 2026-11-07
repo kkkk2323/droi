@@ -19,6 +19,7 @@
         {
           "id": 7,
           "title": "Add a test for parseConfig",
+          "titleSource": "chosen",
           "kind": "chat",
           "workspace": "/Users/clive/dev/droi/apps/native",
           "repoRoot": "/Users/clive/dev/droi",
@@ -29,9 +30,10 @@
           "preview": "The existing test file is where it belongs; let me read it."
         },
         {
-          "id": 12,
-          "title": "Review the parseConfig test",
-          "kind": "subagent",
+          "id": 31,
+          "title": "Fork: parseConfig tests, branch 2",
+          "titleSource": "auto",
+          "kind": "chat",
           "workspace": "/Users/clive/dev/droi/apps/native",
           "repoRoot": "/Users/clive/dev/droi",
           "parentId": 7,
@@ -39,11 +41,11 @@
           "createdAt": 1762480005000,
           "lastActivityAt": 1762480009000,
           "viewedAt": null,
-          "preview": "The test covers the default and the override; the third case is missing."
+          "preview": "The fork continues from the test they had just written."
         }
       ],
       "cursor": {
-        "before": 12
+        "before": 31
       }
     }
   }

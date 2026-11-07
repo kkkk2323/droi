@@ -435,7 +435,7 @@ Three qualifications a client that reads a range needs:
 | `conversation.entries` | `{id, query?, limit?, cursor?}` | `{items[], cursor?}` | `conversations` | yes |
 | `conversation.usage` | `{id}` | `{models, tools, context}` | `usage` | yes |
 | `task.abort` | `{taskId}` | `{status}` | `tasks` | yes |
-| `index.update` | `{id, title?, archived?, kind?, viewedAt?, parentId?}` | `{}` | `index` | yes |
+| `index.update` | `{id, title?, titleSource?, archived?, kind?, viewedAt?, ownerId?}` | `{}` | `index` | yes |
 | `process.list` | `{id}` | `{processes[]}` | `processes` | no |
 | `process.stop` | `{id, processId}` | `{status}` | `processes` | no |
 | `approval.respond` | `{requestId, outcome, scope?}` | `{status}` | `approvals` | no |
@@ -456,10 +456,14 @@ summary of its own (ADR 0042).
 
 ### The list, and what it leaves out
 
-`conversation.list` answers the conversations a person started: rows whose `parentId` is absent. A child
-conversation — a subagent or a Workstream agent's own conversation — is reached with `parent: <id>`, which
-lists that conversation's children instead. Nothing is filtered by `kind`: a conversation's `kind` is a label,
-its `parentId` is its owner, and only the second decides where it appears (ADR 0043).
+`conversation.list` answers the conversations a person started: rows whose `ownerId` is absent. A
+conversation that something spawned — a subagent's or a Workstream agent's own — is reached with
+`parent: <id>`, which lists what that conversation owns instead. Nothing is filtered by `kind`.
+
+**`parentId` and `ownerId` are two different questions.** `parentId` is lineage: the conversation a fork was
+taken from, which a client shows as "forked from". `ownerId` is ownership: the conversation whose agent
+started this one, and the reason it stays out of the list (ADR 0043). A fork is a conversation a person
+asked for, so it is a row of its own; a subagent's conversation is not.
 
 Three fields a sidebar groups and sorts by:
 
@@ -468,6 +472,10 @@ Three fields a sidebar groups and sorts by:
   directory itself when it is not inside one. It is worked out when the conversation is created or its `cwd`
   changes, and stored in the index, so listing never launches git. A worktree's conversations share their
   main checkout's `repoRoot`, which is what makes one repository one group.
+- `titleSource` says where `title` came from: `auto` is the kernel's own guess (the first line of
+  the first user message), `chosen` is a title a person set through `index.update` or a generator that said
+  so. Absent while a conversation has no title at all. The text alone cannot be compared against the kernel's
+  truncation rule — a person may type exactly what the kernel would have guessed.
 - `preview` is the first line of the newest message in the transcript — the answer once there is one, the
   question while it is still being written — cut to 200 characters with an ellipsis. It is plain text: no
   search marks, no entry kinds.
@@ -477,9 +485,10 @@ up to here", `null` asks for the dot back, and an absent field leaves it as it w
 writes a time by itself, so a client only needs this call when a conversation is on screen while an answer
 arrives, or when it wants a cleared one to look unread again.
 
-`parentId` sets which conversation owns this one, and `null` makes it a top-level row again. The kernel
-writes this itself when a subagent or a Workstream spawns a conversation (M4); the method is how anything
-imported or repaired gets the same relation.
+`ownerId` sets which conversation owns this one, and `null` makes it a list row again. The kernel writes
+this itself when a subagent or a Workstream spawns a conversation (M4); the method is how anything imported
+gets the same relation. An owner that does not exist is `-32000`; one that is the conversation itself, or
+that would make the two own each other, is `-32602`.
 
 ### Values
 
@@ -690,15 +699,15 @@ record a Client can open. The kernel sends the request, validates the answer
 when a `schema` is given, and answers once; nothing is stored, and no entry,
 conversation or task is created.
 
-| Param           | Meaning                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------- |
-| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                               |
-| `system`        | Optional system text. Absent means the kernel's own, minimal one.                                        |
-| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                     |
-| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                        |
-| `thinkingLevel` | Optional: `off`, `low`, `medium`, `high`. Absent means the model's default, which may think for minutes. |
-| `maxTokens`     | Optional cap on the answer.                                                                              |
-| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                           |
+| Param           | Meaning                                                                                                                                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                                                                                                                             |
+| `system`        | Optional system text. Absent sends the kernel's own minimal instruction, never a bare user turn.                                                                                                       |
+| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                                                                                                                   |
+| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON and must match it.                                                                                                                      |
+| `thinkingLevel` | Optional: `off`, `low`, `medium`, `high`. `off` asks for no thinking and sends nothing, which is the provider's own default: a model that reasons unless told otherwise still may. Absent is the same. |
+| `maxTokens`     | Optional cap on the answer: a positive whole number, at most what the model itself takes (`-32017`).                                                                                                   |
+| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                                                                                                                         |
 
 The result is `{model, text, json?, usage}`:
 
@@ -719,10 +728,10 @@ A model that declines to answer is `-32018 model refused`, with `data.reason`
 where the provider gave one. That is distinct from `-32014`: nothing can be
 salvaged from a refusal by parsing it again.
 
-The request carries `X-Droi-Call: model.complete`. That header is not part of the contract — it
-exists so a scripted model in a test can answer this call differently from a conversation's (pi-ai sends
-every request as a stream, so there is no other way to tell them apart), and the Host's LLM proxy strips
-every `X-Droi-*` header before a request leaves the machine. A client never sets it and never reads it.
+The request carries `X-Droi-Call: model.complete`. That header is not part of the contract: it exists so a
+scripted model in a test can answer this call differently from a conversation's, because pi-ai sends every
+request as a stream and there is no other way to tell them apart. A client never sets it and never reads it.
+The Host's LLM proxy is the place an `X-Droi-*` header must be removed before a request leaves the machine.
 
 What this method does not do, and deliberately: it does not stream (a Host waits
 for the whole answer and the answer is small), it keeps no history (a caller

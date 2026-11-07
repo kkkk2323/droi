@@ -47,13 +47,18 @@ type PendingRow = {
     workspace?: string
     requestId?: string
     requestFingerprint?: string
+    /** The fork this one came from: lineage, not ownership. */
     parentId?: number
     /** The working tree `workspace` sits in, worked out once by the caller that knew the `cwd`. */
     repoRoot?: string
+    /** The conversation that owns this one, when something spawned it. */
+    ownerId?: number
   }
   /** The newest entry's own timestamp: the only thing that may move `last_activity_at`. */
   activity?: number
   title?: string
+  /** Where `title` came from: the kernel's guess, or a person's choice. Default `auto`. */
+  titleSource?: 'auto' | 'chosen'
   preview?: string
   /** Set when a real event happened now (a create, a submit), not by recovery. */
   eventAt?: number
@@ -392,7 +397,10 @@ export class Indexer {
       ...(extra.createdAt === undefined ? {} : { insert: { createdAt: extra.createdAt } }),
     })
     pending.eventAt = Math.max(pending.eventAt ?? 0, at)
-    if (extra.title !== undefined) pending.title = extra.title
+    if (extra.title !== undefined) {
+      pending.title = extra.title
+      pending.titleSource = 'auto'
+    }
     if (extra.preview !== undefined) pending.preview = extra.preview
     if (extra.workspace !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }
@@ -598,13 +606,15 @@ export class Indexer {
     id: number,
     change: {
       title?: string | null
+      /** Where the title comes from. Absent means `chosen`: a caller that names a title chose it. */
+      titleSource?: 'auto' | 'chosen'
       archived?: boolean
       kind?: string | null
       /** A new `cwd`, and the working tree it belongs to: both move together or not at all. */
       workspace?: string | null
       repoRoot?: string | null
-      /** The conversation that owns this one, or `null` for a top-level row. */
-      parentId?: number | null
+      /** The conversation that owns this one, or `null` for a row a person started. */
+      ownerId?: number | null
     },
   ): Promise<void> {
     await this.flush()
@@ -622,18 +632,21 @@ export class Indexer {
         id,
       )
     }
-    if (change.parentId !== undefined) {
+    if (change.ownerId !== undefined) {
       await this.#db.run(
-        'UPDATE droi_conversations SET parent_id = ? WHERE id = ?',
-        change.parentId,
+        'UPDATE droi_conversations SET owner_id = ? WHERE id = ?',
+        change.ownerId,
         id,
       )
     }
     // A title the user chose must survive the next repair, so an empty title stands for "chosen".
     if (change.title !== undefined) {
+      // A cleared title has no source: the next automatic one may fill it again, as `auto`.
+      const source = change.title === null ? null : (change.titleSource ?? 'chosen')
       await this.#db.run(
-        'UPDATE droi_conversations SET title = ? WHERE id = ?',
+        'UPDATE droi_conversations SET title = ?, title_source = ? WHERE id = ?',
         change.title ?? '',
+        source,
         id,
       )
     }
@@ -776,8 +789,9 @@ export class Indexer {
     workspace?: string
     repoRoot?: string
     /**
-     * `undefined` lists the conversations nobody owns — the sidebar's rows. A number lists that
-     * conversation's children, which is how a Workstream or a subagent is found (ADR 0043).
+     * `undefined` lists the conversations nobody owns — the sidebar's rows. A number lists the
+     * conversations that one owns, which is how a Workstream agent or a subagent is found (ADR 0043).
+     * A fork is not owned by anything: its parent is its lineage, and it belongs in the list.
      */
     parent?: number
     text?: string
@@ -804,11 +818,12 @@ export class Indexer {
       where.push('repo_root = ?')
       params.push(query.repoRoot)
     }
-    // A child conversation is reached through its parent, not through the list: showing every subagent
-    // as a top-level row would put hundreds of them beside the conversations a person started.
-    if (query.parent === undefined) where.push('parent_id IS NULL')
+    // An owned conversation is reached through its owner, not through the list: showing every subagent as
+    // a top-level row would put hundreds of them beside the conversations a person started. `parent_id` is
+    // a different question — a fork `parent_id` is its lineage, and a person's fork is a row of its own.
+    if (query.parent === undefined) where.push('owner_id IS NULL')
     else {
-      where.push('parent_id = ?')
+      where.push('owner_id = ?')
       params.push(query.parent)
     }
     if (query.text !== undefined && query.text.trim() !== '') {
@@ -910,16 +925,18 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     const at = Math.max(row.eventAt ?? 0, row.activity ?? 0, row.insert.createdAt)
     await exec.run(
       `INSERT INTO droi_conversations
-         (id, created_at, last_activity_at, workspace, repo_root, kind, title, preview, parent_id, request_id, request_fingerprint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, created_at, last_activity_at, workspace, repo_root, kind, title, title_source, preview, parent_id, owner_id, request_id, request_fingerprint)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          last_activity_at = MAX(droi_conversations.last_activity_at, excluded.last_activity_at),
          workspace = COALESCE(excluded.workspace, droi_conversations.workspace),
          repo_root = COALESCE(excluded.repo_root, droi_conversations.repo_root),
          kind = COALESCE(excluded.kind, droi_conversations.kind),
          title = COALESCE(droi_conversations.title, excluded.title),
+         title_source = COALESCE(droi_conversations.title_source, excluded.title_source),
          preview = COALESCE(excluded.preview, droi_conversations.preview),
          parent_id = COALESCE(droi_conversations.parent_id, excluded.parent_id),
+         owner_id = COALESCE(droi_conversations.owner_id, excluded.owner_id),
          request_id = COALESCE(droi_conversations.request_id, excluded.request_id),
          request_fingerprint = COALESCE(droi_conversations.request_fingerprint, excluded.request_fingerprint)`,
       row.id,
@@ -929,8 +946,10 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
       row.insert.repoRoot ?? null,
       row.insert.kind ?? null,
       row.title ?? null,
+      row.titleSource ?? 'auto',
       row.preview ?? null,
       row.insert.parentId ?? null,
+      row.insert.ownerId ?? null,
       row.insert.requestId ?? null,
       row.insert.requestFingerprint ?? null,
     )
@@ -950,11 +969,12 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     await exec.run('UPDATE droi_conversations SET preview = ? WHERE id = ?', row.preview, row.id)
   }
   if (row.title !== undefined) {
+    // A title that has been *taken* — set by a person — is not overwritten by the automatic one; an empty
+    // title stands for "chosen, deliberately blank", which is why the condition is on NULL and ''.
     await exec.run(
-      'UPDATE droi_conversations SET title = ? WHERE id = ? AND (title IS NULL OR title = ?)',
+      "UPDATE droi_conversations SET title = ?, title_source = COALESCE(title_source, 'auto') WHERE id = ? AND (title IS NULL OR title = '')",
       row.title,
       row.id,
-      '',
     )
   }
 }

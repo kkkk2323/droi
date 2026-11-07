@@ -30,6 +30,7 @@ const statements = [
   `CREATE TABLE IF NOT EXISTS droi_conversations (
     id INTEGER PRIMARY KEY,
     title TEXT,
+    title_source TEXT,
     kind TEXT,
     workspace TEXT,
     archived_at INTEGER,
@@ -40,6 +41,7 @@ const statements = [
     repo_root TEXT,
     request_fingerprint TEXT,
     parent_id INTEGER,
+    owner_id INTEGER,
     preview TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS droi_index_last_activity
@@ -107,6 +109,23 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
   if (!columns.some((column) => column.name === 'repo_root')) {
     await db.exec('ALTER TABLE droi_conversations ADD COLUMN repo_root TEXT')
   }
+  // Who owns the conversation: the one a subagent or a Workstream agent was spawned from. **Not** `parent_id`,
+  // which has meant fork lineage since M1 — a fork is a conversation a person asked for and belongs in the
+  // list, while a child agent's conversation belongs to its owner.
+  if (!columns.some((column) => column.name === 'owner_id')) {
+    await db.exec('ALTER TABLE droi_conversations ADD COLUMN owner_id INTEGER')
+  }
+  // Whether a title is the kernel's own guess or a person's choice. A client cannot tell the two apart from
+  // the text alone — the automatic one is the first line of the first user message, and a person may type
+  // exactly that — so the row records which it is.
+  const titled = await db.all<{ name: string }>('PRAGMA table_info(droi_conversations)')
+  if (!titled.some((column) => column.name === 'title_source')) {
+    await db.exec('ALTER TABLE droi_conversations ADD COLUMN title_source TEXT')
+    // Every title a build before this one wrote came from the first user message: nothing else set one.
+    await db.run(
+      "UPDATE droi_conversations SET title_source = 'auto' WHERE title IS NOT NULL AND title <> ''",
+    )
+  }
   const version = await readMeta(db, 'index.version')
   const tokenizer = await readMeta(db, 'index.tokenizer')
   if (version === INDEX_VERSION && tokenizer === TOKENIZER) return
@@ -155,6 +174,8 @@ export async function writeMeta(db: SqliteExecutor, key: string, value: string):
 export type ConversationRow = {
   id: number
   title: string | null
+  /** `auto` is the kernel's own (the first user message); `chosen` is a title a person set. */
+  title_source: 'auto' | 'chosen' | null
   kind: string | null
   workspace: string | null
   archived_at: number | null
@@ -165,6 +186,8 @@ export type ConversationRow = {
   request_fingerprint: string | null
   /** The working tree `workspace` belongs to; `null` until it has been worked out. */
   repo_root: string | null
+  /** The conversation that owns this one, or `null` for a row a person started. */
+  owner_id: number | null
   parent_id: number | null
   preview: string | null
 }

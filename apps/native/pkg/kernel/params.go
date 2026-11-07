@@ -102,6 +102,10 @@ type Summary struct {
 	Archived       bool  `json:"archived"`
 	CreatedAt      int64 `json:"createdAt,omitempty"`
 	LastActivityAt int64 `json:"lastActivityAt,omitempty"`
+	// TitleSource says where Title came from: TitleSourceAuto is the kernel's own
+	// guess (the first line of the first user message), TitleSourceChosen is a title a
+	// person set. Absent while the conversation has no title.
+	TitleSource string `json:"titleSource,omitempty"`
 	// ViewedAt is when a person last saw the conversation; nil is "not yet", which
 	// is what makes the unread dot show.
 	ViewedAt *int64 `json:"viewedAt,omitempty"`
@@ -360,13 +364,27 @@ type IndexUpdateParams struct {
 	Title    *string `json:"title,omitempty"`
 	Archived *bool   `json:"archived,omitempty"`
 	Kind     *string `json:"kind,omitempty"`
+	// TitleSource is TitleSourceAuto or TitleSourceChosen, and only means anything
+	// with Title: absent, a title a caller names is a choice. TitleSourceAuto says a
+	// generator wrote it, so the kernel may replace it again.
+	TitleSource string `json:"titleSource,omitempty"`
 	// ViewedAt is the unread marker. Leave it nil to keep the stored time, use
 	// ViewedAtNull to ask for the dot back, or ViewedAtTime for a time.
 	ViewedAt json.RawMessage `json:"viewedAt,omitempty"`
-	// ParentID makes this conversation a child of that one; leave it nil to keep
-	// what is stored.
-	ParentID *ID `json:"parentId,omitempty"`
+	// OwnerID makes that conversation the owner of this one, and null makes this a
+	// list row again; leave it nil to keep what is stored. An owner that does not
+	// exist is CodeConversationNotFound, and one that would own itself, this row, or
+	// make the two own each other is CodeInvalidParams.
+	OwnerID *ID `json:"ownerId,omitempty"`
 }
+
+// The two sources a title can have.
+const (
+	// TitleSourceAuto is the kernel's own guess: the first line of the first user message.
+	TitleSourceAuto = "auto"
+	// TitleSourceChosen is a title a person set, which the kernel's guess must not overwrite.
+	TitleSourceChosen = "chosen"
+)
 
 // ViewedAtTime is index.update's "a person has seen everything up to here".
 func ViewedAtTime(ms int64) json.RawMessage { return json.RawMessage(strconv.FormatInt(ms, 10)) }

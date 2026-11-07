@@ -1190,11 +1190,24 @@ export class Kernel implements Dispatcher {
   async #indexUpdate(params: Record<string, unknown>): Promise<unknown> {
     this.#writable()
     const id = requiredNumber(params, 'id')
-    const change: { title?: string | null; archived?: boolean; kind?: string | null } = {}
+    const change: {
+      title?: string | null
+      titleSource?: 'auto' | 'chosen'
+      archived?: boolean
+      kind?: string | null
+    } = {}
     if ('title' in params) {
       const title = params['title']
       change.title =
         title === null ? null : typeof title === 'string' ? title : invalidTitle('title')
+      // A title someone typed is a choice; a title a generator wrote says so, so it can be replaced again.
+      const source = params['titleSource']
+      if (source !== undefined && source !== 'auto' && source !== 'chosen') {
+        throw invalidParams([{ path: 'titleSource', message: 'auto or chosen is required' }])
+      }
+      change.titleSource = source ?? 'chosen'
+    } else if ('titleSource' in params) {
+      throw invalidParams([{ path: 'titleSource', message: 'a title is required' }])
     }
     if ('kind' in params) {
       const kind = params['kind']
@@ -1202,27 +1215,31 @@ export class Kernel implements Dispatcher {
     }
     const archived = optionalBoolean(params, 'archived')
     if (archived !== undefined) change.archived = archived
-    await this.#options.indexer.update(id, change)
-    // A child's owner. The kernel itself writes this when a subagent or a Workstream spawns one (M4);
-    // `index.update` is how a conversation imported from elsewhere gets the same relation.
-    if ('parentId' in params) {
-      const parentId = params['parentId']
-      if (parentId !== null && (typeof parentId !== 'number' || !Number.isInteger(parentId))) {
-        throw invalidParams([
-          { path: 'parentId', message: 'a conversation id or null is required' },
-        ])
+    // Both of the fields below are checked before the first write: a refusal that had already stored half of
+    // the change would be a lie to a caller that reads -32602 as "nothing happened".
+    let ownerId: number | null | undefined
+    if ('ownerId' in params) {
+      const value = params['ownerId']
+      if (value !== null && (typeof value !== 'number' || !Number.isInteger(value))) {
+        throw invalidParams([{ path: 'ownerId', message: 'a conversation id or null is required' }])
       }
-      await this.#options.indexer.update(id, { parentId })
+      if (value !== null) await this.#checkOwner(id, value)
+      ownerId = value
     }
-    // `viewedAt` is the unread dot: a time says "I have seen everything up to here", `null` asks for the
-    // dot back (a client that cleared a conversation it had open). Absent leaves it as it was.
+    let viewedAt: number | null | undefined
     if ('viewedAt' in params) {
-      const viewedAt = params['viewedAt']
-      if (viewedAt !== null && (typeof viewedAt !== 'number' || !Number.isFinite(viewedAt))) {
+      const value = params['viewedAt']
+      if (value !== null && (typeof value !== 'number' || !Number.isFinite(value))) {
         throw invalidParams([{ path: 'viewedAt', message: 'a number or null is required' }])
       }
-      await this.#options.indexer.setViewed(id, viewedAt)
+      viewedAt = value
     }
+    await this.#options.indexer.update(id, {
+      ...change,
+      ...(ownerId === undefined ? {} : { ownerId }),
+    })
+    // The unread dot: a time says "a person has seen everything up to here", `null` asks for it back.
+    if (viewedAt !== undefined) await this.#options.indexer.setViewed(id, viewedAt)
     const row = await this.#options.indexer.conversation(id)
     this.#notifier?.broadcast('index.changed', {
       id,
@@ -1233,12 +1250,35 @@ export class Kernel implements Dispatcher {
     return {}
   }
 
+  /**
+   * Whether `ownerId` may own `id`: it must be a conversation this kernel has, and not `id` itself nor one of
+   * `id`'s own children — two rows that own each other are rows no list can reach.
+   *
+   * The walk up is bounded by the number of rows it has visited, so a cycle that somehow exists cannot spin
+   * here for ever.
+   */
+  async #checkOwner(id: number, ownerId: number): Promise<void> {
+    if (ownerId === id) {
+      throw invalidParams([{ path: 'ownerId', message: 'a conversation cannot own itself' }])
+    }
+    if ((await this.#options.indexer.conversation(ownerId)) === undefined) {
+      throw notFound(ownerId)
+    }
+    const seen = new Set<number>([id])
+    let current: number | null = ownerId
+    while (current !== null) {
+      if (seen.has(current)) {
+        throw invalidParams([{ path: 'ownerId', message: 'the two would own each other' }])
+      }
+      seen.add(current)
+      const row = await this.#options.indexer.conversation(current)
+      if (row === undefined) return
+      current = row.owner_id
+    }
+  }
+
   // ── model.complete ──────────────────────────────────────────────────────────────────────────
 
-  /**
-   * One model call with no conversation behind it, for a caller that wants an answer and not a session
-   * (Memory's summary is the first). M4 implements it; the capability is false until then.
-   */
   /**
    * One model call with no conversation behind it. The whole call lives in `completion.ts`: this method
    * only refuses a read-only kernel, which may not spend a key it was not given.
@@ -1946,7 +1986,14 @@ function wireSummary(row: ConversationRow): Record<string, unknown> {
     viewedAt: row.viewed_at,
     preview: row.preview,
     ...(row.repo_root === null ? {} : { repoRoot: row.repo_root }),
+    // `parentId` is the fork this one came from — lineage. `ownerId` is the conversation that spawned it,
+    // which is what keeps a subagent's conversation out of the list (ADR 0043).
     ...(row.parent_id === null ? {} : { parentId: row.parent_id }),
+    ...(row.owner_id === null ? {} : { ownerId: row.owner_id }),
+    // Which title this is: the kernel's own guess (`auto`, the first user message) or a person's
+    // (`chosen`). A client that wants to let someone rename a conversation needs the difference; the text
+    // alone cannot tell them apart.
+    ...(row.title_source === null ? {} : { titleSource: row.title_source }),
   }
 }
 

@@ -17,10 +17,19 @@ import { Code, RpcError, invalidParams, optionalNumber, optionalString } from '.
 
 /**
  * The header that names this call. It is not part of the protocol: it exists so a scripted model can
- * answer a title request differently from a conversation's, and the Host's LLM proxy removes every
- * `X-Droi-*` header before the request reaches Factory.
+ * answer a title request differently from a conversation's, because pi-ai streams both. The Host's LLM
+ * proxy is where an `X-Droi-*` header must be dropped before a request leaves the machine; that strip is
+ * the Go side's work, not this file's.
  */
 export const CALL_HEADER = 'X-Droi-Call'
+
+/**
+ * What is sent as the system prompt when a caller names none. It is short on purpose — this method answers
+ * one question about work, not a conversation — but it is a real system message: a provider that examines
+ * the request's opening turn must not be handed a bare user message.
+ */
+const DEFAULT_SYSTEM =
+  'Answer the question you are given. Reply in plain text unless the request asks for JSON.'
 
 /** The longest deadline a caller may ask for; anything longer is a bug on the other side. */
 export const MAX_TIMEOUT_MS = 600_000
@@ -67,7 +76,7 @@ export async function completeModel(
 ): Promise<CompletionResult> {
   const ref = parseModel(params['model'])
   const input = parseInput(params['input'])
-  const system = optionalString(params, 'system')
+  const system = optionalString(params, 'system') ?? DEFAULT_SYSTEM
   const schema = parseSchema(params['schema'])
   const thinkingLevel = optionalString(params, 'thinkingLevel')
   if (thinkingLevel !== undefined && !THINKING_LEVELS.has(thinkingLevel)) {
@@ -89,6 +98,9 @@ export async function completeModel(
   // The model's own ceiling, not an arbitrary number: a caller that asks for more than the model takes
   // would otherwise get a truncated answer reported as a success.
   const maxTokens = optionalNumber(params, 'maxTokens')
+  if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens < 1)) {
+    throw invalidParams([{ path: 'maxTokens', message: 'a positive whole number is required' }])
+  }
   if (maxTokens !== undefined && maxTokens > model.maxTokens) {
     throw new RpcError(
       Code.budgetExceeded,
@@ -103,10 +115,7 @@ export async function completeModel(
   try {
     message = await models.completeSimple(
       model,
-      {
-        messages: [input],
-        ...(system === undefined ? {} : { systemPrompt: system }),
-      },
+      { messages: [input], systemPrompt: system },
       {
         signal: controller.signal,
         // The one header that says who is calling. pi-ai sends every request as a stream, so a test
@@ -114,6 +123,9 @@ export async function completeModel(
         // strips `X-Droi-*` before the request leaves the machine.
         headers: { [CALL_HEADER]: 'model.complete' },
         ...(maxTokens === undefined ? {} : { maxTokens }),
+        // `off` sends nothing, which is the provider's own default thinking. pi-ai has no `off` level, so a
+        // model that reasons unless told otherwise still may; the contract says as much rather than
+        // pretending otherwise.
         ...(thinkingLevel === undefined || thinkingLevel === 'off'
           ? {}
           : { reasoning: thinkingLevel as 'low' | 'medium' | 'high' }),

@@ -71,8 +71,8 @@ test('R3 restart after an ordinary fork does not fail UNIQUE(request_id)', async
       throw error
     }
     client = new Client(kernel.port)
-    // A fork is a child conversation: it is reached through its parent, not through the sidebar's rows.
-    const list = await client.call('conversation.list', { parent: id })
+    // A fork is a row of its own: the list holds it, and its parent is lineage rather than an owner.
+    const list = await client.call('conversation.list')
     expect((list.items as any[]).map((x) => x.id)).toContain(forked.conversationId)
   } finally {
     client.close()
