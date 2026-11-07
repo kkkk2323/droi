@@ -31,8 +31,12 @@ What names the app built from Droi's packages: its name, the short id of its fol
 _Avoid_: white label, skin, theme
 
 **Extension**:
-What an app built on Droi adds to it through `droiapp.Run`'s seams: MCP servers, words for the System Prompt Addition, subcommands, pages, Settings sections, a sign-in page, and how tool calls and json-render elements show. On the Kernel each seam has a counterpart, and droid hooks are the one that does not map (ADR 0041). It plugs into seams Droi has; it does not patch Droi.
+What an app built on Droi adds to it through `droiapp.Run`: its brand and Chinese words, a sign-in page, subcommands, pages, Settings sections, how tool calls and json-render elements show, and one **Agent** — the MCP servers, always-allowed tools and prompt section every Conversation of that app gets (ADR 0041). It plugs into seams Droi has; it does not patch Droi.
 _Avoid_: plugin, add-on, module
+
+**Agent** (of an Extension):
+What a brand's app adds to every Conversation: its MCP servers (stdio or HTTP), the tools that run without asking, and a prompt section. The Kernel's MCP extension, approval policy and prompt sections take them, so there is no settings file to write (ADR 0041).
+_Avoid_: overlay, runtime overlay, custom settings
 
 **Downstream App**:
 An app that runs Droi's window under its own brand through `droiapp.Run` and one Extension (ADR 0029). Two exist: **Anlan Droi** and **WeCom Droi**. Both stay on the Droi release they were built against, 1.90.0 and 1.55.0, and each is upgraded on its own after 2.0; what 2.0 keeps for them is the seam, not a compatibility mode (ADR 0041).
