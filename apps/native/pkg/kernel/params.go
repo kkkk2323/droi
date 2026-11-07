@@ -16,18 +16,18 @@ type NameSet struct {
 	Remove []string `json:"remove,omitempty"`
 }
 
-// AgentChange sets part of an agent: a given field replaces the stored one, a
-// null clears it, an absent one changes nothing.
+// AgentChange sets part of an agent. The contract gives every field three
+// states: absent leaves it as it is, null clears it, and a value replaces it.
+// So every field is a *Field — nil for absent, Some(v) to set it, None to
+// clear it — and a change that only sets the model sends nothing else.
 type AgentChange struct {
-	Model         *ModelRef `json:"model,omitempty"`
-	ThinkingLevel *string   `json:"thinkingLevel,omitempty"`
-	Extensions    *NameSet  `json:"extensions,omitempty"`
-	ModelTools    *NameSet  `json:"modelTools,omitempty"`
-	// Instructions is the agent's own instructions; nil in JSON (a set
-	// pointer to "") clears them.
-	Instructions *string `json:"instructions,omitempty"`
-	Cwd          *string `json:"cwd,omitempty"`
-	MaxTurns     *int    `json:"maxTurns,omitempty"`
+	Model         *Field[ModelRef] `json:"model,omitempty"`
+	ThinkingLevel *Field[string]   `json:"thinkingLevel,omitempty"`
+	Extensions    *Field[NameSet]  `json:"extensions,omitempty"`
+	ModelTools    *Field[NameSet]  `json:"modelTools,omitempty"`
+	Instructions  *Field[string]   `json:"instructions,omitempty"`
+	Cwd           *Field[string]   `json:"cwd,omitempty"`
+	MaxTurns      *Field[int]      `json:"maxTurns,omitempty"`
 }
 
 // Agent is an agent as conversation.configure resolves it: names, not objects.
@@ -150,8 +150,9 @@ func ImageBlock(data []byte, mimeType string) ContentBlock {
 
 // SubmitParams is conversation.submit's params. Input is a string or a list of
 // content blocks; Continue asks for a run on the context as it is, with no new
-// user message. WhenBusy and WhenIdle are "steer", "queue", "followUp" or
-// "reject"; "" leaves them to Kernel.
+// user message. WhenBusy is "steer", "followUp" or "reject" and WhenIdle is
+// "reject" or ""; anything else is Kernel's -32602, so these constants are the
+// only values this client sends.
 type SubmitParams struct {
 	ID        ID     `json:"id"`
 	Input     any    `json:"input,omitempty"`
@@ -161,22 +162,24 @@ type SubmitParams struct {
 	RequestID string `json:"requestId,omitempty"`
 }
 
-// What a submission does when the conversation's run is in progress.
+// What a submission does when the conversation's run is in progress. Kernel
+// accepts these three and nothing else: a fourth value is -32602 invalid
+// params, as the integration run found with a "queue" this client had invented.
 const (
 	// WhenBusySteer joins the running turn.
 	WhenBusySteer = "steer"
-	// WhenBusyQueue waits for the next turn.
-	WhenBusyQueue = "queue"
-	// WhenBusyFollowUp adds a turn after this one.
+	// WhenBusyFollowUp adds a turn after this one, which is what a queued
+	// message is.
 	WhenBusyFollowUp = "followUp"
 	// WhenBusyReject answers -32001 conversation busy.
 	WhenBusyReject = "reject"
 )
 
-// What a submission does when the conversation is idle.
+// What a submission does when the conversation is idle. Kernel accepts this one
+// and "" (the run as asked); the other values this client once invented were
+// its own, and Kernel refused them.
 const (
-	WhenIdleRun    = "run"
-	WhenIdleKeep   = "keep"
+	// WhenIdleReject answers -32002 conversation idle.
 	WhenIdleReject = "reject"
 )
 
@@ -196,6 +199,20 @@ type AbortParams struct {
 type AbortSubmissionParams struct {
 	ID           ID `json:"id"`
 	SubmissionID ID `json:"submissionId"`
+}
+
+// SubmissionGet is where one submission got to.
+//
+// Status is Pi's own: queued, placed, done or unanswered. Entry is the user
+// entry the submission produced and Answer the assistant entry that answered
+// it; both are absent while the submission is queued. Reason explains an
+// unanswered one.
+type SubmissionGet struct {
+	SubmissionID ID     `json:"submissionId"`
+	Status       string `json:"status"`
+	Entry        *ID    `json:"entry,omitempty"`
+	Answer       *ID    `json:"answer,omitempty"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 // ConfigureParams is conversation.configure's params.
@@ -434,12 +451,64 @@ type HarnessInfo struct {
 }
 
 // Limits are Kernel's own bounds, which a client reads rather than assumes.
+// Each is optional on the wire and has a stated default, so a build that does
+// not publish one is read with the contract's value rather than with zero.
 type Limits struct {
 	// ViewPushesPerSecond is how often one connection hears one conversation
 	// per second. Commits inside one interval are coalesced into one push
 	// and the last state always arrives: it is a frequency cap, not a
 	// throttle of the data.
 	ViewPushesPerSecond int `json:"viewPushesPerSecond,omitempty"`
+	// ViewWindowDefault is the window a view holds when conversation.open
+	// names none.
+	ViewWindowDefault *Window `json:"viewWindowDefault,omitempty"`
+	// MaxEntriesPerPage caps conversation.entries. A larger limit is not an
+	// error: the page comes back at the cap with a cursor, and a client that
+	// ignores the cursor has seen only a prefix of the history.
+	MaxEntriesPerPage int `json:"maxEntriesPerPage,omitempty"`
+	// MaxConversationsPerPage caps conversation.list, the same way.
+	MaxConversationsPerPage int `json:"maxConversationsPerPage,omitempty"`
+}
+
+// The contract's own limits, for a build that does not publish one.
+const (
+	defaultViewPushesPerSecond = 5
+	defaultMaxEntriesPerPage   = 200
+	defaultMaxConversations    = 200
+)
+
+// PushRate is how often one connection hears one conversation per second.
+func (l Limits) PushRate() int {
+	if l.ViewPushesPerSecond > 0 {
+		return l.ViewPushesPerSecond
+	}
+	return defaultViewPushesPerSecond
+}
+
+// EntriesPerPage is the page conversation.entries may answer with; ask again
+// with the cursor for the rest.
+func (l Limits) EntriesPerPage() int {
+	if l.MaxEntriesPerPage > 0 {
+		return l.MaxEntriesPerPage
+	}
+	return defaultMaxEntriesPerPage
+}
+
+// ConversationsPerPage is the page conversation.list may answer with.
+func (l Limits) ConversationsPerPage() int {
+	if l.MaxConversationsPerPage > 0 {
+		return l.MaxConversationsPerPage
+	}
+	return defaultMaxConversations
+}
+
+// Window is how a view's window is sized when a request names none; the
+// contract's is {min: 100, max: 200}.
+func (l Limits) Window() Window {
+	if l.ViewWindowDefault != nil {
+		return *l.ViewWindowDefault
+	}
+	return Window{Min: 100, Max: defaultMaxEntriesPerPage}
 }
 
 // KernelID says what the sidecar is built from.
@@ -524,3 +593,11 @@ type ModelCompleteUsage struct {
 	TotalTokens int      `json:"totalTokens"`
 	Cost        *float64 `json:"cost,omitempty"`
 }
+
+// ShutdownResult is kernel.shutdown's result: Kernel has begun closing.
+type ShutdownResult struct {
+	Status string `json:"status"`
+}
+
+// ShutdownClosing is the status kernel.shutdown answers.
+const ShutdownClosing = "closing"

@@ -22,7 +22,7 @@ type ID int64
 // String is the ID as text, for logs and map keys.
 func (id ID) String() string { return strconv.FormatInt(int64(id), 10) }
 
-// The protocol's 26 methods.
+// The protocol's 28 methods.
 const (
 	MethodHarnessInfo         = "harness.info"
 	MethodConversationCreate  = "conversation.create"
@@ -32,6 +32,9 @@ const (
 	MethodConversationSubmit  = "conversation.submit"
 	MethodConversationAbort   = "conversation.abort"
 	MethodSubmissionAbort     = "submission.abort"
+	// MethodSubmissionGet answers where one submission got to: queued, placed,
+	// done or unanswered, with the entry it produced and the answer it got.
+	MethodSubmissionGet       = "submission.get"
 	MethodConversationConfig  = "conversation.configure"
 	MethodConversationCompact = "conversation.compact"
 	MethodConversationFork    = "conversation.fork"
@@ -54,18 +57,23 @@ const (
 	// summaries (ADR 0042). M1 answers -32009 until capabilities.models is
 	// true.
 	MethodModelComplete = "model.complete"
+	// MethodKernelShutdown asks Kernel to close in order: it answers
+	// {"status":"closing"}, then refuses new work, closes the harness and the
+	// storage, and exits 0. It is the only way to stop a Kernel in order on
+	// Windows, which has no SIGTERM a parent can send.
+	MethodKernelShutdown = "kernel.shutdown"
 )
 
 // Methods is every method, in the contract's order.
 var Methods = []string{
 	MethodHarnessInfo, MethodConversationCreate, MethodConversationList,
 	MethodConversationOpen, MethodConversationUnwatch, MethodConversationSubmit,
-	MethodConversationAbort, MethodSubmissionAbort, MethodConversationConfig,
+	MethodConversationAbort, MethodSubmissionAbort, MethodSubmissionGet, MethodConversationConfig,
 	MethodConversationCompact, MethodConversationFork, MethodConversationEntries,
 	MethodConversationUsage, MethodTaskAbort, MethodIndexUpdate, MethodProcessList,
 	MethodProcessStop, MethodApprovalRespond, MethodAskRespond, MethodMCPList,
 	MethodMCPSet, MethodMCPAuthorize, MethodMCPAuthorizeCancel, MethodSkillsList,
-	MethodSkillsSetDisabled, MethodModelComplete,
+	MethodSkillsSetDisabled, MethodModelComplete, MethodKernelShutdown,
 }
 
 // The protocol's notifications.
@@ -156,8 +164,26 @@ func NewToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ExitNoToken is how Kernel exits when the token is missing.
-const ExitNoToken = 2
+// The statuses Kernel exits with, as the contract lists them. A Supervisor
+// acts on the last two differently from a crash: a refusal may be retried or
+// reported, and a storage failure is a restart with the same data directory.
+const (
+	// ExitOK is a kernel that was asked to stop and closed cleanly.
+	ExitOK = 0
+	// ExitFailed is a kernel that could not start or could not close: a bug, or
+	// an environment problem.
+	ExitFailed = 1
+	// ExitRefused is a kernel that refused to start — bad arguments, no token,
+	// or a data directory another kernel already holds — which is not a crash.
+	ExitRefused = 2
+	// ExitStorage is a kernel whose storage failed; it is restarted, and its
+	// data directory reused.
+	ExitStorage = 3
+)
+
+// ExitNoToken is how Kernel exits when the token is missing: one refusal among
+// the ones ExitRefused covers.
+const ExitNoToken = ExitRefused
 
 // Health is what GET /health answers.
 type Health struct {
