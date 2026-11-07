@@ -50,6 +50,9 @@ func TestReview228StopKillsTermIgnoringGrandchild(t *testing.T) {
 	defer child.Kill()
 	s.Stop()
 	if err := child.Signal(syscall.Signal(0)); err == nil {
-		t.Fatalf("SIGTERM-ignoring grandchild pid=%d is still alive after Stop returned; StopGrace=%s > WaitDelay=%s", pid, s.StopGrace, waitDelay)
+		// What is left, if anything: a zombie is not a running process, and
+		// only its parent can reap it.
+		out, _ := exec.Command("ps", "-o", "pid,ppid,stat,pgid,command", "-p", strconv.Itoa(pid)).Output()
+		t.Fatalf("SIGTERM-ignoring grandchild pid=%d answers signal 0 after Stop returned; StopGrace=%s > WaitDelay=%s\n%s", pid, s.StopGrace, waitDelay, out)
 	}
 }

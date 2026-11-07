@@ -773,8 +773,9 @@ func TestWholeViewsCoalesceInTheQueue(t *testing.T) {
 }
 
 // A notification that cannot be rebuilt — an approval, an ask, a lifecycle
-// change — is never dropped for want of room: whole views are what give way,
-// because the next push or a fresh conversation.open rebuilds them.
+// change — is never dropped for want of room: whole views give way to it,
+// oldest first, because a conversation's next push or a fresh
+// conversation.open rebuilds one.
 func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 	f := startFakeKernel(t)
 	c, err := Dial(context.Background(), Options{
@@ -805,7 +806,9 @@ func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	// Eight more views of conversations of their own: none coalesces with
-	// another, so a queue of two must drop most of them.
+	// another, so a queue of two grows past its cap rather than lose the last
+	// state of eight conversations — and the approval and the ask that follow
+	// trade the oldest of those views for room.
 	for id := 2; id <= 9; id++ {
 		say(NotifyConversationView, view(id, "dropped"))
 	}
@@ -834,6 +837,39 @@ func TestMustArriveNotificationsAreNeverDropped(t *testing.T) {
 	c.queuedMu.Unlock()
 	if lost == 0 {
 		t.Fatal("no whole view was counted as lost, so the cap was never exercised")
+	}
+}
+
+// A whole view is the conversation's last word, so a full queue grows for it
+// rather than lose it: an idle conversation whose final state was dropped would
+// never be rebuilt, and nothing would trigger the rebuild.
+func TestAWholeViewSurvivesAFullQueue(t *testing.T) {
+	c := &Client{opts: Options{MaxQueuedNotes: 2}, wake: make(chan struct{}, 1)}
+	note := func(kind, value string) Notification {
+		return Notification{Method: NotifyConversationView, Params: json.RawMessage(
+			`{"id":7,"kind":"` + kind + `","value":` + value + `}`)}
+	}
+	// A reset and a delta are steps the reader must apply, so neither can be
+	// traded for room.
+	c.enqueue(note("full", `{"before":"reset"}`))
+	c.enqueue(note("value", `null`))
+	latest := note("value", `{"before":"latest"}`)
+	c.enqueue(latest)
+	if got := len(c.queued); got != 3 {
+		t.Fatalf("queue holds %d notifications, want the full push, the delta and the latest view", got)
+	}
+	if last := c.queued[len(c.queued)-1]; string(last.Params) != string(latest.Params) {
+		t.Fatalf("the latest view is not last: %+v", c.queued)
+	}
+	// The next push of the same conversation replaces it in place, so the
+	// growth stays one view per conversation.
+	again := note("value", `{"before":"again"}`)
+	c.enqueue(again)
+	if got := len(c.queued); got != 3 {
+		t.Fatalf("a second view of the same conversation grew the queue to %d", got)
+	}
+	if last := c.queued[2]; string(last.Params) != string(again.Params) {
+		t.Fatalf("the newest view did not replace the one before it: %+v", c.queued)
 	}
 }
 

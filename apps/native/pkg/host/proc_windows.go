@@ -1,58 +1,86 @@
 package host
 
 import (
-	"context"
+	"errors"
 	"os/exec"
-	"strconv"
-	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
-// prepareProcess leaves the sidecar's creation alone: Windows has no process
-// groups to join, and the console window is already hidden by hideConsole.
-//
-// A sidecar's own processes are ended through its tree (taskkill /T), which
-// needs the sidecar still listed: once it has exited, its children are
-// orphans the Host can no longer name. Killing before waiting for the exit is
-// what makes that work, and Stop does exactly that.
+// prepareProcess leaves the sidecar's creation alone. Windows has no process
+// groups to join; ownership of the tree is a Job Object, made and assigned
+// right after Start (newProcessTree), before the sidecar can start anything.
 func prepareProcess(*exec.Cmd) {}
 
 // signalProcess tells the sidecar to stop.
 //
-// Windows has no SIGTERM. A stop asks kernel.shutdown first (KernelSupervisor
-// .AskShutdown), which is the orderly way and runs the sidecar's own close;
-// this is what is left when that is not wired or fails: TerminateProcess,
-// which skips storage.close() and leaves SQLite to recover from its
-// write-ahead log on the next start.
+// Windows has no SIGTERM. A stop asks kernel.shutdown first when the Host wires
+// one to Terminate, which is the orderly way and runs the sidecar's own close;
+// this is what is left when that is not wired or fails: TerminateProcess, which
+// skips storage.close() and leaves SQLite to recover from its write-ahead log
+// on the next start.
 func signalProcess(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}
 }
 
-// killProcess ends the sidecar and, with it, the processes it started:
-// taskkill /T walks the child tree, which Kill alone does not.
+// newProcessTree puts the sidecar in a Job Object of its own.
 //
-// It is bounded: taskkill can wait on a process that will not die, and a stop
-// must answer anyway. After the timeout the sidecar itself is killed and the
-// call returns; whatever is left of its tree is an orphan that no longer holds
-// the Host's pipes, and the sidecar's own start-up check marks its process
-// entry as exited.
-func killProcess(cmd *exec.Cmd) {
+// Children join their parent's job unless they break away, and
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE means the job's handle is the ownership:
+// while the Host holds it, every process in the job is there to be killed, and
+// closing the handle ends them. That is what taskkill /T cannot promise — it
+// names a process, and a sidecar that already exited is not there to name.
+//
+// The assumption is that Kernel starts no process before its handshake, which
+// is after this call: a process that was already running when the job was made
+// belongs to no job.
+func newProcessTree(cmd *exec.Cmd) (processTree, error) {
 	if cmd.Process == nil {
-		return
+		return nil, errors.New("no process")
 	}
-	taskkill := "taskkill"
-	if path, err := exec.LookPath("taskkill"); err == nil {
-		taskkill = path
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), graceTree)
-	defer cancel()
-	kill := exec.CommandContext(ctx, taskkill, "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
-	hideConsole(kill)
-	_ = kill.Run()
-	_ = cmd.Process.Kill()
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
+		_ = windows.CloseHandle(job)
+		return nil, err
+	}
+	process, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		_ = windows.CloseHandle(job)
+		return nil, err
+	}
+	defer windows.CloseHandle(process)
+	if err := windows.AssignProcessToJobObject(job, process); err != nil {
+		_ = windows.CloseHandle(job)
+		return nil, err
+	}
+	return &jobTree{job: job}, nil
 }
 
-// graceTree bounds how long taskkill may take before the stop gives up on the
-// tree and kills only the sidecar.
-const graceTree = 3 * time.Second
+// jobTree is one generation's job.
+type jobTree struct{ job windows.Handle }
+
+// kill ends every process in the job. A job that is already empty answers an
+// error the caller does not need: the tree is gone either way.
+func (j *jobTree) kill() {
+	if j.job != 0 {
+		_ = windows.TerminateJobObject(j.job, 1)
+	}
+}
+
+// close releases the job. KILL_ON_JOB_CLOSE is also what ends a process that
+// joined late, so closing is a last sweep rather than only a free.
+func (j *jobTree) close() {
+	if j.job != 0 {
+		_ = windows.CloseHandle(j.job)
+		j.job = 0
+	}
+}

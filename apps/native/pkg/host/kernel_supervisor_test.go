@@ -127,13 +127,17 @@ func TestKernelHelperProcess(t *testing.T) {
 		}
 	}
 	if hold := os.Getenv("GO_KERNEL_CHILD_HOLD_MS"); hold != "" {
-		// A process the sidecar starts — bash, or a background job — which
-		// inherits its stderr and outlives it.
+		// A process the sidecar starts — a shell, or a background job — which
+		// inherits its stdout and stderr and outlives it.
 		if ms, err := strconv.Atoi(hold); err == nil && ms > 0 {
-			child := exec.Command("sh", "-c", "sleep "+strconv.Itoa((ms+999)/1000))
+			child := holdChild(ms)
 			child.Stdout, child.Stderr = os.Stdout, os.Stderr
 			if err := child.Start(); err != nil {
 				fmt.Fprintf(os.Stderr, "kernel: child: %v\n", err)
+			} else if data != "" {
+				// Its pid is what a test checks for after the tree is ended.
+				_ = os.WriteFile(filepath.Join(data, childPidFile),
+					[]byte(strconv.Itoa(child.Process.Pid)), 0o600)
 			}
 		}
 	}
@@ -165,13 +169,36 @@ func TestKernelHelperProcess(t *testing.T) {
 	}
 }
 
+// childPidFile is where the helper writes the pid of the child it started.
+const childPidFile = "child.pid"
+
+// selfExe is the test binary's own path, absolute. os.Args[0] can be a bare
+// name when the binary was started from its own directory, and Windows refuses
+// to run a program found relative to the current directory.
+func selfExe(t *testing.T) string {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	return exe
+}
+
 // helperSpawn launches the test binary as the sidecar, with env on top.
 func helperSpawn(t *testing.T, env ...string) func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
 	t.Helper()
+	return helperSpawnIn(t, t.TempDir(), env...)
+}
+
+// helperSpawnIn is helperSpawn with --data named by the test, so it can read
+// what the sidecar wrote there.
+func helperSpawnIn(t *testing.T, data string, env ...string) func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
+	t.Helper()
+	exe := selfExe(t)
 	return func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
 		// The "--" stops the test binary's own flag parsing, so the contract's
 		// arguments reach the helper untouched.
-		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", t.TempDir())
+		cmd := exec.Command(exe, "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
 		cmd.Env = append(os.Environ(), append([]string{"GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv + "=" + token}, env...)...)
 		read, write, err := os.Pipe()
 		if err != nil {
@@ -185,23 +212,16 @@ func helperSpawn(t *testing.T, env ...string) func(port int, token string) (*exe
 // watchKernel records the states a Supervisor reports.
 type watchKernel struct {
 	states chan KernelState
-	ready  chan readyEvent
-}
-
-type readyEvent struct {
-	state KernelState
-	token string
 }
 
 func newWatch() *watchKernel {
-	return &watchKernel{states: make(chan KernelState, 64), ready: make(chan readyEvent, 8)}
+	return &watchKernel{states: make(chan KernelState, 64)}
 }
 
 func (w *watchKernel) supervisor(spawn func(int, string) (*exec.Cmd, io.ReadCloser, error)) *KernelSupervisor {
 	return &KernelSupervisor{
 		Spawn:   spawn,
 		OnState: func(s KernelState) { w.states <- s },
-		OnReady: func(s KernelState, token string) { w.ready <- readyEvent{s, token} },
 		Backoff: []time.Duration{10 * time.Millisecond, 20 * time.Millisecond},
 		// The helper answers health at once; a long window only slows a
 		// failure down.
@@ -246,19 +266,11 @@ func TestKernelSupervisorStartsTheSidecar(t *testing.T) {
 	if got, want := running.RPCURL(), kernel.URL(running.Port); got != want {
 		t.Fatalf("RPCURL() = %q, want %q", got, want)
 	}
-	select {
-	case ready := <-w.ready:
-		if len(ready.token) != 32 {
-			t.Fatalf("token %q", ready.token)
-		}
-		if ready.state.Port != running.Port {
-			t.Fatalf("ready port %d, running port %d", ready.state.Port, running.Port)
-		}
-		if s.Token() != ready.token {
-			t.Fatal("Token() is not the token Kernel got")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("OnReady never fired")
+	if running.Generation == 0 {
+		t.Fatalf("running state carries no generation: %+v", running)
+	}
+	if token := s.Token(); len(token) != 32 {
+		t.Fatalf("Token() = %q, want the 32 hex characters Kernel got", token)
 	}
 	if _, err := kernel.CheckHealth(t.Context(), running.Port); err != nil {
 		t.Fatalf("health: %v", err)
@@ -294,9 +306,10 @@ func TestKernelSupervisorRestartsWithBackoffAndAReason(t *testing.T) {
 // in-process may clean it up.
 func TestKernelSupervisorStopsAndKeepsTheDataDirectory(t *testing.T) {
 	data := t.TempDir()
+	exe := selfExe(t)
 	w := newWatch()
 	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
+		cmd := exec.Command(exe, "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
 		cmd.Env = append(os.Environ(), "GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv+"="+token, "GO_KERNEL_TOUCH=started.txt")
 		read, write, err := os.Pipe()
 		if err != nil {
@@ -467,9 +480,10 @@ func TestKernelSupervisorFindsTheHandshakeAfterOtherOutput(t *testing.T) {
 // reads its stdout has to keep draining it.
 func TestKernelSupervisorKeepsDrainingStdoutAfterTheHandshake(t *testing.T) {
 	data := t.TempDir()
+	exe := selfExe(t)
 	w := newWatch()
 	s := w.supervisor(func(port int, token string) (*exec.Cmd, io.ReadCloser, error) {
-		cmd := exec.Command(os.Args[0], "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
+		cmd := exec.Command(exe, "-test.run=TestKernelHelperProcess", "--", "--port", strconv.Itoa(port), "--data", data)
 		cmd.Env = append(os.Environ(), "GO_WANT_KERNEL_HELPER=1", kernel.TokenEnv+"="+token,
 			"GO_KERNEL_NOISE_BYTES=2097152", "GO_KERNEL_NOISE_DONE=noise-done")
 		read, write, err := os.Pipe()
@@ -526,7 +540,15 @@ func TestKernelSupervisorFailsOnceWithoutAHandshake(t *testing.T) {
 	restarting := w.waitState(t, KernelRestarting)
 	s.Stop()
 	elapsed := time.Since(started)
-	if elapsed > 1500*time.Millisecond {
+	// One window, not two: the failing launch must not go on to ask health on a
+	// port no handshake named. The slack is the signal to the sidecar: a
+	// sidecar that exits takes milliseconds, except under the race detector,
+	// where its exit takes about a second.
+	budget := 1500 * time.Millisecond
+	if raceDetector {
+		budget = 4 * time.Second
+	}
+	if elapsed > budget {
 		t.Fatalf("a handshake-less launch took %s to fail with a %s timeout, so it waited twice", elapsed, s.ReadyTimeout)
 	}
 	if !strings.Contains(restarting.Reason, "handshake") {
@@ -628,13 +650,19 @@ func TestKernelSupervisorSurvivesASlowOnStateCallback(t *testing.T) {
 	}
 }
 
-// OnReady must not fire for a sidecar a Stop already stopped. The case that
-// matters is a stop that lands while the health check is still running.
+// A sidecar a Stop already stopped must not be published as running. The case
+// that matters is a stop that lands while the health check is still running:
+// the launch answers after it, and its answer is stale.
 func TestKernelSupervisorDoesNotAnnounceAStoppedSidecar(t *testing.T) {
 	w := newWatch()
 	s := w.supervisor(helperSpawn(t, "GO_KERNEL_SLOW_HEALTH_MS=1500"))
 	var announced atomic.Int32
-	s.OnReady = func(KernelState, string) { announced.Add(1) }
+	s.OnState = func(st KernelState) {
+		if st.Status == KernelRunning {
+			announced.Add(1)
+		}
+		w.states <- st
+	}
 	s.Start()
 	// Stop while the launcher is still asking health.
 	time.Sleep(300 * time.Millisecond)
@@ -650,7 +678,7 @@ func TestKernelSupervisorDoesNotAnnounceAStoppedSidecar(t *testing.T) {
 	}
 	time.Sleep(2 * time.Second)
 	if got := announced.Load(); got != 0 {
-		t.Fatalf("OnReady fired %d times for a sidecar Stop had already stopped", got)
+		t.Fatalf("a stopped sidecar was published running %d times", got)
 	}
 	if st := s.State(); st.Status != KernelStopped {
 		t.Fatalf("state after Stop: %+v", st)
@@ -685,5 +713,33 @@ func TestOnStateSurvivesStopAndStart(t *testing.T) {
 	restarting := w.waitState(t, KernelRestarting)
 	if restarting.Status != KernelRestarting {
 		t.Fatalf("state after a restart: %+v", restarting)
+	}
+}
+
+// A Supervisor that was closed publishes nothing more: Close ends the one
+// publisher for good, and a later state change must not start a second one that
+// nothing would ever end.
+func TestAClosedSupervisorStartsNoPublisher(t *testing.T) {
+	var calls atomic.Int32
+	s := &KernelSupervisor{OnState: func(KernelState) { calls.Add(1) }}
+	s.mu.Lock()
+	s.setLocked(KernelState{Status: KernelStarting})
+	s.mu.Unlock()
+	closeDeadline := time.Now().Add(5 * time.Second)
+	for calls.Load() == 0 && time.Now().Before(closeDeadline) {
+		time.Sleep(time.Millisecond)
+	}
+	s.Close()
+	// Close hands the current state over as it leaves; that one is not a state
+	// published after closing.
+	time.Sleep(50 * time.Millisecond)
+	before := calls.Load()
+	s.Stop()
+	s.mu.Lock()
+	s.setLocked(KernelState{Status: KernelRunning})
+	s.mu.Unlock()
+	time.Sleep(50 * time.Millisecond)
+	if got := calls.Load(); got != before {
+		t.Fatalf("a closed Supervisor published %d more states", got-before)
 	}
 }

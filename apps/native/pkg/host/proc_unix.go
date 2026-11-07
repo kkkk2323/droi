@@ -3,14 +3,15 @@
 package host
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
 	"time"
 )
 
 // prepareProcess puts the sidecar in a process group of its own, so the
-// processes it starts — a shell, a background job — can be signalled with it
-// and cannot outlive it.
+// processes it starts — a shell, a background job — are signalled with it and
+// cannot outlive it.
 func prepareProcess(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -30,36 +31,49 @@ func signalProcess(cmd *exec.Cmd) {
 	}
 }
 
-// killProcess ends the sidecar's whole group and answers once the group is
-// gone.
-//
-// The group, not the process: a shell or a background process the sidecar
-// started keeps its own life, and one that ignores the signal outlives its
-// parent. A group whose leader has exited is still there to kill, which is the
-// case a stop that gave up on waiting reaches.
-//
-// It waits for the group to disappear rather than firing and returning: the
-// window says "stopped", and a background process still writing is the thing
-// that makes that untrue. A group that will not go within graceGroup is left to
-// the operating system, and the wait is bounded so a stop cannot hang on it.
-func killProcess(cmd *exec.Cmd) {
+// newProcessTree is the sidecar's process group: a group of its own, named by
+// the sidecar's pid, which outlives the sidecar and holds what it started.
+func newProcessTree(cmd *exec.Cmd) (processTree, error) {
 	if cmd.Process == nil {
-		return
+		return nil, errors.New("no process")
 	}
-	pid := cmd.Process.Pid
-	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
-		_ = cmd.Process.Kill()
-	}
+	return &groupTree{pid: cmd.Process.Pid}, nil
+}
+
+// groupTree is one generation's process group.
+type groupTree struct{ pid int }
+
+// kill ends the group and answers once no member is left, bounded by
+// graceGroup.
+//
+// Only ESRCH means "gone": EPERM says a process is there that this user may not
+// signal, which is not a reason to claim the tree ended. The bound is what a
+// process in an uninterruptible call costs.
+func (g *groupTree) kill() {
+	_ = syscall.Kill(-g.pid, syscall.SIGKILL)
 	for deadline := time.Now().Add(graceGroup); time.Now().Before(deadline); {
-		// Signal 0 asks whether any process of the group is left.
-		if err := syscall.Kill(-pid, 0); err != nil {
+		// Ask again while anyone is left: a process can enter the group between
+		// the signal and this check — a shell that was mid-fork — and one
+		// SIGKILL is then not enough.
+		_ = syscall.Kill(-g.pid, syscall.SIGKILL)
+		err := syscall.Kill(-g.pid, 0)
+		if err == nil {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		if errors.Is(err, syscall.ESRCH) {
 			return
 		}
-		time.Sleep(10 * time.Millisecond)
+		// EPERM and anything else: not proof of absence, but not a reason to
+		// spin either.
+		return
 	}
 }
 
+// close releases nothing: a process group has no handle.
+func (g *groupTree) close() {}
+
 // graceGroup bounds how long a kill waits for the group to disappear. A
 // process that was just killed is reaped in milliseconds; one stuck in an
-// uninterruptible call is not, and the stop must not wait for it.
+// uninterruptible call is not, and a stop must not wait for it.
 const graceGroup = time.Second

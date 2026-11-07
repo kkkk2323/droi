@@ -479,15 +479,23 @@ func (c *Client) write(caller context.Context, method string, b []byte) error {
 // rebuilt:
 //
 //   - A whole view (conversation.view with kind "value" and a value) is the
-//     state of a conversation. The newest one supersedes an earlier one the
-//     reader has not taken yet, so a reader that fell behind sees the latest
-//     state instead of every intermediate one, and such a push may be dropped
-//     when the queue is full.
+//     state of a conversation, and the newest one supersedes an earlier one the
+//     reader has not taken yet — so a reader that fell behind sees the latest
+//     state instead of every intermediate one.
 //   - Everything else is a step in a sequence: a delta push's ops only make
 //     sense applied in order, a "full" push is what resets a delta reader's
 //     state, and an approval or an ask that never arrives leaves a session
 //     waiting forever. These are never merged, never reordered and never
 //     dropped for want of room.
+//
+// A full queue gives way to a notification that must arrive by spending a whole
+// view — the oldest one, which the conversation's next push or a fresh
+// conversation.open rebuilds. A whole view is decided by the last word, not the
+// cap: it is appended even when the queue is past it, because losing the final
+// state of an idle conversation leaves a reader stale with nothing to trigger a
+// rebuild. So the queue can hold up to one final state per conversation beyond
+// its cap, and a conversation's next whole view replaces its own queued one
+// instead of adding another.
 func (c *Client) enqueue(n Notification) {
 	c.queuedMu.Lock()
 	if _, superseded := c.supersedesLocked(n); superseded {
@@ -495,21 +503,10 @@ func (c *Client) enqueue(n Notification) {
 		c.signal()
 		return
 	}
-	if len(c.queued) >= c.opts.maxQueuedNotes() {
-		switch {
-		case c.dropRebuildableLocked():
-			// Room made with a whole view the reader can rebuild.
-		case isWholeView(n):
-			// Nothing rebuildable to trade and this one is rebuildable: drop
-			// it rather than one that cannot be rebuilt.
-			c.lostLocked(n.Method)
-			c.queuedMu.Unlock()
-			return
-		default:
-			// Nothing to trade and this one must arrive: the queue grows past
-			// its cap rather than lose it.
-			c.overLocked()
-		}
+	if len(c.queued) >= c.opts.maxQueuedNotes() && !c.dropRebuildableLocked() {
+		// Nothing rebuildable to trade: a must-arrive notification and a whole
+		// view both grow the queue past its cap rather than be lost.
+		c.overLocked()
 	}
 	c.queued = append(c.queued, n)
 	c.queuedMu.Unlock()
@@ -577,25 +574,26 @@ func (c *Client) dropRebuildableLocked() bool {
 	return false
 }
 
-// lostLocked counts a notification the reader will never see. It is always a
-// whole view, which the next push or a fresh conversation.open rebuilds.
+// lostLocked counts a whole view the reader will never see because a
+// notification that must arrive took its room. The conversation's next push or
+// a fresh conversation.open rebuilds it.
 //
 // The holder must hold c.queuedMu.
 func (c *Client) lostLocked(method string) {
 	c.lost++
 	if c.lost == 1 || c.lost%1000 == 0 {
-		c.logf("kernel: a slow reader lost %d notifications so far (last: %s); views rebuild on the next push or open", c.lost, method)
+		c.logf("kernel: a slow reader traded %d whole views for notifications that must arrive (last: %s); a view rebuilds on the conversation's next push or open", c.lost, method)
 	}
 }
 
-// overLocked counts a must-arrive notification that had to push the queue past
-// its cap.
+// overLocked counts a notification that had to push the queue past its cap:
+// one that must arrive, or a whole view with nothing to trade for its room.
 //
 // The holder must hold c.queuedMu.
 func (c *Client) overLocked() {
 	c.over++
 	if c.over == 1 || c.over%1000 == 0 {
-		c.logf("kernel: the reader is %d notifications behind and the queue holds only must-arrive ones: it grew past its cap of %d %d times", len(c.queued), c.opts.maxQueuedNotes(), c.over)
+		c.logf("kernel: the reader is %d notifications behind and nothing in the queue can be traded: it grew past its cap of %d %d times", len(c.queued), c.opts.maxQueuedNotes(), c.over)
 	}
 }
 
