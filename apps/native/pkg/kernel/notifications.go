@@ -83,8 +83,9 @@ type ApprovalRequested struct {
 	// Options are the answers Kernel offers, in ApprovalRespondParams'
 	// spelling.
 	Options []ApprovalOption `json:"options,omitempty"`
-	// ScopeHint is what kind of memory an "always" answer takes: "ask",
-	// "file" or "tool".
+	// ScopeHint is the autonomy level that made this call ask ("ask",
+	// "edits" or "safe"), so a card can say why it is asking. What an "always"
+	// answer remembers is each option's Scope.
 	ScopeHint string `json:"scopeHint,omitempty"`
 }
 
@@ -101,7 +102,9 @@ type ApprovalResolved struct {
 	RequestID string `json:"requestId"`
 	ID        ID     `json:"id"`
 	Outcome   string `json:"outcome"`
-	// By says which Client answered, when Kernel tells.
+	// By is the X-Droi-Client of the connection that answered ("window",
+	// "phone", "host"), "unknown" for one that sent none, and "kernel" for a
+	// request the kernel settled itself (a timeout, a restart).
 	By string `json:"by,omitempty"`
 }
 
@@ -115,6 +118,10 @@ type AskRequested struct {
 	// makes it required and non-empty, because a question without one cannot
 	// be answered well.
 	Context string `json:"context"`
+	// Blocking says the run waits for the answer, so the card takes the
+	// composer's place; a non-blocking ask sits above it and its answer arrives
+	// as the next turn.
+	Blocking bool `json:"blocking,omitempty"`
 }
 
 // Question is one question of an ask.requested.

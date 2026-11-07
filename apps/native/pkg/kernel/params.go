@@ -588,6 +588,9 @@ type HarnessInfo struct {
 	Capabilities Capabilities    `json:"capabilities"`
 	Extensions   []ExtensionInfo `json:"extensions,omitempty"`
 	Limits       Limits          `json:"limits,omitempty"`
+	// Policy is the default approval policy in effect; nil until the Host has
+	// sent one, and from a build without approvals.
+	Policy *Policy `json:"policy,omitempty"`
 }
 
 // Limits are Kernel's own bounds, which a client reads rather than assumes.
@@ -689,8 +692,10 @@ type Capabilities struct {
 	MCP       bool `json:"mcp"`
 	Skills    bool `json:"skills"`
 	Codemode  bool `json:"codemode"`
-	// Models says model.complete answers; false in M1.
+	// Models says model.complete answers.
 	Models bool `json:"models"`
+	// Resources says resources.list answers.
+	Resources bool `json:"resources"`
 }
 
 // ExtensionInfo is one extension this build ships.
@@ -747,13 +752,24 @@ type ShutdownResult struct {
 // ShutdownClosing is the status kernel.shutdown answers.
 const ShutdownClosing = "closing"
 
-// Policy and its rules: what a client sends, and what the kernel keeps. The policy lives in
-// the Host; the kernel caches a snapshot and says what it decided with policy.changed.
+// Policy is a whole policy, as the kernel keeps it and reports it: in
+// policy.changed, conversation.open and harness.info. The policy lives in the
+// Host; the kernel caches a snapshot and says what it decided with
+// policy.changed.
 type Policy struct {
+	// Autonomy is "ask", "edits", "safe" or "all".
+	Autonomy string `json:"autonomy"`
+	// Rules are the exceptions: a rule allows a tool, or a file, without asking.
+	Rules []PolicyRule `json:"rules"`
+}
+
+// PolicyChange is what policy.set sends: a field left nil stays as it was.
+// Rules, when set, replace the whole list, and an empty list clears it.
+type PolicyChange struct {
 	// Autonomy is "ask", "edits", "safe" or "all"; "" leaves the level as it was.
 	Autonomy string `json:"autonomy,omitempty"`
-	// Rules replace the whole list. A rule allows a tool, or a file, without asking.
-	Rules []PolicyRule `json:"rules,omitempty"`
+	// Rules is nil to keep the list, or the new list: &[]PolicyRule{} clears it.
+	Rules *[]PolicyRule `json:"rules,omitempty"`
 }
 
 // PolicyRule is one exception to the autonomy level.
@@ -769,8 +785,8 @@ type PolicyRule struct {
 // PolicySetParams is policy.set's params. A missing ID is the default policy, a
 // number is that conversation's own.
 type PolicySetParams struct {
-	ID     *ID    `json:"id,omitempty"`
-	Policy Policy `json:"policy"`
+	ID     *ID          `json:"id,omitempty"`
+	Policy PolicyChange `json:"policy"`
 }
 
 // PolicyResult is the policy in effect, which conversation.open also answers.
@@ -821,15 +837,15 @@ type PendingRequest struct {
 	Kind      string `json:"kind"`
 	RequestID string `json:"requestId"`
 	ID        ID     `json:"id"`
-	// An approval's fields: the tool, its arguments, the answers it offers and the
-	// level in force.
+	// An approval's fields, as ApprovalRequested has them.
 	Tool      string           `json:"tool,omitempty"`
 	Args      json.RawMessage  `json:"args,omitempty"`
 	Options   []ApprovalOption `json:"options,omitempty"`
 	ScopeHint string           `json:"scopeHint,omitempty"`
-	// An ask's fields: the questions, and the sentence that says what they are for.
+	// An ask's fields, as AskRequested has them.
 	Questions []Question `json:"questions,omitempty"`
 	Context   string     `json:"context,omitempty"`
+	Blocking  bool       `json:"blocking,omitempty"`
 }
 
 // The two kinds a PendingRequest can be.

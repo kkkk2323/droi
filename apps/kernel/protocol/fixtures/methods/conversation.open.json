@@ -148,19 +148,36 @@
               }
             },
             {
-              "id": "proceed_always_file",
-              "label": "Always allow this file",
-              "scope": {
-                "path": "/Users/clive/dev/droi/build"
-              }
-            },
-            {
               "id": "cancel",
               "label": "Cancel",
               "scope": null
             }
           ],
           "scopeHint": "ask"
+        },
+        {
+          "kind": "ask",
+          "requestId": "req-ask-77",
+          "id": 7,
+          "questions": [
+            {
+              "questionId": "q1",
+              "question": "The suite cannot reach the network. What should the new test do?",
+              "options": [
+                {
+                  "id": "skip",
+                  "label": "Skip when offline"
+                },
+                {
+                  "id": "fail",
+                  "label": "Fail"
+                }
+              ],
+              "multiSelect": false
+            }
+          ],
+          "context": "Asked while running the test command.",
+          "blocking": true
         }
       ]
     }

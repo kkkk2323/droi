@@ -163,8 +163,7 @@ JSON-RPC 2.0.
 
 The Host stops a kernel two ways:
 
-- **SIGTERM**, then SIGKILL after 12 s (macOS, Linux). This is how `process.stop` would do it, and it
-  closes the harness and then the storage.
+- **SIGTERM**, then SIGKILL after 12 s (macOS, Linux). It closes the harness and then the storage.
 - **`kernel.shutdown`**, over the WebSocket that already carried the token. Windows has no SIGTERM a
   parent can send: a supervisor can only `TerminateProcess`, which would leave `storage.close()` unrun
   and the SQLite file to be recovered on the next start. So the Host asks instead.
@@ -394,16 +393,16 @@ the same query and limit. `conversation.list`'s cursor is the kernel's own
 31 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
-| Method                 | Params                                                                        | Result                                                           | Capability      | M1  |
-| ---------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------- | --- |
+| Method                 | Params                                                                        | Result                                                                    | Capability      | M1  |
+| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------- | --- |
 | `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?}` | —               | yes |
-| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                         | `conversations` | yes |
-| `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                             | `conversations` | yes |
-| `conversation.open`    | `{id, window?, subscribe?}`                                                   | `{view, policy?, pending[]?}`                                                         | `conversations` | yes |
-| `conversation.unwatch` | `{id}`                                                                        | `{}`                                                             | `conversations` | yes |
-| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                 | `conversations` | yes |
-| `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                             | `conversations` | yes |
-| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?}`               | `conversations` | no  |
+| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                  | `conversations` | yes |
+| `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                      | `conversations` | yes |
+| `conversation.open`    | `{id, window?, subscribe?}`                                                   | `{view, policy?, pending[]?}`                                             | `conversations` | yes |
+| `conversation.unwatch` | `{id}`                                                                        | `{}`                                                                      | `conversations` | yes |
+| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                          | `conversations` | yes |
+| `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                                      | `conversations` | yes |
+| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?}`                        | `conversations` | no  |
 
 The Kernel reports only what Pi keeps: `status`, `entry` and `answer`, plus `reason` for one that ended without
 an answer. It does not report where such a turn stopped, because it cannot: Pi 1.5.0 stores no link from a
@@ -455,6 +454,15 @@ M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
 methods and the two `*.respond` methods are `-32009` until their capability is true. `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
+
+### `process.stop`
+
+`process.stop` ends a background process and everything it started, and answers `{status}`: `stopped`, or
+`gone` when there was nothing left to stop. On macOS and Linux the kernel signals the process group (SIGTERM,
+then SIGKILL after 5 s). On Windows there is no group to signal, so it runs `taskkill /T /F` — but only while
+this run of the kernel still holds the child's handle, which keeps the PID from naming another program. A
+process the kernel no longer holds (it was started before a restart) answers `gone`: the Host's Job Object
+already ended it when the old kernel went.
 
 ### The list, and what it leaves out
 
@@ -773,6 +781,16 @@ and the one after a reconnect), and keeps them current with the two notification
 Answering is unchanged: `approval.respond` / `ask.respond` with the `requestId`, first answer wins, a later
 one is `-32007`.
 
+Three fields a card needs:
+
+- `scopeHint` on an approval is the autonomy level that made the call ask (`ask`, `edits` or `safe`), so a
+  card can say why it is asking. What an "always" answer remembers is each option's own `scope`.
+- `blocking` on an ask says the run waits for the answer: the card takes the composer's place. A
+  non-blocking ask sits above the composer and its answer arrives as the next turn.
+- `by` on `approval.resolved` / `ask.resolved` is the `X-Droi-Client` header of the connection that
+  answered (`window`, `phone`, `host`), `unknown` for a connection that sent none, and `kernel` for a
+  request the kernel settled itself (its ten-minute timeout, or a restart).
+
 ### MCP servers, and the ones a repository brings
 
 `mcp.list` answers every configured server with `{name, transport, status, enabled, tools[], error}`.
@@ -823,9 +841,13 @@ a user who wants to be asked about everything chooses `ask`.
 The policy lives in the Host. The kernel keeps a snapshot of it, and answers nothing from an empty one:
 
 - `policy.set` fills the snapshot: the default when `id` is absent, that conversation's own when it is.
-  `autonomy` left out changes nothing; `rules` replaces the whole list.
+  Each field is a change: `autonomy` left out keeps the level; `rules` left out keeps the list, `rules: []`
+  clears it, and any other list replaces it whole. The answer, and every `policy.changed`, is the whole
+  snapshot, with both fields always present.
 - A rule is `{"kind":"tool","tool":"bash"}` or `{"kind":"file","path":"/abs/path"}`; a matching rule allows
-  without asking.
+  without asking. A `file` rule matches a tool whose arguments name that file (`read`, `edit`, `write`);
+  a command names no file the kernel can trust, so an approval for `bash` or `powershell` never offers
+  `proceed_always_file`, only once, always this tool, and cancel.
 - Every change to the snapshot — this call, or a "always allow this file" answer — broadcasts one
   `policy.changed` carrying the **whole** snapshot for that scope. That notification is the only record: a
   Host stores what it hears and never pushes it back.
@@ -877,7 +899,7 @@ commands (a new conversation, a compaction, a model change) never reach the kern
 | `conversation.busy`  | `{id, run, runFailure?}` — `run` is Pi's `LiveRun` or `null`                                                                                                                                                         |
 | `approval.requested` | `{requestId, id, tool, args, options[], scopeHint?}`                                                                                                                                                                 |
 | `approval.resolved`  | `{requestId, id, outcome, by}`                                                                                                                                                                                       |
-| `ask.requested`      | `{requestId, id, questions[], context}` — `context` is required and non-empty: the sentence that says what the answer is for                                                                                         |
+| `ask.requested`      | `{requestId, id, questions[], context, blocking?}` — `context` is required and non-empty: the sentence that says what the answer is for                                                                              |
 | `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                                               |
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |

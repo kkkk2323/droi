@@ -36,7 +36,8 @@
         "mcp": false,
         "skills": false,
         "models": true,
-        "codemode": false
+        "codemode": false,
+        "resources": false
       },
       "providers": [
         {
@@ -81,6 +82,15 @@
         "maxEntriesPerPage": 200,
         "maxConversationsPerPage": 200,
         "maxImportEntriesPerCall": 1000
+      },
+      "policy": {
+        "autonomy": "edits",
+        "rules": [
+          {
+            "kind": "tool",
+            "tool": "bash"
+          }
+        ]
       }
     }
   }

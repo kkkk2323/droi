@@ -254,13 +254,13 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			return err
 		}, CodeUnsupported},
 		{"policy.set", func() error {
-			_, err := c.PolicySet(ctx, PolicySetParams{Policy: Policy{Autonomy: "ask"}})
+			_, err := c.PolicySet(ctx, PolicySetParams{Policy: PolicyChange{Autonomy: "ask"}})
 			return err
-		}, 0},
+		}, CodeUnsupported},
 		{"resources.list", func() error {
 			_, err := c.Resources(ctx, ResourcesListParams{ID: &id})
 			return err
-		}, 0},
+		}, CodeUnsupported},
 		{"model.complete", func() error {
 			// A real answer, not a refusal: the method is built, so its text must be the model's.
 			answer, err := c.ModelComplete(ctx, ModelCompleteParams{Model: model, Input: "say hi"})

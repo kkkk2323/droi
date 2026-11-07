@@ -126,7 +126,7 @@ func TestObserverRecordsEveryMethod(t *testing.T) {
 			return err
 		}},
 		{kernel.MethodPolicySet, func() error {
-			_, err := o.PolicySet(ctx, kernel.PolicySetParams{Policy: kernel.Policy{Autonomy: "ask"}})
+			_, err := o.PolicySet(ctx, kernel.PolicySetParams{Policy: kernel.PolicyChange{Autonomy: "ask"}})
 			return err
 		}},
 		{kernel.MethodResourcesList, func() error {

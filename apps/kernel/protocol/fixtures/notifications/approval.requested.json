@@ -25,13 +25,6 @@
           }
         },
         {
-          "id": "proceed_always_file",
-          "label": "Always allow this file",
-          "scope": {
-            "path": "/Users/clive/dev/droi/build"
-          }
-        },
-        {
           "id": "cancel",
           "label": "Cancel",
           "scope": null

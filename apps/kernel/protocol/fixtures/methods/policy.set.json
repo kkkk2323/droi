@@ -8,11 +8,7 @@
     "params": {
       "id": 7,
       "policy": {
-        "autonomy": "edits",
-        "rules": [
-          { "kind": "tool", "tool": "bash" },
-          { "kind": "file", "path": "/Users/clive/dev/droi/build" }
-        ]
+        "rules": []
       }
     }
   },
@@ -22,10 +18,7 @@
     "result": {
       "policy": {
         "autonomy": "edits",
-        "rules": [
-          { "kind": "tool", "tool": "bash" },
-          { "kind": "file", "path": "/Users/clive/dev/droi/build" }
-        ]
+        "rules": []
       }
     }
   }
