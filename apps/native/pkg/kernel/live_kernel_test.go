@@ -243,9 +243,13 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 		{"mcp.set", func() error {
 			_, err := c.SetMCP(ctx, MCPSetParams{Name: "walk", Server: &MCPServerConfig{Transport: "http", URL: "https://example.invalid/mcp"}})
 			return err
-		}, CodeUnsupported},
-		{"mcp.authorize", func() error { _, err := c.AuthorizeMCP(ctx, MCPAuthorizeParams{Name: "walk"}); return err }, CodeUnsupported},
-		{"mcp.authorize.cancel", func() error { return c.CancelMCPAuthorize(ctx, MCPAuthorizeParams{Name: "walk"}) }, CodeUnsupported},
+		}, 0},
+		// A server nobody configured: signing in to one needs a reachable server, which a walk has none of.
+		{"mcp.authorize", func() error {
+			_, err := c.AuthorizeMCP(ctx, MCPAuthorizeParams{Name: "nobody-configured-this"})
+			return err
+		}, CodeInvalidParams},
+		{"mcp.authorize.cancel", func() error { return c.CancelMCPAuthorize(ctx, MCPAuthorizeParams{Name: "walk"}) }, 0},
 		{"skills.list", func() error { _, err := c.Skills(ctx); return err }, 0},
 		{"skills.setDisabled", func() error {
 			_, err := c.SetSkillDisabled(ctx, SkillsSetDisabledParams{Name: "walk", Disabled: true})
@@ -254,7 +258,7 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 		{"policy.set", func() error {
 			_, err := c.PolicySet(ctx, PolicySetParams{Policy: PolicyChange{Autonomy: "ask"}})
 			return err
-		}, CodeUnsupported},
+		}, 0},
 		{"resources.list", func() error {
 			_, err := c.Resources(ctx, ResourcesListParams{ID: &id})
 			return err
