@@ -86,11 +86,20 @@ ported: that adapter rewrites Claude Code's compaction, which Droi does not send
 
 ## What comes later
 
-4E and 4H of the M4 plan (`shared/design/phased-plan.md` §6): the Anthropic
-tool schema wrapping, and the rest of the golden cases. Model display
+4H of the M4 plan (`shared/design/phased-plan.md` §6): the rest of the golden
+cases. Model display
 names, limits and prices come with 4F, the usage windows with 4G.
 
 ## Deliberate differences
+
+- **No Anthropic tool schema wrapping here** (`anthropic-tools.mjs`,
+  `schema.test.mjs`). pi-ai's Anthropic adapter sends a tool's root
+  `properties` and `required` only, so a root `anyOf` never reaches the proxy
+  to be wrapped; and on the OpenAI routes it arrives unwrapped and is
+  refused. The Kernel wraps such an MCP tool's schema when it offers the tool
+  (`apps/kernel/src/mcp/wrap.ts`, its `$ref` relocation ported from
+  `anthropic-tools.mjs`), which serves every route. droid's own requests never
+  had the problem.
 
 - **A body that needs no change comes back byte for byte.** The reference
   re-serializes a Gemini body even when it only deletes a key, and a Responses

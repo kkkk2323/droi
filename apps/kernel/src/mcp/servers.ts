@@ -29,6 +29,7 @@ import {
   type RawEntry,
   type ServerConfig,
 } from './config.ts'
+import { unwrapArguments, wrapToolSchema } from './wrap.ts'
 
 export type ServerStatus = 'connected' | 'connecting' | 'failed' | 'disabled' | 'untrusted'
 
@@ -506,17 +507,23 @@ export class McpServers {
         tool.annotations?.readOnlyHint === true ? 'read' : 'exec',
       )
       server.classified.push(name)
+      const { parameters, wrapped } = wrapToolSchema(tool.inputSchema ?? { type: 'object' })
       tools.push(
         defineTool({
           name,
           description: tool.description ?? tool.title ?? tool.name,
-          parameters: (tool.inputSchema ?? { type: 'object' }) as never,
+          parameters: parameters as never,
           replay: 'unsafe',
           async execute(args, _api, context) {
-            const result = await client.callTool(tool.name, args as Record<string, unknown>, {
-              timeoutMs: CALL_TIMEOUT_MS,
-              ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
-            })
+            const input = args as Record<string, unknown>
+            const result = await client.callTool(
+              tool.name,
+              wrapped ? unwrapArguments(input) : input,
+              {
+                timeoutMs: CALL_TIMEOUT_MS,
+                ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
+              },
+            )
             return {
               output: toLlmContent(result) as never,
               ...(result.isError === true ? { isError: true } : {}),

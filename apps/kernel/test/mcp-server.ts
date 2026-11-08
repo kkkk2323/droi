@@ -1,6 +1,7 @@
 /**
- * A stdio MCP server for the tests: `echo` (read-only) and `touch`. With MARKER set it appends its pid to that
- * file when it starts, so a test can tell whether it ran and whether it is still running.
+ * A stdio MCP server for the tests: `echo` (read-only) and `touch`, and with ANYOF set `pick`, whose schema is an
+ * anyOf at its root. With MARKER set it appends its pid to that file when it starts, so a test can tell whether it
+ * ran and whether it is still running.
  */
 import { appendFileSync, writeFileSync } from 'node:fs'
 
@@ -19,6 +20,28 @@ const tools = [
     description: 'Create a file.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
+  ...(process.env['ANYOF'] === undefined
+    ? []
+    : [
+        {
+          name: 'pick',
+          description: 'View or create a task.',
+          inputSchema: {
+            anyOf: [
+              {
+                type: 'object',
+                properties: { mode: { const: 'view' }, id: { type: 'string' } },
+                required: ['mode', 'id'],
+              },
+              {
+                type: 'object',
+                properties: { mode: { const: 'create' }, name: { type: 'string' } },
+                required: ['mode', 'name'],
+              },
+            ],
+          },
+        },
+      ]),
 ]
 
 function answer(id: unknown, result: unknown): void {
@@ -53,6 +76,10 @@ function handle(message: {
       const args = (message.params?.['arguments'] ?? {}) as Record<string, unknown>
       if (name === 'echo') {
         answer(message.id, { content: [{ type: 'text', text: `echo: ${String(args['text'])}` }] })
+        return
+      }
+      if (name === 'pick') {
+        answer(message.id, { content: [{ type: 'text', text: `pick: ${JSON.stringify(args)}` }] })
         return
       }
       if (name === 'touch') {
