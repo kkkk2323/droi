@@ -194,6 +194,12 @@ func (o *Observer) Harness(ctx context.Context) (kernel.HarnessInfo, error) {
 	return o.client.Harness(ctx)
 }
 
+// HarnessConfigure is harness.configure.
+func (o *Observer) HarnessConfigure(ctx context.Context, p kernel.HarnessConfigureParams) error {
+	o.record(kernel.MethodHarnessConfigure, p)
+	return o.client.HarnessConfigure(ctx, p)
+}
+
 // Create is conversation.create.
 func (o *Observer) Create(ctx context.Context, p kernel.CreateParams) (kernel.CreateResult, error) {
 	o.record(kernel.MethodConversationCreate, p)
@@ -395,7 +401,7 @@ func (o *Observer) record(method string, params any) {
 // methods is every method the Observer forwards, for the package's own test to compare with the contract.
 func (o *Observer) methods() []string {
 	return []string{
-		kernel.MethodHarnessInfo, kernel.MethodConversationCreate, kernel.MethodConversationList,
+		kernel.MethodHarnessInfo, kernel.MethodHarnessConfigure, kernel.MethodConversationCreate, kernel.MethodConversationList,
 		kernel.MethodConversationOpen, kernel.MethodConversationUnwatch, kernel.MethodConversationSubmit,
 		kernel.MethodConversationAbort, kernel.MethodSubmissionAbort, kernel.MethodSubmissionGet,
 		kernel.MethodConversationConfig, kernel.MethodConversationCompact, kernel.MethodConversationFork,
