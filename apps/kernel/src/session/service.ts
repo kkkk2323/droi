@@ -42,6 +42,9 @@ import { completeModel } from '../completion.ts'
 import { repoRootOf } from '../workspace.ts'
 import type { Dispatcher, Connection, Notifier } from '../protocol/server.ts'
 import { ViewWindow, parseMode, parseWindow } from './watch.ts'
+import type { PolicyStore } from '../policy/store.ts'
+import { parsePolicyChange } from '../policy/store.ts'
+import type { Approvals } from '../policy/approvals.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
 export const context: Context = BACKGROUND_CONTEXT
@@ -62,6 +65,10 @@ type BusyState = { run: unknown; runFailure?: unknown }
 
 export type KernelOptions = {
   config: KernelConfig
+  /** The kernel's copy of the Host's approval policy. */
+  policy: PolicyStore
+  /** The calls waiting for a person. */
+  approvals: Approvals
   db: BunSqliteDatabase
   storage: Storage
   harness: Harness
@@ -139,6 +146,11 @@ export class Kernel implements Dispatcher {
     add('index.update', (p) => this.#indexUpdate(p))
     add('kernel.shutdown', () => this.#shutdown())
     add('model.complete', (p) => this.#modelComplete(p))
+    add('policy.set', (p) => this.#policySet(p))
+    add('approval.respond', (p, connection) => {
+      this.#writable()
+      return this.#options.approvals.respond(p, connection.client)
+    })
     // The three readers of M3 answer their shape now, so a client can call the whole surface; every
     // write of M3 is gated, and `gated()` answers it `-32009` while its capability is false.
     const readOnlyAnswer =
@@ -338,6 +350,7 @@ export class Kernel implements Dispatcher {
 
   async close(): Promise<void> {
     this.#closing = true
+    await this.#options.approvals.close()
     for (const live of this.#live.values()) live.detach()
     this.#live.clear()
     this.#tasks?.detach()
@@ -411,6 +424,33 @@ export class Kernel implements Dispatcher {
         this.#options.tools.length === 0
           ? []
           : [{ name: 'coding', tools: this.#options.tools, sections: ['environment', 'cwd'] }],
+      // The default policy as the Host last set it. A viewer judges nothing, so it reports none.
+      ...(() => {
+        const policy = this.#options.config.readOnly
+          ? undefined
+          : this.#options.policy.defaultPolicy()
+        return policy === undefined ? {} : { policy }
+      })(),
+    }
+  }
+
+  /** `policy.set`: the default policy, or one conversation's own, changed and announced whole. */
+  async #policySet(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
+    const id = optionalNumber(params, 'id')
+    const change = parsePolicyChange(params['policy'])
+    if (id !== undefined) await this.#conversation(id)
+    return { policy: this.#options.policy.set(id ?? null, change) }
+  }
+
+  /** What `conversation.open` adds to the view: the policy in effect and the cards still waiting. */
+  #openExtras(id: number): Record<string, unknown> {
+    if (this.#options.config.readOnly) return {}
+    const policy = this.#options.policy.known(id)
+    const pending = this.#options.approvals.pendingFor(id)
+    return {
+      ...(policy === undefined ? {} : { policy }),
+      ...(pending.length === 0 ? {} : { pending }),
     }
   }
 
@@ -868,7 +908,7 @@ export class Kernel implements Dispatcher {
     // subscription no close will ever release, and a watch on a conversation nobody sees.
     if (this.#closing || !connection.open) {
       await watch.stop()
-      return { view }
+      return { view, ...this.#openExtras(id) }
     }
     const pusher = new ViewWindow({
       connection,
@@ -882,7 +922,7 @@ export class Kernel implements Dispatcher {
     await connection.unsubscribe(id)
     if (this.#closing || !connection.open) {
       await watch.stop()
-      return { view }
+      return { view, ...this.#openExtras(id) }
     }
     connection.subscribe(id, async () => {
       pusher.stop()
@@ -901,7 +941,7 @@ export class Kernel implements Dispatcher {
       if (end.kind === 'failed') pusher.fail(end.error)
     })
     await this.track(id)
-    return { view }
+    return { view, ...this.#openExtras(id) }
   }
 
   async #unwatch(params: Record<string, unknown>, connection: Connection): Promise<unknown> {
@@ -1652,10 +1692,8 @@ function normalize(value: unknown): unknown {
  */
 const GATED: Readonly<Record<string, string>> = {
   'model.complete': 'models',
-  'policy.set': 'approvals',
   'resources.list': 'resources',
   'process.stop': 'processes',
-  'approval.respond': 'approvals',
   'ask.respond': 'asks',
   'mcp.set': 'mcp',
   'mcp.authorize': 'mcp',

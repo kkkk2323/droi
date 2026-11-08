@@ -4,6 +4,7 @@ package app
 
 import (
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -63,6 +64,15 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	res, err := c.Create(a.ctx, kernel.CreateParams{Agent: a.newAgent(p.ModelID, string(p.ReasoningEffort)), Cwd: cwd, Kind: kind, RequestID: uuid.NewString()})
 	if err != nil {
 		return "", err
+	}
+	// A level picked on the page is the conversation's own, set before its first message can run a tool; the
+	// default's is left to follow the default.
+	if level := string(p.AutonomyLevel); level != "" {
+		if dv := a.sessionDefaults(); dv == nil || dv.AutonomyLevel != level {
+			if err := a.setConversationLevel(res.ConversationID, kernelLevel(level)); err != nil {
+				log.Printf("droi: kernel: the autonomy of conversation %d: %v", res.ConversationID, err)
+			}
+		}
 	}
 	return a.sessionIDOf(res.ConversationID), nil
 }

@@ -61,6 +61,9 @@ type Settings struct {
 	// VisibleOrgsAdded are the organization ids Droi put in droid's
 	// sessionVisibleOrganizationIds, the ones it may take out again.
 	VisibleOrgsAdded []string `json:"visibleOrgsAdded,omitempty"`
+	// ConversationPolicies are what Kernel conversations have of their own approval policy, by conversation id
+	// (kernel_policy.go).
+	ConversationPolicies map[string]ConversationPolicy `json:"conversationPolicies,omitempty"`
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the

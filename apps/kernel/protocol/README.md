@@ -844,11 +844,13 @@ list of rules.
 | `all`    | everything                                                      | nothing                   |
 
 The **destructive list** is matched by command position, never by substring: a line is split on `;`, `&&`,
-`||`, `|`, `&`, `$(`, a backtick and a newline, the leading `VAR=value`, `sudo`, `env`, `command`, `nohup`,
-`time`, `nice`, `stdbuf` and `xargs` are skipped, and the first word — the first two for `git push`,
-`git clean`, `git reset`, `npm publish` and `pip install` — decides. `npm run format` does not ask;
-`sh -c "rm -rf x"` and a pipe into `sh` do. **A command the list does not name does not ask under `safe`**;
-a user who wants to be asked about everything chooses `ask`.
+`||`, `|`, `|&`, `&`, `$(`, a backtick and a newline, the leading `VAR=value`, `env`, `command`, `nohup`,
+`time`, `timeout` (and its duration), `nice`, `stdbuf`, `exec` and `xargs` are skipped with their options,
+and the first word decides (`sudo` itself is on the list). For `git push`, `git clean`, `git reset`,
+`npm publish` and `pip install` the verb decides, found past the program's own options: `git -C repo push`
+asks. `npm run format` does not ask; `sh -c "rm -rf x"`, `bash -lc "…"`, `cmd /c del x`, `find … -delete`,
+`find … -exec rm {} +`, an encoded PowerShell command and a pipe into `sh` do. **A command the list does not
+name does not ask under `safe`**; a user who wants to be asked about everything chooses `ask`.
 
 The policy lives in the Host. The kernel keeps a snapshot of it, and answers nothing from an empty one:
 
@@ -857,12 +859,16 @@ The policy lives in the Host. The kernel keeps a snapshot of it, and answers not
   clears it, and any other list replaces it whole. The answer, and every `policy.changed`, is the whole
   snapshot, with both fields always present.
 - A rule is `{"kind":"tool","tool":"bash"}` or `{"kind":"file","path":"/abs/path"}`; a matching rule allows
-  without asking. A `file` rule matches a tool whose arguments name that file (`read`, `edit`, `write`);
+  without asking. A `file` rule matches a tool whose arguments name that file, or a file under that folder
+  (`read`, `edit`, `write`);
   a command names no file the kernel can trust, so an approval for `bash` or `powershell` never offers
   `proceed_always_file`, only once, always this tool, and cancel.
 - Every change to the snapshot — this call, or a "always allow this file" answer — broadcasts one
   `policy.changed` carrying the **whole** snapshot for that scope. That notification is the only record: a
-  Host stores what it hears and never pushes it back.
+  Host stores what it hears and never pushes it back. A conversation's snapshot carries the default's
+  `autonomy` while it has none of its own, so a Host stores a conversation's `rules` from it, and its level
+  only from a `policy.set` of its own: stored back, the default's level would stay when the default changes.
+- An "always" answer adds its rule to that conversation's own list, never to the default.
 - Before the first `policy.set` arrives, nothing above `ask` runs without asking. It matters after a
   restart: Pi resumes a run on its own, and that can happen before the Host has sent the policy. Thirty
   seconds without one settles the level at `ask`.

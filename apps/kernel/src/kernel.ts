@@ -7,6 +7,9 @@ import { createToolProcesses, type ToolProcesses } from './tool-processes.ts'
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { type KernelConfig } from './config.ts'
 import { codingTools } from './extensions/coding.ts'
+import { approvalExtension } from './extensions/approval.ts'
+import { Approvals } from './policy/approvals.ts'
+import { PolicyStore } from './policy/store.ts'
 import { photonImages } from './images.ts'
 import { Indexer } from './indexer/index.ts'
 import { repoRootOf } from './workspace.ts'
@@ -33,7 +36,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   import: true,
   images: true,
   processes: false,
-  approvals: false,
+  approvals: true,
   asks: false,
   mcp: false,
   skills: false,
@@ -101,8 +104,12 @@ export async function startKernel(
       platform: options.platform,
       images: options.images ?? photonImages(),
     })
+    // Made once the harness is open and before it resumes, so no call runs unjudged.
+    let approvals: Approvals | undefined
+    const approvalHook = approvalExtension(() => approvals)
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
+    registry.install(approvalHook)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -112,7 +119,7 @@ export async function startKernel(
     })
 
     const settings: HarnessSettings = {
-      extensions: [coding.extension, ...(options.extensions ?? [])],
+      extensions: [coding.extension, approvalHook, ...(options.extensions ?? [])],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
       // own, and on Windows each costs about 16 ms, so they stay at Pi's defaults, not faster.
       ...(config.progress === undefined ? {} : { progress: config.progress }),
@@ -186,8 +193,29 @@ export async function startKernel(
     const caughtUp = await indexer.catchUp()
     if (caughtUp > 0) info('index caught up', { entries: caughtUp, watermark: indexer.watermark })
 
+    const policy = new PolicyStore({
+      ...(config.policy === undefined ? {} : { initial: config.policy }),
+      ...(config.policyWaitMs === undefined ? {} : { waitMs: config.policyWaitMs }),
+      onChanged: (id, snapshot) => server?.broadcast('policy.changed', { id, policy: snapshot }),
+    })
+    const opened = harness
+    approvals = new Approvals({
+      harness,
+      policy,
+      notify: (method, payload) => server?.broadcast(method, payload),
+      cwdOf: async (id) => {
+        const conversation = await opened.conversation(id as never, context)
+        return conversation === undefined ? undefined : (await conversation.agent(context)).cwd
+      },
+      ...(config.approvalTimeoutMs === undefined ? {} : { timeoutMs: config.approvalTimeoutMs }),
+      ...(options.platform === undefined ? {} : { platform: options.platform }),
+      context,
+    })
+
     kernel = new Kernel({
       config,
+      policy,
+      approvals,
       db,
       storage,
       harness,

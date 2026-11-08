@@ -81,7 +81,12 @@ func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, works
 		v.takePending(s)
 	}
 	perms, asks := a.ctl.PendingPermissions(v.id), a.ctl.PendingAskUsers(v.id)
-	waits := sessionview.WaitsOnUser(perms, asks)
+	var approvals []kernel.PendingRequest
+	if s.State != nil {
+		approvals = s.State.Approvals()
+	}
+	prompts := sessionview.WaitsOnUser(perms, asks)
+	waits := prompts || len(approvals) > 0
 	running := s.Running || v.Compacting()
 	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
@@ -97,7 +102,12 @@ func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, works
 		}
 		v.shelf(c, s)
 		if waits {
-			v.Prompts(c, perms, asks)
+			if len(approvals) > 0 {
+				v.ApprovalCards(c, approvals)
+			}
+			if prompts {
+				v.Prompts(c, perms, asks)
+			}
 			// The prompt takes the focus; the composer gets it back after.
 			v.focused = false
 		} else {

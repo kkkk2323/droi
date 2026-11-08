@@ -141,6 +141,14 @@ func (k *kernelConn) StopProcess(ctx context.Context, p kernel.StopProcessParams
 	return c.StopProcess(ctx, p)
 }
 
+func (k *kernelConn) RespondApproval(ctx context.Context, p kernel.ApprovalRespondParams) (kernel.Status, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.Status{}, err
+	}
+	return c.RespondApproval(ctx, p)
+}
+
 func (k *kernelConn) UpdateIndex(ctx context.Context, p kernel.IndexUpdateParams) error {
 	c, err := k.client()
 	if err != nil {
@@ -180,6 +188,17 @@ func (a *App) UseKernel(c *kernel.Client, gen int64) {
 	}
 	a.kernel.c, a.kernel.gen = c, gen
 	a.kernel.mu.Unlock()
+	// The approvals asked on the connection before went with it: a new Kernel asks again for a call it still makes.
+	waiting := string(protocol.DroidWorkingStateWaitingForToolConfirmation)
+	a.mu.Lock()
+	for id := range a.approvals {
+		if a.busy[id] == waiting {
+			a.busy[id] = string(protocol.DroidWorkingStateStreamingAssistantMessage)
+		}
+	}
+	a.approvals = nil
+	a.mu.Unlock()
+	go a.pushPolicy(c, gen)
 	go a.pumpKernel(c, gen)
 	go func() { _ = a.sessions.Reopen(a.ctx, &a.kernel, gen) }()
 	go a.readModels(c, gen)
@@ -235,20 +254,43 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				if n.Decode(&changed) == nil {
 					a.applyIndexChanged(changed)
 				}
+			case kernel.NotifyApprovalRequested:
+				var req kernel.ApprovalRequested
+				if n.Decode(&req) == nil {
+					a.sessions.ApplyApproval(gen, req)
+					a.awaitApproval(req.ID, req.RequestID, true)
+				}
+			case kernel.NotifyApprovalResolved:
+				var res kernel.ApprovalResolved
+				if n.Decode(&res) == nil {
+					a.sessions.ApplyResolved(gen, res)
+					a.awaitApproval(res.ID, res.RequestID, false)
+				}
+			case kernel.NotifyPolicyChanged:
+				var changed kernel.PolicyChanged
+				if n.Decode(&changed) == nil {
+					a.policyChanged(changed)
+				}
 			}
 		}
 	}
 }
 
 // alertBusy raises the alert a conversation's run calls for when it ends, as the Daemon's working states do: Kernel
-// says busy and idle, and nothing finer until approvals and questions (M3).
+// says busy and idle, and awaitApproval marks the run that waits on a card.
 func (a *App) alertBusy(n kernel.BusyNotification) {
 	id := a.sessionIDOf(n.ID)
 	state := string(protocol.DroidWorkingStateIdle)
-	if n.Busy() {
+	a.mu.Lock()
+	switch {
+	case !n.Busy():
+		delete(a.approvals, id)
+	case len(a.approvals[id]) > 0:
+		// The approval can be heard before the run it belongs to: the two come on queues of their own.
+		state = string(protocol.DroidWorkingStateWaitingForToolConfirmation)
+	default:
 		state = string(protocol.DroidWorkingStateStreamingAssistantMessage)
 	}
-	a.mu.Lock()
 	a.busy[id] = state
 	// A run of a conversation the list does not have yet: one this window or another just made, or an
 	// Automation's. Read the list for it once; one Kernel leaves out of the list (a subagent's) stays out.

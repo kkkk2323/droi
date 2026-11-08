@@ -22,6 +22,8 @@ type Defaults struct {
 	// Update runs fn on the UI thread and draws; it is called from any
 	// goroutine.
 	Update func(fn func())
+	// Changed, optional, hears the defaults each time a read or a save changes them, from any goroutine.
+	Changed func(defaults.View)
 
 	mu     sync.Mutex
 	view   *defaults.View
@@ -68,10 +70,14 @@ func (d *Defaults) Get() *defaults.View {
 			_ = json.Unmarshal(b, &raw)
 			view := defaults.ToSessionDefaults(raw)
 			d.mu.Lock()
-			if d.saves == saves && d.saving == 0 {
+			took := d.saves == saves && d.saving == 0
+			if took {
 				d.view = &view
 			}
 			d.mu.Unlock()
+			if took && d.Changed != nil {
+				d.Changed(view)
+			}
 			d.Update(func() {})
 		}()
 	}
@@ -97,6 +103,9 @@ func (d *Defaults) Save(dv defaults.View, p defaults.Patch, failed func(error)) 
 	d.saves++
 	d.saving++
 	d.mu.Unlock()
+	if d.Changed != nil {
+		d.Changed(view)
+	}
 	go func() {
 		cl, err := d.Controller.Client()
 		if err == nil {

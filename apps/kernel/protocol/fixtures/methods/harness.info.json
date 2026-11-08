@@ -31,7 +31,7 @@
         "import": true,
         "images": true,
         "processes": false,
-        "approvals": false,
+        "approvals": true,
         "asks": false,
         "mcp": false,
         "skills": false,

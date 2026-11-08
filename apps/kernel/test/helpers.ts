@@ -36,6 +36,8 @@ export function config(dir: string, overrides: Partial<KernelConfig> = {}): Kern
     dataDir: dir,
     readOnly: false,
     providers: [],
+    // Tool calls run without asking unless a test is about asking: most tests are not about approvals.
+    policy: { autonomy: 'all', rules: [] },
     ...overrides,
   }
 }
@@ -88,9 +90,12 @@ export class Client {
   }[] = []
   readonly opened: Promise<void>
 
-  constructor(port: number, token = TOKEN) {
+  constructor(port: number, token = TOKEN, client?: string) {
     this.#ws = new WebSocket(`ws://127.0.0.1:${port}/rpc`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(client === undefined ? {} : { 'X-Droi-Client': client }),
+      },
     } as never)
     this.opened = new Promise<void>((resolve, reject) => {
       this.#ws.addEventListener('open', () => resolve(), { once: true })
