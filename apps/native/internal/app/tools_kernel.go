@@ -64,7 +64,7 @@ func (v *sessionView) loadKernelTools(conv kernel.ID, c *kernel.Client) {
 			ts.kservers = sv.Servers
 			for _, s := range sv.Servers {
 				if s.Status == "connected" {
-					delete(ts.signIn, s.Name)
+					delete(ts.signIn, signInKey(s.RepoRoot, s.Name))
 				}
 			}
 			ts.servers, ts.mcpTools = kernelServers(sv.Servers, ts.signIn)
@@ -104,7 +104,7 @@ func kernelServers(list []kernel.MCPServer, signIn map[string]string) ([]protoco
 		if needsKernelSignIn(s) {
 			yes := true
 			info.RequiresAuth = &yes
-			info.PendingAuthURL = signIn[s.Name]
+			info.PendingAuthURL = signIn[signInKey(s.RepoRoot, s.Name)]
 		}
 		servers = append(servers, info)
 		for _, t := range s.Tools {
@@ -113,6 +113,9 @@ func kernelServers(list []kernel.MCPServer, signIn map[string]string) ([]protoco
 	}
 	return servers, tools
 }
+
+// signInKey names a sign-in as Kernel does: a global server and a repository's of one name are two servers.
+func signInKey(root, name string) string { return root + "\x00" + name }
 
 func needsKernelSignIn(s kernel.MCPServer) bool {
 	return s.Status == "failed" && s.Error != nil && strings.HasPrefix(*s.Error, "authorization required")
@@ -205,7 +208,7 @@ func (v *sessionView) signInKernel(name, root string) {
 			ts.signIn = map[string]string{}
 		}
 		if res.AuthorizationURL != "" {
-			ts.signIn[name] = res.AuthorizationURL
+			ts.signIn[signInKey(root, name)] = res.AuthorizationURL
 		}
 		ts.mu.Unlock()
 		return nil
@@ -215,7 +218,7 @@ func (v *sessionView) signInKernel(name, root string) {
 func (v *sessionView) cancelKernelSignIn(name, root string) {
 	ts := &v.tools
 	ts.mu.Lock()
-	delete(ts.signIn, name)
+	delete(ts.signIn, signInKey(root, name))
 	ts.mu.Unlock()
 	v.kernelCall(name, func(ctx context.Context, c *kernel.Client) error {
 		return c.CancelMCPAuthorize(ctx, kernel.MCPAuthorizeParams{Name: name, RepoRoot: root})
