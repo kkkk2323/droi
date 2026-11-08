@@ -341,6 +341,9 @@ type worktreeDialog struct {
 	repo    string
 	archive []sessions.Summary
 	ignored int
+	// locked is git's reason a worktree of the Host's is locked; gone says its folder is not there.
+	locked string
+	gone   bool
 }
 
 // askArchive opens the dialog for archiving a Session in an ephemeral worktree.
@@ -424,6 +427,9 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 			switch {
 			case !d.checked:
 				k.Text(c, L("Checking current git status..."), 13, 20).Role(ui.RoleStatus).TextColor(t.MutedForeground)
+			case d.inspectErr != "" && d.repo != "":
+				// The Host's own delete is forced: it deletes nothing nobody was shown.
+				warn(L("Could not check this worktree for unsaved work, so Droi does not delete it. Remove it with git worktree remove once you checked it."))
 			case d.inspectErr != "":
 				warn(L("Could not check this worktree for unsaved work. Anything it holds will be deleted with it."))
 			case in != nil:
@@ -439,6 +445,12 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 				}
 				if d.ignored > 0 {
 					parts = append(parts, plural(d.ignored, L("ignored file, such as .env or node_modules"), L("ignored files, such as .env or node_modules")))
+				}
+				if d.locked != "" {
+					warn(L("This worktree is locked (%s); deleting it removes the lock.", d.locked))
+				}
+				if d.gone {
+					k.Text(c, L("Its folder is gone; deleting it takes it off git's list."), 13, 20).TextColor(t.MutedForeground)
 				}
 				if len(parts) > 0 {
 					warn(L("Warning: this worktree has %s.", strings.Join(parts, ", ")))
@@ -479,7 +491,7 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 				if a.smallButton(c, kit.Outline, L("Cancel"), "", d.busy).Clicked() || c.Shortcut(0, ui.KeyEscape) {
 					d.open = false
 				}
-				go_ := a.dangerButton(c, action, d.busy || !d.checked)
+				go_ := a.dangerButton(c, action, d.busy || !d.checked || d.repo != "" && d.inspectErr != "")
 				if go_.Clicked() {
 					d.busy, d.err = true, ""
 					switch {

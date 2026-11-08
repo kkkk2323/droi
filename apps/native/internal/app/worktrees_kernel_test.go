@@ -228,3 +228,82 @@ func TestAWorktreesNameIsItsFirstWords(t *testing.T) {
 		t.Errorf("a long one: %q", got)
 	}
 }
+
+// The Host's delete is forced, so a worktree it could not check is not deleted: the button stays off.
+func TestOnKernelAWorktreeThatCannotBeCheckedIsNotDeleted(t *testing.T) {
+	h := kernelHarness(t)
+	repo := gitRepo(t)
+	tree := filepath.Join(t.TempDir(), "trees", "fix-login")
+	if err := gitutil.AddWorktree(context.Background(), gitutil.AddOptions{Repo: repo, Path: tree, Branch: "droi/fix-login"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "draft.md"), []byte("unsaved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.kernelConversationIn(repo, "Repo work")
+	h.click("Settings")
+	h.click("Worktrees")
+	h.until("the worktree", func() bool { return h.hasText(tree) })
+	h.click("Delete worktree droi/fix-login")
+	h.until("the check", func() bool { return h.a.worktreeAsk.checked })
+	// A check that failed (a slow volume, a repository moved meanwhile): git itself could still remove the worktree.
+	h.a.worktreeAsk.inspect, h.a.worktreeAsk.inspectErr = nil, "timed out"
+	h.frame()
+	h.until("the refusal", func() bool {
+		return h.hasText("Could not check this worktree for unsaved work, so Droi does not delete it.")
+	})
+	h.click("Delete worktree")
+	h.settle()
+	if _, err := os.Stat(filepath.Join(tree, "draft.md")); err != nil {
+		t.Fatalf("the unchecked worktree was deleted: %v", err)
+	}
+}
+
+// A worktree whose folder is gone may still hold commits on its branch only: the dialog says so before the branch
+// can be deleted with it.
+func TestOnKernelAWorktreeWhoseFolderIsGoneSaysWhatItsBranchHolds(t *testing.T) {
+	h := kernelHarness(t)
+	repo := gitRepo(t)
+	tree := filepath.Join(t.TempDir(), "trees", "fix-login")
+	if err := gitutil.AddWorktree(context.Background(), gitutil.AddOptions{Repo: repo, Path: tree, Branch: "droi/fix-login"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.md", "b.md"} {
+		if err := os.WriteFile(filepath.Join(tree, name), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, tree, "add", name)
+		gitIn(t, tree, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", name)
+	}
+	if err := os.RemoveAll(tree); err != nil {
+		t.Fatal(err)
+	}
+	h.kernelConversationIn(repo, "Repo work")
+	h.click("Settings")
+	h.click("Worktrees")
+	h.until("the worktree", func() bool { return h.hasText(tree) && h.hasText("acme-web · 0 sessions · folder missing") })
+	h.click("Delete worktree droi/fix-login")
+	h.until("the branch's commits", func() bool {
+		return h.hasText("Warning: this worktree has 2 commits on no remote.") && h.hasText("Its folder is gone; deleting it takes it off git's list.")
+	})
+	h.click("Delete worktree")
+	h.until("the worktree off the list", func() bool { return h.hasText("No worktrees.") })
+	if !strings.Contains(gitIn(t, repo, "branch", "--list", "droi/fix-login"), "fix-login") {
+		t.Error("the branch went with the worktree though it was not asked to")
+	}
+}
+
+func TestAWorktreeMadeForAConversationThatFailedIsTakenAway(t *testing.T) {
+	repo := gitRepo(t)
+	tree := filepath.Join(t.TempDir(), "trees", "x")
+	if err := gitutil.AddWorktree(context.Background(), gitutil.AddOptions{Repo: repo, Path: tree, Branch: "droi/x"}); err != nil {
+		t.Fatal(err)
+	}
+	discardWorktree(context.Background(), tree)
+	if _, err := os.Stat(tree); !os.IsNotExist(err) {
+		t.Errorf("the worktree is still there: %v", err)
+	}
+	if strings.Contains(gitIn(t, repo, "branch", "--list", "droi/x"), "droi/x") {
+		t.Error("its branch is still there")
+	}
+}

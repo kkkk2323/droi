@@ -35,12 +35,13 @@ const worktreeBranchPrefix = "droi/"
 func (a *App) worktreeRoot() (string, error) {
 	base := ""
 	if dv := a.sessionDefaults(); dv != nil {
-		if dv.WorktreeDirectory != "" {
+		// A folder that is no full path would put worktrees wherever Droi runs from.
+		if filepath.IsAbs(dv.WorktreeDirectory) {
 			return dv.WorktreeDirectory, nil
 		}
 		base = dv.UserFactoryDir
 	}
-	if base == "" {
+	if !filepath.IsAbs(base) {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
@@ -104,14 +105,24 @@ func (a *App) addWorktree(ctx context.Context, workspace, base, prompt string) (
 		if err != nil {
 			return "", errors.New(L("Could not make the worktree: %s", err))
 		}
-		if rel, err := filepath.Rel(top, workspace); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(realPath(top), realPath(workspace)); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 			if info, err := os.Stat(filepath.Join(dir, rel)); err == nil && info.IsDir() {
 				return filepath.Join(dir, rel), nil
 			}
 		}
 		return dir, nil
 	}
-	return "", errors.New(L("Could not make the worktree: %s", "no free name"))
+	return "", errors.New(L("Could not make the worktree: %s", L("every name tried is taken")))
+}
+
+// discardWorktree takes away a worktree addWorktree just made, with its branch, when the conversation it was made
+// for could not be created: nothing is in it yet, and no lifecycle would ever collect it.
+func discardWorktree(ctx context.Context, cwd string) {
+	top, err := gitutil.TopLevel(ctx, cwd)
+	if err != nil {
+		return
+	}
+	_, _ = gitutil.RemoveWorktree(ctx, gitutil.RemoveOptions{Path: top, Force: true, DeleteLocalBranch: true})
 }
 
 // hereWorktree is a worktree of a repository a Session works in, for Settings → Worktrees.
@@ -140,20 +151,29 @@ func realPath(path string) string {
 // readHereWorktrees lists the worktrees of every repository a listed Session works in, but the repositories' own.
 func readHereWorktrees(ctx context.Context, listed []sessions.Summary) ([]hereWorktree, error) {
 	var repos []string
-	seen := map[string]bool{}
+	seenRepo, seenCwd := map[string]bool{}, map[string]bool{}
+	add := func(top string) {
+		if top != "" && !seenRepo[top] {
+			seenRepo[top] = true
+			repos = append(repos, top)
+		}
+	}
 	for _, s := range listed {
-		if s.Cwd == "" || seen[s.Cwd] {
+		// The Kernel says which repository a conversation works in; git is asked only where it did not.
+		if s.RepoRoot != "" {
+			add(s.RepoRoot)
 			continue
 		}
-		seen[s.Cwd] = true
+		if s.Cwd == "" || seenCwd[s.Cwd] || sessions.IsScratchSession(s) {
+			continue
+		}
+		seenCwd[s.Cwd] = true
 		if _, err := os.Stat(s.Cwd); err != nil {
 			continue
 		}
-		top, err := gitutil.TopLevel(ctx, s.Cwd)
-		if err != nil || slices.Contains(repos, top) {
-			continue
+		if top, err := gitutil.TopLevel(ctx, s.Cwd); err == nil {
+			add(top)
 		}
-		repos = append(repos, top)
 	}
 	var out []hereWorktree
 	var firstErr error
@@ -224,38 +244,53 @@ func (a *App) loadHereWorktrees() {
 	}()
 }
 
-// askDeleteHere opens the dialog for deleting one of the Host's worktrees.
+// askDeleteHere opens the dialog for deleting one of the Host's worktrees. The delete is forced, so the dialog says
+// all it would lose: what the folder holds, or, when the folder is gone, the commits only its branch has. When that
+// cannot be read the dialog deletes nothing.
 func (a *App) askDeleteHere(w hereWorktree) {
-	a.worktreeAsk = worktreeDialog{open: true, path: w.Path, branch: w.Branch, sessions: len(w.Sessions), repo: w.Repo, archive: w.Sessions}
+	a.worktreeAsk = worktreeDialog{open: true, path: w.Path, branch: w.Branch, sessions: len(w.Sessions), repo: w.Repo, archive: w.Sessions, locked: w.Locked}
 	path := w.Path
 	go func() {
 		ctx, cancel := context.WithTimeout(a.ctx, time.Minute)
-		in, err := gitutil.Inspect(ctx, path)
-		cancel()
+		defer cancel()
+		res := &protocol.InspectWorktreeDeletionResult{WorktreePath: path, Branch: w.Branch}
+		ignored := 0
+		_, statErr := os.Stat(path)
+		gone := w.Prunable != "" || errors.Is(statErr, os.ErrNotExist)
+		var err error
+		if gone {
+			if w.Branch != "" {
+				if n := gitutil.BranchLocalOnlyCommits(ctx, w.Repo, w.Branch); n >= 0 {
+					count := float64(n)
+					res.LocalOnlyCommits = &count
+				} else {
+					err = errors.New("the branch's commits could not be counted")
+				}
+			}
+		} else {
+			var in gitutil.Inspection
+			if in, err = gitutil.Inspect(ctx, path); err == nil {
+				res.Branch, res.ChangedFiles, res.UntrackedFiles, res.HasRemoteBranch = in.Branch, float64(in.ChangedFiles), float64(in.UntrackedFiles), in.HasRemoteBranch
+				if in.LocalOnlyCommits >= 0 {
+					count := float64(in.LocalOnlyCommits)
+					res.LocalOnlyCommits = &count
+				} else {
+					err = errors.New("the worktree's commits could not be counted")
+				}
+				ignored = in.IgnoredFiles
+			}
+		}
 		a.cfg.Update(func() {
 			d := &a.worktreeAsk
 			if d.path != path {
 				return
 			}
-			d.checked = true
-			if errors.Is(err, os.ErrNotExist) {
-				// Its folder is gone: nothing is left in it to lose.
-				d.inspect = &protocol.InspectWorktreeDeletionResult{WorktreePath: path, Branch: w.Branch}
-				return
-			}
+			d.checked, d.gone = true, gone
 			if err != nil {
 				d.inspectErr = err.Error()
 				return
 			}
-			res := &protocol.InspectWorktreeDeletionResult{
-				WorktreePath: path, Branch: in.Branch, ChangedFiles: float64(in.ChangedFiles), UntrackedFiles: float64(in.UntrackedFiles),
-				HasRemoteBranch: in.HasRemoteBranch,
-			}
-			if in.LocalOnlyCommits >= 0 {
-				n := float64(in.LocalOnlyCommits)
-				res.LocalOnlyCommits = &n
-			}
-			d.inspect, d.ignored = res, in.IgnoredFiles
+			d.inspect, d.ignored = res, ignored
 		})
 	}()
 }
@@ -290,6 +325,10 @@ func (a *App) deleteHere(d worktreeDialog) {
 	go a.reloadList()
 	a.cfg.Update(func() {
 		dd := &a.worktreeAsk
+		if dd.path != d.path {
+			a.settings.worktrees.readAt = time.Time{}
+			return
+		}
 		dd.busy = false
 		a.settings.worktrees.readAt = time.Time{}
 		a.settings.worktrees.notice = notice

@@ -3,6 +3,7 @@ package app
 // A new Session on Kernel: the New session page's conversation.create, while the window lists from Kernel.
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -65,10 +66,12 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	if err != nil {
 		return "", err
 	}
+	madeWorktree := false
 	if p.Worktree != nil && *p.Worktree && kind == "chat" {
 		if cwd, err = a.addWorktree(a.ctx, cwd, p.WorktreeBaseBranch, p.WorktreePromptSlug); err != nil {
 			return "", err
 		}
+		madeWorktree = true
 	}
 	agent := a.newAgent(p.ModelID, string(p.ReasoningEffort))
 	// Kernel offers scripts beside direct calls (codemode); Direct is the page's way to take them away.
@@ -80,6 +83,9 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	}
 	res, err := c.Create(a.ctx, kernel.CreateParams{Agent: agent, Cwd: cwd, Kind: kind, RequestID: uuid.NewString()})
 	if err != nil {
+		if madeWorktree {
+			discardWorktree(context.WithoutCancel(a.ctx), cwd)
+		}
 		return "", err
 	}
 	// A level picked on the page is the conversation's own, set before its first message can run a tool; the

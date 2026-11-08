@@ -240,6 +240,8 @@ func TestTheWindowsCopyNamesAnotherAppsName(t *testing.T) {
 		"When Droi finishes",
 		"When Droi needs input",
 		"Where should Droi work?",
+		"Worktrees of the repositories your sessions work in. Droi deletes none on its own.",
+		"Could not check this worktree for unsaved work, so Droi does not delete it. Remove it with git worktree remove once you checked it.",
 		"Worktrees let a session work on its own checkout and branch, beside your own. Droi makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer.",
 	}
 	const name = "Acme Agent"
