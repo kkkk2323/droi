@@ -346,8 +346,8 @@ func answer(t *testing.T, ctx context.Context, c *kernel.Client, model kernel.Mo
 }
 
 // The Host's Kernel answers with Factory's models through the Key Pool, on the chat wire and on Anthropic's: the
-// request leaves the proxy with the pool's key and droid's headers, and the token the Kernel holds in place of a key
-// goes nowhere.
+// request leaves the proxy with the pool's key and droid's headers, but no organization (upstream's keyAccount sends
+// none), and the token the Kernel holds in place of a key goes nowhere.
 func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 	f := newFakeFactory(t)
 	hk := startHostKernel(t, f, true)
@@ -369,7 +369,7 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 	if len(seen) != 2 {
 		t.Fatalf("Factory saw %d model requests, want 2", len(seen))
 	}
-	if got := seen[0]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Provider") != "fireworks" || got.Get("X-Factory-Org-Id") != "org_test" {
+	if got := seen[0]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Provider") != "fireworks" || got.Get("X-Factory-Org-Id") != "" {
 		t.Fatalf("the chat request went out as %v", got)
 	}
 	if got := seen[1]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Key") != "placeholder" {
