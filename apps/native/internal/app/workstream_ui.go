@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // The side panel's tabs.
@@ -255,7 +255,7 @@ func (a *App) workstreamPage(c *ui.Context, orch sessions.Summary, listed []sess
 	ctx := &wsContext{id: wsID, orch: orch, w: a.findWorkstream(wsID), st: st, agentShown: agent}
 	v := a.view(active)
 	v.ws = ctx
-	v.chrome = func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav) {
+	v.chrome = func(c *ui.Context, s *sessionview.Snapshot, loaded bool, workspace string, nav subagentNav) {
 		a.workstreamTabs(c, ctx, v, s, loaded, workspace, nav)
 	}
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
@@ -351,7 +351,7 @@ func (a *App) agentTitle(ctx *wsContext, id string, listed []sessions.Summary) s
 // orchestrator's tab that stays, the agents' tabs, and what the shown
 // Session's header has at its right, with the Workstream's settings and the
 // side panel's switch.
-func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *session.Session, loaded bool, workspace string, nav subagentNav) {
+func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *sessionview.Snapshot, loaded bool, workspace string, nav subagentNav) {
 	k, t := a.kit, a.kit.T
 	leading := float32(0)
 	if !a.sidebarShown() {

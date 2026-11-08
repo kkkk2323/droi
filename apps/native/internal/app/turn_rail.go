@@ -10,6 +10,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
@@ -130,11 +131,11 @@ type railState struct {
 
 // userMessages reads every message the user sent, once: the Daemon filters
 // a page by role, so it costs a request or two even in a long Session.
-func (v *sessionView) userMessages(s *session.Session) []*transcript.Entry {
+func (v *sessionView) userMessages(s *sessionview.Snapshot) []*transcript.Entry {
 	r := &v.rail
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !s.HasOlderMessages() || r.read || r.reading || v.a.ctl == nil {
+	if !s.HasOlder || r.read || r.reading || v.a.ctl == nil {
 		return r.all
 	}
 	r.reading = true
@@ -220,7 +221,7 @@ func (v *sessionView) loadUntil(messageID string, done func()) {
 // edge, one per message the user sent. Hovering a mark previews the message
 // and the start of its reply; clicking it jumps there, loading the way
 // first for a message from before the loaded ones.
-func (v *sessionView) turnRail(c *ui.Context, s *session.Session, width float32) {
+func (v *sessionView) turnRail(c *ui.Context, s *sessionview.Snapshot, width float32) {
 	k, t := v.a.kit, v.a.kit.T
 	if width < k.Px(railMinWidth) {
 		return

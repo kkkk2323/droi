@@ -7,7 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // gitChanges is the Session's branch and what it has not committed, as the
@@ -46,7 +47,7 @@ func (v *sessionView) gitStale() {
 
 // loadGit reads the changes when they are due; c.After brings the frame
 // of the next periodic read.
-func (v *sessionView) loadGit(c *ui.Context, s *session.Session, loaded bool) *gitChanges {
+func (v *sessionView) loadGit(c *ui.Context, s *sessionview.Snapshot, loaded bool) *gitChanges {
 	g := &v.git
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -119,7 +120,7 @@ var gitStatusLetters = map[string]string{
 // gitButton is the GitChangesButton: the branch and the line counts at
 // the header's right, opening the changed files. Absent outside a Git
 // repository.
-func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) {
+func (v *sessionView) gitButton(c *ui.Context, s *sessionview.Snapshot, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	g := v.loadGit(c, s, loaded)

@@ -3,11 +3,11 @@ package app
 import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
 )
 
@@ -22,7 +22,7 @@ type pickerToolMode = settingsview.ToolModeChoice
 
 // settingsBar is the SessionSettingsBar: the model with its reasoning
 // effort, and the autonomy level.
-func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
+func (v *sessionView) settingsBar(c *ui.Context, s *sessionview.Snapshot) {
 	a := v.a
 	cs := &v.composer
 	set := s.Settings()

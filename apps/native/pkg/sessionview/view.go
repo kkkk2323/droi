@@ -33,8 +33,13 @@ import (
 // brings, as the web Client's LOADED_MESSAGE_LIMIT.
 const LoadedMessageLimit = 400
 
-// olderPage is how many messages one daemon.get_session_messages brings.
+// olderPage is how many messages one daemon.get_session_messages brings, and how many entries one
+// conversation.entries brings above the ones held.
 const olderPage = 100
+
+// kernelWindow is the window a View asks Kernel to push: the contract's default (limits.viewWindowDefault). A push
+// carries the whole window, so a wider one costs on every streamed chunk; the entries it drops stay in the State.
+var kernelWindow = kernel.Window{Min: 100, Max: 200}
 
 // ColumnWidth is the reading column's max-w-3xl, which the transcript,
 // the Prompts and the composer share.
@@ -83,7 +88,7 @@ type Env struct {
 	ScrollShortcut string
 	// Overlay draws over the transcript's list once it is built, in a box
 	// the list fills; width is the list's.
-	Overlay func(c *ui.Context, s *session.Session, width float32)
+	Overlay func(c *ui.Context, s *Snapshot, width float32)
 	// Agent tells of the Workstream agent whose Session is id, for the rows
 	// of the orchestrator's tools; nil when no Workstream is shown.
 	Agent func(id string) (AgentInfo, bool)
@@ -156,6 +161,9 @@ type View struct {
 	built   int64 // the Session's revision entries were built at
 	// frameRows are the list's rows of the frame being built.
 	frameRows []transcriptRow
+	// builtState is the Kernel state entries were built from: a state evicted and opened again starts its
+	// revisions over, so the revision alone cannot say the rows are current.
+	builtState *State
 
 	// Guarded by mu: written by the goroutines loading the Session.
 	mu           sync.Mutex
@@ -240,8 +248,32 @@ func (v *View) look() (*kit.Kit, *theme.Tokens) {
 
 func (v *View) redraw() { v.env.Update(func() {}) }
 
-// Open loads the Session from the Daemon unless it is loaded or loading.
+// Open loads the Session unless it is loaded or loading: it opens the conversation in the store when Kernel drives
+// it, and asks the Daemon to load it otherwise.
 func (v *View) Open() {
+	if id, ok := v.kernelID(); ok {
+		if st := v.kernelState(); st != nil && st.Opened() {
+			return
+		}
+		v.mu.Lock()
+		if v.loading {
+			v.mu.Unlock()
+			return
+		}
+		v.loading, v.loadErr = true, ""
+		v.mu.Unlock()
+		go func() {
+			err := v.env.Sessions.Open(v.env.Ctx, v.env.Kernel, id, kernelWindow)
+			v.mu.Lock()
+			v.loading = false
+			if err != nil {
+				v.loadErr = err.Error()
+			}
+			v.mu.Unlock()
+			v.redraw()
+		}()
+		return
+	}
 	ctl := v.env.Controller
 	if ctl == nil {
 		return
@@ -311,8 +343,12 @@ func loadKeepingArchived(ctx context.Context, id string, load func() error, daem
 	return err
 }
 
-// loadOlder brings the page of messages before the first one shown.
+// loadOlder brings the page before the first one shown.
 func (v *View) loadOlder() {
+	if id, ok := v.kernelID(); ok {
+		v.loadOlderFromKernel(id)
+		return
+	}
 	ctl := v.env.Controller
 	s := ctl.Store().Session(v.id)
 	if s == nil || !s.HasOlderMessages() {
@@ -346,6 +382,30 @@ func (v *View) loadOlder() {
 			page[len(page)-1-i] = m
 		}
 		ctl.Store().PrependOlderMessages(v.id, page, res.HasMore)
+	}()
+}
+
+// loadOlderFromKernel brings the page above the entries the conversation's state holds.
+func (v *View) loadOlderFromKernel(id kernel.ID) {
+	if state := v.kernelState(); state == nil || !state.HasOlder() {
+		return
+	}
+	v.mu.Lock()
+	if v.olderLoading {
+		v.mu.Unlock()
+		return
+	}
+	v.olderLoading, v.olderErr = true, ""
+	v.mu.Unlock()
+	go func() {
+		defer v.redraw()
+		err := v.env.Sessions.LoadEarlier(v.env.Ctx, v.env.Kernel, id, olderPage)
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		v.olderLoading = false
+		if err != nil {
+			v.olderErr = err.Error()
+		}
 	}()
 }
 
@@ -553,13 +613,32 @@ func (v *View) refresh(s *session.Session) {
 	v.entries, _ = transcript.ReuseUnchanged(v.entries, next)
 }
 
+// refreshKernel is refresh for a conversation Kernel drives: its rows come from the state's transcript, built
+// again when the state's own revision moved, since every push, page and usage answer moves it.
+func (v *View) refreshKernel(state *State) {
+	if !state.Opened() {
+		return
+	}
+	rev := state.Revision()
+	if state == v.builtState && rev == v.built {
+		return
+	}
+	v.builtState, v.built = state, rev
+	next := v.builder.BuildView(state.Transcript())
+	v.entries, _ = transcript.ReuseUnchanged(v.entries, next)
+}
+
 // Frame starts a frame of the view: it drops what no frame used lately,
 // follows the transcript's end again when it should, and builds the
-// transcript again if the Session changed. It returns the Session, nil
-// until the Store has it. Call it once a frame, before the view's parts.
-func (v *View) Frame() *session.Session {
+// transcript again if the Session changed. It returns the Session's
+// snapshot, nil until the Session is in its store (the Daemon's or
+// Kernel's). Call it once a frame, before the view's parts.
+func (v *View) Frame() *Snapshot {
 	v.sweep()
 	v.resume()
+	if _, ok := v.kernelID(); ok {
+		return v.kernelFrame()
+	}
 	var s *session.Session
 	if ctl := v.env.Controller; ctl != nil {
 		s = ctl.Store().Session(v.id)
@@ -570,11 +649,28 @@ func (v *View) Frame() *session.Session {
 		v.hasLoaded = true
 	}
 	if s == nil && v.hasLoaded && !v.loadFailed() {
-		// The Store drops a Session another connection closed
-		// (session_closed), also while its page is open: load it again.
+		// The Store drops a Session another connection closed (session_closed), also while its page is open: load
+		// it again.
 		v.Open()
 	}
-	return s
+	return daemonSnapshot(s)
+}
+
+// kernelFrame is Frame for a conversation Kernel drives. Its state is nil until Open put one in the store, and
+// again once the store dropped it for the conversations used since: one the page showed is opened again.
+func (v *View) kernelFrame() *Snapshot {
+	state := v.kernelState()
+	if state == nil {
+		if v.hasLoaded && !v.loadFailed() {
+			v.Open()
+		}
+		return nil
+	}
+	v.refreshKernel(state)
+	if state.Opened() {
+		v.hasLoaded = true
+	}
+	return kernelSnapshot(state)
 }
 
 func (v *View) loadFailed() bool {
@@ -587,12 +683,17 @@ func (v *View) loadFailed() bool {
 // while the Session loads, or why it did not load. It grows to fill its
 // column. listed are the Sessions the app lists, for the subagents' cards;
 // nil reads the subagents from the Store alone.
-func (v *View) Transcript(c *ui.Context, s *session.Session, listed []sessions.Summary) {
+func (v *View) Transcript(c *ui.Context, s *Snapshot, listed []sessions.Summary) {
 	k, t := v.look()
 	v.mu.Lock()
 	loadErr, loading := v.loadErr, v.loading
 	v.mu.Unlock()
-	loaded := s != nil && s.LoadState() == session.Loaded
+	if s != nil && s.LoadErr != "" && len(v.entries) == 0 {
+		// A conversation Kernel could not read again keeps the rows it showed; the sentence stands in for rows only
+		// when there are none.
+		loadErr = s.LoadErr
+	}
+	loaded := s != nil && s.Loaded
 	ui.Box(c).Grow(1).MinHeight(0).Children(func() {
 		switch {
 		case loadErr != "":
@@ -600,7 +701,7 @@ func (v *View) Transcript(c *ui.Context, s *session.Session, listed []sessions.S
 				k.Text(c, loadErr, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 			})
 		case s == nil || !loaded && len(v.entries) == 0:
-			if loading || s == nil || s.LoadState() != session.Loaded {
+			if loading || s == nil || !s.Loaded {
 				ui.Row(c).Fill().Center().Gap(k.Px(8)).Children(func() {
 					k.Spinner(c, 16, t.MutedForeground)
 					k.Text(c, l10n.L("Loading session…"), 14, 20).TextColor(t.MutedForeground)
