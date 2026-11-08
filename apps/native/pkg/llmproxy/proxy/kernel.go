@@ -203,7 +203,7 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 				shrunk = true
 				if less, n := factory.LeaveOutAttachments(path, plain); n > 0 {
 					if wire, err := encodeWireBody(encoding, less); err == nil {
-						p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, true, "", errorDetail)
+						p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, false, "", errorDetail)
 						p.event(diag.Event{Kind: "request_shrunk", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: fmt.Sprintf("kernel: %d older images or files left out", n)})
 						raw, plain, left = wire, less, n
 						presented = key
