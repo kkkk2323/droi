@@ -31,6 +31,7 @@ type Kernel interface {
 	Submit(ctx context.Context, p kernel.SubmitParams) (kernel.SubmitResult, error)
 	Abort(ctx context.Context, p kernel.AbortParams) error
 	AbortSubmission(ctx context.Context, p kernel.AbortSubmissionParams) (kernel.Status, error)
+	SubmissionGet(ctx context.Context, p kernel.AbortSubmissionParams) (kernel.SubmissionGet, error)
 	Configure(ctx context.Context, p kernel.ConfigureParams) (kernel.ConfigureResult, error)
 	Entries(ctx context.Context, p kernel.EntriesParams) (kernel.EntriesResult, error)
 	Usage(ctx context.Context, id kernel.ID) (kernel.Usage, error)

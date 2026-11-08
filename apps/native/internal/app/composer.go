@@ -1095,27 +1095,15 @@ func (v *sessionView) queuedList(c *ui.Context, s *sessionview.Snapshot, queued 
 		}
 	}
 	remove := func(q session.QueuedMessage) {
-		if !q.Kind.DaemonBacked() {
-			s.ClearQueuedMessage(q.RequestID)
-			return
-		}
 		go func() {
-			cl, err := a.ctl.Client()
-			if err == nil {
-				raw, _ := json.Marshal(map[string]any{"sessionId": v.id, "requestId": q.RequestID, "action": "delete"})
-				_, err = cl.ResolveQueuedUserMessage(a.ctx, raw)
-			}
-			if err != nil {
+			if err := v.Withdraw(q); err != nil {
 				v.Fail(err)
-				return
 			}
-			// The Daemon sends no notification for a delete; the Client drops it.
-			s.ClearQueuedMessage(q.RequestID)
 		}()
 	}
 	// edit takes the message out of the queue and puts it back in the
-	// composer. One the Daemon holds comes back only once the Daemon has
-	// deleted it: had it gone out already, it would be sent twice.
+	// composer. One the Daemon or Kernel holds comes back only once it has
+	// been withdrawn there: had it gone out already, it would be sent twice.
 	edit := func(q session.QueuedMessage) {
 		text, images := queuedContent(q)
 		text, texts := pasted.Split(text)
@@ -1130,22 +1118,11 @@ func (v *sessionView) queuedList(c *ui.Context, s *sessionview.Snapshot, queued 
 			v.focused = false
 			v.saveDraft()
 		}
-		if !q.Kind.DaemonBacked() {
-			s.ClearQueuedMessage(q.RequestID)
-			restore()
-			return
-		}
 		go func() {
-			cl, err := a.ctl.Client()
-			if err == nil {
-				raw, _ := json.Marshal(map[string]any{"sessionId": v.id, "requestId": q.RequestID, "action": "delete"})
-				_, err = cl.ResolveQueuedUserMessage(a.ctx, raw)
-			}
-			if err != nil {
+			if err := v.Withdraw(q); err != nil {
 				v.Fail(err)
 				return
 			}
-			s.ClearQueuedMessage(q.RequestID)
 			a.cfg.Update(restore)
 		}()
 	}
