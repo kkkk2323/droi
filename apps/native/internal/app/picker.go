@@ -28,6 +28,9 @@ func (v *sessionView) settingsBar(c *ui.Context, s *sessionview.Snapshot) {
 	set := s.Settings()
 	choices := models.ToChoices(s.AvailableModels())
 	update := func(p protocol.UpdateSessionSettingsParams) {
+		if v.Configure(p.ModelID, string(p.ReasoningEffort)) {
+			return
+		}
 		p.SessionID = v.id
 		go func() {
 			cl, err := a.ctl.Client()
@@ -48,6 +51,10 @@ func (v *sessionView) settingsBar(c *ui.Context, s *sessionview.Snapshot) {
 		func(e string) {
 			update(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(e)})
 		}, nil)
+	if s.State != nil {
+		// Kernel has no autonomy and no Spec mode until M3 (approvals, plan mode): a switch for them would do nothing.
+		return
+	}
 	// A Mission's Sessions have modes of their own.
 	if mode := set.InteractionMode; mode == "" || mode == protocol.DroidInteractionModeAuto || mode == protocol.DroidInteractionModeSpec {
 		spec := mode == protocol.DroidInteractionModeSpec

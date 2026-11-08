@@ -18,6 +18,7 @@ func TestARunningSubagentShowsItsLatestToolAndStops(t *testing.T) {
 	)
 	sc.Sessions[1].Messages = append(sc.Sessions[1].Messages, fakedaemon.Message{Role: "assistant", Content: []map[string]any{
 		{"type": "tool_use", "id": "toolu_read", "name": "Read", "input": map[string]any{"file_path": "src/strings.ts"}}}})
+	keepOnDaemon(t, untilSubagents)
 	h := newHarness(t, sc, "")
 	h.openSession("Fix the login race")
 	h.until("the Task card", func() bool { return h.hasText("Translate the strings") })
@@ -58,6 +59,7 @@ func TestAResumedSubagentRunsOnTheCallThatResumedIt(t *testing.T) {
 		fakedaemon.Message{Role: "assistant", Content: []map[string]any{{"type": "tool_use", "id": "toolu_again", "name": "Task",
 			"input": map[string]any{"subagent_type": "worker", "description": "Translate the rest", "prompt": "And the rest",
 				"resume": bgChild, "await": true, "complexity": "heavy"}}}})
+	keepOnDaemon(t, untilSubagents)
 	h := newHarness(t, sc, "")
 	h.openSession("Fix the login race")
 	h.until("the resuming card", func() bool {
@@ -79,6 +81,7 @@ func TestTheSubagentMenuStopsARunningSubagent(t *testing.T) {
 	sc := subagentScenario()
 	sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{Title: "Worker: Translate", Cwd: "/Users/dev/acme-web",
 		Messages: []fakedaemon.Message{{Role: "user", Text: "Translate"}}, Extra: map[string]any{"sessionId": child}})
+	keepOnDaemon(t, untilSubagents)
 	h := newHarness(t, sc, "")
 	h.openSession("Fix the login race")
 	h.until("the reply", func() bool { return h.hasText("Fix it") })

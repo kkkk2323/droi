@@ -1,0 +1,260 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"sync"
+
+	"github.com/kkkk2323/droid-sdk-go/protocol"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+)
+
+// The window's half of the Kernel: the connection the Host hands it, the conversations its pages have open, and
+// the pump that takes Kernel's pushes to them. A Session whose id the Config resolves to a conversation is drawn
+// from here; every other one is still the Daemon's (plan A of M2: the list stays on the Daemon until it moves).
+
+// errNoKernel is what a page's call answers before the Host has handed over a connection, and after it ended.
+var errNoKernel = errors.New("the kernel is not connected")
+
+// kernelConn is the App's Kernel: every call goes to the client of the connection in use, which the Host hands
+// over on every connect and reconnect. Pages hold this, never a client, so none of them calls a dead one.
+type kernelConn struct {
+	mu  sync.Mutex
+	c   *kernel.Client
+	gen int64
+	// models are what harness.info offered on the connection in use, for the composer's picker.
+	models []kernel.ModelInfo
+}
+
+// offered is the models harness.info offered; nil before it answered.
+func (k *kernelConn) offered() []kernel.ModelInfo {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.models
+}
+
+func (k *kernelConn) use(c *kernel.Client, gen int64) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.c, k.gen = c, gen
+}
+
+func (k *kernelConn) client() (*kernel.Client, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.c == nil {
+		return nil, errNoKernel
+	}
+	return k.c, nil
+}
+
+var _ sessionview.Kernel = (*kernelConn)(nil)
+
+func (k *kernelConn) Open(ctx context.Context, p kernel.OpenParams) (kernel.OpenResult, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.OpenResult{}, err
+	}
+	return c.Open(ctx, p)
+}
+
+func (k *kernelConn) Unwatch(ctx context.Context, id kernel.ID) error {
+	c, err := k.client()
+	if err != nil {
+		return err
+	}
+	return c.Unwatch(ctx, id)
+}
+
+func (k *kernelConn) Submit(ctx context.Context, p kernel.SubmitParams) (kernel.SubmitResult, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.SubmitResult{}, err
+	}
+	return c.Submit(ctx, p)
+}
+
+func (k *kernelConn) Abort(ctx context.Context, p kernel.AbortParams) error {
+	c, err := k.client()
+	if err != nil {
+		return err
+	}
+	return c.Abort(ctx, p)
+}
+
+func (k *kernelConn) AbortSubmission(ctx context.Context, p kernel.AbortSubmissionParams) (kernel.Status, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.Status{}, err
+	}
+	return c.AbortSubmission(ctx, p)
+}
+
+func (k *kernelConn) SubmissionGet(ctx context.Context, p kernel.AbortSubmissionParams) (kernel.SubmissionGet, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.SubmissionGet{}, err
+	}
+	return c.SubmissionGet(ctx, p)
+}
+
+func (k *kernelConn) Configure(ctx context.Context, p kernel.ConfigureParams) (kernel.ConfigureResult, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.ConfigureResult{}, err
+	}
+	return c.Configure(ctx, p)
+}
+
+func (k *kernelConn) Entries(ctx context.Context, p kernel.EntriesParams) (kernel.EntriesResult, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.EntriesResult{}, err
+	}
+	return c.Entries(ctx, p)
+}
+
+func (k *kernelConn) Usage(ctx context.Context, id kernel.ID) (kernel.Usage, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.Usage{}, err
+	}
+	return c.Usage(ctx, id)
+}
+
+func (k *kernelConn) Processes(ctx context.Context, id kernel.ID) (kernel.ProcessesResult, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.ProcessesResult{}, err
+	}
+	return c.Processes(ctx, id)
+}
+
+func (k *kernelConn) StopProcess(ctx context.Context, p kernel.StopProcessParams) (kernel.Status, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.Status{}, err
+	}
+	return c.StopProcess(ctx, p)
+}
+
+// UseKernel hands the App the Kernel connection of generation gen: the Host calls it on every connect and
+// reconnect, from any goroutine. The pages' calls go to it from now on, the conversations they have open are
+// opened again on it, and its pushes reach them. A generation older than the one in use is ignored.
+func (a *App) UseKernel(c *kernel.Client, gen int64) {
+	a.kernel.mu.Lock()
+	if gen <= a.kernel.gen && a.kernel.c != nil {
+		a.kernel.mu.Unlock()
+		return
+	}
+	a.kernel.c, a.kernel.gen = c, gen
+	a.kernel.mu.Unlock()
+	go a.pumpKernel(c, gen)
+	go func() { _ = a.sessions.Reopen(a.ctx, &a.kernel, gen) }()
+	go a.readModels(c, gen)
+}
+
+// readModels keeps the models harness.info offers on connection gen, for the picker. A failure leaves the list as
+// it was: the picker then offers what the last connection did, and a send still names the model the conversation
+// has.
+func (a *App) readModels(c *kernel.Client, gen int64) {
+	info, err := c.Harness(a.ctx)
+	if err != nil {
+		return
+	}
+	a.kernel.mu.Lock()
+	if a.kernel.gen == gen {
+		a.kernel.models = info.Models
+	}
+	a.kernel.mu.Unlock()
+	a.redraw()
+}
+
+// pumpKernel takes the pushes of one connection to the conversations open on it, until the connection ends.
+// It is the connection's only reader.
+func (a *App) pumpKernel(c *kernel.Client, gen int64) {
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case n, ok := <-c.Notifications():
+			if !ok {
+				return
+			}
+			switch n.Method {
+			case kernel.NotifyConversationView:
+				var view kernel.ViewNotification
+				if n.Decode(&view) == nil {
+					a.sessions.ApplyView(gen, view)
+					if s := a.sessions.State(view.ID); s != nil && s.Busy() {
+						a.joinedRun(view.ID)
+					}
+				}
+			case kernel.NotifyConversationBusy:
+				var busy kernel.BusyNotification
+				if n.Decode(&busy) == nil {
+					a.sessions.ApplyBusy(gen, busy)
+					a.alertBusy(busy)
+				}
+			}
+		}
+	}
+}
+
+// alertBusy raises the alert a conversation's run calls for when it ends, as the Daemon's working states do: Kernel
+// says busy and idle, and nothing finer until approvals and questions (M3).
+func (a *App) alertBusy(n kernel.BusyNotification) {
+	if a.cfg.KernelSession == nil {
+		return
+	}
+	id, ok := a.cfg.KernelSession(n.ID)
+	if !ok {
+		return
+	}
+	state := string(protocol.DroidWorkingStateIdle)
+	if n.Busy() {
+		state = string(protocol.DroidWorkingStateStreamingAssistantMessage)
+	}
+	a.mu.Lock()
+	a.busy[id] = state
+	a.mu.Unlock()
+	a.redraw()
+	if ev := a.kernelAlerts.Update(id, state); ev != "" {
+		a.cfg.Update(func() { a.raise(id, "", ev) })
+	}
+}
+
+// joinedRun takes a run this connection found under way, in a view, as one it heard start: Kernel says busy when a
+// run starts, so a window that connects or opens the conversation later would never hear it working, and its end
+// would raise no alert. Only a conversation not heard of yet is taken, so a view older than the idle that followed
+// it cannot mark a finished run working again.
+func (a *App) joinedRun(conv kernel.ID) {
+	if a.cfg.KernelSession == nil {
+		return
+	}
+	id, ok := a.cfg.KernelSession(conv)
+	if !ok {
+		return
+	}
+	state := string(protocol.DroidWorkingStateStreamingAssistantMessage)
+	a.mu.Lock()
+	_, heard := a.busy[id]
+	if !heard {
+		a.busy[id] = state
+	}
+	a.mu.Unlock()
+	if !heard {
+		a.kernelAlerts.Update(id, state)
+		a.redraw()
+	}
+}
+
+// kernelID is the conversation that holds Session id, when Kernel holds it.
+func (a *App) kernelID(id string) (kernel.ID, bool) {
+	if a.cfg.KernelID == nil {
+		return 0, false
+	}
+	return a.cfg.KernelID(id)
+}

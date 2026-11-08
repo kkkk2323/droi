@@ -47,6 +47,7 @@ func TestASpecHandoffOpensTheNewSession(t *testing.T) {
 
 // The Spec switch beside the composer turns Spec mode on and off.
 func TestTheSpecSwitchTogglesSpecMode(t *testing.T) {
+	keepOnDaemon(t, untilPlanMode)
 	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "reply", Deltas: []string{"On it."}}), "")
 	h.openSession("Deploy")
 	h.until("the Spec switch", func() bool { _, ok := h.tt.Find("Spec mode"); return ok })

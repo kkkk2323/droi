@@ -33,13 +33,7 @@ func TestAQueuedMessageCanBeRemoved(t *testing.T) {
 	h.openSession("Deploy")
 	h.queueDuringTurn("never mind")
 	h.click("Remove queued message")
-	req, err := h.d.WaitForRequest("daemon.resolve_queued_user_message", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(req.Params), `"action":"delete"`) {
-		t.Fatalf("params %v", req.Params)
-	}
+	h.withdrew(h.a.Route().SessionID, "never mind")
 	h.until("the queued message to go", func() bool { return !h.hasText("never mind") })
 }
 
@@ -50,18 +44,10 @@ func TestAQueuedMessageCanBeEdited(t *testing.T) {
 	h.openSession("Deploy")
 	h.queueDuringTurn("fix the typo")
 	h.click("Edit queued message")
-	req, err := h.d.WaitForRequest("daemon.resolve_queued_user_message", 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(req.Params), `"action":"delete"`) {
-		t.Fatalf("params %v", req.Params)
-	}
+	h.withdrew(h.a.Route().SessionID, "fix the typo")
 	h.until("the message back in the composer", func() bool { return h.sessionText() == "fix the typo" })
 	v := h.a.views[h.a.Route().SessionID]
-	if n := len(h.a.ctl.Store().Session(v.id).QueuedMessages()); n != 0 {
-		t.Fatalf("%d messages still queued", n)
-	}
+	h.until("the queue to empty", func() bool { return len(v.Frame().QueuedMessages()) == 0 })
 }
 
 func TestAQueuedMessageGivesBackItsTextAndImages(t *testing.T) {

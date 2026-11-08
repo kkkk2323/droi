@@ -67,6 +67,7 @@ type State struct {
 	run      json.RawMessage
 	failure  json.RawMessage
 	inbox    json.RawMessage
+	agent    json.RawMessage
 	live     json.RawMessage
 	usageDoc json.RawMessage
 	usage    kernel.Usage
@@ -182,6 +183,18 @@ func (s *State) RunInputs() []int64 {
 		return nil
 	}
 	return run.Inputs
+}
+
+// Agent is the view's pi.agent: the model, thinking level and working directory the conversation runs with. It is
+// the zero Agent until a view arrives.
+func (s *State) Agent() kernel.Agent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var a kernel.Agent
+	if len(s.agent) > 0 {
+		_ = json.Unmarshal(s.agent, &a)
+	}
+	return a
 }
 
 // Failure is why the run that ended failed, or nil.
@@ -449,7 +462,7 @@ func (s *State) applyUsage(u kernel.Usage) bool {
 // longer carries: an idle conversation must not keep the last run it had. It is called with the lock held.
 func (s *State) readDocs() {
 	s.run, s.failure = nil, nil
-	s.inbox, s.live, s.usageDoc = nil, nil, nil
+	s.inbox, s.live, s.usageDoc, s.agent = nil, nil, nil, nil
 	if raw := s.view.Doc("pi.live"); len(raw) > 0 {
 		s.live = raw
 		var live struct {
@@ -470,6 +483,9 @@ func (s *State) readDocs() {
 	}
 	if raw := s.view.Doc("pi.usage"); len(raw) > 0 {
 		s.usageDoc = raw
+	}
+	if raw := s.view.Doc("pi.agent"); len(raw) > 0 {
+		s.agent = raw
 	}
 }
 
@@ -711,6 +727,12 @@ func (st *Store) Close(ctx context.Context, k Kernel, id kernel.ID) {
 func (st *Store) Reopen(ctx context.Context, k Kernel, gen int64) error {
 	st.mu.Lock()
 	st.ready()
+	// Reopens run on goroutines of their own: one for an older connection that is only now starting must not take
+	// the store back to it.
+	if gen < st.gen {
+		st.mu.Unlock()
+		return nil
+	}
 	st.gen = gen
 	ids := append([]kernel.ID(nil), st.order...)
 	st.mu.Unlock()

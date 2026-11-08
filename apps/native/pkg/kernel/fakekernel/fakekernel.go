@@ -854,9 +854,17 @@ type handshake struct {
 	Version string `json:"version"`
 }
 
+// Available says whether Start has a Kernel to run, or would skip the test (fail it, under RequiredEnv). A harness
+// that can also run without a Kernel asks this first instead of being skipped.
+func Available() bool { return findKernel() != "" }
+
 // binary is the Kernel to run: DROI_KERNEL_BIN, or the build the release packs.
 func binary(t testing.TB) string {
 	t.Helper()
+	return findKernel()
+}
+
+func findKernel() string {
 	if bin := os.Getenv("DROI_KERNEL_BIN"); bin != "" {
 		return bin
 	}

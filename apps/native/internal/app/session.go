@@ -64,6 +64,10 @@ func (a *App) view(id string) *sessionView {
 		v = &sessionView{a: a, id: id, attached: map[string]*ui.Bitmap{}, rail: railState{preview: -1}}
 		v.View = sessionview.New(id, sessionview.Env{
 			Controller:  a.ctl,
+			Kernel:      &a.kernel,
+			Sessions:    a.sessions,
+			ConvID:      a.kernelID,
+			Models:      a.kernel.offered,
 			Ctx:         a.ctx,
 			Kit:         func() *kit.Kit { return a.kit },
 			Update:      a.cfg.Update,

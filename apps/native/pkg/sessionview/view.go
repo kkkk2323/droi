@@ -63,6 +63,9 @@ type Env struct {
 	// ConvID is the conversation's Kernel id, resolved from the View's string id. Nil resolves the id the way the
 	// contract writes it, as a decimal number.
 	ConvID func(id string) (kernel.ID, bool)
+	// Models are the models Kernel offers (harness.info), for the composer's picker on the Kernel path; nil offers
+	// none.
+	Models func() []kernel.ModelInfo
 	// Ctx ends the calls the View makes; context.Background when nil.
 	Ctx context.Context
 	// Kit is what to draw with, read as the View is built: it changes with
@@ -684,6 +687,7 @@ func (v *View) kernelFrame() *Snapshot {
 	}
 	sn := kernelSnapshot(state)
 	sn.queued = v.kernelQueued(state)
+	sn.models = v.kernelModels()
 	return sn
 }
 

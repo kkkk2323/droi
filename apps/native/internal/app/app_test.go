@@ -58,6 +58,9 @@ type harness struct {
 	cfg        Config
 	window     *controller.Controller
 	switches   int
+
+	// kernel holds the scenario's Sessions when the window draws them from a Kernel; nil when it does not.
+	kernel *kernelSessions
 }
 
 // harnessCredential is the Factory credential the harness's Gateway holds.
@@ -88,6 +91,7 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	theme.RegisterFonts()
 	d := fakedaemon.Start(t, sc)
 	h := &harness{t: t, d: d, addition: addition, scratchRoot: filepath.Join(t.TempDir(), "chats"), transcripts: map[string]string{}, times: sessiontimes.Open("", nil)}
+	h.kernel = startKernelSessions(t, sc, d)
 	localToken := gateway.NewLocalToken()
 	opts := gateway.Options{
 		DaemonURL:    func() string { return d.URL },
@@ -149,6 +153,9 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 		OpenInApps: func() []host.OpenInApp { return []host.OpenInApp{{ID: "finder", Label: "Finder"}} },
 		Switch:     h.switchTo,
 	}
+	if h.kernel != nil {
+		cfg.KernelID, cfg.KernelSession = h.kernel.id, h.kernel.session
+	}
 	if with != nil {
 		with(&cfg)
 	}
@@ -158,6 +165,9 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	// ends with it.
 	t.Cleanup(func() { h.a.Close() })
 	h.a.Start()
+	if h.kernel != nil {
+		h.a.UseKernel(h.kernel.c, 1)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := ctl.Connect(ctx); err != nil {
@@ -212,6 +222,10 @@ func (h *harness) switchTo(to *computer.Paired) {
 	go ctl.Connect(context.Background())
 	old.Close()
 	oldCtl.Close()
+	// After the old App closed: one connection has one reader of its pushes.
+	if h.kernel != nil {
+		h.a.UseKernel(h.kernel.c, 1)
+	}
 }
 
 func (h *harness) frame() {
