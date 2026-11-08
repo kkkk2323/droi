@@ -15,6 +15,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // The window's half of the approval policy (design/m3-kernel.md §2): Kernel holds a copy of it and runs nothing
@@ -237,7 +238,7 @@ func (a *App) heardApprovals(conv kernel.ID) {
 	}
 	id := a.sessionIDOf(conv)
 	shown := map[string]bool{}
-	for _, p := range state.Approvals() {
+	for _, p := range append(state.Approvals(), sessionview.BlockingAsks(state.Asks())...) {
 		shown[p.RequestID] = true
 	}
 	a.mu.Lock()

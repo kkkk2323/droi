@@ -81,12 +81,14 @@ func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, works
 		v.takePending(s)
 	}
 	perms, asks := a.ctl.PendingPermissions(v.id), a.ctl.PendingAskUsers(v.id)
-	var approvals []kernel.PendingRequest
+	var approvals, blocking, queued []kernel.PendingRequest
 	if s.State != nil {
 		approvals = s.State.Approvals()
+		questions := s.State.Asks()
+		blocking, queued = sessionview.BlockingAsks(questions), sessionview.QueuedAsks(questions)
 	}
 	prompts := sessionview.WaitsOnUser(perms, asks)
-	waits := prompts || len(approvals) > 0
+	waits := prompts || len(approvals) > 0 || len(blocking) > 0
 	running := s.Running || v.Compacting()
 	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
@@ -97,6 +99,9 @@ func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, works
 		if !waits && len(asks) > 0 {
 			ui.Box(c.Key("queued-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.Prompts(c, nil, asks) })
 		}
+		if !waits && len(queued) > 0 {
+			ui.Box(c.Key("queued-kernel-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.KernelAskCards(c, queued) })
+		}
 		if v.ws != nil && !v.ws.agentShown {
 			a.workstreamBanners(c, v.ws)
 		}
@@ -104,6 +109,9 @@ func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, works
 		if waits {
 			if len(approvals) > 0 {
 				v.ApprovalCards(c, approvals)
+			}
+			if len(blocking) > 0 || len(queued) > 0 && len(approvals) == 0 {
+				v.KernelAskCards(c, append(blocking, queued...))
 			}
 			if prompts {
 				v.Prompts(c, perms, asks)

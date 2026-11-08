@@ -32,7 +32,7 @@
         "images": true,
         "processes": false,
         "approvals": true,
-        "asks": false,
+        "asks": true,
         "mcp": false,
         "skills": true,
         "models": true,

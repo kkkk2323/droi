@@ -144,6 +144,8 @@ type AskResolved struct {
 	ID        ID          `json:"id"`
 	Answers   []AskAnswer `json:"answers,omitempty"`
 	Cancelled bool        `json:"cancelled,omitempty"`
+	// By is who answered, as ApprovalResolved's.
+	By string `json:"by,omitempty"`
 }
 
 // TaskChanged is task.changed: a task of the graph (a compaction, a subagent,
