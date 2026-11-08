@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
@@ -22,7 +23,8 @@ import (
 // "Idle" needs care, because a pushed view can be older than a submit's answer (pushes are coalesced): an idle view
 // says nothing of a submission answered after it was read. So only three things settle a sent input: a run that
 // lists it as placed, which is final whenever it is read; conversation.busy going idle, which arrives in commit
-// order; and an idle answer to a conversation.open asked after the submission was recorded.
+// order; and an idle answer to a conversation.open asked after the submission was recorded. A placement seen while
+// a send is still in flight is kept until it answers, since the run that placed it may be over by then.
 
 // pausedPrefix marks a paused message's RequestID: "paused:<submissionId>", the submission Stop took it back from.
 const pausedPrefix = "paused:"
@@ -35,13 +37,22 @@ func submissionOfPaused(requestID string) (int64, bool) {
 	return n, err == nil && strings.HasPrefix(requestID, pausedPrefix)
 }
 
+// sendPrefix marks a paused message Stop kept from a send Kernel had not answered: "paused:send:<local id>". The
+// local id is the send's own, so every Stop that gives up on it keeps one copy, and removing that copy disposes of
+// the submission when its id comes.
+const sendPrefix = pausedPrefix + "send:"
+
 // inflight is one conversation.submit not answered yet. id and ok are set before done closes.
 type inflight struct {
-	item InboxItem
-	done chan struct{}
-	id   int64
-	ok   bool
+	item  InboxItem
+	local string
+	done  chan struct{}
+	id    int64
+	ok    bool
 }
+
+// pausedID is the RequestID of the copy a Stop keeps while the send is unanswered.
+func (f *inflight) pausedID() string { return sendPrefix + f.local }
 
 // Paused are the messages Stop kept for conversation id, in the order they were kept.
 func (st *Store) Paused(id kernel.ID) []session.QueuedMessage {
@@ -92,6 +103,9 @@ func (st *Store) unpause(id kernel.ID, requestID string) {
 	if sub, ok := submissionOfPaused(requestID); ok {
 		st.disposeLocked(id, sub)
 	}
+	if local, ok := strings.CutPrefix(requestID, sendPrefix); ok {
+		st.removedSends[local] = true
+	}
 	st.mu.Unlock()
 	st.notify(id)
 }
@@ -117,7 +131,7 @@ func (st *Store) sending(id kernel.ID, item InboxItem) *inflight {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.ready()
-	f := &inflight{item: item, done: make(chan struct{})}
+	f := &inflight{item: item, local: uuid.NewString(), done: make(chan struct{})}
 	st.inflight[id] = append(st.inflight[id], f)
 	return f
 }
@@ -134,11 +148,29 @@ func (st *Store) submitted(id kernel.ID, f *inflight, sub kernel.ID, ok bool) {
 			break
 		}
 	}
+	f.id, f.ok = int64(sub), ok
+	placed := st.placed[id][f.id]
 	if len(st.inflight[id]) == 0 {
 		delete(st.inflight, id)
+		delete(st.placed, id)
 	}
-	f.id, f.ok = int64(sub), ok
-	if ok && !st.disposed[id][f.id] {
+	if st.removedSends[f.local] {
+		delete(st.removedSends, f.local)
+		if ok {
+			st.disposeLocked(id, f.id)
+		}
+	}
+	changed := false
+	if ok {
+		// The copy a Stop kept while this was unanswered is now this submission's.
+		for i, p := range st.paused[id] {
+			if p.RequestID == f.pausedID() {
+				st.paused[id][i].RequestID = pausedID(f.id)
+				changed = true
+			}
+		}
+	}
+	if ok && !placed && !st.disposed[id][f.id] {
 		if st.sent[id] == nil {
 			st.sent[id] = map[int64]sentInput{}
 		}
@@ -150,6 +182,9 @@ func (st *Store) submitted(id kernel.ID, f *inflight, sub kernel.ID, ok bool) {
 	}
 	st.mu.Unlock()
 	close(f.done)
+	if changed {
+		st.notify(id)
+	}
 }
 
 // queuedInputs are the inputs Kernel may hold for conversation id, in submission order: the ones its last view
@@ -202,7 +237,7 @@ type sentInput struct {
 // called with the store's lock held wherever a state changes, so a placement seen once is not forgotten when the run
 // moves on.
 func (st *Store) settleLocked(id kernel.ID, through uint64) {
-	if len(st.sent[id]) == 0 {
+	if len(st.sent[id]) == 0 && len(st.inflight[id]) == 0 {
 		return
 	}
 	state := st.states[id]
@@ -211,6 +246,12 @@ func (st *Store) settleLocked(id kernel.ID, through uint64) {
 	}
 	for _, sub := range state.RunInputs() {
 		delete(st.sent[id], sub)
+		if len(st.inflight[id]) > 0 {
+			if st.placed[id] == nil {
+				st.placed[id] = map[int64]bool{}
+			}
+			st.placed[id][sub] = true
+		}
 	}
 	if through > 0 && !state.Busy() {
 		for sub, sent := range st.sent[id] {

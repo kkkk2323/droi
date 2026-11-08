@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -543,5 +544,122 @@ func TestWhatAPageSentSettles(t *testing.T) {
 	st.ApplyView(0, kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Value: &v})
 	if got := pending(st); !slices.Equal(got, []int64{8}) {
 		t.Errorf("a run that has not placed it: %v, want [8]", got)
+	}
+}
+
+// TestALateAnswerForAPlacedSendIsNotKept: a send's answer can arrive after the run that placed it ended and another
+// began. The placement was seen while the send was in flight, so the answer does not make it a queued input again,
+// and a Stop that cannot read its status does not bring it back.
+func TestALateAnswerForAPlacedSendIsNotKept(t *testing.T) {
+	p := newKernelSendPage(t, fakekernel.Scenario{AllowUnmatched: true, Fallback: "answered", Steps: []fakekernel.Step{slowAnswer("second")}})
+	sk := &stallingKernel{Kernel: p.o}
+	p.v = New(strconvID(p.id), Env{Kernel: sk, Sessions: p.st, Revisions: &Revisions{},
+		Update: func(fn func()) { sk.ui.Lock(); defer sk.ui.Unlock(); fn() }})
+	accepted := make(chan kernel.ID, 1)
+	release := make(chan struct{})
+	sk.takeSubmit(func(ctx context.Context, sp kernel.SubmitParams) (kernel.SubmitResult, error) {
+		res, err := p.o.Submit(ctx, sp)
+		if sp.Input == "first" {
+			accepted <- res.SubmissionID
+			<-release
+		}
+		return res, err
+	})
+	p.v.Send("first", nil, "")
+	first := <-accepted
+	await(t, "the first message to be answered", func() bool {
+		rec, err := p.c.SubmissionGet(context.Background(), kernel.AbortSubmissionParams{ID: p.id, SubmissionID: first})
+		return err == nil && rec.Status == "done" && !p.st.State(p.id).Busy()
+	})
+	p.v.Send("second", nil, "")
+	await(t, "the second run", func() bool { return p.st.State(p.id).Busy() })
+	close(release)
+	await(t, "every send to be answered", func() bool { _, waiting := p.st.queuedInputs(p.id); return len(waiting) == 0 })
+	if inputs, _ := p.st.queuedInputs(p.id); slices.ContainsFunc(inputs, func(in InboxItem) bool { return in.ID == int64(first) }) {
+		t.Fatalf("the answered message is queued again: %+v", inputs)
+	}
+	sk.takeGet(func(ctx context.Context, a kernel.AbortSubmissionParams) (kernel.SubmissionGet, error) {
+		if a.SubmissionID == first {
+			return kernel.SubmissionGet{}, errors.New("connection lost")
+		}
+		return p.o.SubmissionGet(ctx, a)
+	})
+	p.v.Interrupt()
+	await(t, "the stop", func() bool { return p.o.Count(kernel.MethodConversationAbort) == 1 && !p.st.State(p.id).Busy() })
+	time.Sleep(200 * time.Millisecond)
+	if held := p.st.Paused(p.id); len(held) != 0 {
+		t.Fatalf("Stop kept a message that was answered: %+v", held)
+	}
+}
+
+// TestABusyRunSettlesWhatItPlaced: conversation.busy names each run's placed inputs, and views are coalesced, so a
+// run may be seen only there. What it placed is not queued, even once the next run has replaced it.
+func TestABusyRunSettlesWhatItPlaced(t *testing.T) {
+	st := NewStore(3)
+	idle := kernel.View{Conversation: kernel.Conversation{ID: 7}}
+	if err := st.Open(context.Background(), &fakeKernel{views: map[kernel.ID]kernel.View{7: idle}}, 7, kernel.Window{}); err != nil {
+		t.Fatal(err)
+	}
+	item := InboxItem{Mode: kernel.WhenBusyFollowUp, Content: json.RawMessage(`"first"`)}
+	st.submitted(7, st.sending(7, item), 5, true)
+	st.ApplyBusy(0, kernel.BusyNotification{ID: 7, Run: json.RawMessage(`{"taskId":10,"inputs":[5],"turns":1}`)})
+	st.ApplyBusy(0, kernel.BusyNotification{ID: 7, Run: json.RawMessage(`{"taskId":11,"inputs":[6],"turns":1}`)})
+	if items, _ := st.queuedInputs(7); len(items) != 0 {
+		t.Fatalf("a placement seen in conversation.busy was forgotten: %+v", items)
+	}
+}
+
+// TestStopsThatGiveUpOnASendKeepOneCopy: Kernel does not answer a send before Stop stops waiting, twice. The message
+// is kept once, and removing that copy disposes of it for good: its answer, arriving later, does not bring it back.
+func TestStopsThatGiveUpOnASendKeepOneCopy(t *testing.T) {
+	wait := stopWaitsForSends
+	stopWaitsForSends = 300 * time.Millisecond
+	t.Cleanup(func() { stopWaitsForSends = wait })
+	k := fakekernel.Start(t, fakekernel.Scenario{AllowUnmatched: true, Fallback: "ok", Steps: []fakekernel.Step{slowAnswer("first")}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	st := NewStore(3)
+	sk := &stallingKernel{Kernel: c}
+	v := New(strconvID(id), Env{Kernel: sk, Sessions: st, Revisions: &Revisions{},
+		Update: func(fn func()) { sk.ui.Lock(); defer sk.ui.Unlock(); fn() }})
+	v.Open()
+	await(t, "the page to open", func() bool { s := st.State(id); return s != nil && s.Opened() })
+	if _, err := c.Submit(context.Background(), kernel.SubmitParams{ID: id, Input: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	accepted, release, answered := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	sk.takeSubmit(func(ctx context.Context, sp kernel.SubmitParams) (kernel.SubmitResult, error) {
+		defer close(answered)
+		res, err := c.Submit(ctx, sp)
+		close(accepted)
+		<-release
+		return res, err
+	})
+	var aborts atomic.Int32
+	sk.takeAbort(func(ctx context.Context, a kernel.AbortParams) error {
+		defer aborts.Add(1)
+		return c.Abort(ctx, a)
+	})
+	v.Send("keep me", nil, protocol.QueuePlacementEndOfLoop)
+	<-accepted
+	v.Interrupt()
+	v.Interrupt()
+	await(t, "both stops to give up", func() bool { return aborts.Load() == 2 && len(st.Paused(id)) > 0 })
+	time.Sleep(2 * stopWaitsForSends)
+	kept := st.Paused(id)
+	if len(kept) != 1 {
+		t.Fatalf("two stops kept %d copies of one message", len(kept))
+	}
+	if err := v.Withdraw(kept[0]); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	<-answered
+	await(t, "the send to be answered", func() bool { _, waiting := st.queuedInputs(id); return len(waiting) == 0 })
+	v.Interrupt()
+	await(t, "the third stop", func() bool { return aborts.Load() == 3 })
+	time.Sleep(200 * time.Millisecond)
+	if q := st.Paused(id); len(q) != 0 {
+		t.Fatalf("the removed message came back: %+v", q)
 	}
 }

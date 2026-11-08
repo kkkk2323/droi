@@ -535,6 +535,10 @@ type Store struct {
 	sent     map[kernel.ID]map[int64]sentInput
 	inflight map[kernel.ID][]*inflight
 	disposed map[kernel.ID]map[int64]bool
+	// placed are the submissions a run placed while sends were in flight; removedSends are the local ids of sends
+	// whose paused copy the user removed before Kernel answered them.
+	placed       map[kernel.ID]map[int64]bool
+	removedSends map[string]bool
 	// seq counts the submissions recorded in sent.
 	seq uint64
 }
@@ -574,6 +578,12 @@ func (st *Store) ready() {
 	}
 	if st.disposed == nil {
 		st.disposed = map[kernel.ID]map[int64]bool{}
+	}
+	if st.placed == nil {
+		st.placed = map[kernel.ID]map[int64]bool{}
+	}
+	if st.removedSends == nil {
+		st.removedSends = map[string]bool{}
 	}
 	if st.max < 1 {
 		st.max = 1
@@ -825,7 +835,9 @@ func (st *Store) ApplyBusy(gen int64, n kernel.BusyNotification) bool {
 		if state := st.states[n.ID]; state != nil {
 			changed = state.ApplyBusy(n)
 		}
-		if !n.Busy() {
+		if n.Busy() {
+			st.settleLocked(n.ID, 0)
+		} else {
 			st.idleLocked(n.ID)
 		}
 	}

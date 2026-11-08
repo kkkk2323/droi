@@ -74,7 +74,7 @@ func (v *View) submit(id kernel.ID, text string, images []attachments.Image, pla
 }
 
 // stopWaitsForSends is how long Stop waits for a send Kernel has not answered, to learn whether the abort took it.
-const stopWaitsForSends = 30 * time.Second
+var stopWaitsForSends = 30 * time.Second
 
 // interruptKernel stops the run. Kernel withdraws the queued inputs with it, which the Daemon's path kept on this
 // computer as paused messages; so do these: what the user queued is not thrown away by Stop. Only the inputs Kernel
@@ -121,7 +121,7 @@ func (v *View) interruptKernel(id kernel.ID) {
 				}
 			default:
 				unread = errors.New("no answer from Kernel")
-				keep(f.item, pausedPrefix+uuid.NewString())
+				keep(f.item, f.pausedID())
 			}
 		}
 		var decided []int64
