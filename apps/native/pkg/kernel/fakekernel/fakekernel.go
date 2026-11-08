@@ -887,6 +887,10 @@ type handshake struct {
 // that can also run without a Kernel asks this first instead of being skipped.
 func Available() bool { return findKernel() != "" }
 
+// Binary is the Kernel a test runs: DROI_KERNEL_BIN, or the build in apps/native/assets/kernel; "" when there is
+// none. For a test that starts it some other way than Start, as a Host does.
+func Binary() string { return findKernel() }
+
 // binary is the Kernel to run: DROI_KERNEL_BIN, or the build the release packs.
 func binary(t testing.TB) string {
 	t.Helper()

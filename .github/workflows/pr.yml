@@ -266,14 +266,14 @@ jobs:
       - name: Kernel tests
         run: pnpm test:kernel
 
-      - name: Build the kernel for Linux and Windows
+      - name: Build the kernel for Linux and Windows, staged as a release stages it
         run: |
           cd apps/kernel
-          bun run build.ts linux-x64 windows-x64
+          bun run build.ts --stage linux-x64 windows-x64
 
       - name: The cross-compiled Linux binary still reads an image
         working-directory: apps/kernel
-        run: bun run smoke.ts "$GITHUB_WORKSPACE/apps/native/assets/kernel/linux-x64/kernel"
+        run: bun run smoke.ts "$GITHUB_WORKSPACE/apps/native/resources/linux-amd64/kernel"
 
       - uses: actions/upload-artifact@v7
         with:

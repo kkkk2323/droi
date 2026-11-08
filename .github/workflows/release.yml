@@ -145,6 +145,25 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" login.keychain
 
+      # The Kernel goes into the package beside the app (docs/releases.md).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build and stage the Kernel
+        working-directory: apps/kernel
+        run: bun run build.ts --stage darwin-arm64 darwin-x64
+
       # One app for both chips, so one update manifest (update-darwin-universal.json).
       - name: Build, sign the update and upload
         env:
@@ -156,6 +175,12 @@ jobs:
             exit 1
           fi
           go tool mygo build -platform darwin/universal -sign "Droi Code Signing" -upload
+
+      # Signed under the hardened runtime, the Kernel needs its entitlements to run a script; the
+      # draft is not published unless this passes.
+      - name: The signed Kernel in the app runs a script and reads an image
+        working-directory: apps/kernel
+        run: bun run smoke.ts "$GITHUB_WORKSPACE/apps/native/build/darwin-universal/Droi.app/Contents/Resources/kernel"
 
   # MyGo needs no cgo, so Ubuntu builds the Windows app; NSIS makes its installer.
   build-native-windows:
@@ -174,6 +199,26 @@ jobs:
 
       - name: Install NSIS
         run: sudo apt-get update && sudo apt-get install -y nsis
+
+      # The Kernel goes into the package beside the app (docs/releases.md).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build and stage the Kernel
+        working-directory: apps/kernel
+        run: bun run build.ts --stage windows-x64
+
 
       - name: Build, sign the update and upload
         env:
@@ -200,6 +245,28 @@ jobs:
         with:
           go-version-file: apps/native/go.mod
           cache-dependency-path: apps/native/go.sum
+
+      # The Kernel goes into the package beside the app (docs/releases.md).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Build and stage the Kernel
+        working-directory: apps/kernel
+        run: bun run build.ts --stage linux-x64 linux-arm64
+      - name: The Linux Kernel runs a script and reads an image
+        working-directory: apps/kernel
+        run: bun run smoke.ts "$GITHUB_WORKSPACE/apps/native/resources/linux-amd64/kernel"
 
       - name: Build, sign the update and upload
         env:
