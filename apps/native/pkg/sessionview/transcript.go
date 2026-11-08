@@ -449,6 +449,11 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 					k.Icon(c, "circle-slash", 14, t.MutedForeground).Label(l10n.L("Interrupted"))
 					return
 				}
+				if res.Blocked {
+					// A rule or a person refused the call: it never ran, and that is not a failure either.
+					k.Icon(c, "shield-alert", 14, t.MutedForeground).Label(l10n.L("Blocked"))
+					return
+				}
 				if j, ok := v.job(call.Use.ID); ok && (j.Done || !j.Script) {
 					v.jobMark(c, j)
 				} else if res.IsError {

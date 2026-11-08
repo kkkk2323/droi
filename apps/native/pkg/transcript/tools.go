@@ -347,27 +347,6 @@ func callPending(c *ToolCall) bool {
 	return c.Result == nil
 }
 
-// StripHarness is a result's text without the wrapper the harness adds for the model: the `<harness>` tags, and
-// the `[error] ` severity prefix on each line. What is left is the sentence itself, or "" when there was only the
-// wrapper.
-//
-// It is display work, not a decision: what a result means is read from its fields (see piMessage.aborted), and this
-// only takes the harness's own formatting off the words it wrapped.
-func StripHarness(text string) string {
-	t := strings.TrimSpace(text)
-	t = strings.TrimPrefix(t, "<harness>")
-	t = strings.TrimSuffix(t, "</harness>")
-	lines := strings.Split(strings.TrimSpace(t), "\n")
-	kept := lines[:0]
-	for _, line := range lines {
-		line = strings.TrimPrefix(strings.TrimSpace(line), "[error] ")
-		if line != "" {
-			kept = append(kept, line)
-		}
-	}
-	return strings.Join(kept, "\n")
-}
-
 // ToolResultView is the result's text and how it reads, for the row and its detail.
 type ToolResultView struct {
 	Text    string
@@ -377,8 +356,10 @@ type ToolResultView struct {
 	// Interrupted says the turn was stopped before this call answered: it will not run again, and it did not
 	// fail. A row that showed it as running would promise an answer that is never coming.
 	Interrupted bool
-	Diff        *Diff
-	Status      *Status
+	// Blocked says a rule or a person refused the call before it ran: it did not fail either.
+	Blocked bool
+	Diff    *Diff
+	Status  *Status
 }
 
 func ReadResult(c *ToolCall) ToolResultView {

@@ -405,44 +405,87 @@ func interruptedResult(answer kernel.Entry) *ToolResultView {
 
 // resultView is a tool-result message as the row reads it.
 //
-// A stopped run comes back as a failure with one diagnostic that says why. Its code is what distinguishes "you
-// stopped me" from "I broke", and the difference is the whole row: a red failed tool the user stopped themselves
-// reads as bad news, and the text the harness wrote for the model (`<harness>[error] …</harness>`) is not something
-// to show them.
+// Pi closes a result's content with its diagnostics rendered for the model — one last text item,
+// `<harness>\n[severity] message\n…\n</harness>` — and keeps the same list structured in the entry's data. The row
+// shows the output, then each diagnostic's message from the structured list: a truncation, the path of the full
+// output, an exit code or why the call did not run are all worth reading, the wrapper is not.
+//
+// A call the harness ended itself comes back as an error result whose diagnostic code says why, and that code is
+// the whole row: a call that was stopped, or refused, did not fail, and a red row tells the user something broke.
 func (m piMessage) resultView() *ToolResultView {
 	v := &ToolResultView{}
+	var output []string
 	for _, c := range m.Blocks {
 		switch c.Type {
 		case "text":
-			if c.Text == "" {
-				continue
+			if c.Text != "" {
+				output = append(output, c.Text)
 			}
-			if v.Text != "" {
-				v.Text += "\n"
-			}
-			v.Text += c.Text
 		case "image":
 			v.Images = append(v.Images, Image{MediaType: c.MimeType, Data: c.Data})
 		}
 	}
-	if m.aborted() {
-		v.Interrupted = true
-		v.Text = StripHarness(v.Text)
-		return v
+	if n := len(output); n > 0 && len(m.Diagnostics) > 0 {
+		// Pi renders the diagnostics exactly when there are some, as the content's last item (appendToolResult).
+		output = output[:n-1]
 	}
-	v.IsError = m.IsError
+	for _, line := range output {
+		v.Text = joinLine(v.Text, "\n", line)
+	}
+	notes := ""
+	for _, d := range m.Diagnostics {
+		if d.Message != "" {
+			notes = joinLine(notes, "\n", d.Message)
+		}
+	}
+	v.Text = joinLine(v.Text, "\n\n", notes)
+	switch m.harnessEnding() {
+	case endingStopped:
+		v.Interrupted = true
+	case endingRefused:
+		v.Blocked = true
+	default:
+		v.IsError = m.IsError
+	}
 	return v
 }
 
-// aborted says whether a result's diagnostics say the run was stopped: the harness writes one entry whose code is
-// "aborted" for a tool that was cut off, in place of a result of its own.
-func (m piMessage) aborted() bool {
+// joinLine is text with more after it, sep between the two when both have something.
+func joinLine(text, sep, more string) string {
+	switch {
+	case more == "":
+		return text
+	case text == "":
+		return more
+	}
+	return text + sep + more
+}
+
+// harnessEnding is how the harness ended a call it did not let finish, read from its diagnostic codes (Pi's
+// harness/tool.js writes them).
+type harnessEnding int
+
+const (
+	endingNone harnessEnding = iota
+	// endingStopped: the run was stopped (aborted), a restart cut the call off (interrupted), or its caller ended
+	// before it started (abandoned). None of these is the tool failing.
+	endingStopped
+	// endingRefused: a rule or a person refused the call before it ran (blocked).
+	endingRefused
+)
+
+// harnessEnding reads the result's diagnostics. A call that kept crashing its process (restart_limit) is not
+// among them: that one failed, and the row says so.
+func (m piMessage) harnessEnding() harnessEnding {
 	for _, d := range m.Diagnostics {
-		if d.Code == "aborted" {
-			return true
+		switch d.Code {
+		case "aborted", "interrupted", "abandoned":
+			return endingStopped
+		case "blocked":
+			return endingRefused
 		}
 	}
-	return false
+	return endingNone
 }
 
 // decodeInputObject reads a tool call's arguments, for the row's summary.
