@@ -49,6 +49,21 @@ async function boot(dir: string): Promise<Booted> {
   return { kernel, client, faux, dir }
 }
 
+const pickSchema = {
+  anyOf: [
+    {
+      type: 'object',
+      properties: { mode: { const: 'view' }, id: { type: 'string' } },
+      required: ['mode', 'id'],
+    },
+    {
+      type: 'object',
+      properties: { mode: { const: 'create' }, name: { type: 'string' } },
+      required: ['mode', 'name'],
+    },
+  ],
+}
+
 function fakeServer(marker?: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     type: 'stdio',
@@ -419,4 +434,35 @@ test('a tool name two servers register is a read only while both say it is', () 
   expect(toolClass('same___tool')).toBe('read')
   setToolClass('same___tool', 'mcp-aaaa-same', undefined)
   expect(toolClass('same___tool')).toBe('exec')
+})
+
+describe('a tool whose schema has a composition at its root', () => {
+  test('is offered under one argument, and the server gets its arguments unwrapped', async () => {
+    const dir = data()
+    writeGlobal(dir, { fake: fakeServer(undefined, { env: { ANYOF: '1' } }) })
+    const b = await boot(dir)
+    await status(b.client, 'fake', 'connected')
+    const id = await conversation(b, process.cwd())
+    b.faux.faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall('fake___pick', { arguments: { mode: 'view', id: 'task_1' } }),
+        { stopReason: 'toolUse' },
+      ),
+      fauxAssistantMessage('done'),
+    ])
+    await b.client.call('conversation.submit', { id, input: 'view task_1' })
+    expect(await toolText(b.client, id)).toContain(
+      'pick: {\\"mode\\":\\"view\\",\\"id\\":\\"task_1\\"}',
+    )
+    const conv = await b.kernel.harness.conversation(id as never, context)
+    const pick = (await conv!.agent(context)).tools.find((tool) => tool.name === 'fake___pick')
+    expect(pick?.parameters).toEqual({
+      type: 'object',
+      properties: { arguments: pickSchema },
+      required: ['arguments'],
+      additionalProperties: false,
+    })
+    b.client.close()
+    await b.kernel.stop()
+  }, 60_000)
 })

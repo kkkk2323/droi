@@ -909,6 +909,13 @@ never offered another repository's tools. The selection is stored as an edit of 
 `readOnlyHint` is judged as a read by the approval policy, as long as every server that registers that tool
 name says so; every other MCP tool as a command.
 
+**A schema with a composition at its root.** A tool whose `inputSchema` has `anyOf`, `oneOf` or `allOf` at its
+root, and no `properties` there, is offered as `{type: "object", properties: {arguments: <its schema>}, required: ["arguments"]}`, its
+`#` references moved under `arguments`, and a call's `arguments` is what the server gets. As it came, the
+Anthropic route would offer it with no parameters at all (pi-ai sends only the root's `properties`) and OpenAI's
+would refuse it. A call's recorded arguments, its approval card and a codemode script use the wrapped shape. A
+recursive schema (`$recursiveAnchor` without `$id`) is offered as it came.
+
 **Signing in.** An HTTP server that answers 401 is `failed` with an `error` that starts `authorization
 required`, and is not retried on a timer. `mcp.authorize {name, repoRoot?}` answers the page to open as
 `authorizationUrl`: for the global server of that name, or with `repoRoot` for that repository's, which must
