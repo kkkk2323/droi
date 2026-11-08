@@ -50,6 +50,9 @@ import type { DisabledSkills } from '../resources/disabled.ts'
 import { expandSlash } from '../resources/expand.ts'
 import type { Asks } from '../ask/asks.ts'
 import type { Background } from '../processes/background.ts'
+import type { McpServers } from '../mcp/servers.ts'
+import { mcpAuthorize, mcpList, mcpSet, selectServers } from '../mcp/methods.ts'
+import type { McpAuth } from '../mcp/oauth.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
 export const context: Context = BACKGROUND_CONTEXT
@@ -78,6 +81,9 @@ export type KernelOptions = {
   asks: Asks
   /** The `bash_background` processes. */
   background: Background
+  /** The MCP servers, and the sign-in of those that ask for one. */
+  mcp: McpServers
+  mcpAuth: McpAuth
   db: BunSqliteDatabase
   storage: Storage
   harness: Harness
@@ -166,17 +172,31 @@ export class Kernel implements Dispatcher {
       this.#writable()
       return this.#options.asks.respond(p, connection.client)
     })
-    // The three readers of M3 answer their shape now, so a client can call the whole surface; every
-    // write of M3 is gated, and `gated()` answers it `-32009` while its capability is false.
-    const readOnlyAnswer =
-      <T>(value: T) =>
-      () => {
-        this.#readable()
-        return value
-      }
     add('process.list', (p) => this.#processList(p))
     add('process.stop', (p) => this.#processStop(p))
-    add('mcp.list', readOnlyAnswer({ servers: [] }))
+    add('mcp.list', (p) => {
+      this.#readable()
+      // A viewer runs nobody's servers: the process that drives the data does.
+      if (this.#options.config.readOnly) return { servers: [] }
+      return mcpList(this.#options.mcp, p)
+    })
+    add('mcp.set', (p) => {
+      this.#writable()
+      return mcpSet(this.#options.mcp, this.#options.config.userDir, p)
+    })
+    add('mcp.authorize', (p) => {
+      this.#writable()
+      return mcpAuthorize(this.#options.mcp, this.#options.mcpAuth, p)
+    })
+    add('mcp.authorize.cancel', (p) => {
+      this.#writable()
+      const name = optionalString(p, 'name')
+      if (name === undefined || name === '') {
+        throw invalidParams([{ path: 'name', message: 'a server name is required' }])
+      }
+      this.#options.mcpAuth.cancel(name)
+      return {}
+    })
     add('skills.list', (p) => this.#skillsList(p))
     add('skills.setDisabled', (p) => this.#skillsSetDisabled(p))
     add('resources.list', (p) => this.#resourcesList(p))
@@ -371,6 +391,8 @@ export class Kernel implements Dispatcher {
     await this.#options.approvals.close()
     await this.#options.asks.close()
     await this.#options.background.close()
+    this.#options.mcpAuth.close()
+    await this.#options.mcp.close()
     for (const live of this.#live.values()) live.detach()
     this.#live.clear()
     this.#tasks?.detach()
@@ -1008,6 +1030,10 @@ export class Kernel implements Dispatcher {
         if (known.submissionId !== undefined) return { submissionId: known.submissionId }
       }
     }
+    // The servers this turn may use: the global ones and its own repository's, connected or connecting.
+    await selectServers(this.#options.mcp, this.#options.harness, conversation, context).catch(
+      (cause: unknown) => warn('mcp servers not selected', { id, error: String(cause) }),
+    )
     // After the memo: a retry is the same request even if a template changed since.
     const input =
       content === undefined ? undefined : await this.#expandCommand(conversation, content)

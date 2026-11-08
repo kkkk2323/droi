@@ -452,16 +452,15 @@ Three qualifications a client that reads a range needs:
 | `ask.respond` | `{requestId, answers?, cancelled?}` | `{status}` | `asks` | no |
 | `mcp.list` | `{repoRoot?}` | `{servers[]}` | `mcp` | no |
 | `mcp.set` | `{name, server?, enabled?, remove?, repoRoot?, trust?}` | `{servers[]}` | `mcp` | no |
-| `mcp.authorize` | `{name}` | `{authorizationUrl}` | `mcp` | no |
+| `mcp.authorize` | `{name}` | `{authorizationUrl}` or `{authorized: true}` | `mcp` | no |
 | `mcp.authorize.cancel` | `{name}` | `{}` | `mcp` | no |
 | `skills.list` | — | `{skills[]}` | `skills` | no |
 | `skills.setDisabled` | `{name, disabled, id?}` | `{skills[]}` | `skills` | no |
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
-The M3 methods not built yet still answer their M1 shape: `mcp.list` returns an empty list, and `policy.set`, the write methods and the two `*.respond` methods are
-`-32009` until their capability is true. `skills.list`, `skills.setDisabled` and `resources.list` are built
-(`skills` and `resources` are true). `model.complete` is built: it reports
+Every M3 method is built (`processes`, `mcp`, `skills` and `resources` are true). `-32009` stays the
+answer for a method a build leaves out, with the capability that would bring it. `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
 
@@ -868,7 +867,24 @@ machine, so a server that comes from a repository's own file is not started unti
 
 `mcp.list` takes an optional `repoRoot` and answers each repository's servers with their own `repoRoot` and
 `trusted`; without it, every repository this kernel has seen is included. The kernel does not guess which
-repository a client is looking at.
+repository a client is looking at. `repoRoot` must be a repository's root as `conversation.list` reports it;
+anything else is `-32602`. A file that cannot be read is reported, not silently empty: the answer then carries
+`diagnostics: [{path, message}]`.
+
+**Which conversation sees which tools.** Each server is an extension of its own, and its tools are named
+`<server>___<tool>` (other characters become `_`; a name past 64 characters ends in a hash). Before each
+`conversation.submit` the kernel reads the conversation's repository file (the root of its `cwd`) and selects
+the global servers that file does not switch off or replace, and that repository's own: a conversation is
+never offered another repository's tools. The selection is stored as an edit of the default extensions
+(`{add}`); a conversation whose extensions a client set outright is left as it is. A tool its server marks
+`readOnlyHint` is judged as a read by the approval policy; every other MCP tool as a command.
+
+**Signing in.** An HTTP server that answers 401 is `failed` with an `error` that starts `authorization
+required`, and is not retried on a timer. `mcp.authorize {name}` answers the page to open as
+`authorizationUrl`; the kernel listens on `127.0.0.1` for the redirect for five minutes, then connects the
+server and broadcasts `mcp.changed`. A grant that needed no page answers `{authorized: true}`.
+`mcp.authorize.cancel` stops listening. The tokens are kept in `<data>/mcp-auth.json`, readable by its owner
+only, per server name and URL, and refreshed when they expire.
 
 ### The approval policy
 

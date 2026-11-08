@@ -38,8 +38,17 @@ const COMMAND_TOOLS = new Set(['bash', 'powershell', 'bash_background'])
 /** The tools whose `path` argument is the one file they touch. */
 const FILE_TOOLS = new Set(['read', 'edit', 'write'])
 
+/** Classes of tools that arrive at run time: an MCP tool its server marks read-only. */
+const added = new Map<string, ToolClass>()
+
+/** Record what a tool registered at run time can do; `undefined` takes it back to a command's class. */
+export function setToolClass(name: string, kind: ToolClass | undefined): void {
+  if (kind === undefined) added.delete(name)
+  else added.set(name, kind)
+}
+
 export function toolClass(name: string): ToolClass {
-  return CLASSES[name] ?? 'exec'
+  return CLASSES[name] ?? added.get(name) ?? 'exec'
 }
 
 export type Call = { name: string; arguments?: Record<string, unknown> }

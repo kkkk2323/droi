@@ -13,6 +13,8 @@ import { askExtension } from './extensions/ask.ts'
 import { Asks } from './ask/asks.ts'
 import { backgroundExtension } from './extensions/background.ts'
 import { Background } from './processes/background.ts'
+import { McpServers } from './mcp/servers.ts'
+import { McpAuth } from './mcp/oauth.ts'
 import { PolicyStore } from './policy/store.ts'
 import { resourcesExtension } from './extensions/resources.ts'
 import { DisabledSkills } from './resources/disabled.ts'
@@ -44,7 +46,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   processes: true,
   approvals: true,
   asks: true,
-  mcp: false,
+  mcp: true,
   skills: true,
   codemode: false,
   resources: true,
@@ -103,6 +105,8 @@ export async function startKernel(
   let kernel: Kernel | undefined
   /** Every tool shell this Kernel started, so closing it can end what a tool left running. */
   let tools: ToolProcesses | undefined
+  /** The MCP servers, whose processes a failed start must not leave running. */
+  let mcp: McpServers | undefined
   try {
     storage = await SqliteStorage.open(db, { prefix: 'pi_' })
     const models = options.models ?? buildModels(config.providers)
@@ -239,6 +243,23 @@ export async function startKernel(
       context,
     })
 
+    mcp = new McpServers({
+      userDir: config.userDir,
+      db,
+      registry,
+      notify: (method, payload) => server?.broadcast(method, payload),
+      authProvider: (name, url) => mcpAuth.authProvider(name, url),
+      version: VERSION,
+      context,
+    })
+    const servers = mcp
+    const mcpAuth = new McpAuth(config.dataDir, async (name) => {
+      const found = servers.httpServer(name)
+      if (found !== undefined) await servers.reconnect(found.server)
+    })
+    // A viewer starts no servers; the process that drives the data does.
+    if (!config.readOnly) await mcp.open()
+
     asks = new Asks({
       harness,
       db,
@@ -275,6 +296,8 @@ export async function startKernel(
       approvals,
       asks,
       background,
+      mcp,
+      mcpAuth,
       db,
       storage,
       harness,
@@ -398,6 +421,7 @@ export async function startKernel(
   } catch (cause) {
     // A start that failed after taking the lock must not hold it: the caller may retry in this process.
     lock?.release()
+    await mcp?.close().catch(() => undefined)
     await tools?.stop(context).catch(() => undefined)
     await harness?.close(context).catch(() => undefined)
     await storage?.close(context).catch(() => undefined)

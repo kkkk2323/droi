@@ -294,6 +294,12 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				if n.Decode(&changed) == nil {
 					go func() { _ = a.sessions.ReadProcesses(a.ctx, &a.kernel, gen, changed.ID) }()
 				}
+			case kernel.NotifyMCPChanged:
+				a.cfg.Update(func() {
+					for _, v := range a.views {
+						v.toolsStale()
+					}
+				})
 			case kernel.NotifyPolicyChanged:
 				var changed kernel.PolicyChanged
 				if n.Decode(&changed) == nil {

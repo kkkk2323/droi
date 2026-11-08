@@ -23,6 +23,7 @@ var StatusLabels = map[string]string{
 	"disconnected": l10n.N("Disconnected"),
 	"failed":       l10n.N("Failed"),
 	"disabled":     l10n.N("Disabled"),
+	"untrusted":    l10n.N("Waiting for your OK"),
 }
 
 // DroiMemoryServer is Droi's Memory Server (ADR 0010), which the Desktop Shell
