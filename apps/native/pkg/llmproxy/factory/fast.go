@@ -22,8 +22,8 @@ func fastBody(path string, body []byte) ([]byte, bool) {
 	if !anthropic && !responses {
 		return body, false
 	}
-	// A Fast Mode id, speed "fast" and the priority tier all hold one of these.
-	if !bytes.Contains(body, []byte("fast")) && !bytes.Contains(body, []byte("priority")) {
+	// A Fast Mode id, speed "fast" and the priority tier all hold one of these, unless a \u escape spells them.
+	if !bytes.Contains(body, []byte("fast")) && !bytes.Contains(body, []byte("priority")) && !bytes.Contains(body, []byte(`\u`)) {
 		return body, false
 	}
 	m, ok := jsonObject(body)

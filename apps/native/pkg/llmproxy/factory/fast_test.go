@@ -167,6 +167,22 @@ func TestFast(t *testing.T) {
 		said := []any{obj{"role": "user", "content": "make it fast, top priority"}}
 		same(t, "said on Messages", send(t, messages, obj{"model": "claude-opus-5-5", "messages": said})["model"], "claude-opus-5-5")
 		same(t, "said on Responses", send(t, responses, obj{"model": "gpt-5.5", "input": said})["model"], "gpt-5.5")
+		// a value written with \u escapes says what it decodes to
+		for _, raw := range []string{
+			`{"model":"claude-opus-5-5","speed":"fa\u0073t","messages":[]}`,
+			`{"model":"claude-opus-5-5-fa\u0073t","messages":[]}`,
+		} {
+			_, out, _ := Request(messages, []byte(raw))
+			var got obj
+			_ = json.Unmarshal(out, &got)
+			if got["model"] != "claude-opus-5-5-fast" || got["speed"] != "fast" {
+				t.Errorf("%s went as %s", raw, out)
+			}
+		}
+		_, out, _ := Request(responses, []byte(`{"model":"gpt-5.5","service_tier":"priori\u0074y","input":"hi"}`))
+		if !strings.Contains(string(out), `"model":"gpt-5.5-fast"`) {
+			t.Errorf("an escaped tier went as %s", out)
+		}
 		// a Fast Mode model of the other wire stays as it was asked
 		sent = send(t, messages, obj{"model": "gpt-5.5", "speed": "fast", "messages": []any{}})
 		same(t, "another wire's model", sent["model"], "gpt-5.5")

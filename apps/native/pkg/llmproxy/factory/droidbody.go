@@ -36,9 +36,10 @@ var geminiCall = regexp.MustCompile(`(?i)/models/([^/:]+):(?:stream)?generateCon
 // Google's shape goes to Factory's own route, /api/llm/g/v1/generate, the
 // model in its body; when the path changes, the request's query goes too.
 // A Fast Mode request names its Fast Mode model and asks for its speed
-// (fastBody; FastBeta is its header). Then the body takes droid's shape for its route (chat completions,
-// Responses, Messages, Gemini), and last, every refused phrase still in it is
-// escaped. A body that cannot be read goes as it came.
+// (fastBody; FastBeta is its header). Then the body takes droid's shape for
+// its route (chat completions, Responses, Messages, Gemini), and last, every
+// refused phrase still in it is escaped. A body that cannot be read goes as
+// it came.
 func Request(path string, body []byte) (string, []byte, bool) {
 	changed := false
 	if loc := geminiCall.FindStringSubmatchIndex(path); loc != nil && strings.Contains(path, "/llm/g/") {
