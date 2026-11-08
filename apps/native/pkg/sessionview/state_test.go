@@ -895,6 +895,9 @@ type fakeKernel struct {
 	// entries answers conversation.entries; entriesParams are the calls it got.
 	entries       func(kernel.EntriesParams) (kernel.EntriesResult, error)
 	entriesParams []kernel.EntriesParams
+	// abort answers conversation.abort; submissions answer submission.get.
+	abort       func(kernel.AbortParams) error
+	submissions map[kernel.ID]kernel.SubmissionGet
 }
 
 func (f *fakeKernel) Open(ctx context.Context, p kernel.OpenParams) (kernel.OpenResult, error) {
@@ -975,12 +978,28 @@ func (f *fakeKernel) Submit(context.Context, kernel.SubmitParams) (kernel.Submit
 	return kernel.SubmitResult{}, errors.New("not in this test")
 }
 
-func (f *fakeKernel) Abort(context.Context, kernel.AbortParams) error {
-	return errors.New("not in this test")
+func (f *fakeKernel) Abort(_ context.Context, p kernel.AbortParams) error {
+	f.mu.Lock()
+	answer := f.abort
+	f.mu.Unlock()
+	if answer == nil {
+		return errors.New("not in this test")
+	}
+	return answer(p)
 }
 
 func (f *fakeKernel) AbortSubmission(context.Context, kernel.AbortSubmissionParams) (kernel.Status, error) {
 	return kernel.Status{}, errors.New("not in this test")
+}
+
+func (f *fakeKernel) SubmissionGet(_ context.Context, p kernel.AbortSubmissionParams) (kernel.SubmissionGet, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rec, ok := f.submissions[p.SubmissionID]
+	if !ok {
+		return kernel.SubmissionGet{}, errors.New("not in this test")
+	}
+	return rec, nil
 }
 
 func (f *fakeKernel) Configure(context.Context, kernel.ConfigureParams) (kernel.ConfigureResult, error) {

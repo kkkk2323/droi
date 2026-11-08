@@ -29,6 +29,8 @@ type Snapshot struct {
 	Session *session.Session
 	// State is the Kernel state, when the Kernel path is in use: the view, the run, the usage.
 	State *State
+	// queued is the Kernel path's queue, as the shelf draws it.
+	queued []session.QueuedMessage
 }
 
 // LLMRetry is the model request the Daemon is retrying, nil when it is not. The Kernel reports a retry inside
@@ -58,11 +60,11 @@ func (s *Snapshot) Stats() session.Stats {
 	return s.Session.Stats()
 }
 
-// QueuedMessages are the messages waiting for the turn in progress. Only the Daemon has them; on the Kernel path
-// the queue is the view's pi.inbox.
+// QueuedMessages are the messages waiting for the turn in progress: the Daemon's session's, or on the Kernel path
+// what Stop kept and the view's pi.inbox.
 func (s *Snapshot) QueuedMessages() []session.QueuedMessage {
 	if s.Session == nil {
-		return nil
+		return s.queued
 	}
 	return s.Session.QueuedMessages()
 }

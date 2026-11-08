@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/kkkk2323/droid-sdk-go/session"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
@@ -31,6 +33,7 @@ type Kernel interface {
 	Submit(ctx context.Context, p kernel.SubmitParams) (kernel.SubmitResult, error)
 	Abort(ctx context.Context, p kernel.AbortParams) error
 	AbortSubmission(ctx context.Context, p kernel.AbortSubmissionParams) (kernel.Status, error)
+	SubmissionGet(ctx context.Context, p kernel.AbortSubmissionParams) (kernel.SubmissionGet, error)
 	Configure(ctx context.Context, p kernel.ConfigureParams) (kernel.ConfigureResult, error)
 	Entries(ctx context.Context, p kernel.EntriesParams) (kernel.EntriesResult, error)
 	Usage(ctx context.Context, id kernel.ID) (kernel.Usage, error)
@@ -166,6 +169,19 @@ func (s *State) Run() json.RawMessage {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.run
+}
+
+// RunInputs are the submissions the run in progress placed: they are in the transcript, not waiting.
+func (s *State) RunInputs() []int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var run struct {
+		Inputs []int64 `json:"inputs"`
+	}
+	if !namesARun(s.run) || json.Unmarshal(s.run, &run) != nil {
+		return nil
+	}
+	return run.Inputs
 }
 
 // Failure is why the run that ended failed, or nil.
@@ -513,6 +529,18 @@ type Store struct {
 	nextID  int
 	// turns is, per connection and conversation, the subscription call decided last: closed once it has answered.
 	turns map[turnKey]chan struct{}
+	// paused and sent are the inputs the window holds for a conversation (store_inputs.go). Unlike states, they are
+	// never evicted: they are the user's words.
+	paused   map[kernel.ID][]session.QueuedMessage
+	sent     map[kernel.ID]map[int64]sentInput
+	inflight map[kernel.ID][]*inflight
+	disposed map[kernel.ID]map[int64]bool
+	// placed are the submissions a run placed while sends were in flight; removedSends are the local ids of sends
+	// whose paused copy the user removed before Kernel answered them.
+	placed       map[kernel.ID]map[int64]bool
+	removedSends map[string]bool
+	// seq counts the submissions recorded in sent.
+	seq uint64
 }
 
 // turnKey is a conversation on one connection generation.
@@ -538,6 +566,24 @@ func (st *Store) ready() {
 	}
 	if st.turns == nil {
 		st.turns = map[turnKey]chan struct{}{}
+	}
+	if st.paused == nil {
+		st.paused = map[kernel.ID][]session.QueuedMessage{}
+	}
+	if st.sent == nil {
+		st.sent = map[kernel.ID]map[int64]sentInput{}
+	}
+	if st.inflight == nil {
+		st.inflight = map[kernel.ID][]*inflight{}
+	}
+	if st.disposed == nil {
+		st.disposed = map[kernel.ID]map[int64]bool{}
+	}
+	if st.placed == nil {
+		st.placed = map[kernel.ID]map[int64]bool{}
+	}
+	if st.removedSends == nil {
+		st.removedSends = map[string]bool{}
 	}
 	if st.max < 1 {
 		st.max = 1
@@ -583,6 +629,8 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	st.order = append(st.order, id)
 	st.windows[id] = window
 	gen := st.gen
+	// The answer is read after the call goes out: if it is idle, every submission recorded before now was placed.
+	mark := st.seq
 	evicted := st.unwatchesLocked(st.trimLocked(id))
 	turn := st.turnLocked(id)
 	st.mu.Unlock()
@@ -609,6 +657,7 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 		return err
 	}
 	changed := state.takeOpen(opened.View)
+	st.settleLocked(id, mark)
 	st.mu.Unlock()
 	if changed {
 		st.notify(id)
@@ -689,6 +738,7 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 	}
 	window := st.windows[id]
 	state.expectOpen()
+	mark := st.seq
 	turn := st.turnLocked(id)
 	st.mu.Unlock()
 
@@ -708,6 +758,7 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 		changed = state.failOpen(err)
 	} else {
 		changed = state.takeOpen(opened.View)
+		st.settleLocked(id, mark)
 	}
 	st.mu.Unlock()
 	if changed {
@@ -766,6 +817,7 @@ func (st *Store) ApplyView(gen int64, n kernel.ViewNotification) bool {
 	if gen == st.gen {
 		if state := st.states[n.ID]; state != nil {
 			changed = state.Apply(n)
+			st.settleLocked(n.ID, 0)
 		}
 	}
 	st.mu.Unlock()
@@ -782,6 +834,11 @@ func (st *Store) ApplyBusy(gen int64, n kernel.BusyNotification) bool {
 	if gen == st.gen {
 		if state := st.states[n.ID]; state != nil {
 			changed = state.ApplyBusy(n)
+		}
+		if n.Busy() {
+			st.settleLocked(n.ID, 0)
+		} else {
+			st.idleLocked(n.ID)
 		}
 	}
 	st.mu.Unlock()

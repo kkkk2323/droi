@@ -682,7 +682,9 @@ func (v *View) kernelFrame() *Snapshot {
 	if state.Opened() {
 		v.hasLoaded = true
 	}
-	return kernelSnapshot(state)
+	sn := kernelSnapshot(state)
+	sn.queued = v.kernelQueued(state)
+	return sn
 }
 
 func (v *View) loadFailed() bool {
