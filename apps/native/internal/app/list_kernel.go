@@ -94,6 +94,7 @@ func (a *App) kernelSummary(s kernel.Summary) sessions.Summary {
 		Cwd:         s.Workspace,
 		RepoRoot:    s.RepoRoot,
 		UpdatedAt:   max(s.LastActivityAt, s.CreatedAt) / 1000,
+		ActivityAt:  max(s.LastActivityAt, s.CreatedAt),
 		Kind:        s.Kind,
 		Preview:     s.Preview,
 		TitleSource: s.TitleSource,
@@ -128,9 +129,20 @@ func (a *App) applyIndexChanged(n kernel.IndexChanged) {
 		a.indexLog = append(a.indexLog, indexEvent{seq: a.indexSeq, n: n})
 	}
 	read := a.applyIndexLocked(n, show)
+	id := a.sessionIDOf(n.ID)
+	s := findSummary(a.listed, id)
+	moved := s != nil && s.Unread()
 	a.mu.Unlock()
 	if read {
 		go a.refreshList()
+	}
+	if moved {
+		// What arrives while the conversation is on screen is seen as it arrives.
+		a.cfg.Update(func() {
+			if a.route.Name == "session" && a.route.SessionID == id {
+				a.viewed(id)
+			}
+		})
 	}
 	a.redraw()
 }
@@ -170,6 +182,11 @@ func (a *App) applyIndexLocked(n kernel.IndexChanged, show bool) bool {
 		}
 		if n.LastActivityAt > 0 {
 			s.UpdatedAt = n.LastActivityAt / 1000
+			s.ActivityAt = n.LastActivityAt
+		}
+		s.ViewedAt = 0
+		if n.ViewedAt != nil {
+			s.ViewedAt = *n.ViewedAt
 		}
 		a.listed = list
 		a.listRev++

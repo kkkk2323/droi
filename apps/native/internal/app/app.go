@@ -209,6 +209,8 @@ type App struct {
 	dirty    bool
 	// times are the Session Times the window follows.
 	times timesState
+	// seen are the "seen" times on their way to Kernel.
+	seen seenWrites
 	// unlisted are the Sessions that started working before the list had
 	// them, a run of an Automation or a subagent, that readUntilListed reads
 	// the list for.
@@ -434,6 +436,7 @@ func (a *App) Start() {
 // Controller no more and the calls it makes end. The Controller is the
 // caller's to close, after this. Main thread only.
 func (a *App) Close() {
+	a.flushSeen()
 	a.cancel()
 	for _, fn := range a.unsubscribe {
 		fn()

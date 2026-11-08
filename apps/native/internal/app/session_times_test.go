@@ -1,11 +1,13 @@
 package app
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
@@ -28,9 +30,10 @@ func timesScenario() fakedaemon.Scenario {
 
 // A message sent to a Session, from this window or a phone, moves it up:
 // the list dates a Session by the last message sent to it, which the
-// Gateway notes, not by the Daemon's date, which opening it can move.
+// Gateway notes, not by the Daemon's date, which opening it can move. On
+// Kernel it is the conversation's last activity, which opening it does not
+// move.
 func TestAMessageSentMovesTheSessionUp(t *testing.T) {
-	keepOnDaemon(t, untilUnread)
 	h := newHarness(t, timesScenario(), "")
 	h.until("the list", func() bool { return h.hasText("Add dark mode toggle") })
 	h.settle()
@@ -40,7 +43,7 @@ func TestAMessageSentMovesTheSessionUp(t *testing.T) {
 	h.openRow("Add dark mode toggle", "s-dark")
 	h.send("Make it blue")
 	h.until("the reply", func() bool { return h.hasText("On it.") })
-	if h.times.Snapshot().Sessions["s-dark"].SentAt == 0 {
+	if h.kernel == nil && h.times.Snapshot().Sessions["s-dark"].SentAt == 0 {
 		t.Fatal("the Gateway did not note the message")
 	}
 	h.settle()
@@ -53,8 +56,8 @@ func TestAMessageSentMovesTheSessionUp(t *testing.T) {
 		t.Fatal("opening a Session moved it up")
 	}
 
-	// A phone's message, which only the Gateway sees.
-	h.times.Sent("s-fix")
+	// A phone's message.
+	h.sentElsewhere("s-fix")
 	h.settle()
 	h.until("the phone's message", func() bool { return h.above("Fix the login race", "Add dark mode toggle") })
 }
@@ -66,27 +69,31 @@ func TestAnUnseenResultIsSharedByEveryClient(t *testing.T) {
 	h.until("the list", func() bool { return h.hasText("billing-service") })
 	h.openRow("Add dark mode toggle", "s-dark")
 	// A Loop's turn in another Session ends while this one is open.
-	h.times.Working("s-fix")
-	h.times.Ended("s-fix")
+	h.endedElsewhere("s-fix")
 	h.settle()
 	h.until("the unread mark", func() bool {
 		_, ok := h.tt.Find("Unread")
 		return ok && h.a.sidebar.unread["s-fix"]
 	})
 	// A phone shows it.
-	h.times.Viewed("s-fix")
+	h.viewedElsewhere("s-fix")
 	h.until("the mark gone", func() bool { _, ok := h.tt.Find("Unread"); return !ok })
 
 	// A result in a Session older than the rows shown leaves "Show 1 older".
 	if h.hasText("Refactor invoice generator") {
 		t.Fatal("an old Session shows before it has news")
 	}
-	h.times.Working("s-bill")
-	h.times.Ended("s-bill")
+	h.endedElsewhere("s-bill")
 	h.settle()
 	h.until("the old Session's result shown", func() bool { return h.hasText("Refactor invoice generator") })
 	h.openRow("Refactor invoice generator", "s-bill")
-	h.until("read on every Client", func() bool { return !h.times.Snapshot().Sessions["s-bill"].Unread() })
+	h.until("read on every Client", func() bool {
+		if h.kernel != nil {
+			viewed, activity := h.kernel.seen(t, "s-bill")
+			return viewed >= activity
+		}
+		return !h.times.Snapshot().Sessions["s-bill"].Unread()
+	})
 }
 
 // The Session on screen is never marked unread, though the end of its turn
@@ -95,13 +102,31 @@ func TestTheSessionOnScreenIsNeverUnread(t *testing.T) {
 	h := newHarness(t, timesScenario(), "")
 	h.until("the list", func() bool { return h.hasText("Add dark mode toggle") })
 	h.openRow("Add dark mode toggle", "s-dark")
+	if h.kernel != nil {
+		ended := time.Now().UnixMilli()
+		h.endedElsewhere("s-dark")
+		// Kernel tells the window, which reads it as it arrives, for every client.
+		h.until("the end seen on Kernel", func() bool {
+			viewed, activity := h.kernel.seen(t, "s-dark")
+			return activity >= ended && viewed >= activity
+		})
+		h.settle()
+		if _, ok := h.tt.Find("Unread"); ok || h.a.sidebar.unread["s-dark"] {
+			t.Fatal("the Session on screen is marked unread")
+		}
+		h.openRow("Fix the login race", "s-fix")
+		h.settle()
+		if h.a.sidebar.unread["s-dark"] {
+			t.Fatal("a result read on screen is unread once the Session is not")
+		}
+		return
+	}
 	// The window tells the Gateway of the view on a goroutine of its own,
 	// and a turn that ends in the view's millisecond is no news: wait for the
 	// view, then end the turn after it.
 	h.until("the view in the Gateway's times", func() bool { return h.times.Snapshot().Sessions["s-dark"].ViewedAt != 0 })
 	time.Sleep(2 * time.Millisecond)
-	h.times.Working("s-dark")
-	h.times.Ended("s-dark")
+	h.endedElsewhere("s-dark")
 	h.until("the end in the window's times", func() bool {
 		h.a.mu.Lock()
 		defer h.a.mu.Unlock()
@@ -117,6 +142,44 @@ func TestTheSessionOnScreenIsNeverUnread(t *testing.T) {
 	h.until("the mark off screen", func() bool { return h.a.sidebar.unread["s-dark"] })
 }
 
+// On Kernel, the conversations a person had before, opened here or not, carry no mark: only a result that comes after
+// is news. Kernel's list is the whole history, and a dot on each row would be a dot on nothing.
+func TestOnKernelAConversationNobodyOpenedIsNotUnread(t *testing.T) {
+	h := newHarness(t, timesScenario(), "")
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the list", func() bool { return h.hasText("Add dark mode toggle") && h.hasText("Fix the login race") })
+	h.settle()
+	if _, ok := h.tt.Find("Unread"); ok || len(h.a.sidebar.unread) > 0 {
+		t.Fatalf("rows nobody opened are unread: %v", h.a.sidebar.unread)
+	}
+}
+
+// A Kernel conversation at work is not unread while it works, though each step moves its last activity: its result
+// is news once the run ends.
+func TestAKernelConversationAtWorkIsNotUnreadYet(t *testing.T) {
+	h := newHarness(t, timesScenario(), "")
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the list", func() bool { return h.hasText("Add dark mode toggle") })
+	h.openRow("Add dark mode toggle", "s-dark")
+	conv := h.kernel.convs["s-fix"]
+	h.sentElsewhere("s-fix")
+	h.until("the message in the list", func() bool {
+		s := findSummary(h.a.listedNow(), "s-fix")
+		return s != nil && s.Unread()
+	})
+	h.a.alertBusy(kernel.BusyNotification{ID: conv, Run: json.RawMessage(`{"id":1}`)})
+	h.settle()
+	if h.a.sidebar.unread["s-fix"] {
+		t.Fatal("a conversation at work is unread")
+	}
+	h.a.alertBusy(kernel.BusyNotification{ID: conv, Run: json.RawMessage("null")})
+	h.until("the mark once it rests", func() bool { return h.a.sidebar.unread["s-fix"] })
+}
+
 // While the pointer is over the list, no row moves under it; it settles
 // once the pointer leaves.
 func TestTheRowsHoldStillUnderThePointer(t *testing.T) {
@@ -130,7 +193,7 @@ func TestTheRowsHoldStillUnderThePointer(t *testing.T) {
 	h.tt.Move(r.X+r.W/2, r.Y+r.H/2)
 	h.frame()
 	h.frame()
-	h.times.Sent("s-dark")
+	h.sentElsewhere("s-dark")
 	for range 20 {
 		h.frame()
 		time.Sleep(20 * time.Millisecond)
@@ -163,7 +226,7 @@ func TestTheTimeViewListsSessionsByDay(t *testing.T) {
 	if _, ok := h.tt.Find("In billing-service"); !ok {
 		t.Fatalf("a row does not name its Workspace: %q", h.tt.Texts())
 	}
-	h.times.Sent("s-bill")
+	h.sentElsewhere("s-bill")
 	h.until("the old Session in Today", func() bool {
 		return !h.hasText("Earlier") && h.above("Refactor invoice generator", "Fix the login race")
 	})

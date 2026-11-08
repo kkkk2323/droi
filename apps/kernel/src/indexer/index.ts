@@ -53,6 +53,11 @@ type PendingRow = {
     repoRoot?: string
     /** The conversation that owns this one, when something spawned it. */
     ownerId?: number
+    /**
+     * Seen up to when, as the row is first written. Absent is its creation: nothing in it is news yet. History
+     * that arrived whole — imported, or rebuilt from storage — is the past, and is seen up to its last activity.
+     */
+    viewedAt?: number
   }
   /** The newest entry's own timestamp: the only thing that may move `last_activity_at`. */
   activity?: number
@@ -317,7 +322,7 @@ export class Indexer {
       if (createdAt === undefined) {
         // Nothing at all to date it by: a conversation with only a metadata entry and no timestamp.
         this.#row(id, {
-          insert: { createdAt: meta?.createdAt ?? 0 },
+          insert: { createdAt: meta?.createdAt ?? 0, viewedAt: meta?.createdAt ?? 0 },
           activity: meta?.createdAt ?? 0,
         })
         return count
@@ -325,6 +330,8 @@ export class Indexer {
       this.#row(id, {
         insert: {
           createdAt,
+          // Seen up to the row's activity, which is never before its creation.
+          viewedAt: Math.max(newest ?? createdAt, createdAt),
           ...(meta?.kind === undefined ? {} : { kind: meta.kind }),
           ...(meta?.workspace === undefined ? {} : { workspace: meta.workspace }),
           ...(meta?.requestId === undefined ? {} : { requestId: meta.requestId }),
@@ -390,11 +397,19 @@ export class Indexer {
       requestId?: string
       requestFingerprint?: string
       createdAt?: number
+      viewedAt?: number
     },
   ): Promise<void> {
     if (this.#closed) return Promise.resolve()
     const pending = this.#row(id, {
-      ...(extra.createdAt === undefined ? {} : { insert: { createdAt: extra.createdAt } }),
+      ...(extra.createdAt === undefined
+        ? {}
+        : {
+            insert: {
+              createdAt: extra.createdAt,
+              ...(extra.viewedAt === undefined ? {} : { viewedAt: extra.viewedAt }),
+            },
+          }),
     })
     pending.eventAt = Math.max(pending.eventAt ?? 0, at)
     if (extra.title !== undefined) {
@@ -958,8 +973,8 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
     const at = Math.max(row.eventAt ?? 0, row.activity ?? 0, row.insert.createdAt)
     await exec.run(
       `INSERT INTO droi_conversations
-         (id, created_at, last_activity_at, workspace, repo_root, kind, title, title_source, preview, parent_id, owner_id, request_id, request_fingerprint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (id, created_at, last_activity_at, workspace, repo_root, kind, title, title_source, preview, parent_id, owner_id, request_id, request_fingerprint, viewed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET
          last_activity_at = MAX(droi_conversations.last_activity_at, excluded.last_activity_at),
          workspace = COALESCE(excluded.workspace, droi_conversations.workspace),
@@ -985,6 +1000,7 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
       row.insert.ownerId ?? null,
       row.insert.requestId ?? null,
       row.insert.requestFingerprint ?? null,
+      row.insert.viewedAt ?? row.insert.createdAt,
     )
     return
   }

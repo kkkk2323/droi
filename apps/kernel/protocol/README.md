@@ -507,7 +507,11 @@ Three fields a sidebar groups and sorts by:
 A `viewedAt` in `index.update` is the unread marker: a millisecond time says "a person has seen everything
 up to here", `null` asks for the dot back, and an absent field leaves it as it was. `conversation.open`
 writes a time by itself, so a client only needs this call when a conversation is on screen while an answer
-arrives, or when it wants a cleared one to look unread again.
+arrives, or when it wants a cleared one to look unread again. Either way every client hears it: `index.changed`
+carries `viewedAt`, so a dot one client clears goes away on the others too. A conversation is unread while its
+`lastActivityAt` is later than its `viewedAt`, or while `viewedAt` is `null`. A new conversation starts seen up to
+its creation, and one imported or rebuilt from storage up to its last activity: only what happens after is news.
+`null` is a dot a client asked for.
 
 `ownerId` sets which conversation owns this one, and `null` makes it a list row again. The kernel writes
 this itself when a subagent or a Workstream spawns a conversation (M4); the method is how anything imported
@@ -911,7 +915,7 @@ commands (a new conversation, a compaction, a model change) never reach the kern
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |
 | `process.changed`    | `{id, processId, status, exitCode?, tail?}` — `status` is `running`, `exited`, `stopped` or `failed`; a `droi.process` entry says `done` where a notice says `exited`                                                |
-| `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?}`                                                                                                                                                             |
+| `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?, viewedAt}` — `viewedAt` is `null` while a client has asked for the dot                                                                                       |
 | `policy.changed`     | `{id, policy}` — the whole snapshot of that scope; `id` is `null` for the default policy                                                                                                                             |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 

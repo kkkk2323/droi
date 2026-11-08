@@ -290,3 +290,152 @@ describe.skipIf(process.platform === 'win32')('git', () => {
     expect(slowest).toBeLessThan(300)
   }, 60_000)
 })
+
+describe('the unread marker', () => {
+  test('travels with index.changed, from an open on another connection too', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const faux = fauxCatalog()
+    const { kernel, client } = await boot(data.dir, faux)
+    const other = new Client(kernel.port)
+    cleanups.push(() => other.close())
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: data.dir },
+      kind: 'chat',
+    })
+    const id = created['conversationId'] as number
+    await client.call('index.update', { id, viewedAt: null })
+    const unread = await client.waitFor(
+      (note) =>
+        note.method === 'index.changed' &&
+        note.params['id'] === id &&
+        note.params['viewedAt'] === null,
+    )
+    expect(unread.params['lastActivityAt']).toBeNumber()
+    client.notifications.length = 0
+    const before = Date.now()
+    await other.call('conversation.open', { id })
+    const seen = await client.waitFor(
+      (note) =>
+        note.method === 'index.changed' &&
+        note.params['id'] === id &&
+        typeof note.params['viewedAt'] === 'number',
+    )
+    expect(seen.params['viewedAt'] as number).toBeGreaterThanOrEqual(before)
+  }, 60_000)
+
+  type Seen = { id: number; lastActivityAt: number; viewedAt: number | null }
+  const seenRow = async (client: Client, id: number): Promise<Seen | undefined> =>
+    ((await client.call('conversation.list', {}))['items'] as Seen[]).find((row) => row.id === id)
+
+  test('a new conversation is not news until something happens in it', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const faux = fauxCatalog()
+    const { client } = await boot(data.dir, faux)
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: data.dir },
+      kind: 'chat',
+    })
+    const id = created['conversationId'] as number
+    const fresh = await seenRow(client, id)
+    expect(fresh?.viewedAt).toBe(fresh!.lastActivityAt)
+
+    faux.faux.appendResponses([fauxAssistantMessage('done')])
+    await client.call('conversation.submit', { id, input: 'go' })
+    let after: Seen | undefined
+    for (let i = 0; i < 200; i++) {
+      after = await seenRow(client, id)
+      if (after !== undefined && after.lastActivityAt > (after.viewedAt ?? 0)) break
+      await Bun.sleep(20)
+    }
+    expect(after!.lastActivityAt).toBeGreaterThan(after!.viewedAt ?? 0)
+  }, 60_000)
+
+  // A Daemon dates a Session by its file, which it touches after the last message: created after its newest one.
+  test.each([1_000, 9_000])(
+    'history imported or rebuilt from storage is seen up to its last activity (created at %d)',
+    async (createdAt) => {
+      const data = tempData()
+      cleanups.push(() => data.cleanup())
+      const last = Math.max(createdAt, 5_000)
+      let faux = fauxCatalog()
+      let { kernel, client } = await boot(data.dir, faux)
+      const imported = await client.call('conversation.import', {
+        createdAt,
+        kind: 'chat',
+        entries: [
+          { kind: 'pi.user', model: [{ role: 'user', content: 'old question', timestamp: 1_000 }] },
+          {
+            kind: 'pi.assistant',
+            model: [
+              {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'old answer' }],
+                provider: 'fake',
+                model: 'fake-1',
+                timestamp: 5_000,
+              },
+            ],
+          },
+        ],
+      })
+      const id = imported['conversationId'] as number
+      expect(await seenRow(client, id)).toMatchObject({ lastActivityAt: last, viewedAt: last })
+
+      // An index rebuilt from storage, as a new index version or a first start on existing history builds it:
+      // the catch-up must not make old history news either.
+      await kernel.stop()
+      client.close()
+      const db = new BunSqliteDatabase(join(data.dir, 'kernel.sqlite'))
+      await db.run('DELETE FROM droi_conversations WHERE id = ?', id)
+      await db.run('DELETE FROM droi_index_watermarks WHERE conversation_id = ?', id)
+      await db.close()
+      faux = fauxCatalog()
+      ;({ kernel, client } = await boot(data.dir, faux))
+      let rebuilt: Seen | undefined
+      for (let i = 0; i < 100 && rebuilt === undefined; i++) {
+        rebuilt = await seenRow(client, id)
+        if (rebuilt === undefined) await Bun.sleep(20)
+      }
+      expect(rebuilt).toMatchObject({ lastActivityAt: last, viewedAt: last })
+    },
+    60_000,
+  )
+
+  test('rows written before a new row started out seen are seen once, and a dot asked for later stays', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    let faux = fauxCatalog()
+    let { kernel, client } = await boot(data.dir, faux)
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: data.dir },
+      kind: 'chat',
+    })
+    const id = created['conversationId'] as number
+    const restart = async (edit?: (db: BunSqliteDatabase) => Promise<void>): Promise<void> => {
+      await kernel.stop()
+      client.close()
+      if (edit !== undefined) {
+        const db = new BunSqliteDatabase(join(data.dir, 'kernel.sqlite'))
+        await edit(db)
+        await db.close()
+      }
+      faux = fauxCatalog()
+      ;({ kernel, client } = await boot(data.dir, faux))
+    }
+    // The database as an earlier build left it: no marker, and a row nobody opened is null. A list read
+    // first, so the row is stored rather than rebuilt by the next start's catch-up.
+    expect(await seenRow(client, id)).toBeDefined()
+    await restart(async (db) => {
+      await db.run('UPDATE droi_conversations SET viewed_at = NULL WHERE id = ?', id)
+      await db.run("DELETE FROM droi_meta WHERE key = 'index.viewedSeeded'")
+    })
+    const seeded = await seenRow(client, id)
+    expect(seeded?.viewedAt).toBe(seeded!.lastActivityAt)
+
+    await client.call('index.update', { id, viewedAt: null })
+    await restart()
+    expect((await seenRow(client, id))?.viewedAt).toBeNull()
+  }, 60_000)
+})

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,7 +33,6 @@ type kernelSessions struct {
 
 // Why a test keeps its Sessions on the Fake Daemon: the plan item each waits for.
 const (
-	untilUnread     = "unread marks come from the list's viewedAt and lastActivityAt, and Session Times from conversation.busy (M2 S2b)"
 	untilSubagents  = "subagents land as child conversations and droi.subagent entries (M3, 6.3)"
 	untilProcesses  = "background processes land in M3 (3F)"
 	untilCallTiming = "tok/s comes back in M4, when Kernel records each call's duration"
@@ -119,6 +119,97 @@ func startKernelSessions(t *testing.T, sc fakedaemon.Scenario, d *fakedaemon.Dae
 	return &kernelSessions{k: k, c: c, convs: convs}
 }
 
+// client is the test's own connection to the Kernel, dialled on first use.
+func (ks *kernelSessions) client(t *testing.T) *kernel.Client {
+	t.Helper()
+	if ks.reader == nil {
+		ks.reader = ks.k.Dial(t)
+	}
+	return ks.reader
+}
+
+// The Session Times' news from another client, which the Fake Daemon's Sessions hear through the Gateway and
+// Kernel's conversations as Kernel keeps them.
+
+// sentElsewhere is a message sent to Session id from another client, a phone's. On Kernel it is a user message in
+// the conversation, which moves its last activity.
+func (h *harness) sentElsewhere(id string) {
+	h.t.Helper()
+	if h.kernel == nil {
+		h.times.Sent(id)
+		return
+	}
+	h.kernel.add(h.t, id, fakedaemon.Message{Role: "user", Text: "From the phone"})
+}
+
+// endedElsewhere is a turn of Session id that ended while this window was not looking, an Automation's or a Loop's.
+// On Kernel it is an answer in the conversation.
+func (h *harness) endedElsewhere(id string) {
+	h.t.Helper()
+	if h.kernel == nil {
+		h.times.Working(id)
+		h.times.Ended(id)
+		return
+	}
+	h.kernel.add(h.t, id, fakedaemon.Message{Role: "assistant", Text: "Done elsewhere."})
+}
+
+// viewedElsewhere is Session id shown on another client: on Kernel, opened there.
+func (h *harness) viewedElsewhere(id string) {
+	h.t.Helper()
+	if h.kernel == nil {
+		h.times.Viewed(id)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := h.kernel.client(h.t).Open(ctx, kernel.OpenParams{ID: h.kernel.convs[id], Window: &fakekernel.DefaultWindow}); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// add appends m to Session session's conversation, as now, from the test's own connection.
+func (ks *kernelSessions) add(t *testing.T, session string, m fakedaemon.Message) {
+	t.Helper()
+	entries, err := testsupport.History([]fakedaemon.Message{m}, time.Now().Add(-time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := ks.client(t).Import(ctx, kernel.ImportParams{ID: ks.convs[session], Entries: entries}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// seen is when Kernel says a person last saw Session session, and its last activity, in Unix ms.
+func (ks *kernelSessions) seen(t *testing.T, session string) (viewed, activity int64) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	params := kernel.ListParams{Limit: 200}
+	for range 100 {
+		res, err := ks.client(t).List(ctx, params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range res.Items {
+			if s.ID == ks.convs[session] {
+				if s.ViewedAt != nil {
+					viewed = *s.ViewedAt
+				}
+				return viewed, s.LastActivityAt
+			}
+		}
+		if len(res.Cursor) == 0 || len(res.Items) == 0 || bytes.Equal(res.Cursor, params.Cursor) {
+			break
+		}
+		params.Cursor = res.Cursor
+	}
+	t.Fatalf("Kernel does not list %s", session)
+	return 0, 0
+}
+
 // id is Config.KernelID for the window: the conversation that holds a Session the scenario described.
 func (ks *kernelSessions) id(session string) (kernel.ID, bool) {
 	id, ok := ks.convs[session]
@@ -139,12 +230,9 @@ func (ks *kernelSessions) session(conv kernel.ID) (string, bool) {
 // it on the window's would take the window's subscription.
 func (ks *kernelSessions) inbox(t *testing.T, session string) []sessionview.InboxItem {
 	t.Helper()
-	if ks.reader == nil {
-		ks.reader = ks.k.Dial(t)
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	opened, err := ks.reader.Open(ctx, kernel.OpenParams{ID: ks.convs[session], Window: &fakekernel.DefaultWindow})
+	opened, err := ks.client(t).Open(ctx, kernel.OpenParams{ID: ks.convs[session], Window: &fakekernel.DefaultWindow})
 	if err != nil {
 		t.Fatal(err)
 	}
