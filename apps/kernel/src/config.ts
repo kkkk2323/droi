@@ -243,12 +243,13 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     file = parsed as Partial<KernelConfig>
   }
   const fromEnv = providersFromEnv(env)
+  const memoryDir = memoryDirFromEnv(env)
   return {
     port: args.port,
     host: args.host,
     dataDir: args.dataDir,
     userDir: userDirFromEnv(env),
-    ...(memoryDirFromEnv(env) === undefined ? {} : { memoryDir: memoryDirFromEnv(env) }),
+    ...(memoryDir === undefined ? {} : { memoryDir }),
     readOnly: args.readOnly,
     // The environment wins: it exists for a test that has no file to write.
     providers: fromEnv ?? validateProviders(file.providers ?? []),

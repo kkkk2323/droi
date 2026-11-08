@@ -413,6 +413,42 @@ func TestTheKernelIsToldTheMemoryFolderOnlyWithMemoryOn(t *testing.T) {
 	}
 }
 
+// Turning Memory on or off starts the Kernel again, now told the Memory folder or not: its conversations get Memory,
+// or lose it, without restarting the app. A change of another setting leaves the Kernel running.
+func TestTurningMemoryOnOrOffStartsTheKernelAgain(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	hk.next(t, ctx)
+	gen := func() int {
+		k := &hk.h.kernel
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		return k.last.Generation
+	}
+	first := gen()
+	hk.h.Changed()
+	time.Sleep(200 * time.Millisecond)
+	if gen() != first {
+		t.Fatal("a change that was not Memory's started the Kernel again")
+	}
+	for _, on := range []bool{true, false} {
+		if err := hk.h.Settings.Update(func(s *Settings) { s.MemoryEnabled = on }); err != nil {
+			t.Fatal(err)
+		}
+		hk.h.Changed()
+		hk.next(t, ctx)
+		k := &hk.h.kernel
+		k.mu.Lock()
+		memoryOn := k.memoryOn
+		k.mu.Unlock()
+		if memoryOn != on {
+			t.Fatalf("Memory on is %v, and the Kernel was started with it %v", on, memoryOn)
+		}
+	}
+}
+
 // A Daemon whose droid does not send through the Key Pool stops its proxy when it starts, but not while the Kernel's
 // models point at it.
 func TestADaemonStartingWithoutTheKeyPoolLeavesTheKernelsModels(t *testing.T) {

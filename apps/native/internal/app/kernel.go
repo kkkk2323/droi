@@ -309,9 +309,9 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				}
 			case kernel.NotifyMemoryRead:
 				var read kernel.MemoryRead
-				if n.Decode(&read) == nil && a.cfg.Host != nil {
+				if n.Decode(&read) == nil && a.cfg.Memory != nil {
 					// The Host is the read log's one writer: the Kernel writes nothing in Memory but notes/.
-					if err := memory.RecordRead(a.cfg.Host.MemoryDir(), read.File); err != nil {
+					if err := memory.RecordRead(a.cfg.Memory.Folder(), read.File); err != nil {
 						log.Printf("droi: memory: read log failed: %v", err)
 					}
 				}

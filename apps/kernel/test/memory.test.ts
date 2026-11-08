@@ -226,12 +226,23 @@ describe("a conversation's Memory", () => {
 
   type Seen = { messages: unknown[]; tools: string[]; memory: string | undefined }
 
-  /** A kernel with Memory on `dir` (or off), whose model remembers every request and answers from `script`. */
-  async function boot(dir: string | undefined, script: ((seen: Seen) => unknown)[] = []) {
-    const data = tempData()
-    cleanups.push(() => data.cleanup())
+  /**
+   * A kernel with Memory on `dir` (or off), whose model remembers every request and answers from `script`; on the
+   * data directory `root`, to start a kernel again on what an earlier one stored.
+   */
+  async function boot(
+    dir: string | undefined,
+    script: ((seen: Seen) => unknown)[] = [],
+    root?: string,
+    seen: Seen[] = [],
+  ) {
+    let dataDir = root
+    if (dataDir === undefined) {
+      const data = tempData()
+      cleanups.push(() => data.cleanup())
+      dataDir = data.dir
+    }
     const faux = fauxCatalog()
-    const seen: Seen[] = []
     let next = 0
     const answer = (context: {
       messages: {
@@ -244,8 +255,10 @@ describe("a conversation's Memory", () => {
       // Pi sends the sections and the tools as system messages, a later one carrying only what changed.
       const sections: Record<string, string> = {}
       const offered = new Set<string>()
+      let system = false
       for (const message of context.messages) {
         if (message.role !== 'system') continue
+        system = true
         Object.assign(sections, message.sections ?? {})
         for (const tool of message.toolsRemoved ?? []) offered.delete(tool.name)
         for (const tool of message.toolsAdded ?? []) offered.add(tool.name)
@@ -255,23 +268,29 @@ describe("a conversation's Memory", () => {
         tools: [...offered],
         memory: sections[MEMORY_SECTION],
       }
+      // A title's model.complete carries no system message: only a conversation's turns are recorded.
+      if (!system) return fauxAssistantMessage('A title')
       seen.push(record)
       const step = script[next++]
       return step === undefined ? fauxAssistantMessage('noted') : step(record)
     }
     faux.faux.setResponses(Array.from({ length: 30 }, () => answer as never))
     const kernel = await start({
-      dir: data.dir,
+      dir: dataDir,
       faux,
       ...(dir === undefined ? {} : { overrides: { memoryDir: dir } }),
     })
     const client = new Client(kernel.port)
-    cleanups.push(async () => {
+    let stopped = false
+    const stop = async () => {
+      if (stopped) return
+      stopped = true
       client.close()
       await kernel.stop()
-    })
+    }
+    cleanups.push(stop)
     const create = async () =>
-      (await client.call('conversation.create', { agent: { model: faux.model, cwd: data.dir } }))[
+      (await client.call('conversation.create', { agent: { model: faux.model, cwd: dataDir } }))[
         'conversationId'
       ] as number
     const ask = async (id: number, input: string) => {
@@ -280,7 +299,7 @@ describe("a conversation's Memory", () => {
       for (let i = 0; i < 500 && seen.length === before; i++) await Bun.sleep(10)
       await waitIdle(client, id)
     }
-    return { client, seen, create, ask }
+    return { client, seen, create, ask, stop, root: dataDir }
   }
 
   test('is shown once and kept: a note written meanwhile leaves the prompt as it was, and the next conversation has it', async () => {
@@ -343,6 +362,38 @@ describe("a conversation's Memory", () => {
     const notes = readdirSync(join(dir, 'notes'))
     expect(notes).toHaveLength(1)
     expect(readFileSync(join(dir, 'notes', notes[0]!), 'utf8')).toContain(`session_id: ${id}\n`)
+  }, 60_000)
+
+  test('is kept across a kernel restart, and shown as it is now after a compaction', async () => {
+    const dir = folder()
+    const first = await boot(dir)
+    const id = await first.create()
+    await first.ask(id, 'hi')
+    const shown = first.seen.at(-1)!
+    write(dir, 'memory_summary.md', SUMMARY.replace('A developer.', 'A changed developer.'))
+    await first.stop()
+
+    const again = await boot(dir, [], first.root, first.seen)
+    await again.ask(id, 'again')
+    const restarted = again.seen.at(-1)!
+    expect(restarted.memory).toBe(shown.memory)
+    expect(JSON.stringify(restarted.messages.slice(0, shown.messages.length))).toBe(
+      JSON.stringify(shown.messages),
+    )
+
+    // A compaction keeps the newest turns as they are: give it older ones worth summarizing.
+    await again.ask(id, 'x'.repeat(120_000))
+    await again.ask(id, 'y'.repeat(120_000))
+    const compacted = await again.client.call('conversation.compact', { id })
+    expect(compacted['taskId']).toBeDefined()
+    for (let i = 0; i < 300; i++) {
+      const open = await again.client.call('conversation.open', { id })
+      if (((open['compactions'] as unknown[] | undefined) ?? []).length === 0) break
+      await Bun.sleep(50)
+    }
+    await waitIdle(again.client, id)
+    await again.ask(id, 'after the compaction')
+    expect(again.seen.at(-1)!.memory).toContain('A changed developer.')
   }, 60_000)
 
   test('with Memory off a conversation has no Memory and no Memory tools', async () => {

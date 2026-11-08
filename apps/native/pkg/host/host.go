@@ -218,7 +218,10 @@ func (h *Host) changed() {
 }
 
 // Changed tells listeners the settings changed.
-func (h *Host) Changed() { h.changed() }
+func (h *Host) Changed() {
+	h.kernelMemoryChanged()
+	h.changed()
+}
 
 // FactoryHome is the .factory folder of the account the Daemon runs as:
 // ~/.factory for the droid CLI's own, the account's folder for another.
