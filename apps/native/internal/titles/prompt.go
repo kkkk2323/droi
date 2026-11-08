@@ -26,11 +26,6 @@ Rules: 3 to 6 words, at most 40 characters; the same language as the user's mess
 	MaxAnswerRunes = 400
 	// MaxTokens is the whole budget of the call: a title is a few tokens and a runaway answer is not one.
 	MaxTokens = 96
-
-	// KernelTitleLimit is how much of the first user message the Kernel keeps as a conversation's derived
-	// title, in UTF-16 units (its own TITLE_LIMIT). Naming compares the stored title with that derived one to
-	// tell "nobody named this yet" from "somebody did".
-	KernelTitleLimit = 120
 )
 
 // Input is what a title call reads: the first thing the user asked, and the first answer, so a name can say

@@ -23,7 +23,7 @@ func TestANamedConversationGetsTheTitleTheModelGave(t *testing.T) {
 	id := k.CreateConversation(t, c)
 	k.Ask(t, c, id, "帮我修复部署脚本，它一直在 CI 里失败", "The workflow file is fixed.", 30*time.Second)
 
-	m := titles.New(titles.Config{Source: o, Title: titleOf(t, c), Logf: t.Logf})
+	m := titles.New(titles.Config{Source: o, TitleSource: sourceOf(t, c), Logf: t.Logf})
 	got, err := m.Name(context.Background(), id)
 	if err != nil {
 		t.Fatalf("naming: %v", err)
@@ -31,8 +31,8 @@ func TestANamedConversationGetsTheTitleTheModelGave(t *testing.T) {
 	if got != "修复部署脚本" {
 		t.Fatalf("the title is %q, not the model's answer", got)
 	}
-	if title := listTitle(t, c, id); title != "修复部署脚本" {
-		t.Fatalf("the list has %q as the title", title)
+	if row := listRow(t, c, id); row.Title != "修复部署脚本" || row.TitleSource != kernel.TitleSourceAuto {
+		t.Fatalf("the list has %q (%s) as the title, want the model's, written as automatic", row.Title, row.TitleSource)
 	}
 
 	calls := k.Completions()
@@ -65,7 +65,7 @@ func TestAFailedModelStillNamesTheConversationWithItsFirstWords(t *testing.T) {
 	id := k.CreateConversation(t, c)
 	k.Ask(t, c, id, "fix the deploy\nplease", "ok", 30*time.Second)
 
-	m := titles.New(titles.Config{Source: c, Title: titleOf(t, c)})
+	m := titles.New(titles.Config{Source: c, TitleSource: sourceOf(t, c)})
 	got, err := m.Name(context.Background(), id)
 	if err != nil {
 		t.Fatalf("naming: %v", err)
@@ -90,11 +90,11 @@ func TestAConversationSomebodyNamedIsLeftAlone(t *testing.T) {
 	id := k.CreateConversation(t, c)
 	k.Ask(t, c, id, "fix the deploy", "ok", 30*time.Second)
 	renamed := "部署修复（我自己起的）"
-	if err := c.UpdateIndex(context.Background(), kernel.IndexUpdateParams{ID: id, Title: &renamed}); err != nil {
+	if err := c.UpdateIndex(context.Background(), kernel.IndexUpdateParams{ID: id, Title: kernel.TitleText(renamed)}); err != nil {
 		t.Fatal(err)
 	}
 
-	m := titles.New(titles.Config{Source: o, Title: titleOf(t, c)})
+	m := titles.New(titles.Config{Source: o, TitleSource: sourceOf(t, c)})
 	got, err := m.Name(context.Background(), id)
 	if err != nil {
 		t.Fatalf("naming: %v", err)
@@ -126,7 +126,7 @@ func TestNamingHappensAtTheEndOfARoundAndOnlyOnce(t *testing.T) {
 	sub := k.Submit(t, c, id, "fix the deploy")
 	k.WaitForReply(t, c, sub, "ok", 30*time.Second)
 
-	m := titles.New(titles.Config{Source: o, Title: titleOf(t, c), Logf: t.Logf})
+	m := titles.New(titles.Config{Source: o, TitleSource: sourceOf(t, c), Logf: t.Logf})
 	// A round that is running names nothing, even though the first answer is already there.
 	m.Busy(context.Background(), kernel.BusyNotification{ID: id, Run: []byte(`{"taskId":1}`)})
 	m.Wait()
@@ -158,7 +158,7 @@ func TestAConversationWithNothingSaidIsNotNamed(t *testing.T) {
 	})
 	c := k.Dial(t)
 	id := k.CreateConversation(t, c)
-	m := titles.New(titles.Config{Source: c, Title: titleOf(t, c)})
+	m := titles.New(titles.Config{Source: c, TitleSource: sourceOf(t, c)})
 	if got, err := m.Name(context.Background(), id); err != nil || got != "" {
 		t.Fatalf("named an empty conversation %q (%v)", got, err)
 	}
@@ -175,7 +175,7 @@ func TestAKernelWithoutModelsFallsBackToTheFirstWords(t *testing.T) {
 	id := k.CreateConversation(t, c)
 	k.Ask(t, c, id, "rename me", "ok", 30*time.Second)
 
-	m := titles.New(titles.Config{Source: unsupported{c}, Title: titleOf(t, c)})
+	m := titles.New(titles.Config{Source: unsupported{c}, TitleSource: sourceOf(t, c)})
 	got, err := m.Name(context.Background(), id)
 	if err != nil {
 		t.Fatalf("naming: %v", err)
@@ -195,16 +195,21 @@ func (unsupported) ModelComplete(context.Context, kernel.ModelCompleteParams) (k
 	return kernel.ModelCompleteResult{}, &kernel.RPCError{Code: kernel.CodeUnsupported, Message: "models is not implemented in this build"}
 }
 
-// titleOf reads a conversation's title from the list, the way the window's list cache would.
-func titleOf(t *testing.T, c *kernel.Client) func(ctx context.Context, id kernel.ID) (string, bool) {
+// sourceOf reads where a conversation's title came from in the list, the way the window's list would.
+func sourceOf(t *testing.T, c *kernel.Client) func(ctx context.Context, id kernel.ID) (string, bool) {
 	t.Helper()
 	return func(ctx context.Context, id kernel.ID) (string, bool) {
-		return listTitle(t, c, id), true
+		return listRow(t, c, id).TitleSource, true
 	}
 }
 
 // listTitle is one conversation's title in the list, "" when it has none.
 func listTitle(t *testing.T, c *kernel.Client, id kernel.ID) string {
+	t.Helper()
+	return listRow(t, c, id).Title
+}
+
+func listRow(t *testing.T, c *kernel.Client, id kernel.ID) kernel.Summary {
 	t.Helper()
 	page, err := c.List(context.Background(), kernel.ListParams{Limit: 200})
 	if err != nil {
@@ -212,11 +217,11 @@ func listTitle(t *testing.T, c *kernel.Client, id kernel.ID) string {
 	}
 	for _, row := range page.Items {
 		if row.ID == id {
-			return row.Title
+			return row
 		}
 	}
 	t.Fatalf("conversation %d is not in the list", id)
-	return ""
+	return kernel.Summary{}
 }
 
 // The Host does not poll: it feeds naming the conversation.busy notifications Kernel already broadcasts, which
@@ -230,7 +235,7 @@ func TestNamingFollowsTheConversationsBusyNotifications(t *testing.T) {
 	})
 	c := k.Dial(t)
 	id := k.CreateConversation(t, c)
-	m := titles.New(titles.Config{Source: c, Title: titleOf(t, c), Logf: t.Logf})
+	m := titles.New(titles.Config{Source: c, TitleSource: sourceOf(t, c), Logf: t.Logf})
 	defer m.Wait()
 
 	sub := k.Submit(t, c, id, "帮我修复部署脚本")

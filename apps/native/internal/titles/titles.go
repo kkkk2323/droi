@@ -41,9 +41,11 @@ type Source interface {
 // Config is what a Manager runs on.
 type Config struct {
 	Source Source
-	// Title reports a conversation's title as the caller knows it: "" (or false) when it has none. A title
-	// that is already there is a name somebody chose — the user who renamed it — and is never replaced.
-	Title func(ctx context.Context, id kernel.ID) (string, bool)
+	// Source reports where a conversation's title came from, as the caller knows it: kernel.TitleSourceAuto
+	// (Kernel's first line, or a name this package wrote), kernel.TitleSourceChosen (somebody named it, and it
+	// is never replaced), or "" for no title yet. ok is false for a conversation the caller does not know, or
+	// not one a person started; it is not named.
+	TitleSource func(ctx context.Context, id kernel.ID) (source string, ok bool)
 	// Logf hears what naming did, and why it did nothing. Optional.
 	Logf func(format string, args ...any)
 	// MaxAttempts overrides defaultAttempts. Optional.
@@ -109,8 +111,8 @@ func (m *Manager) Busy(ctx context.Context, n kernel.BusyNotification) {
 func (m *Manager) Wait() { m.wg.Wait() }
 
 // Name names one conversation and answers the title it wrote, or "" when it wrote none. It does nothing, and
-// answers nothing, when the conversation already has a title (somebody chose it), when it has no question
-// yet, or when its attempts are spent.
+// answers nothing, when somebody chose its title, when it has no question yet, or when its attempts are
+// spent.
 //
 // A model that fails, refuses, is not available, or answers something that is not a title costs no title:
 // the conversation is named with the user's own first words instead, which is always a usable line and
@@ -121,19 +123,12 @@ func (m *Manager) Name(ctx context.Context, id kernel.ID) (string, error) {
 	}
 	defer m.leave(id)
 
-	if m.namedByMe(id) {
+	if m.namedByMe(id) || !m.mayName(ctx, id) {
 		return "", nil
 	}
-	stored, hasStored := m.cfg.Title(ctx, id)
 
 	question, answer, ok := m.firstTurn(ctx, id)
 	if !ok || strings.TrimSpace(question) == "" {
-		return "", nil
-	}
-	// A title that is not the one the Kernel derives from the first message is one somebody chose — the
-	// user, or a Host that knows better — and is never replaced.
-	if hasStored && strings.TrimSpace(stored) != "" && stored != derivedTitle(question) {
-		m.markNamed(id)
 		return "", nil
 	}
 	if m.attemptsSpent(id) {
@@ -147,12 +142,30 @@ func (m *Manager) Name(ctx context.Context, id kernel.ID) (string, error) {
 	if title == "" {
 		return "", nil
 	}
-	write := title
-	if err := m.cfg.Source.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: id, Title: &write}); err != nil {
+	// The user may have renamed it while the model answered. Kernel has no compare-and-set, so a rename in the
+	// last moment can still be overwritten; this keeps the common case, a rename made while the call ran.
+	if !m.mayName(ctx, id) {
+		return "", nil
+	}
+	if err := m.cfg.Source.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: id, Title: kernel.TitleText(title), TitleSource: kernel.TitleSourceAuto}); err != nil {
 		return "", err
 	}
 	m.markNamed(id)
 	return title, nil
+}
+
+// mayName reports whether the conversation's title is still one naming may replace: Kernel's own first line, or
+// none. One somebody chose is never replaced, and the conversation counts as named.
+func (m *Manager) mayName(ctx context.Context, id kernel.ID) bool {
+	source, ok := m.cfg.TitleSource(ctx, id)
+	if !ok {
+		return false
+	}
+	if source == kernel.TitleSourceChosen {
+		m.markNamed(id)
+		return false
+	}
+	return true
 }
 
 // enter takes the conversation, unless naming it is already under way.
@@ -198,55 +211,6 @@ func (m *Manager) countAttempt(id kernel.ID) bool {
 	}
 	m.attempts[id]++
 	return true
-}
-
-// derivedTitle is the title the Kernel gives a conversation on its own: the first line of the first user
-// message, at most KernelTitleLimit characters, ending in an ellipsis when it was cut. A row still carrying
-// it has not been named yet; one carrying anything else was named by somebody.
-//
-// The length is counted the way the Kernel counts it — UTF-16 units, as JavaScript's String.length does — so
-// an emoji-heavy question does not make the comparison miss. Miss it would mean "somebody named this", and
-// the cost of that is a conversation that keeps the derived line: never a title written over a person's.
-func derivedTitle(question string) string {
-	line := strings.TrimSpace(question)
-	if at := strings.IndexAny(line, "\r\n"); at >= 0 {
-		line = line[:at]
-	}
-	if jsLen(line) > KernelTitleLimit {
-		return jsCut(line, KernelTitleLimit-1) + "…"
-	}
-	return line
-}
-
-// jsLen is a string's length in UTF-16 units, which is what JavaScript's String.length reports.
-func jsLen(s string) int {
-	n := 0
-	for _, r := range s {
-		if r > 0xFFFF {
-			n += 2
-			continue
-		}
-		n++
-	}
-	return n
-}
-
-// jsCut is the longest prefix of s that fits in limit UTF-16 units.
-func jsCut(s string, limit int) string {
-	var b strings.Builder
-	used := 0
-	for _, r := range s {
-		width := 1
-		if r > 0xFFFF {
-			width = 2
-		}
-		if used+width > limit {
-			break
-		}
-		b.WriteRune(r)
-		used += width
-	}
-	return b.String()
 }
 
 // firstTurn is the conversation's first question and the first answer to it: the words a name can be made
