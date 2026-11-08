@@ -82,7 +82,7 @@ func (h *GatewayHost) gatewayItem(it Item) gateway.Automation {
 		ID: it.ID, Name: it.Name, Prompt: it.Prompt, Schedule: it.Schedule, Timezone: it.Timezone,
 		Model: it.Model, ReasoningEffort: it.ReasoningEffort, Autonomy: it.Autonomy,
 		WorkingDirectory: it.WorkingDirectory, Paused: it.Paused, CreatedAt: rfc3339(it.CreatedAt),
-		ForkedFrom: it.ForkedFrom, ForkedFromName: it.ForkedFromName,
+		ForkedFrom: it.ForkedFrom, ForkedFromName: it.ForkedFromName, Conversation: it.Conversation,
 		Folder: h.Scheduler.Folder(it.ID), NextRunAt: rfc3339(it.NextRunAt), Running: it.Running, Invalid: it.Invalid,
 		Zone: it.Timezone,
 	}
@@ -144,7 +144,7 @@ func (h *GatewayHost) Save(_ context.Context, in gateway.Automation) (gateway.Au
 	a := automations.Automation{
 		ID: in.ID, Name: in.Name, Prompt: in.Prompt, Schedule: in.Schedule, Timezone: in.Timezone,
 		Model: in.Model, ReasoningEffort: in.ReasoningEffort, Autonomy: in.Autonomy,
-		WorkingDirectory: in.WorkingDirectory, Paused: in.Paused,
+		WorkingDirectory: in.WorkingDirectory, Paused: in.Paused, Conversation: in.Conversation,
 	}
 	saved, err := h.Scheduler.Save(a)
 	if err != nil {

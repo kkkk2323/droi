@@ -74,6 +74,9 @@ func (st *SessionStarter) Close() { st.unsubscribe() }
 // refusal of the Daemon's is any other error. A Session that started but
 // did not take its prompt is closed.
 func (st *SessionStarter) Start(ctx context.Context, run RunSpec) (string, error) {
+	if run.Conversation != "" {
+		return "", ErrLoopNeedsKernel
+	}
 	if _, err := st.sessions.Client(); err != nil {
 		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}

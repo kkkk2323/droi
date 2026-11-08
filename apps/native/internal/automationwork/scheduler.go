@@ -63,6 +63,16 @@ var ErrRunning = errors.New("a run of this automation is already working")
 // recorded.
 var ErrUnavailable = errors.New("the Daemon is not available")
 
+// ErrTargetGone is a start refused because the conversation a loop posts
+// into is gone. The run fails, and the Automation is paused: every later
+// run would fail the same way.
+var ErrTargetGone = errors.New("the conversation this automation posts into is gone")
+
+// ErrLoopNeedsKernel is a loop's start on a Host that runs no Kernel: its conversation is the Kernel's. As with
+// ErrTargetGone the run fails once and the Automation is paused, rather than wait unseen; it can be resumed once the
+// Host runs the Kernel again.
+var ErrLoopNeedsKernel = errors.New("this loop posts into a Kernel conversation, and Droi is not running the Kernel")
+
 // ErrCopy is an Adopt that could not copy the folder it was given; its
 // text names the paths.
 var ErrCopy = errors.New("could not copy the automation's folder")
@@ -99,6 +109,9 @@ type RunSpec struct {
 	// Automation tools and Droi's Workstream tools.
 	DisabledTools []string
 	Prompt        string
+	// Conversation is the conversation a loop's run posts its prompt into
+	// (automations.Automation.Conversation); "" opens one for the run.
+	Conversation string
 }
 
 // Starter opens a run's Session and sends its prompt. The caller reports the
@@ -517,6 +530,11 @@ func (s *Scheduler) start(ctx context.Context, a automations.Automation, act *ac
 				s.saveState()
 			}
 			s.record(failed)
+			if errors.Is(err, ErrTargetGone) || errors.Is(err, ErrLoopNeedsKernel) {
+				if perr := s.store.SetPaused(id, true); perr != nil {
+					s.logf("automations: could not pause %s: %v", id, perr)
+				}
+			}
 		}
 		s.unlock(true)
 		return failed, err
@@ -565,6 +583,7 @@ func (s *Scheduler) spec(a automations.Automation, r automations.Run) RunSpec {
 		}}},
 		DisabledTools: s.cfg.HiddenTools(),
 		Prompt:        a.Prompt,
+		Conversation:  a.Conversation,
 	}
 }
 

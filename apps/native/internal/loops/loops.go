@@ -28,6 +28,8 @@ type Loop struct {
 	NextRunAt  time.Time // zero when not known
 	LastError  string
 	CreatedAt  string
+	// Automation is a loop the Host keeps as one of its Automations (on the Kernel), not a Daemon cron.
+	Automation bool
 }
 
 // FromRecord reads a cron record; false for one that is not a Session's
