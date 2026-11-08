@@ -78,7 +78,7 @@ func source(file string) (Source, bool) {
 
 // saysAnything reads the transcript up to its first message that would come over.
 func saysAnything(r io.Reader) bool {
-	c := converter{}
+	c := newConverter()
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64<<10), maxLine)
 	for sc.Scan() {

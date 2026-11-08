@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
+import { fingerprintOf } from '../src/session/service.ts'
 import { Client, fauxCatalog, start, tempData } from './helpers.ts'
 
 /**
@@ -913,6 +914,34 @@ describe('conversation.import, a history without usage', () => {
         },
         20_000,
       )
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test('the fingerprint is the entries as sent, so a key written before the zero usage still replays', async () => {
+    const { kernel, client, data } = await kernelForTest()
+    try {
+      const created = (await client.call('conversation.import', {
+        entries: [user('first', 1000)],
+      })) as Imported
+      const answer = assistant('an answer without usage', 2000)
+      await client.call('conversation.import', {
+        id: created.conversationId,
+        key: 'droid-import:usage:1',
+        entries: [answer],
+      })
+      const page = (await client.call('conversation.entries', {
+        id: created.conversationId,
+        query: { order: 'ascending' },
+        limit: 100,
+      })) as { items: { kind: string; data?: { key?: string; fingerprint?: string } }[] }
+      const memo = page.items.find(
+        (entry) => entry.kind === 'droi.import' && entry.data?.key === 'droid-import:usage:1',
+      )
+      expect(memo?.data?.fingerprint).toBe(fingerprintOf({ entries: [answer] }))
     } finally {
       client.close()
       await kernel.stop()

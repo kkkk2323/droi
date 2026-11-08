@@ -37,6 +37,9 @@ type Conversation struct {
 	CreatedAt int64
 	LastAt    int64
 	Entries   []kernel.ImportEntry
+	// Heads are the compactions that keep part of what came before them: by the compaction's place in Entries,
+	// the place of the first entry it keeps. The Kernel takes a head as an entry ID, so Write fills it in.
+	Heads map[int]int
 	// Hash is the transcript's SHA-256, which names the import: the same file imports into the same
 	// conversation however often it is asked.
 	Hash string
@@ -72,7 +75,7 @@ func Convert(path string) (Conversation, error) {
 	}
 	defer f.Close()
 	sum := sha256.New()
-	c := converter{}
+	c := newConverter()
 	sc := bufio.NewScanner(io.TeeReader(f, sum))
 	sc.Buffer(make([]byte, 1<<20), maxLine)
 	for sc.Scan() {
@@ -86,15 +89,18 @@ func Convert(path string) (Conversation, error) {
 	out.Entries = c.entries
 	out.Hash = hex.EncodeToString(sum.Sum(nil))
 	out.Archived, out.Model, out.Effort = settingsOf(path)
-	if out.ID != "" {
-		data := map[string]any{"text": l10n.L("Imported from droid's session %s.", out.ID), "source": "droid", "sourceSessionId": out.ID}
-		if out.CreatedAt > 0 {
-			data["at"] = out.CreatedAt
-		}
-		note, _ := json.Marshal(data)
-		out.Entries = append([]kernel.ImportEntry{{Kind: kernel.EntryNote, Data: note}}, out.Entries...)
-	}
 	return out, nil
+}
+
+// note is the line that ends an imported history: where it came from. It is written in the user's language, so
+// Write sends it apart from the history, whose keys must stand for the same entries in any language.
+func (conv Conversation) note() kernel.ImportEntry {
+	data := map[string]any{"text": l10n.L("Imported from droid's session %s.", conv.ID), "source": "droid", "sourceSessionId": conv.ID}
+	if conv.LastAt > 0 {
+		data["at"] = conv.LastAt
+	}
+	raw, _ := json.Marshal(data)
+	return kernel.ImportEntry{Kind: kernel.EntryNote, Data: raw}
 }
 
 // settingsOf reads, from the settings file beside the transcript, whether droid archived the session and the
@@ -122,7 +128,11 @@ type converter struct {
 	at int64
 	// calls are the last answer's calls that no result has answered yet, in order, by id, with their names.
 	calls []call
+	// ends maps a droid message's id to how many entries there were once it was read, for a compaction's anchor.
+	ends map[string]int
 }
+
+func newConverter() *converter { return &converter{ends: map[string]int{}} }
 
 type call struct{ id, name string }
 
@@ -134,6 +144,9 @@ type record struct {
 	Timestamp string          `json:"timestamp"`
 	Message   json.RawMessage `json:"message"`
 	Summary   string          `json:"summaryText"`
+	Anchor    *struct {
+		ID string `json:"id"`
+	} `json:"anchorMessage"`
 }
 
 type message struct {
@@ -170,13 +183,7 @@ func (c *converter) line(raw []byte) {
 	case "session_start":
 		c.out.ID, c.out.Title, c.out.Cwd = r.ID, r.Title, r.Cwd
 	case "compaction_state":
-		at := c.time(r.Timestamp)
-		// droid's compaction drops everything up to its anchor, so the summary starts the context: Pi's head "self".
-		c.flush(at)
-		if strings.TrimSpace(r.Summary) == "" {
-			return
-		}
-		c.add(kernel.EntryCompaction, map[string]any{"role": "user", "content": compactionPrefix + r.Summary + compactionSuffix, "timestamp": at}, true)
+		c.compaction(r)
 	case "message":
 		var m message
 		if json.Unmarshal(r.Message, &m) != nil {
@@ -184,6 +191,42 @@ func (c *converter) line(raw []byte) {
 			return
 		}
 		c.message(m, c.time(r.Timestamp))
+		if r.ID != "" {
+			c.ends[r.ID] = len(c.entries)
+		}
+	}
+}
+
+// compaction writes droid's summary as Pi's. droid's drops everything up to its anchor message and keeps what came
+// after it, as Pi's keeps everything from its head: the head is the first entry after the anchor's, or the summary
+// itself when nothing after the anchor came over.
+func (c *converter) compaction(r record) {
+	at := c.time(r.Timestamp)
+	kept := len(c.entries)
+	if r.Anchor != nil {
+		if end, ok := c.ends[r.Anchor.ID]; ok {
+			kept = end
+		}
+	}
+	// A result whose call went into the summary would answer nothing in the context that remains, and an earlier
+	// summary is what this one replaces.
+	for kept < len(c.entries) && (c.entries[kept].Kind == kernel.EntryToolResult || c.entries[kept].Kind == kernel.EntryCompaction) {
+		kept++
+	}
+	if kept == len(c.entries) {
+		c.flush(at)
+		kept = len(c.entries)
+	}
+	if strings.TrimSpace(r.Summary) == "" {
+		return
+	}
+	place := len(c.entries)
+	c.add(kernel.EntryCompaction, map[string]any{"role": "user", "content": compactionPrefix + r.Summary + compactionSuffix, "timestamp": at}, kept == place)
+	if kept < place {
+		if c.out.Heads == nil {
+			c.out.Heads = map[int]int{}
+		}
+		c.out.Heads[place] = kept
 	}
 }
 

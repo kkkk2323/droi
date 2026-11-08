@@ -160,7 +160,7 @@ func TestSettingsImportsThePickedDroidSession(t *testing.T) {
 			all.Write(e.Data)
 		}
 	}
-	want := []string{kernel.EntryNote, kernel.EntryUser, kernel.EntryAssistant, kernel.EntryToolResult, kernel.EntryAssistant}
+	want := []string{kernel.EntryUser, kernel.EntryAssistant, kernel.EntryToolResult, kernel.EntryAssistant, kernel.EntryNote}
 	if strings.Join(kinds, ",") != strings.Join(want, ",") {
 		t.Fatalf("the entries are %v, want %v", kinds, want)
 	}

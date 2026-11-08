@@ -3,6 +3,7 @@ package droidimport
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -142,16 +143,13 @@ func TestATurnComesOverAsPiWritesOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	es := decode(t, conv)
-	if got := kinds(es); got != "droi.note pi.user pi.assistant pi.tool-result pi.assistant" {
+	if got := kinds(es); got != "pi.user pi.assistant pi.tool-result pi.assistant" {
 		t.Fatalf("kinds %s", got)
 	}
-	if es[0].data["sourceSessionId"] != "s1" || es[0].data["at"] != ms(1) || !strings.Contains(es[0].data["text"].(string), "s1") {
-		t.Errorf("note %v", es[0].data)
+	if es[0].msg["content"] != "fix the test" || es[0].msg["timestamp"] != ms(1) {
+		t.Errorf("user %v", es[0].msg)
 	}
-	if es[1].msg["content"] != "fix the test" || es[1].msg["timestamp"] != ms(1) {
-		t.Errorf("user %v", es[1].msg)
-	}
-	a := es[2].msg
+	a := es[1].msg
 	blocks := a["content"].([]any)
 	if len(blocks) != 2 || blocks[0].(m)["text"] != "Reading." || blocks[1].(m)["type"] != "toolCall" || blocks[1].(m)["id"] != "c1" ||
 		blocks[1].(m)["arguments"].(m)["path"] != "a.go" {
@@ -160,13 +158,13 @@ func TestATurnComesOverAsPiWritesOne(t *testing.T) {
 	if a["stopReason"] != "toolUse" || a["provider"] != "anthropic" || a["model"] != "claude-x" {
 		t.Errorf("answer %v", a)
 	}
-	r := es[3].msg
+	r := es[2].msg
 	if r["role"] != "toolResult" || r["toolCallId"] != "c1" || r["toolName"] != "Read" || r["isError"] != false ||
 		r["content"].([]any)[0].(m)["text"] != "package a" {
 		t.Errorf("result %v", r)
 	}
-	if es[4].msg["stopReason"] != "stop" {
-		t.Errorf("last answer %v", es[4].msg)
+	if es[3].msg["stopReason"] != "stop" {
+		t.Errorf("last answer %v", es[3].msg)
 	}
 	raw, _ := json.Marshal(conv.Entries)
 	if strings.Contains(string(raw), "secret") {
@@ -199,11 +197,11 @@ func TestDroidsOwnMessagesStayOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	es := decode(t, conv)
-	if got := kinds(es); got != "droi.note pi.user pi.user" {
+	if got := kinds(es); got != "pi.user pi.user" {
 		t.Fatalf("kinds %s", got)
 	}
-	if es[1].msg["content"] != "the real prompt" || es[2].msg["content"] != "both sides" {
-		t.Errorf("prompts %v / %v", es[1].msg, es[2].msg)
+	if es[0].msg["content"] != "the real prompt" || es[1].msg["content"] != "both sides" {
+		t.Errorf("prompts %v / %v", es[0].msg, es[1].msg)
 	}
 	if conv.Left != 7 {
 		t.Errorf("left %d, want 7", conv.Left)
@@ -228,18 +226,18 @@ func TestEveryCallHasOneResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	es := decode(t, conv)
-	if got := kinds(es); got != "droi.note pi.user pi.assistant pi.tool-result pi.tool-result pi.user pi.assistant pi.tool-result" {
+	if got := kinds(es); got != "pi.user pi.assistant pi.tool-result pi.tool-result pi.user pi.assistant pi.tool-result" {
 		t.Fatalf("kinds %s", got)
 	}
-	if es[3].msg["toolCallId"] != "c2" || es[3].msg["isError"] != false {
-		t.Errorf("c2 %v", es[3].msg)
+	if es[2].msg["toolCallId"] != "c2" || es[2].msg["isError"] != false {
+		t.Errorf("c2 %v", es[2].msg)
 	}
-	if es[4].msg["toolCallId"] != "c1" || es[4].msg["isError"] != true || es[4].msg["timestamp"] != ms(4) ||
-		es[4].msg["content"].([]any)[0].(m)["text"] != noResult {
-		t.Errorf("c1 %v", es[4].msg)
+	if es[3].msg["toolCallId"] != "c1" || es[3].msg["isError"] != true || es[3].msg["timestamp"] != ms(4) ||
+		es[3].msg["content"].([]any)[0].(m)["text"] != noResult {
+		t.Errorf("c1 %v", es[3].msg)
 	}
-	if es[7].msg["toolCallId"] != "c3" || es[7].msg["isError"] != true {
-		t.Errorf("c3 %v", es[7].msg)
+	if es[6].msg["toolCallId"] != "c3" || es[6].msg["isError"] != true {
+		t.Errorf("c3 %v", es[6].msg)
 	}
 	// The made-up result at the end is the last activity, or the history would come in unread.
 	if conv.LastAt != int64(ms(7)) {
@@ -263,16 +261,16 @@ func TestACompactionAndPicturesComeOver(t *testing.T) {
 		t.Fatal(err)
 	}
 	es := decode(t, conv)
-	if got := kinds(es); got != "droi.note pi.user pi.assistant pi.tool-result pi.compaction" {
+	if got := kinds(es); got != "pi.user pi.assistant pi.tool-result pi.compaction" {
 		t.Fatalf("kinds %s", got)
 	}
-	if img := es[1].msg["content"].([]any)[1].(m); img["type"] != "image" || img["data"] != "AAAA" || img["mimeType"] != "image/jpeg" {
+	if img := es[0].msg["content"].([]any)[1].(m); img["type"] != "image" || img["data"] != "AAAA" || img["mimeType"] != "image/jpeg" {
 		t.Errorf("picture %v", img)
 	}
-	if es[3].msg["isError"] != true {
-		t.Errorf("the call before the compaction was not answered first: %v", es[3].msg)
+	if es[2].msg["isError"] != true {
+		t.Errorf("the call before the compaction was not answered first: %v", es[2].msg)
 	}
-	c := es[4]
+	c := es[3]
 	if c.head != `"self"` || c.msg["role"] != "user" || c.msg["content"] != compactionPrefix+"we looked"+compactionSuffix || c.msg["timestamp"] != ms(3) {
 		t.Errorf("compaction %+v", c)
 	}
@@ -329,33 +327,66 @@ func TestListOffersSessionsWithAConversation(t *testing.T) {
 	}
 }
 
-func TestBatchesKeepToBothBounds(t *testing.T) {
-	small := kernel.ImportEntry{Kind: "pi.user", Model: make(json.RawMessage, 100)}
-	big := kernel.ImportEntry{Kind: "pi.user", Model: make(json.RawMessage, 5000)}
-	sizes := func(bs [][]kernel.ImportEntry) []int {
-		var out []int
-		for _, b := range bs {
-			out = append(out, len(b))
-		}
-		return out
+// A compaction keeps what came after its anchor, as Pi's keeps everything from its head; a result whose call went
+// into the summary is not kept, and nothing kept makes the summary its own head.
+func TestACompactionKeepsWhatCameAfterItsAnchor(t *testing.T) {
+	path := transcript(t, t.TempDir(), "s1",
+		start("s1"),
+		m{"type": "message", "id": "a", "timestamp": at(1), "message": user("first")},
+		m{"type": "message", "id": "b", "timestamp": at(2), "message": answer(use("c1", "Read"))},
+		m{"type": "message", "id": "r", "timestamp": at(3), "message": user([]any{result("c1", "x", false)})},
+		m{"type": "message", "id": "c", "timestamp": at(4), "message": answer(txt("read it"))},
+		m{"type": "compaction_state", "timestamp": at(5), "summaryText": "kept from b", "anchorMessage": m{"id": "a"}},
+		m{"type": "compaction_state", "timestamp": at(6), "summaryText": "kept from c", "anchorMessage": m{"id": "b"}},
+		m{"type": "compaction_state", "timestamp": at(7), "summaryText": "nothing kept", "anchorMessage": m{"id": "c"}},
+	)
+	conv, err := Convert(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := sizes(batches(nil, 3, 1000)); len(got) != 1 || got[0] != 0 {
-		t.Errorf("no entries: %v", got)
+	es := decode(t, conv)
+	if got := kinds(es); got != "pi.user pi.assistant pi.tool-result pi.assistant pi.compaction pi.compaction pi.compaction" {
+		t.Fatalf("kinds %s", got)
 	}
-	if got := sizes(batches([]kernel.ImportEntry{small, small, small, small, small, small, small}, 3, 1<<20)); len(got) != 3 || got[0] != 3 || got[2] != 1 {
-		t.Errorf("by count: %v", got)
+	// After a: b, its result, c; after b: its result, which answers a call the summary holds, so c.
+	if conv.Heads[4] != 1 || conv.Heads[5] != 3 || es[4].head != "" || es[5].head != "" {
+		t.Errorf("heads %v / %q %q", conv.Heads, es[4].head, es[5].head)
 	}
-	if got := sizes(batches([]kernel.ImportEntry{small, big, small, small}, 100, 1000)); len(got) != 3 || got[0] != 1 || got[1] != 1 || got[2] != 2 {
-		t.Errorf("by size: %v", got)
+	// After c: the two summaries, which are not droid's messages; nothing of droid's is kept.
+	if _, ok := conv.Heads[6]; ok || es[6].head != `"self"` {
+		t.Errorf("the last compaction: heads %v, head %q", conv.Heads, es[6].head)
 	}
 }
 
-// recorder is a Kernel that keeps the calls it got.
+func TestBatchesKeepToBothBounds(t *testing.T) {
+	small := kernel.ImportEntry{Kind: "pi.user", Model: make(json.RawMessage, 100)}
+	big := kernel.ImportEntry{Kind: "pi.user", Model: make(json.RawMessage, 5000)}
+	spans := func(es []kernel.ImportEntry, heads map[int]int, per, max int) string {
+		return fmt.Sprint(batches(es, heads, per, max))
+	}
+	if got := spans(nil, nil, 3, 1000); got != "[[0 0]]" {
+		t.Errorf("no entries: %v", got)
+	}
+	seven := []kernel.ImportEntry{small, small, small, small, small, small, small}
+	if got := spans(seven, nil, 3, 1<<20); got != "[[0 3] [3 6] [6 7]]" {
+		t.Errorf("by count: %v", got)
+	}
+	if got := spans([]kernel.ImportEntry{small, big, small, small}, nil, 100, 1000); got != "[[0 1] [1 2] [2 4]]" {
+		t.Errorf("by size: %v", got)
+	}
+	// A head in the call the compaction would join moves it to the next; one in an earlier call does not.
+	if got := spans(seven, map[int]int{2: 1, 5: 0}, 100, 1<<20); got != "[[0 2] [2 7]]" {
+		t.Errorf("by head: %v", got)
+	}
+}
+
+// recorder is a Kernel that keeps the calls it got, and numbers the entries it is sent from 100.
 type recorder struct {
 	imports   []kernel.ImportParams
 	configure []kernel.ConfigureParams
 	index     []kernel.IndexUpdateParams
 	fail      int
+	next      kernel.ID
 }
 
 func (r *recorder) Import(_ context.Context, p kernel.ImportParams) (kernel.ImportResult, error) {
@@ -363,7 +394,12 @@ func (r *recorder) Import(_ context.Context, p kernel.ImportParams) (kernel.Impo
 	if r.fail > 0 && len(r.imports) == r.fail {
 		return kernel.ImportResult{}, context.DeadlineExceeded
 	}
-	return kernel.ImportResult{ConversationID: 42}, nil
+	res := kernel.ImportResult{ConversationID: 42}
+	for range p.Entries {
+		r.next++
+		res.EntryIDs = append(res.EntryIDs, 99+r.next)
+	}
+	return res, nil
 }
 func (r *recorder) UpdateIndex(_ context.Context, p kernel.IndexUpdateParams) error {
 	r.index = append(r.index, p)
@@ -375,7 +411,7 @@ func (r *recorder) Configure(_ context.Context, p kernel.ConfigureParams) (kerne
 }
 
 // An import creates with the first batch and appends the rest, keyed by session, file and place, so a retry
-// writes the same calls; the agent and the seen mark are set apart from the entries.
+// writes the same calls; the note, the agent, the archive and the seen mark are set apart from the entries.
 func TestWriteKeysEveryBatch(t *testing.T) {
 	dir := t.TempDir()
 	lines := []any{start("s1")}
@@ -397,11 +433,11 @@ func TestWriteKeysEveryBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.imports) != 3 {
-		t.Fatalf("%d calls for 6 entries 2 a call", len(first.imports))
+	if len(first.imports) != 4 {
+		t.Fatalf("%d calls for 5 entries 2 a call and the note", len(first.imports))
 	}
-	p0, p1 := first.imports[0], first.imports[1]
-	if p0.ID != 0 || p0.Title != "A session" || p0.Cwd != "/Users/dev/acme" || p0.Kind != "chat" || p0.Archived == nil || !*p0.Archived ||
+	p0, p1, note := first.imports[0], first.imports[1], first.imports[3]
+	if p0.ID != 0 || p0.Title != "A session" || p0.Cwd != "/Users/dev/acme" || p0.Kind != "chat" || p0.Archived != nil ||
 		p0.CreatedAt == nil || *p0.CreatedAt != int64(ms(1)) || p0.Agent != nil {
 		t.Errorf("first call %+v", p0)
 	}
@@ -411,10 +447,16 @@ func TestWriteKeysEveryBatch(t *testing.T) {
 	if !strings.HasPrefix(p0.Key, "droid-import/v1/s1/") || !strings.HasSuffix(p0.Key, "/0") || !strings.HasSuffix(first.imports[2].Key, "/2") {
 		t.Errorf("keys %q %q", p0.Key, first.imports[2].Key)
 	}
+	var data m
+	if len(note.Entries) != 1 || note.Entries[0].Kind != kernel.EntryNote || json.Unmarshal(note.Entries[0].Data, &data) != nil ||
+		data["sourceSessionId"] != "s1" || data["at"] != ms(5) || !strings.Contains(note.Key, "/note-") {
+		t.Errorf("note %+v %v", note, data)
+	}
 	if len(first.configure) != 1 || first.configure[0].ID != 42 || first.configure[0].Change != agent {
 		t.Errorf("configure %+v", first.configure)
 	}
-	if len(first.index) != 1 || string(first.index[0].ViewedAt) != kernel.ViewedAtTime(int64(ms(5))).String() {
+	if len(first.index) != 1 || string(first.index[0].ViewedAt) != kernel.ViewedAtTime(int64(ms(5))).String() ||
+		first.index[0].Archived == nil || !*first.index[0].Archived {
 		t.Errorf("index %+v", first.index)
 	}
 	rec, ok := OpenStore(filepath.Join(dir, "imports.json")).Get("s1")
@@ -435,6 +477,24 @@ func TestWriteKeysEveryBatch(t *testing.T) {
 	}
 }
 
+// A compaction's head is the ID the Kernel gave the entry it keeps from, which an earlier call wrote.
+func TestWriteGivesAHeadItsEntryID(t *testing.T) {
+	entry := kernel.ImportEntry{Kind: kernel.EntryUser, Model: json.RawMessage(`[{"role":"user","content":"x","timestamp":1}]`)}
+	conv := Conversation{ID: "s1", Hash: strings.Repeat("a", 64), Entries: []kernel.ImportEntry{entry, entry, entry, entry}, Heads: map[int]int{3: 1}}
+	r := &recorder{}
+	if _, err := Write(context.Background(), r, conv, 100, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.imports) != 3 || len(r.imports[0].Entries) != 3 || len(r.imports[1].Entries) != 1 {
+		t.Fatalf("calls %+v", r.imports)
+	}
+	if got := string(r.imports[1].Entries[0].Head); got != "101" {
+		t.Errorf("head %s, want the second entry's ID 101", got)
+	}
+	if conv.Entries[3].Head != nil {
+		t.Error("Write changed the conversation's own entries")
+	}
+}
 func TestARecordKnowsItsFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "imports.json")
 	s := OpenStore(path)

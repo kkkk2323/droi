@@ -311,7 +311,8 @@ func (a *App) droidAgent(conv droidimport.Conversation) *kernel.AgentChange {
 func (a *App) exportDroidSession(f droidFailure) {
 	di := &a.settings.droidImport
 	dir := filepath.Join(a.cfg.Host.UserData(), "droid-import")
-	path := filepath.Join(dir, f.src.ID+".md")
+	// Named after the transcript's own file, not the id written inside it, so the file stays in dir.
+	path := filepath.Join(dir, strings.TrimSuffix(filepath.Base(f.src.Path), ".jsonl")+".md")
 	err := os.MkdirAll(dir, 0o755)
 	if err == nil {
 		err = os.WriteFile(path, []byte(droidimport.Markdown(f.conv)), 0o644)
