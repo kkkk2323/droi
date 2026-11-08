@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import type { ToolRegistration } from '@earendil-works/pi-durable'
@@ -24,10 +24,12 @@ afterEach(async () => {
 const SUMMARY =
   "v1\n## User Profile\nA developer.\n## User preferences\n- Answers in Chinese.\n## General Tips\n- Run pnpm check.\n## What's in Memory\n### /Users/dev/app\n- session_summaries/a.md — the login fix\n"
 
-function write(dir: string, path: string, body: string): void {
+function write(dir: string, path: string, body: string, at?: Date): void {
   const full = join(dir, path)
   mkdirSync(join(full, '..'), { recursive: true })
   writeFileSync(full, body)
+  // Search orders by a file's modification time: files written in the same millisecond would tie.
+  if (at !== undefined) utimesSync(full, at, at)
 }
 
 /** The Go suite's Memory folder: a Memory Summary and two Session Summaries. */
@@ -35,16 +37,18 @@ function folder(): string {
   const data = tempData()
   cleanups.push(() => data.cleanup())
   const dir = join(data.dir, 'memory')
-  write(dir, 'memory_summary.md', SUMMARY)
+  write(dir, 'memory_summary.md', SUMMARY, new Date('2026-10-27T08:00:00Z'))
   write(
     dir,
     'session_summaries/2026-10-20T10-00-00-aaaaaaaa-login.md',
     'session_id: aaaaaaaa\nupdated_at: 2026-10-20T10:00:00Z\nworkspace: /Users/dev/app\ntitle: Fix login\n\n# Fix login\nThe user said to use pnpm, not npm.\nThe session store lives in src/session.ts.\n',
+    new Date('2026-10-27T08:00:01Z'),
   )
   write(
     dir,
     'session_summaries/2026-10-26T10-00-00-bbbbbbbb-deploy.md',
     'session_id: bbbbbbbb\nupdated_at: 2026-10-26T10:00:00Z\nworkspace: /Users/dev/infra\ntitle: Deploy\n\n# Deploy\nDeploy with make ship.\n',
+    new Date('2026-10-27T08:00:02Z'),
   )
   return dir
 }
