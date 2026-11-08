@@ -1,8 +1,9 @@
+//go:build !windows
+
 package app
 
 import (
 	"context"
-	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -14,9 +15,6 @@ import (
 // A command the model starts with bash_background is a background task of the conversation: the header counts
 // it, its row says it runs, and Stop ends it through Kernel.
 func TestAKernelBackgroundProcessStopsFromTheList(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the command is bash's")
-	}
 	scriptKernel(t, func(sc *fakekernel.Scenario) {
 		sc.Steps = append([]fakekernel.Step{
 			{Match: "Start the server", Call: &fakekernel.Call{Name: "bash_background", ID: "call_bg", Arguments: map[string]any{"command": "sleep 30"}}},
