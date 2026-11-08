@@ -161,8 +161,8 @@ type TaskChanged struct {
 // authorization.
 type MCPChanged = MCPServers
 
-// ProcessChanged is process.changed: a background process wrote output, or
-// exited.
+// ProcessChanged is process.changed: a background process started or ended.
+// The end carries the newest output as Tail.
 type ProcessChanged struct {
 	ID        ID     `json:"id"`
 	ProcessID string `json:"processId"`

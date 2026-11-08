@@ -1343,13 +1343,6 @@ export class Kernel implements Dispatcher {
 
   // ── skills.list, resources.list ──────────────────────────────────────────────────────────────
 
-  /**
-   * The skills this kernel can load, in the order a client shows them.
-   *
-   * Without `id` only the user's own directory is read; with one, that conversation's `cwd` decides the
-   * workspace half. Every call reads the files again: a skill a person just wrote is there on the next call,
-   * which is what "the files are the source of truth" has to mean.
-   */
   async #processList(params: Record<string, unknown>): Promise<unknown> {
     const id = requiredNumber(params, 'id')
     await this.#conversation(id)
@@ -1367,6 +1360,13 @@ export class Kernel implements Dispatcher {
     return { status: await this.#options.background.stop(id, processId) }
   }
 
+  /**
+   * The skills this kernel can load, in the order a client shows them.
+   *
+   * Without `id` only the user's own directory is read; with one, that conversation's `cwd` decides the
+   * workspace half. Every call reads the files again: a skill a person just wrote is there on the next call,
+   * which is what "the files are the source of truth" has to mean.
+   */
   async #skillsList(params: Record<string, unknown>): Promise<unknown> {
     this.#readable()
     const loaded = await this.#loadResources(params)
@@ -1942,7 +1942,7 @@ type ImportedUsage = {
 }
 
 /** The kinds an import may not write: the kernel's own identity, memo and bookkeeping entries. */
-const RESERVED_IMPORT_KINDS = new Set(['droi.meta', 'droi.request', 'droi.import'])
+const RESERVED_IMPORT_KINDS = new Set(['droi.meta', 'droi.request', 'droi.import', 'droi.process'])
 
 /**
  * `entries` of `conversation.import`: Pi's entry drafts, checked for structure and nothing else.

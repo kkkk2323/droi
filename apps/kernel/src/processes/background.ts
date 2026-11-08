@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readSync, fstatSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -8,6 +8,7 @@ import type { BunSqliteDatabase } from '../storage/facade.ts'
 import {
   groupIsOurs,
   processSnapshot,
+  type GroupMember,
   type ShellGroup,
   type ToolProcesses,
 } from '../tool-processes.ts'
@@ -107,17 +108,15 @@ export class Background {
         )
         continue
       }
-      // The leader started by `startedAt`; a group whose members all started later is a stranger's, or ours
-      // with its leader gone, and is left alone either way.
-      const group: ShellGroup = {
-        pgid: record.pid,
-        spawnedAtMs: record.startedAt,
-        exitedAtMs: record.startedAt + START_SLACK_MS,
-      }
-      if (snapshot !== undefined && groupIsOurs(group, snapshot.get(record.pid) ?? [])) {
-        const { exited } = this.#options.tools.adopt(record.pid, group.exitedAtMs)
-        this.#live.set(record.id, { ...record, status: 'running', group, exited })
+      if (snapshot !== undefined && leaderPresent(record, snapshot.get(record.pid) ?? [])) {
+        this.#live.set(record.id, { ...record, status: 'running' })
         continue
+      }
+      if (snapshot?.has(record.pid) === true) {
+        warn('a background process group is not the one recorded; leaving it alone', {
+          processId: record.id,
+          pid: record.pid,
+        })
       }
       await this.#finish(record, 'stopped', undefined).catch(() => undefined)
     }
@@ -213,6 +212,8 @@ export class Background {
       )
       for (const entry of page.items) {
         if (entry.kind !== 'droi.process') continue
+        // A fork reads its parent's transcript too: the processes there are the parent's, not its own.
+        if ((entry as { conversationId?: unknown }).conversationId !== conversationId) continue
         const data = entry.data as Record<string, unknown>
         const id = data['processId']
         if (typeof id !== 'string') continue
@@ -267,10 +268,7 @@ export class Background {
         await this.#finish(live, 'stopped', undefined).catch(() => undefined)
         return 'gone'
       }
-      spawnSync('taskkill', ['/T', '/F', '/PID', String(live.pid)], {
-        windowsHide: true,
-        timeout: 6000,
-      })
+      await taskkill(live.pid)
       return 'stopped'
     }
     if (!this.#ours(live)) {
@@ -302,21 +300,19 @@ export class Background {
           live.child.exitCode === null &&
           live.child.signalCode === null
         ) {
-          spawnSync('taskkill', ['/T', '/F', '/PID', String(live.pid)], {
-            windowsHide: true,
-            timeout: 6000,
-          })
+          await taskkill(live.pid)
         }
       } else if (this.#ours(live)) {
         signal(live.pid, 'SIGKILL')
       }
     }
-    const deadline = Date.now() + 2000
     for (const live of ending) {
       if (live.child === undefined) {
         await this.#finish(live, 'stopped', undefined).catch(() => undefined)
         continue
       }
+      // Each its own wait: one slow exit must not leave the others to be recorded after the transcript closed.
+      const deadline = Date.now() + 2000
       while (live.finished === undefined && Date.now() < deadline) await Bun.sleep(20)
       await live.finished
     }
@@ -324,21 +320,28 @@ export class Background {
 
   /** Whether `live`'s group may be signalled, by the same rule a shutdown uses. */
   #ours(live: Live): boolean {
+    const snapshot = (): Map<number, GroupMember[]> | undefined => processSnapshot()
+    // One an earlier run started: only while the very leader it recorded is still there.
+    if (live.child === undefined) {
+      const members = snapshot()?.get(live.pid)
+      return members !== undefined && leaderPresent(live, members)
+    }
     const group = live.group
     if (group === undefined) return false
     if (group.exitedAtMs === undefined) return true
-    const snapshot = processSnapshot()
-    return snapshot !== undefined && groupIsOurs(group, snapshot.get(live.pid) ?? [])
+    const members = snapshot()?.get(live.pid)
+    return members !== undefined && groupIsOurs(group, members)
   }
 
   async #finish(live: Live, status: ProcessStatus, exitCode: number | undefined): Promise<void> {
     if (!this.#live.has(live.id) && live.child !== undefined) return
     this.#live.delete(live.id)
     await live.recorded?.catch(() => undefined)
+    await this.#record(live.conversationId, live, status === 'exited' ? 'done' : status, exitCode)
+    // Only once the end is in the transcript: a row left behind is what lets the next start settle it.
     await this.#options.db
       .run('DELETE FROM droi_processes WHERE process_id = ?', live.id)
       .catch(() => undefined)
-    await this.#record(live.conversationId, live, status === 'exited' ? 'done' : status, exitCode)
     this.#options.notify('process.changed', {
       id: live.conversationId,
       processId: live.id,
@@ -403,6 +406,28 @@ function publicOf(live: Live): ProcessInfo {
     ...(live.exitCode === undefined ? {} : { exitCode: live.exitCode }),
     ...(live.callId === undefined ? {} : { callId: live.callId }),
   }
+}
+
+/**
+ * Whether the group still holds the process this Kernel started as its leader: that pid, as a member of its own
+ * group, started no later than the record says. A reused pid is a later process, and is not ours.
+ */
+function leaderPresent(live: ProcessInfo, members: readonly GroupMember[]): boolean {
+  return members.some(
+    (member) => member.pid === live.pid && member.startedAtMs <= live.startedAt + START_SLACK_MS,
+  )
+}
+
+/** `taskkill` of a child this run holds, without blocking the Kernel's one thread while it runs. */
+function taskkill(pid: number): Promise<void> {
+  return new Promise((done) => {
+    execFile(
+      'taskkill',
+      ['/T', '/F', '/PID', String(pid)],
+      { windowsHide: true, timeout: 6000 },
+      () => done(),
+    )
+  })
 }
 
 function signal(pgid: number, name: NodeJS.Signals): void {

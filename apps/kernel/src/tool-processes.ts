@@ -46,10 +46,9 @@ export type ToolProcesses = {
   stop: (context: Context) => Promise<void>
   /**
    * A group this Kernel started itself (`bash_background`), so a stop ends it like a tool shell's: `exited`
-   * is called when its leader exits. A group an earlier run started passes `startedBefore`, the latest moment
-   * its leader can have started: it is ours only while a member that old is in it, the rule an exit time gives.
+   * is called when its leader exits.
    */
-  adopt: (pid: number, startedBefore?: number) => { exited: () => void }
+  adopt: (pid: number) => { exited: () => void }
 }
 
 /** One tool shell's group, and when it stopped being a live claim on its number. */
@@ -158,13 +157,8 @@ export function createToolProcesses(options: {
   }
 
   return {
-    adopt: (pid, startedBefore) => {
+    adopt: (pid) => {
       spawned(pid)
-      const group = groups.get(pid)
-      if (group !== undefined && startedBefore !== undefined) {
-        group.exitedAtMs = startedBefore
-        group.exitedDriftMs = clockDrift()
-      }
       return { exited: () => exited(pid) }
     },
     env: (target) => {

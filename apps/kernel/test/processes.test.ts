@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { Database } from 'bun:sqlite'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
 import type { KernelHandle } from '../src/kernel.ts'
@@ -272,6 +275,75 @@ describe.skipIf(!posix)('after a crash', () => {
   }, 60_000)
 })
 
+describe.skipIf(!posix)('whose process it is', () => {
+  test("a fork does not take its parent's processes as its own", async () => {
+    const b = await boot(data())
+    const id = await conversation(b)
+    const started = await startInBackground(b, id, 'sleep 30')
+    await waitForToolResult(b.client, id)
+    const page = await b.client.call('conversation.entries', {
+      id,
+      query: { order: 'descending' },
+      limit: 1,
+    })
+    const last = (page['items'] as { id: number }[])[0]!.id
+    const fork = (await b.client.call('conversation.fork', { id, at: last }))[
+      'conversationId'
+    ] as number
+    expect(await listed(b.client, fork)).toEqual([])
+    expect(
+      (await b.client.fails('process.stop', { id: fork, processId: started.processId })).code,
+    ).toBe(-32011)
+    expect((await listed(b.client, id))[0]).toMatchObject({
+      id: started.processId,
+      status: 'running',
+    })
+  }, 60_000)
+
+  test('a recorded pid that now names another program is never signalled', async () => {
+    const dir = data()
+    const first = await boot(dir)
+    const id = await conversation(first)
+    first.client.close()
+    await first.kernel.stop()
+
+    // A program of someone else's, in a group of its own, that the record claims as a process started before it.
+    const stranger = spawn('sleep', ['30'], { detached: true, stdio: 'ignore' })
+    const pid = stranger.pid!
+    cleanups.push(() => {
+      try {
+        process.kill(-pid, 'SIGKILL')
+      } catch {
+        // Already gone.
+      }
+    })
+    const db = new Database(join(dir, 'kernel.sqlite'))
+    const record = {
+      id: 'p-stranger',
+      pid,
+      command: 'pnpm dev',
+      logPath: join(dir, 'p-stranger.log'),
+      startedAt: Date.now() - 60_000,
+      status: 'running',
+    }
+    db.run('INSERT INTO droi_processes (process_id, conversation_id, record) VALUES (?, ?, ?)', [
+      record.id,
+      id,
+      JSON.stringify(record),
+    ])
+    db.close()
+
+    const second = await boot(dir)
+    expect(alive(pid)).toBe(true)
+    expect((await records(second.client, id)).map((r) => r['status'])).toEqual(['stopped'])
+    expect(await second.client.call('process.stop', { id, processId: 'p-stranger' })).toEqual({
+      status: 'gone',
+    })
+    second.client.close()
+    await second.kernel.stop()
+    expect(alive(pid)).toBe(true)
+  }, 60_000)
+})
 async function groupGone(pgid: number, timeoutMs = 10_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
