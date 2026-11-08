@@ -1038,6 +1038,10 @@ func (f *fakeKernel) StopProcess(context.Context, kernel.StopProcessParams) (ker
 	return kernel.Status{}, errors.New("not in this test")
 }
 
+func (f *fakeKernel) RespondApproval(context.Context, kernel.ApprovalRespondParams) (kernel.Status, error) {
+	return kernel.Status{}, errors.New("not in this test")
+}
+
 // TestAViewResolvesItsConversationID: the window names a Session by the string its routes and preferences use,
 // and Kernel names it by number. The default reads the number out of the string; an app that keeps a mapping
 // hands one over instead. A string that is not a number is not a conversation, and the View says so rather than

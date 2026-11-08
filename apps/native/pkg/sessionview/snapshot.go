@@ -105,11 +105,14 @@ func (s *Snapshot) Todos() []session.TodoItem {
 	return s.Session.Todos()
 }
 
-// WorkingState is the Daemon's working-state string, which its own views read. The Kernel path answers idle or
-// streaming from the run, since it has no finer state to tell.
+// WorkingState is the Daemon's working-state string, which its own views read. The Kernel path answers from the
+// run: idle, streaming, or waiting while a call waits for an approval.
 func (s *Snapshot) WorkingState() protocol.DroidWorkingState {
 	if s.Session != nil {
 		return s.Session.WorkingState()
+	}
+	if s.State != nil && len(s.State.Approvals()) > 0 {
+		return protocol.DroidWorkingStateWaitingForToolConfirmation
 	}
 	if s.Running {
 		return protocol.DroidWorkingStateStreamingAssistantMessage

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import type { Policy } from './policy/decide.ts'
 
 /** One provider the Host points the kernel at, and the models it may use. */
 export type ProviderConfig = {
@@ -42,6 +43,14 @@ export type KernelConfig = {
   agent?: AgentDefaults
   /** How often running progress is committed; Pi's defaults when absent. */
   progress?: { partialIntervalMs: number; outputIntervalMs: number; persistWithinMs: number }
+  /**
+   * An approval policy known at start, so calls are judged before the Host pushes one. Without it nothing above
+   * `ask` runs until the first `policy.set`, or until `policyWaitMs` (30 s) settles the level at `ask`.
+   */
+  policy?: Policy
+  policyWaitMs?: number
+  /** How long an approval card waits for a person: ten minutes unless a test says otherwise. */
+  approvalTimeoutMs?: number
   /** Pushes a second a connection gets per conversation; the contract says at most 5. */
   viewPushesPerSecond?: number
 }

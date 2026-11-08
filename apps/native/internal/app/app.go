@@ -285,6 +285,10 @@ type App struct {
 	// kernelAlerts follows the busy and idle of Kernel's conversations, as watchAlerts follows the Daemon's
 	// working states.
 	kernelAlerts *alerts.Tracker
+	// approvals are the requests each Kernel Session waits on, by Session id, for its mark and alert. Guarded by mu.
+	approvals map[string]map[string]bool
+	// policy is the approval policy as the window gives it to Kernel.
+	policy policyState
 	// titles names the conversations a person started once their first round ends. It belongs with the Host,
 	// and moves there when the Host holds the Kernel connection itself.
 	titles *titles.Manager
@@ -334,8 +338,11 @@ func New(cfg Config) *App {
 		kernelAlerts: alerts.NewTracker(),
 	}
 	a.titles = titles.New(titles.Config{Source: &a.kernel, TitleSource: a.titleSource})
-	a.unsubscribe = append(a.unsubscribe, a.sessions.Subscribe(func(kernel.ID) { a.redraw() }))
-	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update}
+	a.unsubscribe = append(a.unsubscribe, a.sessions.Subscribe(func(id kernel.ID) {
+		a.heardApprovals(id)
+		a.redraw()
+	}))
+	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update, Changed: a.defaultsChanged}
 	pickFolder := a.pickFolder
 	if cfg.Computer != nil {
 		// Another computer's Daemon cannot use a folder picked on this one.

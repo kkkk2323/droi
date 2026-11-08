@@ -52,7 +52,8 @@ func (v *sessionView) settingsBar(c *ui.Context, s *sessionview.Snapshot) {
 			update(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(e)})
 		}, nil)
 	if s.State != nil {
-		// Kernel has no autonomy and no Spec mode until M3 (approvals, plan mode): a switch for them would do nothing.
+		// Spec mode is the Daemon's; Kernel's plan mode is another thing, still to come.
+		v.kernelAutonomy(c, s.State.ID())
 		return
 	}
 	// A Mission's Sessions have modes of their own.

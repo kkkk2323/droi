@@ -608,14 +608,13 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 							}
 						}
 					}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
-					if a.onKernel() {
-						// Kernel has no autonomy and no Spec mode until M3 (approvals, plan mode).
-						return
-					}
-					if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
-						s.interaction = string(protocol.DroidInteractionModeSpec)
-						if spec {
-							s.interaction = string(protocol.DroidInteractionModeAuto)
+					// Spec mode is the Daemon's; Kernel's plan mode is another thing, still to come.
+					if !a.onKernel() {
+						if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
+							s.interaction = string(protocol.DroidInteractionModeSpec)
+							if spec {
+								s.interaction = string(protocol.DroidInteractionModeAuto)
+							}
 						}
 					}
 					opts := make([]kit.Option, len(autonomyLevels))

@@ -135,6 +135,11 @@ type Scenario struct {
 	// turn, and an unscripted completion is not a miss: once the Kernel implements model.complete every test
 	// that creates a conversation makes one, and a miss would fail tests that never asked about titles.
 	Completions []Completion `json:"completions,omitempty"`
+
+	// Autonomy is the approval level Start pushes, as a Host does right after it connects: "ask", "edits",
+	// "safe" or "all". "" is "all", so a scripted tool call runs without a card; a test of approvals asks for
+	// a lower level.
+	Autonomy string `json:"-"`
 }
 
 // FakeTitleAnswer is what an unscripted model.complete answers: a valid title for the schema the Kernel's
@@ -290,7 +295,25 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 	}
 	k.Port = handshake.Port
 	k.Version = handshake.Version
+	k.pushPolicy(t, sc.Autonomy)
 	return k
+}
+
+// pushPolicy stands in for the Host's first policy.set: until one arrives the Kernel lets no tool above "ask" run.
+// A Kernel without approvals answers CodeUnsupported, and runs every tool anyway.
+func (k *Kernel) pushPolicy(t testing.TB, autonomy string) {
+	t.Helper()
+	if autonomy == "" {
+		autonomy = "all"
+	}
+	client := k.Dial(t)
+	defer client.Close()
+	ctx, cancel := k.context(t, 30*time.Second)
+	defer cancel()
+	_, err := client.PolicySet(ctx, kernel.PolicySetParams{Policy: kernel.PolicyChange{Autonomy: autonomy}})
+	if err != nil && !kernel.Is(err, kernel.CodeUnsupported) {
+		t.Fatalf("fakekernel: policy.set: %v\n%s", err, k.Logs())
+	}
 }
 
 // Close stops the Kernel, everything it started, and the scripted model. It runs when the test ends; calling

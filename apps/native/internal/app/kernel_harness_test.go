@@ -67,6 +67,17 @@ func keptOnDaemon(name string) (string, bool) {
 	}
 }
 
+// kernelScripts change a test's Fake Kernel scenario, by test name.
+var kernelScripts sync.Map
+
+// scriptKernel has this test's Fake Kernel answer as change makes its scenario: a test whose model calls a tool.
+// Call it before the harness starts.
+func scriptKernel(t *testing.T, change func(*fakekernel.Scenario)) {
+	t.Helper()
+	kernelScripts.Store(t.Name(), change)
+	t.Cleanup(func() { kernelScripts.Delete(t.Name()) })
+}
+
 // kernelSessionsEnv set to "daemon" runs every window test on the Fake Daemon alone, as before the Kernel: the way
 // to tell whether a failure is the Kernel path's.
 const kernelSessionsEnv = "DROI_VIEW_SESSIONS"
@@ -95,6 +106,9 @@ func startKernelSessions(t *testing.T, sc fakedaemon.Scenario, d *fakedaemon.Dae
 	}
 	if !fakekernel.Available() && os.Getenv(fakekernel.RequiredEnv) == "" {
 		return nil
+	}
+	if change, ok := kernelScripts.Load(t.Name()); ok {
+		change.(func(*fakekernel.Scenario))(&ksc)
 	}
 	ids := make([]string, len(d.Sessions))
 	for i, s := range d.Sessions {

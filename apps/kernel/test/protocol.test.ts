@@ -41,7 +41,7 @@ describe('the handshake and the connection', () => {
     expect(info['version']).toBe('kernel-1.5.0-1')
     const capabilities = info['capabilities'] as Record<string, boolean>
     expect(capabilities['conversations']).toBe(true)
-    expect(capabilities['approvals']).toBe(false)
+    expect(capabilities['approvals']).toBe(true)
     const extensions = info['extensions'] as { name: string; tools: string[] }[]
     expect(extensions[0]?.name).toBe('coding')
     expect(extensions[0]?.tools).toContain('read')

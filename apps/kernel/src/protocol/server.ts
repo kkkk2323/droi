@@ -38,7 +38,7 @@ export type Notifier = {
   connections(): readonly Connection[]
 }
 
-type Socket = ServerWebSocket<{ connection?: Connection }>
+type Socket = ServerWebSocket<{ connection?: Connection; client?: string }>
 
 /** A conversation's view subscription on one connection. */
 type Subscription = { stop: () => Promise<void> }
@@ -50,13 +50,16 @@ type Subscription = { stop: () => Promise<void> }
  */
 export class Connection {
   readonly id: number
+  /** The `X-Droi-Client` the client connected with (`window`, `phone`, `host`), `unknown` without one. */
+  readonly client: string
   #ws: Socket
   #subscriptions = new Map<number, Subscription>()
   #closed = false
 
-  constructor(id: number, ws: Socket) {
+  constructor(id: number, ws: Socket, client = 'unknown') {
     this.id = id
     this.#ws = ws
+    this.client = client
   }
 
   get open(): boolean {
@@ -134,7 +137,7 @@ export type ServerHandle = Notifier & {
 export function serve(options: ServerOptions): ServerHandle {
   const connections = new Set<Connection>()
   let nextConnectionId = 1
-  let server: Server<{ connection?: Connection }> | undefined
+  let server: Server<{ connection?: Connection; client?: string }> | undefined
 
   const broadcast = (method: string, payload?: unknown) => {
     const frame = notification(method, payload)
@@ -218,14 +221,15 @@ export function serve(options: ServerOptions): ServerHandle {
       if (!authorized(request.headers.get('authorization'), options.token)) {
         return new Response('unauthorized', { status: 401 })
       }
-      if (!server!.upgrade(request, { data: {} })) {
+      const client = clientName(request.headers.get('x-droi-client'))
+      if (!server!.upgrade(request, { data: { client } })) {
         return new Response('websocket upgrade required', { status: 426 })
       }
       return undefined
     },
     websocket: {
       open(ws) {
-        const connection = new Connection(nextConnectionId++, ws)
+        const connection = new Connection(nextConnectionId++, ws, ws.data.client)
         ws.data.connection = connection
         connections.add(connection)
         info('connection opened', { connection: connection.id, connections: connections.size })
@@ -291,6 +295,12 @@ function authorized(header: string | null, token: string): boolean {
   const match = /^Bearer\s+(.+)$/i.exec(header.trim())
   if (match === null) return false
   return sameSecret(match[1]!, token)
+}
+
+/** A client's name as it said it, kept short and printable: it ends up in notifications and logs. */
+function clientName(header: string | null): string {
+  const name = header?.trim().slice(0, 32) ?? ''
+  return /^[A-Za-z0-9._-]+$/.test(name) ? name : 'unknown'
 }
 
 function sameSecret(given: string, expected: string): boolean {
