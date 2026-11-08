@@ -194,9 +194,8 @@ func TestARefreshKeepsArchivedRowsShown(t *testing.T) {
 	prefs.ShowArchived.Set(h.a.prefs, true)
 	h.a.reloadList()
 	id := res.ConversationID.String()
-	if findSummary(h.a.listedNow(), id) == nil {
-		t.Fatal("the archived conversation is not listed with archived Sessions shown")
-	}
+	// A read Kernel's own index.changed started may land after this one, and in its place.
+	h.until("the archived conversation listed", func() bool { return findSummary(h.a.listedNow(), id) != nil })
 	h.a.refreshList()
 	if findSummary(h.a.listedNow(), id) == nil {
 		t.Fatal("a refresh dropped a recent archived row")
@@ -262,4 +261,22 @@ func TestAnIndexChangeOutlivesARead(t *testing.T) {
 	if findSummary(h.a.listedNow(), row.SessionID) != nil {
 		t.Fatal("a read from before the archive brought the row back")
 	}
+}
+
+// TestARowHeardOfDuringTheFirstReadIsListed: an index change of a conversation the first read of the list does not
+// have, which arrives while that read is out, has the list read again for it once the read lands.
+func TestARowHeardOfDuringTheFirstReadIsListed(t *testing.T) {
+	h := kernelHarness(t)
+	row := *findSummary(h.a.listedNow(), h.d.Sessions[0].SessionID)
+	conv, _ := h.a.kernelID(row.SessionID)
+	without := slices.DeleteFunc(slices.Clone(h.a.listedNow()), func(s sessions.Summary) bool { return s.SessionID == row.SessionID })
+	h.a.mu.Lock()
+	h.a.listed, h.a.listDone = without, false
+	h.a.listRev++
+	h.a.mu.Unlock()
+	gen := h.a.startList()
+	title := "Heard of early"
+	h.a.applyIndexChanged(kernel.IndexChanged{ID: conv, Title: &title, LastActivityAt: row.UpdatedAt * 1000})
+	h.a.setList(gen, slices.Clone(without), 0, false, nil)
+	h.until("the row read again", func() bool { return findSummary(h.a.listedNow(), row.SessionID) != nil })
 }

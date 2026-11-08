@@ -40,7 +40,16 @@ func (p *kernelPages) first(ctx context.Context) ([]sessions.Summary, int64, boo
 		if err != nil {
 			return nil, 0, false, err
 		}
-		read = append(read, more...)
+		// One archived between the two reads is in both; its index.changed puts the row it keeps right.
+		live := make(map[kernel.ID]bool, len(read))
+		for _, s := range read {
+			live[s.ID] = true
+		}
+		for _, s := range more {
+			if !live[s.ID] {
+				read = append(read, s)
+			}
+		}
 	}
 	return p.a.kernelSummaries(read), 0, false, nil
 }
@@ -168,12 +177,15 @@ func (a *App) applyIndexLocked(n kernel.IndexChanged, show bool) bool {
 }
 
 // replayIndexLocked applies again, to rows a read of the list started at from just put in place, the index changes
-// that arrived while it was out; and forgets the ones no read still out needs. a.mu is held.
-func (a *App) replayIndexLocked(from uint64) {
+// that arrived while it was out. It reports whether one of them is of a conversation the read did not have, for which
+// the list is to be read again. a.mu is held.
+func (a *App) replayIndexLocked(from uint64) bool {
 	show := prefs.ShowArchived.Get(a.prefs)
+	read := false
 	for _, e := range a.indexLog {
-		if e.seq > from {
-			a.applyIndexLocked(e.n, show)
+		if e.seq > from && a.applyIndexLocked(e.n, show) {
+			read = true
 		}
 	}
+	return read
 }

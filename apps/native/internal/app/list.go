@@ -60,11 +60,22 @@ func (a *App) pages() (listPages, bool) {
 // ones read before. The first time, or once reloadList made them stale,
 // it reads every page after it as well, which can take a while.
 func (a *App) refreshList() {
-	pages, ok := a.pages()
-	if !ok {
+	if _, ok := a.pages(); !ok {
 		return
 	}
+	// A read looks at Show Archived after it is counted: one counted after a change sees the change, and one
+	// counted before is older than the read the change starts, so its list never lands over that one's.
 	gen := a.startList()
+	pages, ok := a.pages()
+	if !ok {
+		a.mu.Lock()
+		delete(a.reading, gen)
+		if len(a.reading) == 0 {
+			a.indexLog = nil
+		}
+		a.mu.Unlock()
+		return
+	}
 	page, edge, more, err := pages.first(a.ctx)
 	if p := a.setList(gen, page, edge, more, err); p != nil {
 		a.readOlder(*p, pages)
@@ -156,7 +167,9 @@ func (a *App) setList(gen uint64, page []sessions.Summary, edge int64, more bool
 	a.listRev++
 	if !more {
 		a.listed = page
-		a.replayIndexLocked(from)
+		if a.replayIndexLocked(from) {
+			go a.refreshList()
+		}
 		a.older = olderRead
 		a.olderGen++
 		a.keepList()
