@@ -203,9 +203,6 @@ type View struct {
 	zoomOpen  bool
 
 	jobs jobsState
-	// paused are the queued messages Stop took back from Kernel, kept here until the user edits or removes them.
-	// Guarded by mu.
-	paused []session.QueuedMessage
 
 	compacting bool
 	// hasLoaded: the Session was loaded once. The Daemon cleans up an idle

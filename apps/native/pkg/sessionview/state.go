@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/kkkk2323/droid-sdk-go/session"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
@@ -167,6 +169,19 @@ func (s *State) Run() json.RawMessage {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.run
+}
+
+// RunInputs are the submissions the run in progress placed: they are in the transcript, not waiting.
+func (s *State) RunInputs() []int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var run struct {
+		Inputs []int64 `json:"inputs"`
+	}
+	if !namesARun(s.run) || json.Unmarshal(s.run, &run) != nil {
+		return nil
+	}
+	return run.Inputs
 }
 
 // Failure is why the run that ended failed, or nil.
@@ -514,6 +529,10 @@ type Store struct {
 	nextID  int
 	// turns is, per connection and conversation, the subscription call decided last: closed once it has answered.
 	turns map[turnKey]chan struct{}
+	// paused and sent are the inputs the window holds for a conversation (store_inputs.go). Unlike states, they are
+	// never evicted: they are the user's words.
+	paused map[kernel.ID][]session.QueuedMessage
+	sent   map[kernel.ID]map[int64]InboxItem
 }
 
 // turnKey is a conversation on one connection generation.
@@ -539,6 +558,12 @@ func (st *Store) ready() {
 	}
 	if st.turns == nil {
 		st.turns = map[turnKey]chan struct{}{}
+	}
+	if st.paused == nil {
+		st.paused = map[kernel.ID][]session.QueuedMessage{}
+	}
+	if st.sent == nil {
+		st.sent = map[kernel.ID]map[int64]InboxItem{}
 	}
 	if st.max < 1 {
 		st.max = 1
@@ -783,6 +808,9 @@ func (st *Store) ApplyBusy(gen int64, n kernel.BusyNotification) bool {
 	if gen == st.gen {
 		if state := st.states[n.ID]; state != nil {
 			changed = state.ApplyBusy(n)
+		}
+		if !n.Busy() {
+			st.idleLocked(n.ID)
 		}
 	}
 	st.mu.Unlock()

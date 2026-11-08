@@ -13,6 +13,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
 // The composer's half of the Kernel path: a message becomes conversation.submit, Stop becomes conversation.abort,
@@ -52,48 +53,61 @@ func whenBusyOf(placement protocol.QueuePlacement) string {
 }
 
 // submit sends a message to the conversation Kernel drives. Each send has its own request id, so a retry of the
-// same call is answered as the first one rather than queued twice.
+// same call is answered as the first one rather than queued twice. The submission is recorded once Kernel answers,
+// so a Stop before the view that queues it arrives still finds it.
 func (v *View) submit(id kernel.ID, text string, images []attachments.Image, placement protocol.QueuePlacement) {
 	p := kernel.SubmitParams{ID: id, Input: submitInput(text, images), WhenBusy: whenBusyOf(placement), RequestID: uuid.NewString()}
 	go func() {
-		if _, err := v.env.Kernel.Submit(v.env.Ctx, p); err != nil {
+		res, err := v.env.Kernel.Submit(v.env.Ctx, p)
+		if err != nil {
 			v.Fail(err)
+			return
 		}
+		content, _ := json.Marshal(p.Input)
+		mode := p.WhenBusy
+		if mode == "" {
+			mode = kernel.WhenBusyFollowUp
+		}
+		v.env.Sessions.submitted(id, InboxItem{ID: int64(res.SubmissionID), Mode: mode, Content: content})
 	}()
 }
 
 // interruptKernel stops the run. Kernel withdraws the queued inputs with it, which the Daemon's path kept on this
 // computer as paused messages; so do these: what the user queued is not thrown away by Stop. Only the inputs Kernel
 // reports withdrawn are kept — one that entered the transcript before the abort landed went out, and editing it
-// again would send it twice.
+// again would send it twice. One whose fate cannot be read is kept too, and the error said: the words are only here.
 func (v *View) interruptKernel(id kernel.ID) {
-	var queued []InboxItem
-	if state := v.kernelState(); state != nil {
-		queued = inputsOf(state.InboxItems())
-	}
+	store := v.env.Sessions
+	queued := store.queuedInputs(id)
 	go func() {
 		if err := v.env.Kernel.Abort(v.env.Ctx, kernel.AbortParams{ID: id}); err != nil {
 			v.Fail(err)
 			return
 		}
 		var kept []session.QueuedMessage
+		var decided []int64
+		var unread error
 		for _, item := range queued {
 			rec, err := v.env.Kernel.SubmissionGet(v.env.Ctx, kernel.AbortSubmissionParams{ID: id, SubmissionID: kernel.ID(item.ID)})
-			if err != nil || rec.Status != "unanswered" || rec.Entry != nil {
-				continue
+			if err == nil {
+				decided = append(decided, item.ID)
+				if rec.Status != "unanswered" || rec.Entry != nil {
+					continue
+				}
+			} else if unread == nil {
+				unread = err
 			}
 			if q, ok := queuedOf(item); ok {
 				q.Kind = session.KindLocalPausedAfterEsc
-				q.RequestID = "paused:" + uuid.NewString()
+				q.RequestID = pausedID(item.ID)
 				kept = append(kept, q)
 			}
 		}
-		if len(kept) == 0 {
-			return
+		store.settled(id, decided)
+		store.pause(id, kept)
+		if unread != nil {
+			v.Fail(fmt.Errorf("%s: %w", l10n.L("Stop could not tell whether a queued message was sent; it is kept above the composer"), unread))
 		}
-		v.mu.Lock()
-		v.paused = append(v.paused, kept...)
-		v.mu.Unlock()
 		v.redraw()
 	}()
 }
@@ -101,9 +115,7 @@ func (v *View) interruptKernel(id kernel.ID) {
 // kernelQueued is the shelf's queue for a conversation Kernel drives: what Stop kept, then what pi.inbox holds, in
 // the order it will be placed.
 func (v *View) kernelQueued(state *State) []session.QueuedMessage {
-	v.mu.Lock()
-	out := append([]session.QueuedMessage(nil), v.paused...)
-	v.mu.Unlock()
+	out := v.env.Sessions.Paused(state.ID())
 	for _, item := range inputsOf(state.InboxItems()) {
 		if q, ok := queuedOf(item); ok {
 			out = append(out, q)
@@ -200,14 +212,7 @@ func (v *View) Withdraw(q session.QueuedMessage) error {
 
 func (v *View) withdrawKernel(id kernel.ID, q session.QueuedMessage) error {
 	if q.Kind == session.KindLocalPausedAfterEsc {
-		v.mu.Lock()
-		for i, p := range v.paused {
-			if p.RequestID == q.RequestID {
-				v.paused = append(v.paused[:i:i], v.paused[i+1:]...)
-				break
-			}
-		}
-		v.mu.Unlock()
+		v.env.Sessions.unpause(id, q.RequestID)
 		v.redraw()
 		return nil
 	}
