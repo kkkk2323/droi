@@ -47,6 +47,17 @@ class TimedSandbox extends CodemodeSandbox {
 }
 
 function workerUrl(): string | URL {
-  const compiled = import.meta.url.includes('$bunfs') || import.meta.url.includes('~BUN')
-  return compiled ? './codemode-worker.ts' : new URL('../codemode-worker.ts', import.meta.url)
+  return compiledIn(import.meta.path, import.meta.url)
+    ? './codemode-worker.ts'
+    : new URL('../codemode-worker.ts', import.meta.url)
+}
+
+/**
+ * Whether this module runs inside a compiled Kernel: its path is in Bun's embedded file system, `/$bunfs/root/` on
+ * macOS and Linux and `B:\~BUN\root\` on Windows. The URL alone is not enough: on Windows it spells `~` as
+ * `%7E`, so a compiled Kernel took itself for one run from source and every script failed to start its worker.
+ */
+export function compiledIn(path: string, url: string): boolean {
+  const where = `${path} ${decodeURIComponent(url)}`
+  return where.includes('$bunfs') || where.includes('~BUN')
 }
