@@ -388,6 +388,13 @@ conversation or submission; reusing it with different params is `-32013`.
 the same query and limit. `conversation.list`'s cursor is the kernel's own
 (`{"before": <conversationId>}`); `conversation.entries`'s is Pi's.
 
+`conversation.entries`' `query` is `{order?, minEntryId?, maxEntryId?, kinds?}`. `kinds` (a non-empty list of
+entry kinds, such as `["pi.user"]`) answers only entries of those kinds, filtered in the kernel so a client that
+wants a long conversation's questions does not carry its answers and tool output. Such an answer has no cursor
+(Pi's points after the last entry scanned, not the last one returned) and a `cursor` beside `kinds` is
+`-32602`: the next page narrows `maxEntryId` (descending) or `minEntryId` (ascending) past the last item, and a
+page shorter than `limit` is the last.
+
 ## Methods
 
 31 methods. "Capability" names the `harness.info.capabilities` flag that says

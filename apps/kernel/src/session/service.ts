@@ -1150,18 +1150,61 @@ export class Kernel implements Dispatcher {
     if (order !== 'ascending' && order !== 'descending') {
       throw invalidParams([{ path: 'query.order', message: 'ascending or descending' }])
     }
-    const page = await conversation.entries(
-      {
-        order,
-        minEntryId: optionalNumber(query, 'minEntryId') as EntryId | undefined,
-        maxEntryId: optionalNumber(query, 'maxEntryId') as EntryId | undefined,
-      },
-      limit,
-      cursor as never,
-      context,
-    )
+    const bounds = {
+      order,
+      minEntryId: optionalNumber(query, 'minEntryId') as EntryId | undefined,
+      maxEntryId: optionalNumber(query, 'maxEntryId') as EntryId | undefined,
+    } as const
+    const kinds = query['kinds']
+    if (kinds !== undefined) {
+      if (
+        !Array.isArray(kinds) ||
+        kinds.length === 0 ||
+        kinds.some((kind) => typeof kind !== 'string')
+      ) {
+        throw invalidParams([
+          { path: 'query.kinds', message: 'a non-empty array of entry kinds is required' },
+        ])
+      }
+      if (cursor !== undefined) {
+        throw invalidParams([
+          { path: 'cursor', message: 'a query with kinds pages by entry id, not by cursor' },
+        ])
+      }
+      return {
+        items: await this.#entriesOfKinds(conversation, bounds, new Set(kinds as string[]), limit),
+      }
+    }
+    const page = await conversation.entries(bounds, limit, cursor as never, context)
     const items = page.items.map((entry) => wireEntry(entry))
     return page.next === undefined ? { items } : { items, cursor: page.next }
+  }
+
+  /**
+   * The first `limit` entries of the given kinds within `bounds`, read here so the client does not carry every
+   * other entry over the wire to find them: the turn rail wants a long conversation's questions, not its tool output.
+   * There is no cursor: Pi's points after the last entry scanned, which is not the last one returned. The next page
+   * narrows `maxEntryId` (descending) or `minEntryId` (ascending) past the last item, and a page shorter than
+   * `limit` is the last.
+   */
+  async #entriesOfKinds(
+    conversation: Conversation,
+    bounds: { order: 'ascending' | 'descending'; minEntryId?: EntryId; maxEntryId?: EntryId },
+    kinds: ReadonlySet<string>,
+    limit: number,
+  ): Promise<unknown[]> {
+    const items: unknown[] = []
+    let next: unknown
+    do {
+      const page = await conversation.entries(bounds, MAX_PAGE, next as never, context)
+      for (const entry of page.items) {
+        if (!kinds.has(entry.kind)) continue
+        items.push(wireEntry(entry))
+        if (items.length === limit) return items
+      }
+      next = page.next
+    } while (next !== undefined)
+    return items
   }
 
   async #usageOf(params: Record<string, unknown>): Promise<unknown> {
