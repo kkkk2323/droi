@@ -1,10 +1,18 @@
 package app
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // A Session that finishes while another is open turns unread, plays the
@@ -129,5 +137,57 @@ func TestAKernelSessionThatFinishesElsewhereAlerts(t *testing.T) {
 	mu.Unlock()
 	if !h.a.unread[deploy] {
 		t.Fatal("Deploy is not unread")
+	}
+}
+
+// A window that connects while a conversation's run is under way, and opens it, has not heard the run start: Kernel
+// says busy once, when it starts. The window still takes the run as working, and its end raises the alert.
+func TestAWindowThatJoinsARunningConversationAlertsWhenItEnds(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{{
+		Chunks: []string{"one ", "two ", "three ", "four"}, Delay: 300 * time.Millisecond,
+	}}})
+	sender := k.Dial(t)
+	id := k.CreateConversation(t, sender)
+	k.Submit(t, sender, id, "hello")
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	for {
+		opened, err := sender.Open(ctx, kernel.OpenParams{ID: id, Window: &fakekernel.DefaultWindow})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := sessionview.NewState(id)
+		s.Apply(kernel.ViewNotification{ID: id, Kind: kernel.ViewKindValue, Value: &opened.View})
+		if s.Busy() {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	var notifications atomic.Int64
+	a := New(Config{
+		Prefs:         prefs.Memory(),
+		KernelSession: func(i kernel.ID) (string, bool) { return "conv", i == id },
+		Update:        func(fn func()) { fn() },
+		Notify:        func(Alert) { notifications.Add(1) },
+	})
+	defer a.Close()
+	a.UseKernel(k.Dial(t), 1)
+	for a.sessions.Generation() != 1 {
+		time.Sleep(time.Millisecond)
+	}
+	if err := a.sessions.Open(ctx, &a.kernel, id, fakekernel.DefaultWindow); err != nil {
+		t.Fatal(err)
+	}
+	for notifications.Load() == 0 {
+		if ctx.Err() != nil {
+			t.Fatalf("the run ended without an alert (busy %v)", a.sessions.State(id).Busy())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.mu.Lock()
+	state := a.busy["conv"]
+	a.mu.Unlock()
+	if state != "idle" {
+		t.Errorf("the sidebar holds the finished conversation as %q", state)
 	}
 }

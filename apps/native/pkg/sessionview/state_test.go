@@ -1050,3 +1050,21 @@ func TestAViewResolvesItsConversationID(t *testing.T) {
 		t.Error("a resolver that refused the id still resolved it")
 	}
 }
+
+// TestStoreStaysOnTheNewestConnection: reopens run on goroutines of their own, so the one for an older connection
+// can start after the newer one's. It must not take the store back, or every push of the connection in use would be
+// dropped as stale.
+func TestStoreStaysOnTheNewestConnection(t *testing.T) {
+	st := NewStore(3)
+	k := &fakeKernel{views: map[kernel.ID]kernel.View{}}
+	ctx := context.Background()
+	if err := st.Reopen(ctx, k, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Reopen(ctx, k, 1); err != nil {
+		t.Fatal(err)
+	}
+	if g := st.Generation(); g != 2 {
+		t.Fatalf("the store is on generation %d after a late reopen of 1, want 2", g)
+	}
+}

@@ -188,6 +188,9 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				var view kernel.ViewNotification
 				if n.Decode(&view) == nil {
 					a.sessions.ApplyView(gen, view)
+					if s := a.sessions.State(view.ID); s != nil && s.Busy() {
+						a.joinedRun(view.ID)
+					}
 				}
 			case kernel.NotifyConversationBusy:
 				var busy kernel.BusyNotification
@@ -214,8 +217,37 @@ func (a *App) alertBusy(n kernel.BusyNotification) {
 	if n.Busy() {
 		state = string(protocol.DroidWorkingStateStreamingAssistantMessage)
 	}
+	a.mu.Lock()
+	a.busy[id] = state
+	a.mu.Unlock()
+	a.redraw()
 	if ev := a.kernelAlerts.Update(id, state); ev != "" {
 		a.cfg.Update(func() { a.raise(id, "", ev) })
+	}
+}
+
+// joinedRun takes a run this connection found under way, in a view, as one it heard start: Kernel says busy when a
+// run starts, so a window that connects or opens the conversation later would never hear it working, and its end
+// would raise no alert. Only a conversation not heard of yet is taken, so a view older than the idle that followed
+// it cannot mark a finished run working again.
+func (a *App) joinedRun(conv kernel.ID) {
+	if a.cfg.KernelSession == nil {
+		return
+	}
+	id, ok := a.cfg.KernelSession(conv)
+	if !ok {
+		return
+	}
+	state := string(protocol.DroidWorkingStateStreamingAssistantMessage)
+	a.mu.Lock()
+	_, heard := a.busy[id]
+	if !heard {
+		a.busy[id] = state
+	}
+	a.mu.Unlock()
+	if !heard {
+		a.kernelAlerts.Update(id, state)
+		a.redraw()
 	}
 }
 

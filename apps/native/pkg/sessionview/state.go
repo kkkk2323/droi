@@ -727,6 +727,12 @@ func (st *Store) Close(ctx context.Context, k Kernel, id kernel.ID) {
 func (st *Store) Reopen(ctx context.Context, k Kernel, gen int64) error {
 	st.mu.Lock()
 	st.ready()
+	// Reopens run on goroutines of their own: one for an older connection that is only now starting must not take
+	// the store back to it.
+	if gen < st.gen {
+		st.mu.Unlock()
+		return nil
+	}
 	st.gen = gen
 	ids := append([]kernel.ID(nil), st.order...)
 	st.mu.Unlock()
