@@ -13,6 +13,7 @@ import (
 // The Daemon cleans up a Session left idle for half an hour. Its page stays
 // open, and the next message loads the Session again before it is sent.
 func TestASessionTheDaemonCleanedUpTakesTheNextMessage(t *testing.T) {
+	keepOnDaemon(t, goesWithCleanup)
 	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "reply", Deltas: []string{"Back again."}}), "")
 	h.openSession("Deploy")
 	h.until("the Session loaded", func() bool { return h.hasText("Context used") })
@@ -60,6 +61,7 @@ func TestASessionCleanedUpAfterItsViewWasDroppedOpensReady(t *testing.T) {
 		specs = append(specs, fakedaemon.SessionSpec{Title: title, Cwd: "/Users/dev/acme-web",
 			Messages: []fakedaemon.Message{{Role: "user", Text: "hi " + title}}})
 	}
+	keepOnDaemon(t, goesWithCleanup)
 	h := newHarness(t, fakedaemon.Scenario{Sessions: specs}, "")
 	var first string
 	for _, title := range []string{"One", "Two", "Three", "Four"} {

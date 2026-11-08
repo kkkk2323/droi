@@ -33,6 +33,7 @@ func backgroundJobScenario(t *testing.T) fakedaemon.Scenario {
 }
 
 func TestABackgroundCommandShowsWhileItRuns(t *testing.T) {
+	keepOnDaemon(t, untilProcesses)
 	h := newHarness(t, backgroundJobScenario(t), "")
 	h.openSession("Ship the release")
 	h.until("the header's count", func() bool { return h.hasText("1 background task") && h.hasText("Running in background · ") })
@@ -59,6 +60,7 @@ func TestABackgroundCommandShowsWhileItRuns(t *testing.T) {
 // The Daemon lists the command among the Session's background processes,
 // so its row has Stop, which ends it through the Daemon.
 func TestABackgroundProcessStopsFromTheList(t *testing.T) {
+	keepOnDaemon(t, untilProcesses)
 	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "backgroundProcess", Command: "npm run dev", Reply: "The dev server runs.", Pid: os.Getpid()}), "")
 	h.openSession("Deploy")
 	h.send("Start the dev server")

@@ -1,6 +1,9 @@
 package app
 
 import (
+	"encoding/json"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -8,6 +11,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
@@ -135,7 +139,15 @@ func (v *sessionView) userMessages(s *sessionview.Snapshot) []*transcript.Entry 
 	r := &v.rail
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !s.HasOlder || r.read || r.reading || v.a.ctl == nil {
+	if !s.HasOlder || r.read || r.reading {
+		return r.all
+	}
+	if s.State != nil {
+		r.reading = true
+		v.kernelQuestions(s.State.ID())
+		return r.all
+	}
+	if v.a.ctl == nil {
 		return r.all
 	}
 	r.reading = true
@@ -179,9 +191,70 @@ func (v *sessionView) userMessages(s *sessionview.Snapshot) []*transcript.Entry 
 	return r.all
 }
 
+// kernelQuestions is userMessages for a conversation Kernel holds: every entry the user wrote, asked of Kernel by
+// kind so the answers and tool output between them stay where they are.
+func (v *sessionView) kernelQuestions(conv kernel.ID) {
+	r := &v.rail
+	go func() {
+		var found []kernel.Entry
+		var err error
+		q := map[string]any{"order": "descending", "kinds": []string{kernel.EntryUser}}
+		for {
+			query, _ := json.Marshal(q)
+			var page kernel.EntriesResult
+			page, err = v.a.kernel.Entries(v.a.ctx, kernel.EntriesParams{ID: conv, Query: query, Limit: questionsPage})
+			if err != nil {
+				break
+			}
+			found = append(found, page.Items...)
+			if len(page.Items) < questionsPage {
+				break
+			}
+			q["maxEntryId"] = page.Items[len(page.Items)-1].ID - 1
+		}
+		slices.Reverse(found)
+		all := transcript.BuildView(kernel.View{Entries: found})
+		r.mu.Lock()
+		r.reading, r.read = false, err == nil
+		if err == nil {
+			r.all = all
+		}
+		r.mu.Unlock()
+		v.a.redraw()
+	}()
+}
+
+// questionsPage is how many of the user's entries one conversation.entries brings: the contract's page cap.
+const questionsPage = 200
+
+// kernelLoadUntil is loadUntil for a conversation Kernel holds: pages above the held entries come in until the
+// entry is held, or none are left.
+func (v *sessionView) kernelLoadUntil(conv kernel.ID, entryID string, done func()) {
+	target, err := strconv.ParseInt(entryID, 10, 64)
+	go func() {
+		defer v.a.cfg.Update(done)
+		if err != nil {
+			return
+		}
+		for {
+			state := v.a.sessions.State(conv)
+			if state == nil || !state.HasOlder() || state.Low() < kernel.ID(target) {
+				return
+			}
+			if v.a.sessions.LoadEarlier(v.a.ctx, &v.a.kernel, conv, olderPage) != nil {
+				return
+			}
+		}
+	}()
+}
+
 // loadUntil pages older messages in until messageID is loaded or none are
 // left, then calls done on the main thread.
 func (v *sessionView) loadUntil(messageID string, done func()) {
+	if conv, ok := v.a.kernelID(v.id); ok {
+		v.kernelLoadUntil(conv, messageID, done)
+		return
+	}
 	ctl := v.a.ctl
 	go func() {
 		defer v.a.cfg.Update(done)

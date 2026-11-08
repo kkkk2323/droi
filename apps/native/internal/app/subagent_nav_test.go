@@ -35,6 +35,7 @@ func TestAnUnlistedSubagentLeadsBackAndRuns(t *testing.T) {
 	// The list does not tell this one's caller, as before the Daemon lists it as a subagent.
 	sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{Title: "Worker: Translate", Cwd: "/Users/dev/acme-web",
 		Messages: []fakedaemon.Message{{Role: "user", Text: "Translate"}}, Extra: map[string]any{"sessionId": child}})
+	keepOnDaemon(t, untilSubagents)
 	h := newHarness(t, sc, "")
 	h.openSession("Fix the login race")
 	h.until("the reply", func() bool { return h.hasText("Fix it") })

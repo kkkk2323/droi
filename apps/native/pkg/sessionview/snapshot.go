@@ -31,6 +31,9 @@ type Snapshot struct {
 	State *State
 	// queued is the Kernel path's queue, as the shelf draws it.
 	queued []session.QueuedMessage
+	// settings and models are the Kernel path's: the conversation's agent and the models Kernel offers.
+	settings session.Settings
+	models   []protocol.ModelMetadata
 }
 
 // LLMRetry is the model request the Daemon is retrying, nil when it is not. The Kernel reports a retry inside
@@ -42,11 +45,11 @@ func (s *Snapshot) LLMRetry() *session.LLMRetry {
 	return s.Session.LLMRetry()
 }
 
-// Settings are the conversation's: the model, the thinking level, the tags. The Daemon's session answers them
-// today; on the Kernel path they come from the view's pi.agent once the settings move.
+// Settings are the conversation's: the model, the thinking level, the tags. On the Kernel path they are the
+// view's pi.agent: its model and thinking level, and nothing of autonomy or modes until M3.
 func (s *Snapshot) Settings() session.Settings {
 	if s.Session == nil {
-		return session.Settings{}
+		return s.settings
 	}
 	return s.Session.Settings()
 }
@@ -85,11 +88,11 @@ func (s *Snapshot) ClearQueuedMessage(id string) {
 	}
 }
 
-// AvailableModels are the models the Daemon offers for this conversation. The Kernel path reads the picker's list
-// from harness.info instead.
+// AvailableModels are the models the conversation may run on: the Daemon's for its session, or harness.info's on
+// the Kernel path.
 func (s *Snapshot) AvailableModels() []protocol.ModelMetadata {
 	if s.Session == nil {
-		return nil
+		return s.models
 	}
 	return s.Session.AvailableModels()
 }
@@ -117,12 +120,15 @@ func (s *Snapshot) WorkingState() protocol.DroidWorkingState {
 // kernelSnapshot is the snapshot of a conversation Kernel is driving: its rows are the view's, and a run is in
 // progress exactly while the state names one.
 func kernelSnapshot(state *State) *Snapshot {
+	agent := state.Agent()
 	return &Snapshot{
 		Loaded:   state.Opened(),
 		LoadErr:  state.LoadErr(),
 		Running:  state.Busy(),
 		HasOlder: state.HasOlder(),
+		Cwd:      agent.Cwd,
 		State:    state,
+		settings: kernelSettings(agent),
 	}
 }
 

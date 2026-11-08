@@ -30,6 +30,7 @@ func timesScenario() fakedaemon.Scenario {
 // the list dates a Session by the last message sent to it, which the
 // Gateway notes, not by the Daemon's date, which opening it can move.
 func TestAMessageSentMovesTheSessionUp(t *testing.T) {
+	keepOnDaemon(t, untilListMoves)
 	h := newHarness(t, timesScenario(), "")
 	h.until("the list", func() bool { return h.hasText("Add dark mode toggle") })
 	h.settle()

@@ -95,6 +95,9 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 		// Every other kind shows nothing here: a tool result completes a call, a positional system entry is
 		// the prompt rather than the conversation, and Droi's bookkeeping entries are not lines of a transcript.
 	}
+	if failure, ok := runFailureEntry(view, entries); ok {
+		entries = append(entries, failure)
+	}
 	return entries
 }
 
@@ -246,7 +249,7 @@ func (bl *Builder) blocksOf(entry kernel.Entry, results map[string]*ToolResultVi
 			case c.Type == "text" && c.Text != "":
 				blocks = append(blocks, Block{Kind: Text, ID: blockID, Text: c.Text})
 			case c.Type == "thinking" && c.Thinking != "":
-				blocks = append(blocks, Block{Kind: Thinking, ID: blockID, Text: c.Thinking})
+				blocks = append(blocks, Block{Kind: Thinking, ID: blockID, Text: c.Thinking, DurationMs: c.DurationMs})
 			case c.Type == "toolCall":
 				// The call's identity is the same shape the Daemon's calls take, so the rows that draw them
 				// need no branch; the field is the SDK's type until the Daemon's path goes (M5).
@@ -326,6 +329,8 @@ type piContent struct {
 	Arguments json.RawMessage
 	Data      string
 	MimeType  string
+	// DurationMs is how long a thinking block took. Pi does not record it; a history imported from droid does.
+	DurationMs *float64
 }
 
 // decodeMessages reads a Pi message list. A malformed list is no messages: the window draws nothing rather than
@@ -373,14 +378,15 @@ func decodeContent(raw json.RawMessage) []piContent {
 		return nil
 	}
 	var wire []struct {
-		Type      string          `json:"type"`
-		Text      string          `json:"text"`
-		Thinking  string          `json:"thinking"`
-		ID        string          `json:"id"`
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-		Data      string          `json:"data"`
-		MimeType  string          `json:"mimeType"`
+		Type       string          `json:"type"`
+		Text       string          `json:"text"`
+		Thinking   string          `json:"thinking"`
+		ID         string          `json:"id"`
+		Name       string          `json:"name"`
+		Arguments  json.RawMessage `json:"arguments"`
+		Data       string          `json:"data"`
+		MimeType   string          `json:"mimeType"`
+		DurationMs *float64        `json:"durationMs"`
 	}
 	if json.Unmarshal(raw, &wire) != nil {
 		return nil
@@ -388,7 +394,7 @@ func decodeContent(raw json.RawMessage) []piContent {
 	out := make([]piContent, len(wire))
 	for i, w := range wire {
 		out[i] = piContent{Type: w.Type, Text: w.Text, Thinking: w.Thinking, ID: w.ID, Name: w.Name,
-			Arguments: w.Arguments, Data: w.Data, MimeType: w.MimeType}
+			Arguments: w.Arguments, Data: w.Data, MimeType: w.MimeType, DurationMs: w.DurationMs}
 	}
 	return out
 }
@@ -523,4 +529,55 @@ func decodeInputObject(raw json.RawMessage) map[string]any {
 		return map[string]any{}
 	}
 	return decodeInput(fields)
+}
+
+// runFailureEntry is the row that says why the last run ended without an answer, from pi.live's runFailure: a
+// model that failed after its retries, or no model at all, writes no answer entry, and without this row the turn
+// the user sent simply stops. A run the user stopped, a reset, and a run with nothing to answer say nothing. It is
+// not drawn while a run is in progress, and not after an answer that already reads as the failure.
+func runFailureEntry(view kernel.View, entries []*Entry) (*Entry, bool) {
+	raw := view.Doc("pi.live")
+	if len(raw) == 0 {
+		return nil, false
+	}
+	var live struct {
+		Run        json.RawMessage `json:"run"`
+		RunFailure *struct {
+			TaskID int64  `json:"taskId"`
+			Reason string `json:"reason"`
+			Detail string `json:"detail"`
+		} `json:"runFailure"`
+	}
+	if json.Unmarshal(raw, &live) != nil || live.RunFailure == nil {
+		return nil, false
+	}
+	if len(live.Run) > 0 && string(live.Run) != "null" {
+		return nil, false
+	}
+	if n := len(entries); n > 0 && entries[n-1].IsError {
+		return nil, false
+	}
+	f := live.RunFailure
+	var text string
+	switch f.Reason {
+	case "aborted", "reset", "nothing_to_answer":
+		return nil, false
+	case "model_error":
+		text = f.Detail
+		if text == "" {
+			text = l10n.L("The model could not answer this turn.")
+		}
+	case "no_model":
+		text = l10n.L("No model is set for this conversation. Choose one under the composer.")
+	case "turn_limit":
+		text = l10n.L("The run stopped after %s, the most this conversation takes in one run.", f.Detail)
+	default:
+		detail := f.Detail
+		if detail == "" {
+			detail = f.Reason
+		}
+		text = l10n.L("The run stopped: %s", detail)
+	}
+	id := fmt.Sprintf("failure:%d", f.TaskID)
+	return &Entry{ID: id, Blocks: []Block{{Kind: Text, ID: id + ":0:0", Text: text}}, IsError: true}, true
 }

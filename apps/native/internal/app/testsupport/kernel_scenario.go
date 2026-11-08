@@ -7,6 +7,7 @@ package testsupport
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -100,6 +101,72 @@ func KernelScenario(sc fakedaemon.Scenario) (fakekernel.Scenario, error) {
 	out.Steps = []fakekernel.Step{step}
 	return out, nil
 }
+
+// WindowScenario is the Fake Kernel's script for a window test whose Sessions the harness writes into a Kernel with
+// ImportSessions: the Scenario without its Sessions, translated by KernelScenario, and answered the way the Fake
+// Daemon answers a window. Its one Turn answers every message the test sends, not only the first, and without a Turn
+// a message gets an empty answer, where the Fake Daemon gives none.
+//
+// The window's tests send a second message without scripting a second reply because the Fake Daemon never needed
+// one; the strictness KernelScenario keeps for tests written against the Fake Kernel would fail them for that alone.
+func WindowScenario(sc fakedaemon.Scenario) (fakekernel.Scenario, error) {
+	for _, s := range sc.Sessions {
+		if err := sessionNeeds(s); err != nil {
+			return fakekernel.Scenario{}, err
+		}
+	}
+	sc.Sessions = nil
+	out, err := KernelScenario(sc)
+	if err != nil {
+		return out, err
+	}
+	out.AllowUnmatched = true
+	if len(out.Steps) == 1 {
+		// Repeated rather than left to Fallback, which streams in fixed pieces with no delay: the messages after
+		// the first stream the way the Turn says too.
+		out.Fallback = out.Steps[0].Text
+		out.Steps = slices.Repeat(out.Steps, windowTurns)
+	}
+	return out, nil
+}
+
+// extraNeeds is the milestone that gives each SessionSpec.Extra field a Kernel counterpart; "" means the field only
+// shapes the Fake Daemon's list, which stays the Daemon's until the list moves (M2 S2), and imports as it is.
+var extraNeeds = map[string]string{
+	"sessionId":  "",
+	"updatedAt":  "",
+	"archivedAt": "",
+	"settings":   "a conversation's model and mode are its agent (M2 view-settings); autonomy lands in M3 (3A), plan mode replaces Spec (Q4)",
+	"tags":       "Workstreams and Automations move in M4 (4M), and Memory 2.0 has no Memory Session",
+	"subagent":   "subagents land as child conversations and droi.subagent entries (M3, 6.3)",
+	"worktree":   "worktrees move with gitutil in M4",
+	"git":        "git changes move with gitutil in M4",
+	"unwritten":  "a Session not written yet is the Draft Session, which goes (C obsolete)",
+	"inactive":   "a conversation is never cleaned up while idle (gap-analysis §4.1)",
+}
+
+// sessionNeeds says which part of a Session the Fake Kernel cannot hold yet, by its Extra fields.
+func sessionNeeds(s fakedaemon.SessionSpec) error {
+	keys := make([]string, 0, len(s.Extra))
+	for k := range s.Extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		needs, known := extraNeeds[k]
+		if !known {
+			return &UnsupportedScenarioError{Feature: "SessionSpec.Extra " + k, Needs: "a Kernel counterpart, which no milestone names yet", Detail: s.Title}
+		}
+		if needs != "" {
+			return &UnsupportedScenarioError{Feature: "SessionSpec.Extra " + k, Needs: needs, Detail: s.Title}
+		}
+	}
+	return nil
+}
+
+// windowTurns is how many messages of a window test stream their reply as the Turn says; the rest get its text at
+// once.
+const windowTurns = 8
 
 // kernelStep translates one Turn.
 func kernelStep(turn fakedaemon.Turn) (fakekernel.Step, error) {

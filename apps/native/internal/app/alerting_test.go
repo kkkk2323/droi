@@ -17,6 +17,7 @@ func TestCompletionAlertsWhileAnotherSessionIsOpen(t *testing.T) {
 		},
 		Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"one ", "two ", "three"}, DelayMs: 300},
 	}
+	keepOnDaemon(t, untilListMoves)
 	h := newHarness(t, sc, "")
 	var mu sync.Mutex
 	var sounds []string
@@ -90,5 +91,43 @@ func TestSoundGate(t *testing.T) {
 		if got := soundGateAllows(c.mode, c.focused); got != c.want {
 			t.Errorf("%s focused=%v: %v", c.mode, c.focused, got)
 		}
+	}
+}
+
+// A Session drawn from Kernel alerts as the Daemon's did when its run ends while another is open: Kernel says so with
+// conversation.busy, which reaches every connection, also for a conversation no page has open.
+func TestAKernelSessionThatFinishesElsewhereAlerts(t *testing.T) {
+	sc := fakedaemon.Scenario{
+		Sessions: []fakedaemon.SessionSpec{
+			{Title: "Deploy", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}},
+			{Title: "Notes", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{{Role: "user", Text: "hello"}}},
+		},
+		Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"one ", "two ", "three"}, DelayMs: 300},
+	}
+	h := newHarness(t, sc, "")
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	var mu sync.Mutex
+	var notes []Alert
+	h.a.cfg.Notify = func(n Alert) { mu.Lock(); notes = append(notes, n); mu.Unlock() }
+	h.a.cfg.Focused = func() bool { return true }
+
+	h.openSession("Deploy")
+	h.send("Go")
+	deploy, notesID := h.d.Sessions[0].SessionID, h.d.Sessions[1].SessionID
+	h.openRow("Notes", notesID)
+	h.until("the completion alert", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(notes) > 0
+	})
+	mu.Lock()
+	if n := notes[0]; n.SessionID != deploy || n.Title != "Droi finished" || n.Body != "Deploy" {
+		t.Errorf("notification %+v", n)
+	}
+	mu.Unlock()
+	if !h.a.unread[deploy] {
+		t.Fatal("Deploy is not unread")
 	}
 }

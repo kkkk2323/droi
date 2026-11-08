@@ -16,6 +16,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/internal/alerts"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
@@ -24,6 +25,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
@@ -119,6 +121,13 @@ type Config struct {
 	// itself (a development build); Relaunch starts the installed one.
 	Updater  *updates.Updater
 	Relaunch func()
+	// KernelID resolves a Session the window names to the Kernel conversation that holds it; nil, or false, for
+	// a Session the Daemon still holds. Pages of the Sessions it resolves draw from the Kernel the Host hands over
+	// with UseKernel.
+	KernelID func(id string) (kernel.ID, bool)
+	// KernelSession is KernelID's inverse: the Session the window names a conversation by, for what Kernel says
+	// of a conversation by its id alone (that it finished, say).
+	KernelSession func(id kernel.ID) (string, bool)
 	// Memory is the Host's Memory; nil without a Host.
 	Memory Memory
 	// SessionList, optional, hears the Workspace order the window shows for
@@ -258,6 +267,13 @@ type App struct {
 	// revs counts each Session's changes in the Store, for its view to
 	// build again.
 	revs sessionview.Revisions
+	// kernel is the Kernel connection UseKernel hands over; sessions are the conversations the pages have open on
+	// it.
+	kernel   kernelConn
+	sessions *sessionview.Store
+	// kernelAlerts follows the busy and idle of Kernel's conversations, as watchAlerts follows the Daemon's
+	// working states.
+	kernelAlerts *alerts.Tracker
 	// loops are the Daemon's loops. Guarded by mu.
 	loops loopsState
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
@@ -297,10 +313,13 @@ func New(cfg Config) *App {
 		busy:   map[string]string{},
 		views:  map[string]*sessionView{},
 
-		drafts:      drafts.New(cfg.Prefs),
-		notesMD:     sessionview.Markdown{Own: true},
-		compactions: compaction.NewLog(),
+		drafts:       drafts.New(cfg.Prefs),
+		notesMD:      sessionview.Markdown{Own: true},
+		compactions:  compaction.NewLog(),
+		sessions:     sessionview.NewStore(keptViews),
+		kernelAlerts: alerts.NewTracker(),
 	}
+	a.unsubscribe = append(a.unsubscribe, a.sessions.Subscribe(func(kernel.ID) { a.redraw() }))
 	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update}
 	pickFolder := a.pickFolder
 	if cfg.Computer != nil {
