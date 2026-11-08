@@ -543,6 +543,11 @@ func (v *View) toolDetail(c *ui.Context, call *transcript.ToolCall, res transcri
 						}
 						mono(transcript.TruncateLines(res.Text, resultPreviewLines), color)
 					}
+					if res.Notes != "" && !output {
+						// After the output, which is cut at its first lines: a truncation or the path of the full
+						// output is what a long result most needs to say.
+						mono(res.Notes, t.MutedForeground.Alpha(0.8)).Margin(k.Px(6), 0, 0, 0)
+					}
 				})
 			})
 			if output {

@@ -1,6 +1,7 @@
 package transcript_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -54,20 +55,22 @@ func shownResult(t *testing.T, result kernel.Entry) (transcript.ToolResultView, 
 }
 
 // TestAResultsDiagnosticsReadAsSentencesAfterItsOutput: a long command keeps the end of its output and says so in
-// a warning, with the path of the full output. Both follow the output in the row, and the harness's wrapper — tags
-// and severities, which follow real output rather than lead the text — is not shown.
+// a warning, with the path of the full output. Both are the result's notes, read without the harness's wrapper —
+// tags and severities — and kept apart from the output, which the row cuts at its first lines.
 func TestAResultsDiagnosticsReadAsSentencesAfterItsOutput(t *testing.T) {
-	shown, _ := shownResult(t, piResult(t, "c1", false, []string{"ok 1\nok 2"},
+	shown, _ := shownResult(t, piResult(t, "c1", false, []string{"ok 1\nok 2\n"},
 		diagnostic{"info", "full_output", "Full output: /tmp/pi/out-1.txt"},
 		diagnostic{"warn", "truncated", "Output truncated to its end: 812 lines, 40210 bytes dropped"},
 	))
-	want := "ok 1\nok 2\n\nFull output: /tmp/pi/out-1.txt\nOutput truncated to its end: 812 lines, 40210 bytes dropped"
-	if shown.Text != want {
-		t.Errorf("the row reads\n%q\nwant\n%q", shown.Text, want)
+	if shown.Text != "ok 1\nok 2" {
+		t.Errorf("the output reads %q, want the command's own lines", shown.Text)
+	}
+	if want := "Full output: /tmp/pi/out-1.txt\nOutput truncated to its end: 812 lines, 40210 bytes dropped"; shown.Notes != want {
+		t.Errorf("the notes read\n%q\nwant\n%q", shown.Notes, want)
 	}
 	for _, wrapper := range []string{"<harness>", "</harness>", "[warn]", "[info]"} {
-		if strings.Contains(shown.Text, wrapper) {
-			t.Errorf("the row still shows %q: %q", wrapper, shown.Text)
+		if strings.Contains(shown.Text+shown.Notes, wrapper) {
+			t.Errorf("the row still shows %q", wrapper)
 		}
 	}
 	if shown.IsError || shown.Interrupted || shown.Blocked || shown.Pending {
@@ -89,8 +92,10 @@ func TestACallTheHarnessEndedReadsAsWhatHappened(t *testing.T) {
 		{code: "interrupted", message: "Tool bash was interrupted by a restart and may have partially run", interrupted: true},
 		{code: "abandoned", message: "Tool bash was not started: its caller ended with a restart", interrupted: true},
 		{code: "blocked", message: "Tool call blocked: bash is disabled here", blocked: true},
-		{code: "restart_limit", message: "Tool bash was cut off by 5 restarts", fail: true},
-		{code: "exit_code", message: "Command exited with code 2", output: []string{"make: *** [all] Error 2"}, fail: true},
+		{code: "restart_limit", message: "Tool bash was interrupted 5 times; it is not run again", fail: true},
+		{code: "exit_code", message: "Command exited with code 2", output: []string{"make: *** [all] Error 2\n"}, fail: true},
+		{code: "tool_unavailable", message: "Tool bash is not available", fail: true},
+		{code: "invalid_arguments", message: "command: required", fail: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.code, func(t *testing.T) {
@@ -102,16 +107,63 @@ func TestACallTheHarnessEndedReadsAsWhatHappened(t *testing.T) {
 			if shown.Pending {
 				t.Error("a call the harness ended reads as still running")
 			}
-			if !strings.HasSuffix(shown.Text, tc.message) || strings.Contains(shown.Text, "<harness>") {
-				t.Errorf("the row reads %q, want the output and then %q", shown.Text, tc.message)
+			if shown.Notes != tc.message {
+				t.Errorf("the notes read %q, want %q", shown.Notes, tc.message)
 			}
-			if len(tc.output) > 0 && !strings.HasPrefix(shown.Text, tc.output[0]+"\n\n") {
-				t.Errorf("the row reads %q, want the output %q first", shown.Text, tc.output[0])
+			if want := strings.TrimRight(strings.Join(tc.output, "\n"), "\n"); shown.Text != want {
+				t.Errorf("the output reads %q, want %q", shown.Text, want)
 			}
 			if label, pending := transcript.ClusterLabel([]*transcript.ToolCall{call}); pending {
 				t.Errorf("the cluster says %q for a call that ended", label)
 			}
 		})
+	}
+}
+
+// TestTheHarnessEndingIsItsOwnLastWord: a tool's own diagnostics come first and the harness appends its ending
+// last, so only the last one says how the call ended. A tool that reported something coded "aborted" and then
+// failed still failed.
+func TestTheHarnessEndingIsItsOwnLastWord(t *testing.T) {
+	shown, _ := shownResult(t, piResult(t, "c1", true, []string{"out"},
+		diagnostic{"warn", "aborted", "a sub-step was aborted"},
+		diagnostic{"error", "exit_code", "Command exited with code 1"},
+	))
+	if !shown.IsError || shown.Interrupted {
+		t.Errorf("a failed command reads as %+v", shown)
+	}
+}
+
+// TestOnlyPisRenderingOfTheDiagnosticsIsDropped: several output items all stay, a picture stays beside the notes,
+// and an item after the output that is not Pi's rendering of the diagnostics — an imported history may hold one —
+// is output too.
+func TestOnlyPisRenderingOfTheDiagnosticsIsDropped(t *testing.T) {
+	shown, _ := shownResult(t, piResult(t, "c1", false, []string{"first", "second"}, diagnostic{"info", "full_output", "Full output: /tmp/x"}))
+	if shown.Text != "first\nsecond" || shown.Notes != "Full output: /tmp/x" {
+		t.Errorf("two output items read %q with notes %q", shown.Text, shown.Notes)
+	}
+
+	withPicture := piResult(t, "c1", false, nil, diagnostic{"info", "image", "Read image file [image/png]"})
+	var model []map[string]any
+	if err := json.Unmarshal(withPicture.Model, &model); err != nil {
+		t.Fatal(err)
+	}
+	content := model[0]["content"].([]any)
+	model[0]["content"] = append([]any{map[string]any{"type": "image", "data": "AAAA", "mimeType": "image/png"}}, content...)
+	withPicture.Model, _ = json.Marshal(model)
+	shown, _ = shownResult(t, withPicture)
+	if len(shown.Images) != 1 || shown.Text != "" || shown.Notes != "Read image file [image/png]" {
+		t.Errorf("a picture with a note reads %+v", shown)
+	}
+
+	imported := piResult(t, "c1", false, []string{"real output", "<harness>\n[info] not this result's\n</harness>"}, diagnostic{"info", "full_output", "Full output: /tmp/y"})
+	var m2 []map[string]any
+	_ = json.Unmarshal(imported.Model, &m2)
+	c2 := m2[0]["content"].([]any)
+	m2[0]["content"] = c2[:len(c2)-1] // no rendering of its own diagnostics at the end
+	imported.Model, _ = json.Marshal(m2)
+	shown, _ = shownResult(t, imported)
+	if shown.Text != "real output\n<harness>\n[info] not this result's\n</harness>" {
+		t.Errorf("an item that is not the rendering was dropped: %q", shown.Text)
 	}
 }
 

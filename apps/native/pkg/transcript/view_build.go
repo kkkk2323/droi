@@ -425,20 +425,20 @@ func (m piMessage) resultView() *ToolResultView {
 			v.Images = append(v.Images, Image{MediaType: c.MimeType, Data: c.Data})
 		}
 	}
-	if n := len(output); n > 0 && len(m.Diagnostics) > 0 {
-		// Pi renders the diagnostics exactly when there are some, as the content's last item (appendToolResult).
+	if n := len(output); n > 0 && output[n-1] == renderedDiagnostics(m.Diagnostics) {
+		// Pi renders the diagnostics as the content's last item exactly when there are some (appendToolResult).
+		// Only that rendering goes: an item that merely follows them, as an imported history may have, is output.
 		output = output[:n-1]
 	}
 	for _, line := range output {
 		v.Text = joinLine(v.Text, "\n", line)
 	}
-	notes := ""
+	v.Text = withoutTrailingNewlines(v.Text)
 	for _, d := range m.Diagnostics {
 		if d.Message != "" {
-			notes = joinLine(notes, "\n", d.Message)
+			v.Notes = joinLine(v.Notes, "\n", d.Message)
 		}
 	}
-	v.Text = joinLine(v.Text, "\n\n", notes)
 	switch m.harnessEnding() {
 	case endingStopped:
 		v.Interrupted = true
@@ -448,6 +448,32 @@ func (m piMessage) resultView() *ToolResultView {
 		v.IsError = m.IsError
 	}
 	return v
+}
+
+// renderedDiagnostics is Pi's rendering of diagnostics for the model (renderDiagnostics in harness/tool.js), ""
+// for none.
+func renderedDiagnostics(ds []piDiagnostic) string {
+	if len(ds) == 0 {
+		return ""
+	}
+	lines := ""
+	for i, d := range ds {
+		line := fmt.Sprintf("[%s] %s", d.Severity, d.Message)
+		if i == 0 {
+			lines = line
+			continue
+		}
+		lines += "\n" + line
+	}
+	return "<harness>\n" + lines + "\n</harness>"
+}
+
+// withoutTrailingNewlines is text without the line ends a command's output closes with.
+func withoutTrailingNewlines(text string) string {
+	for len(text) > 0 && (text[len(text)-1] == '\n' || text[len(text)-1] == '\r') {
+		text = text[:len(text)-1]
+	}
+	return text
 }
 
 // joinLine is text with more after it, sep between the two when both have something.
@@ -474,16 +500,18 @@ const (
 	endingRefused
 )
 
-// harnessEnding reads the result's diagnostics. A call that kept crashing its process (restart_limit) is not
-// among them: that one failed, and the row says so.
+// harnessEnding reads the result's last diagnostic: the harness appends its own ending after whatever the tool
+// reported, so a tool's diagnostic that happens to share a code cannot turn a failure into a stop. A call that kept
+// crashing its process (restart_limit) is not among the endings: that one failed, and the row says so.
 func (m piMessage) harnessEnding() harnessEnding {
-	for _, d := range m.Diagnostics {
-		switch d.Code {
-		case "aborted", "interrupted", "abandoned":
-			return endingStopped
-		case "blocked":
-			return endingRefused
-		}
+	if len(m.Diagnostics) == 0 {
+		return endingNone
+	}
+	switch m.Diagnostics[len(m.Diagnostics)-1].Code {
+	case "aborted", "interrupted", "abandoned":
+		return endingStopped
+	case "blocked":
+		return endingRefused
 	}
 	return endingNone
 }

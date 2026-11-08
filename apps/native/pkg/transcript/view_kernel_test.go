@@ -275,3 +275,50 @@ func sleepCommand(seconds int) string {
 	}
 	return fmt.Sprintf("sleep %d", seconds)
 }
+
+// TestARealKernelLongOutputSaysWhereTheRestIs: a command that prints more than the harness keeps comes back with
+// its end and two sentences — the output was cut, and where the whole of it is. They are the result's Notes, not
+// the end of its text: the row cuts the text at its first lines, and the sentences would be cut with it.
+func TestARealKernelLongOutputSaysWhereTheRestIs(t *testing.T) {
+	command := "seq 1 3000"
+	if shellTool() != "bash" {
+		command = "1..3000"
+	}
+	k := fakekernel.Start(t, fakekernel.Scenario{Steps: []fakekernel.Step{
+		{Match: "count", Call: &fakekernel.Call{Name: shellTool(), Arguments: map[string]any{"command": command}}},
+		{Match: "count", Text: "counted"},
+	}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	sub := k.Submit(t, c, id, "count")
+	k.WaitForReply(t, c, sub, "counted", 60*time.Second)
+
+	var call *transcript.ToolCall
+	for _, e := range transcript.BuildView(openView(t, c, id)) {
+		for _, b := range e.Blocks {
+			if len(b.Calls) > 0 {
+				call = b.Calls[0]
+			}
+		}
+	}
+	if call == nil {
+		t.Fatal("no tool call in the transcript")
+	}
+	shown := transcript.ReadResult(call)
+	if shown.IsError || shown.Interrupted || shown.Pending {
+		t.Errorf("a long command that succeeded reads as %+v", shown)
+	}
+	if !strings.HasSuffix(shown.Text, "3000") || strings.Contains(shown.Text, "<harness>") {
+		t.Errorf("the output reads %q…, want the kept end and no wrapper", firstLine(shown.Text))
+	}
+	if !strings.Contains(shown.Notes, "Output truncated") || !strings.Contains(shown.Notes, "Full output:") {
+		t.Errorf("the notes read %q, want the truncation and where the full output is", shown.Notes)
+	}
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}

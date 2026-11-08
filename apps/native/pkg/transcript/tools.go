@@ -358,8 +358,11 @@ type ToolResultView struct {
 	Interrupted bool
 	// Blocked says a rule or a person refused the call before it ran: it did not fail either.
 	Blocked bool
-	Diff    *Diff
-	Status  *Status
+	// Notes are the harness's sentences about the result, one a line: a truncation, where the full output is, an
+	// exit code, why the call did not run. They are drawn after the output and never cut with it.
+	Notes  string
+	Diff   *Diff
+	Status *Status
 }
 
 func ReadResult(c *ToolCall) ToolResultView {

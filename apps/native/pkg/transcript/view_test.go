@@ -605,14 +605,15 @@ func TestAStoppedToolResultHidesTheHarnessWrapper(t *testing.T) {
 	)
 
 	shown := transcript.ReadResult(transcript.BuildView(v)[1].Blocks[0].Calls[0])
-	if strings.Contains(shown.Text, "<harness>") || strings.Contains(shown.Text, "</harness>") {
-		t.Errorf("the harness wrapper is still in the row: %q", shown.Text)
+	all := shown.Text + "\n" + shown.Notes
+	if strings.Contains(all, "<harness>") || strings.Contains(all, "</harness>") {
+		t.Errorf("the harness wrapper is still in the row: %q", all)
 	}
-	if strings.HasPrefix(shown.Text, "[error]") {
-		t.Errorf("the harness's severity prefix is still in the row: %q", shown.Text)
+	if strings.Contains(all, "[error]") {
+		t.Errorf("the harness's severity prefix is still in the row: %q", all)
 	}
-	if !strings.Contains(shown.Text, "Tool bash was aborted") {
-		t.Errorf("the sentence is gone: %q", shown.Text)
+	if shown.Notes != "Tool bash was aborted" {
+		t.Errorf("the sentence is gone: %q", shown.Notes)
 	}
 }
 
