@@ -1,6 +1,9 @@
 package kernel
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // The contract's methods, one Go call each, in its order. Every one answers at
 // once: none of them waits on a task or a turn, which arrives as notifications.
@@ -174,9 +177,25 @@ func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams
 // ModelComplete asks a model once, with no conversation, no tools and nothing
 // stored. It answers CodeUnsupported until harness.info says
 // capabilities.models.
+//
+// It waits as long as the call may take — its TimeoutMs, or the Kernel's
+// default, and a margin for the answer to arrive — not the Client's
+// RequestTimeout, which is for methods that answer at once.
 func (c *Client) ModelComplete(ctx context.Context, p ModelCompleteParams) (ModelCompleteResult, error) {
-	return call[ModelCompleteResult](c, ctx, MethodModelComplete, p)
+	within := DefaultModelCompleteTimeout
+	if p.TimeoutMs > 0 {
+		within = time.Duration(p.TimeoutMs) * time.Millisecond
+	}
+	var out ModelCompleteResult
+	err := c.callWithin(ctx, max(within+modelCompleteMargin, c.opts.timeout()), MethodModelComplete, p, &out)
+	return out, err
 }
+
+// DefaultModelCompleteTimeout is the Kernel's bound on a model.complete call that names none.
+const DefaultModelCompleteTimeout = 120 * time.Second
+
+// modelCompleteMargin is the time an answer the Kernel sent at its own deadline takes to arrive.
+const modelCompleteMargin = 15 * time.Second
 
 // PolicySet fills the kernel's snapshot of the approval policy. A missing ID is
 // the default policy, a number is that conversation's own; the answer is the

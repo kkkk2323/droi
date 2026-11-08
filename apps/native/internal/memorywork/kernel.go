@@ -83,10 +83,11 @@ func NewKernelRunner(k Kernel) Run {
 }
 
 // kernelError is err, or ErrKernelGone when the call failed because the
-// connection did, not because the Kernel answered with an error.
+// connection did, not because the Kernel answered with an error or the
+// model ran out of time.
 func kernelError(ctx context.Context, err error) error {
 	var rpc *kernel.RPCError
-	if ctx.Err() == nil && !errors.As(err, &rpc) {
+	if ctx.Err() == nil && !errors.As(err, &rpc) && !errors.Is(err, context.DeadlineExceeded) {
 		return ErrKernelGone
 	}
 	return err

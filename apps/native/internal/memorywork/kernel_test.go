@@ -300,6 +300,15 @@ func TestAKernelFailureCountsOnlyWhenTheModelWasAsked(t *testing.T) {
 	f.now = f.now.Add(RetryAfter)
 	pass()
 	eq(t, []any{rec().Failures, rec().RetryAt}, []any{1, iso(f.now.Add(RetryAfter))})
+
+	// A model that ran out of time was asked: it counts, rather than being taken for a Kernel that went away and
+	// tried for ever.
+	k.answer = func(kernel.ModelCompleteParams) (kernel.ModelCompleteResult, error) {
+		return kernel.ModelCompleteResult{}, fmt.Errorf("kernel: model.complete: %w", context.DeadlineExceeded)
+	}
+	f.now = f.now.Add(RetryAfter)
+	pass()
+	eq(t, rec().Failures, 2)
 }
 
 // A list that fails forgets nothing: the conversations it knew still wait.

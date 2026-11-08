@@ -32,20 +32,23 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 	}
 	run := memorywork.NewRunner(dial)
 	var kernelOf func() memorywork.Kernel
-	var current struct {
-		sync.Mutex
-		client *kernel.Client
-		gen    int
-	}
+	var link *host.KernelLink
+	var poke func()
 	if h.KernelEnabled() {
-		// Memory on the Kernel (ADR 0042): its own connection, as the Host's.
+		// Memory on the Kernel (ADR 0042): its own connection, as the Host's. The link's own current connection
+		// is the one used, so a connection it retired is never kept here.
+		link = host.NewKernelLink(host.KernelLinkOptions{
+			Client: kernel.ClientHost,
+			Token:  h.KernelToken,
+			// The pass that waited for the Kernel.
+			OnClient: func(*kernel.Client, int) { poke() },
+			Log:      func(s string) { log.Println("[memory] kernel:", s) },
+		})
 		kernelOf = func() memorywork.Kernel {
-			current.Lock()
-			defer current.Unlock()
-			if current.client == nil {
-				return nil
+			if c, _ := link.Current(); c != nil {
+				return c
 			}
-			return current.client
+			return nil
 		}
 	}
 	m := memorywork.New(memorywork.Options{
@@ -65,26 +68,8 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 		Log:      func(s string) { log.Println("[memory]", s) },
 		Home:     home,
 	})
-	if kernelOf != nil {
-		link := host.NewKernelLink(host.KernelLinkOptions{
-			Client: kernel.ClientHost,
-			Token:  h.KernelToken,
-			OnClient: func(c *kernel.Client, gen int) {
-				current.Lock()
-				current.client, current.gen = c, gen
-				current.Unlock()
-				// The pass that waited for the Kernel.
-				m.Poke()
-			},
-			OnGone: func(gen int, _ error) {
-				current.Lock()
-				if current.gen == gen {
-					current.client = nil
-				}
-				current.Unlock()
-			},
-			Log: func(s string) { log.Println("[memory] kernel:", s) },
-		})
+	if link != nil {
+		poke = m.Poke
 		h.OnKernelState(link.Use)
 	}
 	var mu sync.Mutex

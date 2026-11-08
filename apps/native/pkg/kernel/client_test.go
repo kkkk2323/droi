@@ -522,6 +522,31 @@ func TestClientTimesOut(t *testing.T) {
 	}
 }
 
+// A model.complete call waits for its model as long as its own timeoutMs says, not the RequestTimeout that bounds
+// the methods that answer at once: a summary that took longer than that used to be thrown away.
+func TestModelCompleteWaitsForItsModelPastTheRequestTimeout(t *testing.T) {
+	f := startFakeKernel(t)
+	c, err := Dial(context.Background(), Options{URL: f.url(), RequestTimeout: 80 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	done := make(chan error, 1)
+	go func() {
+		res, err := c.ModelComplete(context.Background(), ModelCompleteParams{Model: ModelRef{Provider: "p", ModelID: "m"}, Input: "x", TimeoutMs: 2000})
+		if err == nil && res.Text != "late but good" {
+			err = errors.New("the answer is " + res.Text)
+		}
+		done <- err
+	}()
+	call := f.next(t)
+	time.Sleep(300 * time.Millisecond)
+	f.reply(t, call.ID, map[string]any{"model": map[string]any{"provider": "p", "modelId": "m"}, "text": "late but good", "usage": map[string]any{}})
+	if err := <-done; err != nil {
+		t.Fatalf("model.complete: %v", err)
+	}
+}
+
 func TestClientClosesWaitingCalls(t *testing.T) {
 	f := startFakeKernel(t)
 	c := dialFake(t, f)
