@@ -44,8 +44,8 @@ func (a *App) kernelChoices() []models.Choice {
 }
 
 // createConversation makes the conversation the New session page asks for in workspace (or a new Scratch folder),
-// and answers its Session id, or why it could not. The page's worktree choice is not made: on Kernel the Host makes
-// worktrees, which comes with M4.
+// and answers its Session id, or why it could not. A new worktree the page chose is made first, with git on this
+// computer, and the conversation works in it.
 func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.InitializeSessionParams) (string, error) {
 	kind := "chat"
 	if workspace == scratchPick {
@@ -64,6 +64,11 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	cwd, err := usableDir(workspace)
 	if err != nil {
 		return "", err
+	}
+	if p.Worktree != nil && *p.Worktree && kind == "chat" {
+		if cwd, err = a.addWorktree(a.ctx, cwd, p.WorktreeBaseBranch, p.WorktreePromptSlug); err != nil {
+			return "", err
+		}
 	}
 	agent := a.newAgent(p.ModelID, string(p.ReasoningEffort))
 	// Kernel offers scripts beside direct calls (codemode); Direct is the page's way to take them away.
