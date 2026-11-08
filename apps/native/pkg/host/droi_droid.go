@@ -83,10 +83,14 @@ func (h *Host) droi() *droiDroidState {
 			h.droiDroid.store.LatestURL = droidhook.LatestURLFor(h.cfg.DroidDownloads)
 		}
 		h.droiDroid.pool = keypool.Open(keypool.Options{
-			Dir:          filepath.Join(h.cfg.UserData, "llm"),
-			Upstream:     h.keyPoolUpstream(),
-			Sessions:     daemonSessions{h},
-			OnChange:     h.changed,
+			Dir:      filepath.Join(h.cfg.UserData, "llm"),
+			Upstream: h.keyPoolUpstream(),
+			Sessions: daemonSessions{h},
+			OnChange: func() {
+				// Off the pool's own goroutine: the Kernel's check reads the pool.
+				go h.kernelPoolChanged()
+				h.changed()
+			},
 			ScriptModels: h.cfg.ScriptModels,
 		})
 	})
@@ -158,7 +162,7 @@ func (h *Host) DisableDroiDroid() {
 	h.changed()
 	go func() {
 		h.RestartDaemon()
-		h.KeyPool().Stop()
+		h.releaseKeyPool()
 	}()
 }
 

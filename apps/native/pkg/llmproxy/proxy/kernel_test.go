@@ -79,7 +79,12 @@ func startKernelProxy(t *testing.T, upstream string, f *fakeFactory, sw *switche
 func postKernel(t *testing.T, base, path, body, conversation string) (int, string) {
 	t.Helper()
 	req, _ := http.NewRequest("POST", base+path, strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer "+kernelToken)
+	// As the Kernel's clients send their key: Anthropic's in X-Api-Key, the others' as a bearer token.
+	if strings.Contains(path, "/llm/a/") {
+		req.Header.Set("X-Api-Key", kernelToken)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+kernelToken)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if conversation != "" {
 		req.Header.Set(conversationHeader, conversation)

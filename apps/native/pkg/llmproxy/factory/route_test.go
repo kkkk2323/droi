@@ -3,7 +3,9 @@ package factory
 import (
 	"net/http"
 	"os"
+	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -130,11 +132,35 @@ func TestTheModelsAreDroids(t *testing.T) {
 		default:
 			t.Errorf("%s: wire %q", m.ID, m.Wire)
 		}
-		if got, ok := ModelByID(m.ID); !ok || got != m {
+		if got, ok := ModelByID(m.ID); !ok || !reflect.DeepEqual(got, m) {
 			t.Errorf("ModelByID(%s)", m.ID)
 		}
 	}
 	if len(Models()) != 47 {
 		t.Fatalf("%d models, want upstream's 47", len(Models()))
+	}
+}
+
+// Upstream's effort.test.mjs: which models stop thinking at none (droid's "off"), and GLM-5.2's three.
+func TestWhichModelsCanStopThinking(t *testing.T) {
+	efforts := func(id string) []string {
+		m, ok := ModelByID(id)
+		if !ok {
+			t.Fatalf("no %s", id)
+		}
+		return m.Efforts
+	}
+	for _, id := range []string{"deepseek-v4.1-flash", "kimi-k3"} {
+		if !slices.Contains(efforts(id), "none") {
+			t.Errorf("%s stops at none", id)
+		}
+	}
+	for _, id := range []string{"glm-5.3", "glm-5.3-flash", "qwen3.8-max", "minimax-m3"} {
+		if slices.Contains(efforts(id), "none") {
+			t.Errorf("%s does not stop at none", id)
+		}
+	}
+	if got := efforts("glm-5.2"); !slices.Equal(got, []string{"none", "high", "max"}) {
+		t.Errorf("glm-5.2: %v", got)
 	}
 }

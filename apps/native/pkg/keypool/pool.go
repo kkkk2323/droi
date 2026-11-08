@@ -126,6 +126,8 @@ type Pool struct {
 	sinks  []*diag.FileSink
 	cancel context.CancelFunc
 	err    string
+	// kernelToken is SetKernelToken's.
+	kernelToken string
 }
 
 // ErrNoKeys is why Start refuses an empty pool.
@@ -302,6 +304,7 @@ func (p *Pool) Start() (string, error) {
 		}
 	}
 	px.SetCacheWarmer(warmer)
+	px.SetKernelToken(p.kernelToken)
 	px.SetKeyOpening(p.stored.ScheduledOpening)
 	px.StartKeyOpener(ctx)
 	p.rotator, p.px, p.warmer, p.cancel = rotator, px, warmer, cancel
@@ -311,6 +314,27 @@ func (p *Pool) Start() (string, error) {
 		p.afterUsage()
 	}()
 	return base, nil
+}
+
+// BaseURL is the running proxy's base URL; "" while it is not running.
+func (p *Pool) BaseURL() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.px == nil {
+		return ""
+	}
+	return p.px.BaseURL()
+}
+
+// SetKernelToken is the token the Kernel's model requests carry in place of a key: the proxy picks a key of the pool
+// for them. It holds for a proxy started later too; "" lets no Kernel in.
+func (p *Pool) SetKernelToken(token string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.kernelToken = token
+	if p.px != nil {
+		p.px.SetKernelToken(token)
+	}
 }
 
 // afterUsage moves an Auto pool off a current key that cannot serve at all
