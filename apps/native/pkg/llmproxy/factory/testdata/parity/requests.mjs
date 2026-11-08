@@ -246,6 +246,7 @@ for (const id of picks) {
     for (const [oname, opts] of [
       ['default', {}],
       ['reasoning high, temperature 0.3', { reasoning: 'high', temperature: 0.3 }],
+      ['reasoning max', { reasoning: 'max' }],
     ]) {
       if (oname !== 'default' && !sampled.has(cname)) continue
       current = `${id} | ${cname} | ${oname}`

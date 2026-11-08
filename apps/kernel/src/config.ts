@@ -29,6 +29,13 @@ export type ModelConfig = {
   cost?: { input: number; output: number; cacheRead?: number; cacheWrite?: number }
   /** The thinking levels the model takes, for `harness.info.models[].thinking`. */
   thinking?: string[]
+  /**
+   * pi-ai's: each thinking level as the provider's value, null for one the model refuses. Without an entry pi-ai
+   * sends xhigh and max as high.
+   */
+  thinkingLevelMap?: Partial<Record<string, string | null>>
+  /** pi-ai's compatibility settings for the model's api, such as Claude's `forceAdaptiveThinking`. */
+  compat?: Record<string, unknown>
 }
 
 export type KernelConfig = {

@@ -59,6 +59,10 @@ export function buildModels(providers: readonly ProviderConfig[]): MutableModels
         cacheWrite: model.cost?.cacheWrite ?? 0,
       },
       headers: config.headers,
+      ...(model.thinkingLevelMap === undefined
+        ? {}
+        : { thinkingLevelMap: model.thinkingLevelMap as Model<Api>['thinkingLevelMap'] }),
+      ...(model.compat === undefined ? {} : { compat: model.compat as Model<Api>['compat'] }),
     }))
     models.setProvider(
       createProvider({
