@@ -10,6 +10,8 @@ import { codingTools } from './extensions/coding.ts'
 import { approvalExtension } from './extensions/approval.ts'
 import { Approvals } from './policy/approvals.ts'
 import { PolicyStore } from './policy/store.ts'
+import { resourcesExtension } from './extensions/resources.ts'
+import { DisabledSkills } from './resources/disabled.ts'
 import { photonImages } from './images.ts'
 import { Indexer } from './indexer/index.ts'
 import { repoRootOf } from './workspace.ts'
@@ -39,9 +41,9 @@ export const CAPABILITIES: Record<string, boolean> = {
   approvals: true,
   asks: false,
   mcp: false,
-  skills: false,
+  skills: true,
   codemode: false,
-  resources: false,
+  resources: true,
   models: true,
 }
 
@@ -107,9 +109,16 @@ export async function startKernel(
     // Made once the harness is open and before it resumes, so no call runs unjudged.
     let approvals: Approvals | undefined
     const approvalHook = approvalExtension(() => approvals)
+    // Read after the index has migrated the database, before anything renders a prompt: `resume()` comes later.
+    let disabledSkills: DisabledSkills | undefined
+    const resources = resourcesExtension({
+      userDir: config.userDir,
+      disabled: () => disabledSkills?.names() ?? new Set(),
+    })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
     registry.install(approvalHook)
+    registry.install(resources)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -119,7 +128,7 @@ export async function startKernel(
     })
 
     const settings: HarnessSettings = {
-      extensions: [coding.extension, approvalHook, ...(options.extensions ?? [])],
+      extensions: [coding.extension, approvalHook, resources, ...(options.extensions ?? [])],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
       // own, and on Windows each costs about 16 ms, so they stay at Pi's defaults, not faster.
       ...(config.progress === undefined ? {} : { progress: config.progress }),
@@ -188,6 +197,7 @@ export async function startKernel(
       },
     })
     await indexer.open()
+    disabledSkills = await DisabledSkills.open(db)
     harness.observeCommits(indexer.observeCommits())
     // The first run indexes everything; every later start re-reads what a crash left behind the watermark.
     const caughtUp = await indexer.catchUp()
@@ -222,6 +232,7 @@ export async function startKernel(
       indexer,
       models,
       registry,
+      disabledSkills,
       tools: coding.names,
       version: VERSION,
       piVersion: PI_VERSION,

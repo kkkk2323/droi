@@ -252,7 +252,7 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 		{"skills.setDisabled", func() error {
 			_, err := c.SetSkillDisabled(ctx, SkillsSetDisabledParams{Name: "walk", Disabled: true})
 			return err
-		}, CodeUnsupported},
+		}, 0},
 		{"policy.set", func() error {
 			_, err := c.PolicySet(ctx, PolicySetParams{Policy: PolicyChange{Autonomy: "ask"}})
 			return err
@@ -260,7 +260,7 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 		{"resources.list", func() error {
 			_, err := c.Resources(ctx, ResourcesListParams{ID: &id})
 			return err
-		}, CodeUnsupported},
+		}, 0},
 		{"model.complete", func() error {
 			// A real answer, not a refusal: the method is built, so its text must be the model's.
 			answer, err := c.ModelComplete(ctx, ModelCompleteParams{Model: model, Input: "say hi"})

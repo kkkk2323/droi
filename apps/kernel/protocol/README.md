@@ -452,13 +452,14 @@ Three qualifications a client that reads a range needs:
 | `mcp.authorize` | `{name}` | `{authorizationUrl}` | `mcp` | no |
 | `mcp.authorize.cancel` | `{name}` | `{}` | `mcp` | no |
 | `skills.list` | — | `{skills[]}` | `skills` | no |
-| `skills.setDisabled` | `{name, disabled}` | `{skills[]}` | `skills` | no |
+| `skills.setDisabled` | `{name, disabled, id?}` | `{skills[]}` | `skills` | no |
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
-M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
-`mcp.list` and `skills.list` return an empty list, and `policy.set`, `resources.list`, the write
-methods and the two `*.respond` methods are `-32009` until their capability is true. `model.complete` is built: it reports
+The M3 methods not built yet still answer their M1 shape: `process.list` returns `{"processes":[]}`,
+`mcp.list` returns an empty list, and `policy.set`, the write methods and the two `*.respond` methods are
+`-32009` until their capability is true. `skills.list`, `skills.setDisabled` and `resources.list` are built
+(`skills` and `resources` are true). `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
 
@@ -896,7 +897,13 @@ only the personal half is read.
   "prompts": [
     { "name": "fix-bug", "scope": "workspace", "path": "…/fix-bug.md", "description": "…" }
   ],
-  "contextFiles": [{ "path": "/Users/me/AGENTS.md", "bytes": 812 }]
+  "contextFiles": [{ "path": "/Users/me/AGENTS.md", "bytes": 812 }],
+  "diagnostics": [
+    {
+      "path": "/Users/me/.droi/skills/Notes/SKILL.md",
+      "message": "the name \"Notes\" is not a skill name"
+    }
+  ]
 }
 ```
 
@@ -904,10 +911,33 @@ The capabilities are `skills` for `skills.list` and `skills.setDisabled`, and `r
 a build without the resource loader leaves both false. `scope` is `personal` (the user's own directory) or
 `workspace` (the conversation's `cwd` and its parents). `contextFiles` is the `AGENTS.md` chain in the order
 it is applied: personal first, then from the outermost directory in. **Paths are advisory** — a client shows
-them, and never reads them itself.
+them, and never reads them itself. `diagnostics` names each file that looks like a skill or a template but is
+not used, and why: a name the Agent Skills rule refuses, a missing description, frontmatter that is not YAML,
+or one that lost to another of the same name. It is empty when every file is used, and a client shows it so a
+person can tell why a skill they wrote is not offered.
 
 The slash commands the kernel expands are exactly `prompts[].name` and `skills[].name`. A client's own
 commands (a new conversation, a compaction, a model change) never reach the kernel.
+
+`conversation.submit` expands an input whose first text block is `/name args`: a prompt template's body with
+`$1`…`$n`, `$@`/`$ARGUMENTS`, `${N:-default}` and `${@:N[:L]}` filled from the arguments (split like a shell),
+or, for a skill, the skill's instructions in a `<skill name=… location=…>` block followed by the arguments.
+Templates are looked up first; a disabled skill, and anything that names no command (`/usr/bin …`), goes as
+typed. A `requestId` is matched against the input as typed, so a retry is the same request after a template
+changed.
+
+Every request carries two system prompt sections built from the same files: `skills` lists the enabled skills
+the model may load (not those whose frontmatter says `disable-model-invocation: true`), each with its
+`SKILL.md` path, and `project-context` carries the `AGENTS.md` chain, broadest first, up to 32 KiB; a file past
+the limit is cut and the rest named. Both are read again before each request.
+
+`skills.setDisabled {name, disabled, id?}` turns a skill off by name, wherever it is found, and answers
+`skills.list` for the same `id`, so a list that showed a conversation's workspace skills gets them back. It is
+a setting the kernel keeps in its database (not a cache: an index reset keeps it); a read-only kernel refuses
+it with `-32008`. `skills.list` takes the same optional `id` as `resources.list`.
+
+A conversation started with a skill command is named, and previewed, as it was typed (`/name args`), not by
+the `<skill>` block the model is sent.
 
 ## Notifications
 

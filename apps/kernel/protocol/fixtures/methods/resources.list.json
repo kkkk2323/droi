@@ -40,6 +40,12 @@
       "contextFiles": [
         { "path": "/Users/clive/.droi/AGENTS.md", "bytes": 512 },
         { "path": "/Users/clive/dev/droi/AGENTS.md", "bytes": 12034 }
+      ],
+      "diagnostics": [
+        {
+          "path": "/Users/clive/.droi/skills/Notes/SKILL.md",
+          "message": "the name \"Notes\" is not a skill name"
+        }
       ]
     }
   }

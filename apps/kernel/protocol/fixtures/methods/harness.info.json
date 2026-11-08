@@ -34,10 +34,10 @@
         "approvals": true,
         "asks": false,
         "mcp": false,
-        "skills": false,
+        "skills": true,
         "models": true,
         "codemode": false,
-        "resources": false
+        "resources": true
       },
       "providers": [
         {
