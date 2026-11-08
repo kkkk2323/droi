@@ -107,6 +107,40 @@ func TestARowFollowsKernel(t *testing.T) {
 	h.until("the archived row to leave", func() bool { return !h.hasText("Dark mode, everywhere") })
 }
 
+// TestAnAutomationRunIsNotASessionOfAWorkspace: a run the Host's Automations started is a conversation of kind
+// automation; the sidebar keeps it out of the Workspaces, as it does a Daemon run, and knows its Automation by name.
+func TestAnAutomationRunIsNotASessionOfAWorkspace(t *testing.T) {
+	h := kernelHarness(t)
+	c := h.testConn()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := c.Create(ctx, kernel.CreateParams{Cwd: h.kernel.k.Workspace, Kind: "automation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: res.ConversationID, Title: kernel.TitleText("[Automation] Nightly lint")}); err != nil {
+		t.Fatal(err)
+	}
+	h.a.reloadList()
+	id := h.a.sessionIDOf(res.ConversationID)
+	var run sessions.Summary
+	h.until("the run in the list", func() bool {
+		for _, s := range h.a.listedNow() {
+			if s.SessionID == id {
+				run = s
+				return true
+			}
+		}
+		return false
+	})
+	if aid, name := sessions.AutomationRun(run.Tags); aid == "" || name != "Nightly lint" {
+		t.Fatalf("the run reads as Automation %q named %q", aid, name)
+	}
+	if h.hasText("[Automation] Nightly lint") {
+		t.Error("the run is listed among the Workspaces' Sessions")
+	}
+}
+
 // TestASessionStartedElsewhereIsListed: a conversation another window makes reaches the list when Kernel says so.
 func TestASessionStartedElsewhereIsListed(t *testing.T) {
 	h := kernelHarness(t)

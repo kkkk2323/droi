@@ -167,3 +167,32 @@ test('submission.get reports no end for a turn that answered nothing', async () 
     data.cleanup()
   }
 }, 60_000)
+
+test('submission.get says why a turn the model failed was not answered', async () => {
+  // An Automation's run has no window watching it: the model's own error is the only account of the failure.
+  const data = tempData()
+  const faux = fauxCatalog()
+  const kernel = await start({ dir: data.dir, faux })
+  const client = new Client(kernel.port)
+  try {
+    const { conversationId: id } = await client.call('conversation.create', {
+      agent: { model: faux.model },
+    })
+    faux.faux.setResponses([
+      fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'the quota is used up' }),
+    ])
+    const submitted = await client.call('conversation.submit', { id, input: 'do the report' })
+    await (await kernel.harness.conversation(id as never, context))!.waitForIdle(context)
+    const failed = (await client.call('submission.get', {
+      id,
+      submissionId: submitted['submissionId'],
+    })) as Submission & { detail?: string }
+    expect(failed.status).toBe('unanswered')
+    expect(failed.reason).toBe('model_error')
+    expect(failed.detail).toContain('the quota is used up')
+  } finally {
+    client.close()
+    await kernel.stop()
+    data.cleanup()
+  }
+}, 60_000)
