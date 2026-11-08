@@ -204,6 +204,24 @@ func Inspect(ctx context.Context, path string) (Inspection, error) {
 	return in, nil
 }
 
+// BranchLocalOnlyCommits counts the commits of the local branch that no other branch here and no remote branch this
+// computer knows of has: what deleting the branch would lose. It reads the repository, so it answers for a worktree
+// whose folder is gone. -1 when it could not be counted.
+func BranchLocalOnlyCommits(ctx context.Context, repo, branch string) int {
+	if branch == "" || strings.HasPrefix(branch, "-") {
+		return -1
+	}
+	n, err := text(ctx, repo, "rev-list", "--count", "refs/heads/"+branch, "--not", "--exclude="+branch, "--branches", "--remotes")
+	if err != nil {
+		return -1
+	}
+	count, err := strconv.Atoi(n)
+	if err != nil {
+		return -1
+	}
+	return count
+}
+
 // RemoveOptions is a worktree to remove, and what goes with it. A caller sets them only after a person confirmed.
 type RemoveOptions struct {
 	// Repo is any folder of the repository; "" is Path, which then must still exist.

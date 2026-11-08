@@ -345,3 +345,24 @@ func TestAnUntrackedLinkIsNotFollowed(t *testing.T) {
 		t.Fatal("Status read through a link to /dev/zero")
 	}
 }
+
+// A worktree whose folder is gone still has a branch whose commits may be nowhere else: they are counted from the
+// repository.
+func TestABranchsOwnCommitsAreCountedWithoutItsFolder(t *testing.T) {
+	r := repo(t)
+	tree := filepath.Join(filepath.Dir(r), "tree")
+	must(t, AddWorktree(context.Background(), AddOptions{Repo: r, Path: tree, Branch: "droi/x"}))
+	eq(t, BranchLocalOnlyCommits(context.Background(), r, "droi/x"), 0)
+	write(t, filepath.Join(tree, "b.txt"), "b\n")
+	gitIn(t, tree, "add", ".")
+	gitIn(t, tree, "commit", "-q", "-m", "b")
+	write(t, filepath.Join(tree, "c.txt"), "c\n")
+	gitIn(t, tree, "add", ".")
+	gitIn(t, tree, "commit", "-q", "-m", "c")
+	must(t, os.RemoveAll(tree))
+	eq(t, BranchLocalOnlyCommits(context.Background(), r, "droi/x"), 2)
+	gitIn(t, r, "branch", "keep", "droi/x")
+	eq(t, BranchLocalOnlyCommits(context.Background(), r, "droi/x"), 0)
+	eq(t, BranchLocalOnlyCommits(context.Background(), r, "no-such-branch"), -1)
+	eq(t, BranchLocalOnlyCommits(context.Background(), r, "--all"), -1)
+}

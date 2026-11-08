@@ -3,6 +3,7 @@ package app
 // A new Session on Kernel: the New session page's conversation.create, while the window lists from Kernel.
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -44,8 +45,8 @@ func (a *App) kernelChoices() []models.Choice {
 }
 
 // createConversation makes the conversation the New session page asks for in workspace (or a new Scratch folder),
-// and answers its Session id, or why it could not. The page's worktree choice is not made: on Kernel the Host makes
-// worktrees, which comes with M4.
+// and answers its Session id, or why it could not. A new worktree the page chose is made first, with git on this
+// computer, and the conversation works in it.
 func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.InitializeSessionParams) (string, error) {
 	kind := "chat"
 	if workspace == scratchPick {
@@ -65,6 +66,13 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	if err != nil {
 		return "", err
 	}
+	madeWorktree := false
+	if p.Worktree != nil && *p.Worktree && kind == "chat" {
+		if cwd, err = a.addWorktree(a.ctx, cwd, p.WorktreeBaseBranch, p.WorktreePromptSlug); err != nil {
+			return "", err
+		}
+		madeWorktree = true
+	}
 	agent := a.newAgent(p.ModelID, string(p.ReasoningEffort))
 	// Kernel offers scripts beside direct calls (codemode); Direct is the page's way to take them away.
 	if p.ToolExecutionMode == protocol.ToolExecutionMode(defaults.DirectOnly) {
@@ -75,6 +83,9 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	}
 	res, err := c.Create(a.ctx, kernel.CreateParams{Agent: agent, Cwd: cwd, Kind: kind, RequestID: uuid.NewString()})
 	if err != nil {
+		if madeWorktree {
+			discardWorktree(context.WithoutCancel(a.ctx), cwd)
+		}
 		return "", err
 	}
 	// A level picked on the page is the conversation's own, set before its first message can run a tool; the
