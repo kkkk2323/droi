@@ -59,6 +59,8 @@ type Server = {
   repoRoot?: string
   /** Set for a server the brand's app gives: it replaces a user's or a repository's server of its name. */
   app?: boolean
+  /** A table entry made before its config was read: never equal to a config, so the first one is reconciled. */
+  fresh?: boolean
   /** An app server a turn waits for: settled when its first connection has ended, either way. */
   loaded?: Promise<void>
   settleLoaded?: () => void
@@ -287,7 +289,18 @@ export class McpServers {
   }
 
   #find(name: string, repoRoot?: string): Server | undefined {
-    return this.#servers.get(serverKey(name, repoRoot))
+    return this.#servers.get(this.keyOf(name, repoRoot))
+  }
+
+  /** The key of the server a name means: without a repository, the app's server of that name before the user's. */
+  keyOf(name: string, repoRoot?: string): string {
+    if (repoRoot === undefined && this.#servers.has(appKey(name))) return appKey(name)
+    return serverKey(name, repoRoot)
+  }
+
+  /** Whether the app gives a server of this name, which then stands in for the user's and a repository's. */
+  #appNamed(name: string): boolean {
+    return Object.hasOwn(this.#options.app?.servers ?? {}, name)
   }
 
   /**
@@ -374,6 +387,7 @@ export class McpServers {
       name,
       ...(repoRoot === undefined ? {} : { repoRoot }),
       ...(app ? { app: true } : {}),
+      fresh: true,
       raw: {},
       parsed: { enabled: true },
       status: 'connecting',
@@ -382,7 +396,7 @@ export class McpServers {
       classified: [],
       generation: 0,
       retryDelay: RETRY_FIRST_MS,
-      extension: app ? `mcp-app-${cleanName(name)}` : extensionName(name, repoRoot),
+      extension: app ? appExtensionName(name) : extensionName(name, repoRoot),
     }
     this.#servers.set(key, server)
     return server
@@ -396,9 +410,15 @@ export class McpServers {
     app = false,
   ): Promise<void> {
     const existing = this.#servers.get(key)
-    if (existing !== undefined && JSON.stringify(existing.raw) === JSON.stringify(raw)) return
+    if (
+      existing !== undefined &&
+      existing.fresh !== true &&
+      JSON.stringify(existing.raw) === JSON.stringify(raw)
+    )
+      return
     if (existing !== undefined) await this.#disconnect(existing)
     const server: Server = this.#placeholder(key, name, repoRoot, app)
+    server.fresh = false
     server.raw = raw
     server.parsed = parseEntry(raw)
     server.retryDelay = RETRY_FIRST_MS
@@ -639,6 +659,9 @@ export class McpServers {
   #setNamespace(server: Server, namespace: CodemodeNamespace | undefined): void {
     const list = this.#options.namespaces
     if (list === undefined) return
+    // Codemode finds a namespace by its prefix, whichever extension is selected: a server the app's of its name
+    // replaces would answer for the app's.
+    if (server.app !== true && this.#appNamed(server.name)) namespace = undefined
     const at = this.#namespaceOwners.indexOf(server.extension)
     if (at >= 0) {
       list.splice(at, 1)
@@ -716,6 +739,14 @@ export function toolName(
 
 function cleanName(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, '_')
+}
+
+/**
+ * An app server's extension: its own shape, with a hash of its name, so no user's or repository's server name makes
+ * the same one.
+ */
+function appExtensionName(name: string): string {
+  return `mcp-app-${createHash('sha256').update(`app\u0000${name}`).digest('hex').slice(0, 8)}-${cleanName(name)}`
 }
 
 /** An app server's key: apart from the user's global one of the same name. */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
 import { appAgentFromEnv, type AppAgent } from '../src/config.ts'
@@ -167,7 +167,6 @@ describe("the app's servers", () => {
   test("one takes the place of the user's server of the same name", async () => {
     const data = tempData()
     cleanups.push(() => data.cleanup())
-    const { mkdirSync, writeFileSync } = await import('node:fs')
     mkdirSync(join(data.dir, 'user'), { recursive: true })
     writeFileSync(
       join(data.dir, 'user', 'mcp.json'),
@@ -236,3 +235,133 @@ describe("the app's section", () => {
     expect(seen.at(-1)!.system).not.toContain('Brand section')
   }, 60_000)
 })
+
+describe('app servers among the rest', () => {
+  test('an entry that runs nothing fails at once, and no turn waits for it', async () => {
+    const { ask, client, seen } = await boot(
+      app({ mcpServers: { bad: {} }, blockOnLoad: ['bad'] }),
+      [fauxAssistantMessage('ok')],
+      'all',
+    )
+    await ask('hi')
+    expect(seen).toHaveLength(1)
+    const servers = (await client.call('mcp.list', {}))['servers'] as {
+      name: string
+      status: string
+      error: string | null
+    }[]
+    expect(servers).toEqual([
+      expect.objectContaining({
+        name: 'bad',
+        status: 'failed',
+        error: 'neither a command nor a url',
+      }),
+    ])
+  }, 30_000)
+
+  test("a user's server whose name is like the app's extension keeps its tools", async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    mkdirSync(join(data.dir, 'user'), { recursive: true })
+    writeFileSync(
+      join(data.dir, 'user', 'mcp.json'),
+      JSON.stringify({ mcpServers: { 'app-fake': fakeServer() } }),
+    )
+    const faux = fauxCatalog()
+    const kernel = await start({
+      dir: data.dir,
+      faux,
+      overrides: { app: app({ mcpServers: { fake: fakeServer() }, blockOnLoad: ['fake'] }) },
+    })
+    const client = new Client(kernel.port)
+    cleanups.push(async () => {
+      client.close()
+      await kernel.stop()
+    })
+    await connected(client, 2)
+    const id = (
+      await client.call('conversation.create', { agent: { model: faux.model, cwd: data.dir } })
+    )['conversationId'] as number
+    let prompt: Seen = { tools: [], system: '' }
+    faux.faux.setResponses([
+      ((context: { messages: Record<string, unknown>[] }) => {
+        prompt = promptOf(context.messages)
+        return fauxAssistantMessage('ok')
+      }) as never,
+    ])
+    await client.call('conversation.submit', { id, input: 'hi' })
+    await waitIdle(client, id)
+    expect(prompt.tools).toEqual(expect.arrayContaining(['fake___echo', 'app-fake___echo']))
+  }, 60_000)
+
+  test("codemode's namespace of the name is the app server's, not the user's it replaces", async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    mkdirSync(join(data.dir, 'user'), { recursive: true })
+    writeFileSync(
+      join(data.dir, 'user', 'mcp.json'),
+      JSON.stringify({
+        mcpServers: { fake: fakeServer({ INSTRUCTIONS: 'USER SERVER INSTRUCTIONS' }) },
+      }),
+    )
+    const faux = fauxCatalog()
+    const kernel = await start({
+      dir: data.dir,
+      faux,
+      overrides: {
+        app: app({
+          mcpServers: { fake: fakeServer({ INSTRUCTIONS: 'APP SERVER INSTRUCTIONS' }) },
+          blockOnLoad: ['fake'],
+        }),
+      },
+    })
+    const client = new Client(kernel.port)
+    cleanups.push(async () => {
+      client.close()
+      await kernel.stop()
+    })
+    await connected(client, 2)
+    const id = (
+      await client.call('conversation.create', { agent: { model: faux.model, cwd: data.dir } })
+    )['conversationId'] as number
+    faux.faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall('codemode', {
+          code: 'return JSON.stringify(await describeNamespace("fake"))',
+        }),
+        { stopReason: 'toolUse' },
+      ),
+      fauxAssistantMessage('done'),
+    ])
+    await client.call('conversation.submit', { id, input: 'describe' })
+    await waitIdle(client, id)
+    const page = await client.call('conversation.entries', { id, limit: 50 })
+    const result = JSON.stringify(
+      (page['items'] as { kind: string; model?: unknown }[]).filter(
+        (e) => e.kind === 'pi.tool-result',
+      ),
+    )
+    expect(result).toContain('APP SERVER INSTRUCTIONS')
+    expect(result).not.toContain('USER SERVER INSTRUCTIONS')
+  }, 60_000)
+
+  test('mcp.authorize finds an app HTTP server by its name', async () => {
+    const { client } = await boot(
+      app({ mcpServers: { web: { type: 'http', url: 'http://127.0.0.1:9/mcp' } } }),
+      [],
+      'all',
+    )
+    const failure = await client.fails('mcp.authorize', { name: 'web' }).catch(() => undefined)
+    expect(JSON.stringify(failure ?? {})).not.toContain('no server web')
+  }, 30_000)
+})
+
+/** Waits until mcp.list shows n servers, every one connected. */
+async function connected(client: Client, n: number): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    const listed = (await client.call('mcp.list', {}))['servers'] as { status: string }[]
+    if (listed.length === n && listed.every((s) => s.status === 'connected')) return
+    await Bun.sleep(25)
+  }
+  throw new Error('the servers did not connect')
+}

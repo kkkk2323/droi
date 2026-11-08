@@ -195,7 +195,7 @@ export class Kernel implements Dispatcher {
     })
     add('mcp.authorize.cancel', (p) => {
       this.#writable()
-      return mcpAuthorizeCancel(this.#options.mcpAuth, p)
+      return mcpAuthorizeCancel(this.#options.mcp, this.#options.mcpAuth, p)
     })
     add('skills.list', (p) => this.#skillsList(p))
     add('skills.setDisabled', (p) => this.#skillsSetDisabled(p))

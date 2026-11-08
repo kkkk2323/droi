@@ -5,7 +5,7 @@ import type { Conversation, Extension, Harness } from '@earendil-works/pi-durabl
 import { invalidParams, optionalBoolean, optionalObject, optionalString } from '../protocol/rpc.ts'
 import { repoRootOf } from '../workspace.ts'
 import { readConfig, withoutConnection, writeEntry, type RawEntry } from './config.ts'
-import { serverKey, type McpServers } from './servers.ts'
+import type { McpServers } from './servers.ts'
 import type { McpAuth } from './oauth.ts'
 
 /** `mcp.list {repoRoot?}`. */
@@ -114,12 +114,13 @@ export async function mcpAuthorize(
 
 /** `mcp.authorize.cancel {name, repoRoot?}`: stop waiting for that server's sign-in. */
 export async function mcpAuthorizeCancel(
+  servers: McpServers,
   auth: McpAuth,
   params: Record<string, unknown>,
 ): Promise<unknown> {
   const name = requiredName(params)
   const root = await rootParam(params)
-  auth.cancel(serverKey(name, root))
+  auth.cancel(servers.keyOf(name, root))
   return {}
 }
 
