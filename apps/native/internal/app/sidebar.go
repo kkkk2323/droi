@@ -878,6 +878,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 					k.Icon(c, "message-square", 12, t.MutedForeground)
 					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).SingleLine()
 				})
+
 			}
 			ui.Spacer(c)
 			if n <= 9 && c.Modifiers() == ui.Cmd {

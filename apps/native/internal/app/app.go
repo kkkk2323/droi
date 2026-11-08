@@ -212,6 +212,9 @@ type App struct {
 	// them, a run of an Automation or a subagent, that readUntilListed reads
 	// the list for.
 	unlisted map[string]bool
+	// asked are the Kernel conversations the list was read for because Kernel named one it did not have; each is
+	// read for once until the list is read whole again.
+	asked map[string]bool
 
 	sidebar sidebarState
 	views   map[string]*sessionView

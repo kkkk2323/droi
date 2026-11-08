@@ -1,13 +1,16 @@
 package app
 
 // The session list: its first page, the pages after it, and the copy a frame reads. It lives in its own
-// file because it is the one part of the window that talks to the list rather than to a Session, and the
-// next change to it swaps where the pages come from without touching the window.
+// file because it is the one part of the window that talks to the list rather than to a Session. The pages
+// come from Kernel once the Host has handed the window a connection (list_kernel.go), and from the Daemon
+// before that.
 
 import (
+	"context"
 	"slices"
 	"time"
 
+	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
@@ -23,28 +26,48 @@ const (
 	olderRead
 )
 
-// olderPages are the pages a read of the first page leaves: the cursor
-// after it, and edge, its oldest Session's date in Unix seconds.
+// olderPages are the pages a read of the first page leaves: edge is its
+// oldest Session's date in Unix seconds.
 type olderPages struct {
-	gen    uint64
-	cursor float64
-	edge   int64
+	gen  uint64
+	edge int64
+}
+
+// listPages reads the Session list a page at a time.
+type listPages interface {
+	// first reads the first page: its Sessions, the oldest one's date in Unix seconds, and whether pages
+	// follow it.
+	first(ctx context.Context) (page []sessions.Summary, edge int64, more bool, err error)
+	// rest reads every page after the first, unless stale says the read is no longer wanted.
+	rest(ctx context.Context, stale func() bool) ([]sessions.Summary, error)
+}
+
+// pages is where the list is read from: Kernel once the Host handed a connection over, the Daemon else. ok
+// is false while neither can be asked.
+func (a *App) pages() (listPages, bool) {
+	show := prefs.ShowArchived.Get(a.prefs)
+	if c, err := a.kernel.client(); err == nil {
+		return &kernelPages{a: a, c: c, show: show}, true
+	}
+	cl, err := a.ctl.Client()
+	if err != nil {
+		return nil, false
+	}
+	return &daemonPages{cl: cl, show: show}, true
 }
 
 // refreshList reads the first page of Sessions again and keeps the older
 // ones read before. The first time, or once reloadList made them stale,
 // it reads every page after it as well, which can take a while.
 func (a *App) refreshList() {
-	cl, err := a.ctl.Client()
-	if err != nil {
+	pages, ok := a.pages()
+	if !ok {
 		return
 	}
 	gen := a.startList()
-	limit := float64(sessionPage)
-	show := prefs.ShowArchived.Get(a.prefs)
-	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show})
-	if p := a.setList(gen, res, err); p != nil {
-		a.readOlder(*p, show)
+	page, edge, more, err := pages.first(a.ctx)
+	if p := a.setList(gen, page, edge, more, err); p != nil {
+		a.readOlder(*p, pages)
 	}
 }
 
@@ -86,6 +109,7 @@ func (a *App) reloadList() {
 	a.mu.Lock()
 	a.older = olderUnread
 	a.olderGen++
+	clear(a.asked)
 	a.mu.Unlock()
 	a.refreshList()
 }
@@ -101,7 +125,7 @@ func (a *App) startList() uint64 {
 // setList takes the first page of read gen, unless a newer read started,
 // with the older Sessions kept. It returns the pages left to read, if
 // they are to be read.
-func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err error) *olderPages {
+func (a *App) setList(gen uint64, page []sessions.Summary, edge int64, more bool, err error) *olderPages {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if gen != a.listGen {
@@ -114,22 +138,17 @@ func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err
 	}
 	a.listErr = ""
 	go a.redraw()
-	page := summariesOf(res.Sessions)
 	a.pageIDs = make(map[string]bool, len(page))
 	for _, s := range page {
 		a.pageIDs[s.SessionID] = true
 	}
 	a.listRev++
-	if !res.HasMore || res.NextCursor == nil || len(res.Sessions) == 0 {
+	if !more {
 		a.listed = page
 		a.older = olderRead
 		a.olderGen++
 		a.keepList()
 		return nil
-	}
-	edge := int64(res.Sessions[0].UpdatedAt)
-	for _, s := range res.Sessions {
-		edge = min(edge, int64(s.UpdatedAt))
 	}
 	list := page
 	for _, s := range a.listed {
@@ -143,48 +162,25 @@ func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err
 	}
 	a.older = olderReading
 	a.olderGen++
-	return &olderPages{gen: a.olderGen, cursor: *res.NextCursor, edge: edge}
+	return &olderPages{gen: a.olderGen, edge: edge}
 }
 
 // readOlder reads the pages p leaves, then puts them in place of the
 // older Sessions kept until then.
-func (a *App) readOlder(p olderPages, show bool) {
-	failed := func() {
+func (a *App) readOlder(p olderPages, pages listPages) {
+	stale := func() bool {
 		a.mu.Lock()
-		if a.olderGen == p.gen {
-			a.older = olderUnread
-		}
-		a.mu.Unlock()
+		defer a.mu.Unlock()
+		return a.olderGen != p.gen
 	}
-	cl, err := a.ctl.Client()
-	if err != nil {
-		failed()
-		return
-	}
-	var read []protocol.DaemonAvailableSessionInfo
-	limit, cursor := float64(sessionPage), p.cursor
-	for {
-		res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show, EndBefore: &cursor})
-		if err != nil {
-			failed()
-			return
-		}
-		a.mu.Lock()
-		stale := a.olderGen != p.gen
-		a.mu.Unlock()
-		if stale {
-			return
-		}
-		read = append(read, res.Sessions...)
-		if !res.HasMore || res.NextCursor == nil || *res.NextCursor == cursor {
-			break
-		}
-		cursor = *res.NextCursor
-	}
-	older := summariesOf(read)
+	older, err := pages.rest(a.ctx, stale)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.olderGen != p.gen {
+		return
+	}
+	if err != nil {
+		a.older = olderUnread
 		return
 	}
 	var list []sessions.Summary
@@ -205,6 +201,50 @@ func (a *App) readOlder(p olderPages, show bool) {
 	a.older = olderRead
 	a.keepList()
 	go a.redraw()
+}
+
+// daemonPages are the Daemon's list, through daemon.list_available_sessions.
+type daemonPages struct {
+	cl     *droid.Client
+	show   bool
+	cursor float64
+}
+
+func (p *daemonPages) first(ctx context.Context) ([]sessions.Summary, int64, bool, error) {
+	limit := float64(sessionPage)
+	res, err := p.cl.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &p.show})
+	if err != nil {
+		return nil, 0, false, err
+	}
+	if !res.HasMore || res.NextCursor == nil || len(res.Sessions) == 0 {
+		return summariesOf(res.Sessions), 0, false, nil
+	}
+	p.cursor = *res.NextCursor
+	edge := int64(res.Sessions[0].UpdatedAt)
+	for _, s := range res.Sessions {
+		edge = min(edge, int64(s.UpdatedAt))
+	}
+	return summariesOf(res.Sessions), edge, true, nil
+}
+
+func (p *daemonPages) rest(ctx context.Context, stale func() bool) ([]sessions.Summary, error) {
+	var read []protocol.DaemonAvailableSessionInfo
+	limit, cursor := float64(sessionPage), p.cursor
+	for {
+		res, err := p.cl.ListAvailableSessions(ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &p.show, EndBefore: &cursor})
+		if err != nil {
+			return nil, err
+		}
+		if stale() {
+			return nil, nil
+		}
+		read = append(read, res.Sessions...)
+		if !res.HasMore || res.NextCursor == nil || *res.NextCursor == cursor {
+			break
+		}
+		cursor = *res.NextCursor
+	}
+	return summariesOf(read), nil
 }
 
 func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary {

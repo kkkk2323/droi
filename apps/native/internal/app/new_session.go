@@ -133,6 +133,13 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 			autonomy = dv.AutonomyLevel
 		}
 	}
+	// On Kernel the picker offers Kernel's models: the Daemon's are not the ones a conversation can run.
+	if offered := a.kernelChoices(); len(offered) > 0 {
+		choices = offered
+		if !slices.ContainsFunc(choices, func(m models.Choice) bool { return m.ID == modelID }) {
+			modelID, effort = choices[0].ID, ""
+		}
+	}
 	shownMode, requestedMode := defaults.NewSessionToolMode(s.toolMode, defaults.DefaultToolMode(a.prefs), "")
 	s.mu.Lock()
 	creating := s.creating
@@ -601,6 +608,10 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 							}
 						}
 					}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
+					if a.onKernel() {
+						// Kernel has no autonomy and no Spec mode until M3 (approvals, plan mode).
+						return
+					}
 					if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
 						s.interaction = string(protocol.DroidInteractionModeSpec)
 						if spec {
@@ -648,12 +659,23 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	s.creating = true
 	s.mu.Unlock()
 	a.redraw()
+	id := ""
+	if c, err := a.kernel.client(); err == nil {
+		// A draft is the Daemon's, for its commands and skills: the conversation is Kernel's.
+		a.dropDraft()
+		if id, err = a.createConversation(c, workspace, p); err != nil {
+			fail(err.Error())
+			return
+		}
+	}
 	cl, err := a.ctl.Client()
-	if err != nil {
+	if id == "" && err != nil {
 		fail(err.Error())
 		return
 	}
-	id := a.takeDraft(workspace, p)
+	if id == "" {
+		id = a.takeDraft(workspace, p)
+	}
 	if id == "" {
 		var tags []protocol.SessionTag
 		if workspace == scratchPick {

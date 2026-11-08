@@ -42,6 +42,13 @@ type Summary struct {
 	// OrganizationID is the Factory organization the Session belongs to,
 	// "" for one from before droid kept it, which every organization lists.
 	OrganizationID string `json:",omitempty"`
+	// Kind is a Kernel conversation's own label: "chat", "scratch", "automation", "workstream", ...; "" for a
+	// Daemon Session.
+	Kind string `json:",omitempty"`
+	// Preview is the first line of a Kernel conversation's newest message, for the row's second line.
+	Preview string `json:",omitempty"`
+	// ViewedAt is when a person last saw a Kernel conversation, in Unix milliseconds; 0 for not yet.
+	ViewedAt int64 `json:",omitempty"`
 }
 
 // Worktree is a Session's worktree: a checkout of RepoRoot at Path, on Branch.

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -154,6 +155,8 @@ func (a *App) UseKernel(c *kernel.Client, gen int64) {
 	go a.pumpKernel(c, gen)
 	go func() { _ = a.sessions.Reopen(a.ctx, &a.kernel, gen) }()
 	go a.readModels(c, gen)
+	// The list is Kernel's from now on, and on a new connection it may have moved while the window was away.
+	go a.reloadList()
 }
 
 // readModels keeps the models harness.info offers on connection gen, for the picker. A failure leaves the list as
@@ -198,6 +201,11 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 					a.sessions.ApplyBusy(gen, busy)
 					a.alertBusy(busy)
 				}
+			case kernel.NotifyIndexChanged:
+				var changed kernel.IndexChanged
+				if n.Decode(&changed) == nil {
+					a.applyIndexChanged(changed)
+				}
 			}
 		}
 	}
@@ -206,20 +214,26 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 // alertBusy raises the alert a conversation's run calls for when it ends, as the Daemon's working states do: Kernel
 // says busy and idle, and nothing finer until approvals and questions (M3).
 func (a *App) alertBusy(n kernel.BusyNotification) {
-	if a.cfg.KernelSession == nil {
-		return
-	}
-	id, ok := a.cfg.KernelSession(n.ID)
-	if !ok {
-		return
-	}
+	id := a.sessionIDOf(n.ID)
 	state := string(protocol.DroidWorkingStateIdle)
 	if n.Busy() {
 		state = string(protocol.DroidWorkingStateStreamingAssistantMessage)
 	}
 	a.mu.Lock()
 	a.busy[id] = state
+	// A run of a conversation the list does not have yet: one this window or another just made, or an
+	// Automation's. Read the list for it once; one Kernel leaves out of the list (a subagent's) stays out.
+	read := n.Busy() && a.listDone && findSummary(a.listed, id) == nil && !a.asked[id]
+	if read {
+		if a.asked == nil {
+			a.asked = map[string]bool{}
+		}
+		a.asked[id] = true
+	}
 	a.mu.Unlock()
+	if read {
+		go a.refreshList()
+	}
 	a.redraw()
 	if ev := a.kernelAlerts.Update(id, state); ev != "" {
 		a.cfg.Update(func() { a.raise(id, "", ev) })
@@ -231,13 +245,7 @@ func (a *App) alertBusy(n kernel.BusyNotification) {
 // would raise no alert. Only a conversation not heard of yet is taken, so a view older than the idle that followed
 // it cannot mark a finished run working again.
 func (a *App) joinedRun(conv kernel.ID) {
-	if a.cfg.KernelSession == nil {
-		return
-	}
-	id, ok := a.cfg.KernelSession(conv)
-	if !ok {
-		return
-	}
+	id := a.sessionIDOf(conv)
 	state := string(protocol.DroidWorkingStateStreamingAssistantMessage)
 	a.mu.Lock()
 	_, heard := a.busy[id]
@@ -251,10 +259,31 @@ func (a *App) joinedRun(conv kernel.ID) {
 	}
 }
 
-// kernelID is the conversation that holds Session id, when Kernel holds it.
+// kernelID is the conversation that holds Session id, when Kernel holds it: the one Config.KernelID names, else,
+// once the window has a Kernel, the conversation the id is written as.
 func (a *App) kernelID(id string) (kernel.ID, bool) {
-	if a.cfg.KernelID == nil {
+	if a.cfg.KernelID != nil {
+		if conv, ok := a.cfg.KernelID(id); ok {
+			return conv, true
+		}
+	}
+	if _, err := a.kernel.client(); err != nil {
 		return 0, false
 	}
-	return a.cfg.KernelID(id)
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return kernel.ID(n), true
+}
+
+// sessionIDOf is the window's id for conversation conv: the Session Config.KernelSession names, else the
+// conversation's id as the contract writes it.
+func (a *App) sessionIDOf(conv kernel.ID) string {
+	if a.cfg.KernelSession != nil {
+		if id, ok := a.cfg.KernelSession(conv); ok {
+			return id
+		}
+	}
+	return conv.String()
 }

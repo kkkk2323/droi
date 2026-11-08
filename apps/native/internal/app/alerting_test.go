@@ -25,7 +25,7 @@ func TestCompletionAlertsWhileAnotherSessionIsOpen(t *testing.T) {
 		},
 		Turn: &fakedaemon.Turn{Kind: "reply", Deltas: []string{"one ", "two ", "three"}, DelayMs: 300},
 	}
-	keepOnDaemon(t, untilListMoves)
+	keepOnDaemon(t, untilUnread)
 	h := newHarness(t, sc, "")
 	var mu sync.Mutex
 	var sounds []string
