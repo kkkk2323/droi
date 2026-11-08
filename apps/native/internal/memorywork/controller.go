@@ -29,6 +29,10 @@ type Options struct {
 	MemoryDir string
 	// Runner answers nil while there is no Daemon to run a Memory Session on.
 	Runner func() Run
+	// Kernel, set when the Host runs a Kernel, answers the connection to it,
+	// nil while there is none. Memory then lists, reads and summarizes through
+	// the Kernel (ADR 0042), and Runner is not used.
+	Kernel func() Kernel
 	Models func() Models
 	// OnChange says something Settings → Memory shows changed.
 	OnChange func()
@@ -86,7 +90,10 @@ func (c *Controller) ResetPrompts() error { return ResetPrompts(c.o.MemoryDir) }
 // ErrNoDaemon: a Memory Session needs the Daemon.
 var ErrNoDaemon = errors.New("the Daemon is not running")
 
-func (c *Controller) work(run Run) (Work, error) {
+// ErrNoKernel: Memory on the Kernel needs a connection to it.
+var ErrNoKernel = errors.New("the Kernel is not running")
+
+func (c *Controller) work(run Run, k Kernel) (Work, error) {
 	sessionPrompt, err := ReadPrompt(c.o.MemoryDir, PromptSessionSummary)
 	if err != nil {
 		return Work{}, err
@@ -95,14 +102,31 @@ func (c *Controller) work(run Run) (Work, error) {
 	if err != nil {
 		return Work{}, err
 	}
-	return Work{Dir: c.o.MemoryDir, Run: run, Models: c.o.Models(), SessionPrompt: sessionPrompt, MemoryPrompt: memoryPrompt, Home: c.o.Home, Now: c.o.Now, Log: c.o.Log}, nil
+	return Work{Dir: c.o.MemoryDir, Run: run, Models: c.o.Models(), SessionPrompt: sessionPrompt, MemoryPrompt: memoryPrompt, Home: c.o.Home, Kernel: k, Now: c.o.Now, Log: c.o.Log}, nil
+}
+
+// runner is what a pass runs Memory's model calls on, and the Kernel when it
+// runs on one.
+func (c *Controller) runner() (Run, Kernel, error) {
+	if c.o.Kernel != nil {
+		k := c.o.Kernel()
+		if k == nil {
+			return nil, nil, ErrNoKernel
+		}
+		return NewKernelRunner(k), k, nil
+	}
+	run := c.o.Runner()
+	if run == nil {
+		return nil, nil, ErrNoDaemon
+	}
+	return run, nil, nil
 }
 
 // pass runs one pass, after any pass already running.
 func (c *Controller) pass(minIdle time.Duration, force bool) error {
-	run := c.o.Runner()
-	if run == nil {
-		return ErrNoDaemon
+	run, k, err := c.runner()
+	if err != nil {
+		return err
 	}
 	c.passing.Lock()
 	defer c.passing.Unlock()
@@ -118,7 +142,7 @@ func (c *Controller) pass(minIdle time.Duration, force bool) error {
 		c.mu.Unlock()
 		c.o.OnChange()
 	}()
-	w, err := c.work(run)
+	w, err := c.work(run, k)
 	if err != nil {
 		return err
 	}
@@ -130,8 +154,11 @@ func (c *Controller) pass(minIdle time.Duration, force bool) error {
 // done.
 func (c *Controller) UpdateNow() error {
 	err := c.pass(UpdateNowIdle, true)
-	if errors.Is(err, ErrNoDaemon) {
+	switch {
+	case errors.Is(err, ErrNoDaemon):
 		return errors.New(l10n.L("The Daemon is not running."))
+	case errors.Is(err, ErrNoKernel):
+		return errors.New(l10n.L("The Kernel is not running."))
 	}
 	return err
 }
@@ -150,7 +177,7 @@ func (c *Controller) Start() {
 	go func() {
 		defer close(stopped)
 		passNow := func() {
-			if err := c.pass(MinIdle, false); err != nil && !errors.Is(err, ErrNoDaemon) && !errors.Is(err, context.Canceled) {
+			if err := c.pass(MinIdle, false); err != nil && !errors.Is(err, ErrNoDaemon) && !errors.Is(err, ErrNoKernel) && !errors.Is(err, context.Canceled) {
 				c.o.Log("Memory pass: " + err.Error())
 			}
 		}

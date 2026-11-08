@@ -9,12 +9,15 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
 // StartMemory is the Host's side of Memory (ADR 0031): Settings → Memory,
 // and the passes that summarize Sessions and keep the Memory Summary, run
-// only while Memory is on and the Daemon runs. Memory Sessions dial the
-// Daemon directly with the Host's credential, as this window does.
+// only while Memory is on. With a Kernel (ADR 0042) the passes read its
+// conversations and call model.complete on a connection of their own;
+// without one, Memory Sessions dial the Daemon directly with the Host's
+// credential, as this window does, until the Daemon is removed.
 func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controller {
 	dial := func(ctx context.Context) (*droid.Client, error) {
 		url, err := h.WaitForDaemonURL(ctx)
@@ -28,6 +31,23 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 		return droid.Dial(ctx, droid.Options{URL: url, Credential: cred, Caller: "droi-native"})
 	}
 	run := memorywork.NewRunner(dial)
+	var kernelOf func() memorywork.Kernel
+	var current struct {
+		sync.Mutex
+		client *kernel.Client
+		gen    int
+	}
+	if h.KernelEnabled() {
+		// Memory on the Kernel (ADR 0042): its own connection, as the Host's.
+		kernelOf = func() memorywork.Kernel {
+			current.Lock()
+			defer current.Unlock()
+			if current.client == nil {
+				return nil
+			}
+			return current.client
+		}
+	}
 	m := memorywork.New(memorywork.Options{
 		MemoryDir: h.MemoryDir(),
 		Runner: func() memorywork.Run {
@@ -40,10 +60,33 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 			st := h.Settings.Get()
 			return memorywork.Models{SessionSummary: st.MemoryModelOrDefault(), MemorySummary: st.MemorySummaryModelOrDefault()}
 		},
+		Kernel:   kernelOf,
 		OnChange: changed,
 		Log:      func(s string) { log.Println("[memory]", s) },
 		Home:     home,
 	})
+	if kernelOf != nil {
+		link := host.NewKernelLink(host.KernelLinkOptions{
+			Client: kernel.ClientHost,
+			Token:  h.KernelToken,
+			OnClient: func(c *kernel.Client, gen int) {
+				current.Lock()
+				current.client, current.gen = c, gen
+				current.Unlock()
+				// The pass that waited for the Kernel.
+				m.Poke()
+			},
+			OnGone: func(gen int, _ error) {
+				current.Lock()
+				if current.gen == gen {
+					current.client = nil
+				}
+				current.Unlock()
+			},
+			Log: func(s string) { log.Println("[memory] kernel:", s) },
+		})
+		h.OnKernelState(link.Use)
+	}
 	var mu sync.Mutex
 	on, up := false, false
 	follow := func() {

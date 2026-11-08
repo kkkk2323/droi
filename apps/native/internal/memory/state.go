@@ -26,13 +26,21 @@ type State struct {
 	LastPassAt string `json:"lastPassAt,omitempty"`
 }
 
-// SessionRecord is what the Host knows of one Session.
+// SessionRecord is what the Host knows of one Session: a droid Session's
+// transcript, or a Kernel conversation (ADR 0042).
 type SessionRecord struct {
 	Transcript string `json:"transcript"`
 	Cwd        string `json:"cwd"`
 	StartedAt  string `json:"startedAt"`
-	// SummarizedMtime is the transcript's modification time (Unix ms) when
-	// it was last summarized; a later one means the Session went on.
+	// Conversation is the Kernel conversation's id, 0 for a droid Session.
+	Conversation int64 `json:"conversation,omitempty"`
+	// Title and ActivityAt (Unix ms) are a Kernel conversation's, as the
+	// conversation list last gave them.
+	Title      string `json:"title,omitempty"`
+	ActivityAt int64  `json:"activityAt,omitempty"`
+	// SummarizedMtime is the Session's last change (Unix ms) when it was last
+	// summarized: its transcript's modification time, or a conversation's
+	// ActivityAt. A later one means the Session went on.
 	SummarizedMtime int64  `json:"summarizedMtime,omitempty"`
 	SummarizedAt    string `json:"summarizedAt,omitempty"`
 	// File is its Session Summary, "" when it has none.

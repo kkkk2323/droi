@@ -155,6 +155,14 @@ func ReadTranscript(file string, budget int) (Transcript, error) {
 	if err := scanner.Err(); err != nil {
 		return t, err
 	}
+	t.Text, t.Omitted = fit(rows, budget)
+	return t, nil
+}
+
+// fit renders rows within budget characters, keeping the newest rows of each
+// tier first, and marks where rows were left out.
+func fit(rows []row, budget int) (string, bool) {
+	omitted := false
 	keep := make([]bool, len(rows))
 	left := budget
 	for tier := tierUser; tier <= tierTool; tier++ {
@@ -177,7 +185,7 @@ func ReadTranscript(file string, budget int) (Transcript, error) {
 		}
 		if gap {
 			b.WriteString("[... omitted ...]\n")
-			t.Omitted = true
+			omitted = true
 			gap = false
 		}
 		b.WriteString(r.text)
@@ -185,8 +193,7 @@ func ReadTranscript(file string, budget int) (Transcript, error) {
 	}
 	if gap {
 		b.WriteString("[... omitted ...]\n")
-		t.Omitted = true
+		omitted = true
 	}
-	t.Text = b.String()
-	return t, nil
+	return b.String(), omitted
 }
