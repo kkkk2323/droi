@@ -5,10 +5,8 @@
 package factory
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -28,41 +26,57 @@ const TooLargeHint = "This is a request-body byte limit, not the model's context
 
 type attachmentDialect struct {
 	list string
-	is   func(map[string]any) bool
-	text func(map[string]any) map[string]any
+	is   func(*object) bool
+	text func(*object) json.RawMessage
 }
 
-func partType(p map[string]any) string {
-	s, _ := p["type"].(string)
-	return s
+func leftOutText(kind string) json.RawMessage {
+	return newObject("type", jsonStr(kind), "text", jsonStr(LeftOut)).raw()
 }
 
 var attachmentDialects = map[string]attachmentDialect{
 	"anthropic": {"messages",
-		func(p map[string]any) bool { return partType(p) == "image" || partType(p) == "document" },
-		func(p map[string]any) map[string]any {
-			out := map[string]any{"type": "text", "text": LeftOut}
-			if c, ok := p["cache_control"]; ok && c != nil && c != false {
-				out["cache_control"] = c
+		func(p *object) bool { t := rawString(p.get("type")); return t == "image" || t == "document" },
+		func(p *object) json.RawMessage {
+			out := newObject("type", jsonStr("text"), "text", jsonStr(LeftOut))
+			if c := p.get("cache_control"); truthy(c) {
+				out.set("cache_control", c)
 			}
-			return out
+			return out.raw()
 		}},
 	"responses": {"input",
-		func(p map[string]any) bool { return partType(p) == "input_image" || partType(p) == "input_file" },
-		func(map[string]any) map[string]any { return map[string]any{"type": "input_text", "text": LeftOut} }},
+		func(p *object) bool { t := rawString(p.get("type")); return t == "input_image" || t == "input_file" },
+		func(*object) json.RawMessage { return leftOutText("input_text") }},
 	"chat": {"messages",
-		func(p map[string]any) bool { return partType(p) == "image_url" || partType(p) == "file" },
-		func(map[string]any) map[string]any { return map[string]any{"type": "text", "text": LeftOut} }},
+		func(p *object) bool { t := rawString(p.get("type")); return t == "image_url" || t == "file" },
+		func(*object) json.RawMessage { return leftOutText("text") }},
 	"gemini": {"contents",
-		func(p map[string]any) bool {
+		func(p *object) bool {
 			for _, k := range []string{"inlineData", "inline_data", "fileData", "file_data"} {
-				if v, ok := p[k]; ok && v != nil {
+				if truthy(p.get(k)) {
 					return true
 				}
 			}
 			return false
 		},
-		func(map[string]any) map[string]any { return map[string]any{"text": LeftOut} }},
+		func(*object) json.RawMessage { return newObject("text", jsonStr(LeftOut)).raw() }},
+}
+
+// truthy is whether a JSON value is truthy as JavaScript reads it: present, and not null, false, 0 or "".
+func truthy(raw json.RawMessage) bool {
+	if raw == nil {
+		return false
+	}
+	switch s := strings.TrimSpace(string(raw)); s {
+	case "null", "false", `""`:
+		return false
+	default:
+		var n float64
+		if json.Unmarshal(raw, &n) == nil {
+			return n != 0
+		}
+		return true
+	}
 }
 
 // attachmentDialectOf is which API's body a request to path carries, as attachments are found in it, or "" for one
@@ -89,48 +103,49 @@ func LeaveOutAttachments(path string, body []byte) ([]byte, int) {
 	if !ok {
 		return nil, 0
 	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.UseNumber()
-	var m map[string]any
-	if dec.Decode(&m) != nil || m == nil {
+	if !json.Valid(body) {
 		return nil, 0
 	}
-	list, ok := m[d.list].([]any)
+	m, ok := objectOf(body)
 	if !ok {
 		return nil, 0
 	}
+	list := m.get(d.list)
+	if _, ok := arrayOf(list); !ok {
+		return nil, 0
+	}
 	w := attachmentWalk{d: d}
-	w.walk(list, false)
+	w.walk(list, "")
 	if w.found <= keepAttachments {
 		return nil, 0
 	}
 	w.cut, w.seen = w.found-keepAttachments, 0
-	m[d.list] = w.walk(list, false)
-	out, err := marshalJSON(m)
-	if err != nil {
-		return nil, 0
-	}
-	return out, w.cut
+	out, _ := w.walk(list, "")
+	m.set(d.list, out)
+	return canonical(m.raw()), w.cut
 }
 
-// attachmentWalk finds a body's attachments in the order they were sent, then, with cut set, leaves the first cut
-// of them out. An object's keys are walked in sorted order: in every dialect only one key of an object holds parts.
+// attachmentWalk finds a body's attachments in the order they were sent, an object's keys in JavaScript's order as
+// upstream's Object.entries walks them, then, with cut set, leaves the first cut of them out.
 type attachmentWalk struct {
 	d                attachmentDialect
 	found, cut, seen int
 }
 
-func (w *attachmentWalk) walk(v any, inFunctionResponse bool) any {
-	switch x := v.(type) {
-	case []any:
-		out := x[:0:0]
-		for _, p := range x {
-			if obj, ok := p.(map[string]any); ok && w.d.is(obj) {
+// walk is raw with the attachments it holds left out, and whether any was; key is the field raw is under, or under
+// one of, so a Gemini function response's parts are told apart.
+func (w *attachmentWalk) walk(raw json.RawMessage, key string) (json.RawMessage, bool) {
+	if items, ok := arrayOf(raw); ok {
+		out := make([]json.RawMessage, 0, len(items))
+		changed := false
+		for _, p := range items {
+			if obj, ok := objectOf(p); ok && w.d.is(obj) {
 				w.seen++
 				if w.cut == 0 {
 					w.found++
 				} else if w.seen <= w.cut {
-					if inFunctionResponse {
+					changed = true
+					if key == "functionResponse" {
 						continue
 					}
 					p = w.d.text(obj)
@@ -138,21 +153,34 @@ func (w *attachmentWalk) walk(v any, inFunctionResponse bool) any {
 				out = append(out, p)
 				continue
 			}
-			out = append(out, w.walk(p, inFunctionResponse))
+			next, did := w.walk(p, key)
+			changed = changed || did
+			out = append(out, next)
 		}
-		return out
-	case map[string]any:
-		keys := make([]string, 0, len(x))
-		for k := range x {
-			keys = append(keys, k)
+		if !changed {
+			return raw, false
 		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			x[k] = w.walk(x[k], inFunctionResponse || k == "functionResponse")
-		}
-		return x
+		return jsonList(out), true
 	}
-	return v
+	o, ok := objectOf(raw)
+	if !ok {
+		return raw, false
+	}
+	changed := false
+	for _, k := range jsOrder(o.keys) {
+		under := key
+		if k == "functionResponse" {
+			under = k
+		}
+		if next, did := w.walk(o.get(k), under); did {
+			o.set(k, next)
+			changed = true
+		}
+	}
+	if !changed {
+		return raw, false
+	}
+	return o.raw(), true
 }
 
 // TooLarge is what a 413 of Factory's says to the person: Factory's own words, that the limit is on bytes, how many

@@ -19,19 +19,17 @@ const ClientVersion = "0.242.0"
 const openAIPlatform = "org-bHuLtG1fGmYk5YaOihAAXFBw"
 
 // Headers are what droid sends with a model request to Factory, set on h for a request on path whose body names
-// model, from a key of identity id, in session sessionID. The Authorization is the caller's: it carries the key.
-func Headers(h http.Header, id Identity, path, model, sessionID string) {
+// model, in session sessionID. The Authorization is the caller's: it carries a key, and droid names no
+// organization with a key (its FACTORY_API_KEY), so neither does the request.
+func Headers(h http.Header, path, model, sessionID string) {
 	// A client's own vendor keys: Factory takes the bearer token alone.
 	h.Del("X-Api-Key")
 	h.Del("X-Goog-Api-Key")
 	h.Set("X-Factory-Client", "cli")
 	h.Set("X-Client-Version", ClientVersion)
 	h.Set("User-Agent", "factory-cli/"+ClientVersion)
-	if id.OrgID != "" {
-		h.Set("X-Factory-Org-Id", id.OrgID)
-	} else {
-		h.Del("X-Factory-Org-Id")
-	}
+	h.Del("X-Factory-Org-Id")
+	FastBeta(h, path, model)
 	upstream := Upstream(path, model)
 	h.Set("X-Api-Provider", upstream)
 	h.Set("X-Session-Id", sessionID)
@@ -39,27 +37,21 @@ func Headers(h http.Header, id Identity, path, model, sessionID string) {
 	h.Set("X-Provider-Routing-Source", "registry_default")
 	if upstream == "openai" {
 		h.Set("OpenAI-Platform", openAIPlatform)
-	} else {
-		h.Del("OpenAI-Platform")
 	}
 	// droid's Anthropic client is made with the key "placeholder", which Anthropic's SDK sends beside the bearer.
 	if strings.Contains(path, "/llm/a/") {
 		h.Set("X-Api-Key", "placeholder")
 	}
-	FastBeta(h, path, model)
 }
 
-// Upstream is the vendor a request names in x-api-provider: its model's, or for a model droid does not offer, the
-// route's own vendor.
+// Upstream is the vendor a request names in x-api-provider: its model's, or for a model droid does not offer,
+// openai on the OpenAI route and anthropic on the others, as upstream names it.
 func Upstream(path, model string) string {
 	if m, ok := ModelByID(model); ok {
 		return m.Upstream
 	}
 	if strings.Contains(path, "/llm/o/") {
 		return "openai"
-	}
-	if strings.Contains(path, "/llm/g/") {
-		return "google"
 	}
 	return "anthropic"
 }

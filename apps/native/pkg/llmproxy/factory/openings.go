@@ -1,7 +1,6 @@
 // Ported from @magpie-community/opencode-factory-auth 0.1.42 (MIT),
 // index.mjs: PI_OPENING, PI_COMPAT and clientOpening 478-482, PI_SUMMARIES and piSummary 494-502, promptOpenings
-// 554-579. Only pi's half: for the requests Droi sends, promptText and systemMessageText come down to clientOpening,
-// and userText, userBlockText and compactContext to piSummary; the rest of them adapt Claude Code's and ZCode's.
+// 554-579.
 
 package factory
 
@@ -60,34 +59,30 @@ func promptOpenings(msgs []json.RawMessage) bool {
 		if !mayAdapt(raw) {
 			continue
 		}
-		m, ok := jsonObject(raw)
+		m, ok := objectOf(raw)
 		if !ok {
 			continue
 		}
 		field := "content"
 		var adapt func(string) string
-		switch role := rawString(m["role"]); {
+		switch role := rawString(m.get("role")); {
 		case role == "system" || role == "developer":
 			adapt = clientOpening
 		case role == "user":
 			adapt = piSummary
 		case role == "tool":
 			adapt = quotedToolText
-		case rawString(m["type"]) == "function_call_output":
+		case rawString(m.get("type")) == "function_call_output":
 			adapt, field = quotedToolText, "output"
 		default:
 			continue
 		}
-		out, did := adaptContent(m[field], adapt, false)
+		out, did := adaptContent(m.get(field), adapt, false)
 		if !did {
 			continue
 		}
-		m[field] = out
-		if msgs[i], ok = jsonValue(m); !ok {
-			msgs[i] = raw
-			continue
-		}
-		changed = true
+		m.set(field, out)
+		msgs[i], changed = m.raw(), true
 	}
 	return changed
 }
@@ -110,31 +105,31 @@ func mayAdapt(raw json.RawMessage) bool {
 func adaptContent(raw json.RawMessage, adapt func(string) string, textType bool) (json.RawMessage, bool) {
 	if text, isString := rawStringOK(raw); isString {
 		if out := adapt(text); out != text {
-			return mustJSON(out), true
+			return jsonStr(out), true
 		}
 		return raw, false
 	}
-	parts, isArray := jsonArray(raw)
+	parts, isArray := arrayOf(raw)
 	if !isArray {
 		return raw, false
 	}
 	changed := false
 	for i, part := range parts {
-		p, isObject := jsonObject(part)
-		if !isObject || (textType && rawString(p["type"]) != "text") {
+		p, isObject := objectOf(part)
+		if !isObject || (textType && rawString(p.get("type")) != "text") {
 			continue
 		}
-		text, isText := rawStringOK(p["text"])
+		text, isText := rawStringOK(p.get("text"))
 		if !isText {
 			continue
 		}
 		if out := adapt(text); out != text {
-			p["text"] = mustJSON(out)
-			parts[i], changed = mustJSON(p), true
+			p.set("text", jsonStr(out))
+			parts[i], changed = p.raw(), true
 		}
 	}
 	if !changed {
 		return raw, false
 	}
-	return mustJSON(parts), true
+	return jsonList(parts), true
 }

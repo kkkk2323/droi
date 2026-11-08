@@ -119,8 +119,8 @@ func postKernel(t *testing.T, base, path, body, conversation string) (int, strin
 }
 
 // The Kernel holds no key: its model request leaves the proxy with a key of the Key Pool, the headers droid sends for
-// that model, the key's organization, and a session id of its conversation. Its own token, and Droi's own headers,
-// never leave.
+// that model with a key (no organization), and a session id of its conversation. Its own token, and Droi's own
+// headers, never leave.
 func TestAKernelRequestGoesOutAsDroidsWithAPoolKey(t *testing.T) {
 	f := newFakeFactory(t)
 	sw := &switches{ok: true}
@@ -153,7 +153,7 @@ func TestAKernelRequestGoesOutAsDroidsWithAPoolKey(t *testing.T) {
 		}
 		for name, want := range map[string]string{
 			"X-Factory-Client": "cli", "X-Client-Version": factory.ClientVersion, "User-Agent": "factory-cli/" + factory.ClientVersion,
-			"X-Factory-Org-Id": "org_1", "X-Provider-Routing-Source": "registry_default",
+			"X-Factory-Org-Id": "", "X-Provider-Routing-Source": "registry_default",
 		} {
 			if got := h.Get(name); got != want {
 				t.Fatalf("request %d: %s = %q, want %q", i, name, got, want)

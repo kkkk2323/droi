@@ -113,14 +113,6 @@ func (r *KeyRotator) Identity(ctx context.Context, key string) Identity {
 	return r.identity(ctx, key, ua)
 }
 
-// ForgetIdentity drops key's whoami answer, so the next request asks again: Factory refused the organization it
-// named.
-func (r *KeyRotator) ForgetIdentity(key string) {
-	r.orgMu.Lock()
-	delete(r.orgIDs, key)
-	r.orgMu.Unlock()
-}
-
 func (r *KeyRotator) identity(ctx context.Context, key, ua string) Identity {
 	r.orgMu.Lock()
 	got, ok := r.orgIDs[key]

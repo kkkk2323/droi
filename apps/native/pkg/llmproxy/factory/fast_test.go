@@ -82,7 +82,7 @@ func TestFast(t *testing.T) {
 		same(t, "model", sent["model"], "claude-opus-5-5-fast")
 		same(t, "speed", sent["speed"], "fast")
 		h := http.Header{"Anthropic-Beta": {"client-beta"}}
-		Headers(h, Identity{}, messages, "claude-opus-5-5-fast", "s")
+		Headers(h, messages, "claude-opus-5-5-fast", "s")
 		same(t, "beta", h.Get("Anthropic-Beta"), "client-beta,fast-mode-2026-02-01")
 		same(t, "provider", h.Get("X-Api-Provider"), "anthropic")
 
@@ -91,7 +91,7 @@ func TestFast(t *testing.T) {
 		same(t, "model", sent["model"], "claude-opus-5-5-fast")
 		same(t, "speed", sent["speed"], "fast")
 		h = http.Header{"Anthropic-Beta": {"fast-mode-2026-02-01"}}
-		Headers(h, Identity{}, messages, "claude-opus-5-5-fast", "s")
+		Headers(h, messages, "claude-opus-5-5-fast", "s")
 		same(t, "beta once", h.Get("Anthropic-Beta"), "fast-mode-2026-02-01")
 
 		// not asked for fast: Opus 5.5 as it was
@@ -101,7 +101,7 @@ func TestFast(t *testing.T) {
 			t.Fatal("speed was added")
 		}
 		h = http.Header{}
-		Headers(h, Identity{}, messages, "claude-opus-5-5", "s")
+		Headers(h, messages, "claude-opus-5-5", "s")
 		if h.Values("Anthropic-Beta") != nil {
 			t.Fatalf("beta on a standard request: %v", h.Values("Anthropic-Beta"))
 		}
@@ -116,7 +116,7 @@ func TestFast(t *testing.T) {
 		same(t, "model", sent["model"], "gpt-5.5-fast")
 		same(t, "tier", sent["service_tier"], "priority")
 		h := http.Header{}
-		Headers(h, Identity{}, responses, "gpt-5.5-fast", "s")
+		Headers(h, responses, "gpt-5.5-fast", "s")
 		same(t, "provider", h.Get("X-Api-Provider"), "openai")
 		if h.Values("Anthropic-Beta") != nil {
 			t.Fatal("an OpenAI request got the Anthropic beta")
@@ -157,7 +157,7 @@ func TestFast(t *testing.T) {
 		sent := send(t, count, obj{"model": "claude-opus-5-5", "speed": "fast", "messages": []any{}})
 		same(t, "count model", sent["model"], "claude-opus-5-5")
 		h := http.Header{}
-		Headers(h, Identity{}, count, "claude-opus-5-5-fast", "s")
+		Headers(h, count, "claude-opus-5-5-fast", "s")
 		if h.Values("Anthropic-Beta") != nil {
 			t.Fatal("count_tokens got the beta")
 		}

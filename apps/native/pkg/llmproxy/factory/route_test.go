@@ -31,10 +31,6 @@ func TestLLMBaseFollowsTheOrganization(t *testing.T) {
 }
 
 func TestRefusalsAreToldApart(t *testing.T) {
-	org := []byte(`{"error":"Requested active organization is not accessible by this user"}`)
-	if !OrgRefused(403, org) || OrgRefused(401, org) || OrgRefused(403, []byte(`{"error":"Forbidden"}`)) {
-		t.Fatal("OrgRefused")
-	}
 	for _, body := range []string{`{"code":"content_policy_rejected"}`, `{"error":{"code":"content_policy_rejected","message":"x"}}`} {
 		if !ContentRefused(403, http.Header{}, []byte(body)) {
 			t.Fatalf("%s is a content refusal", body)
@@ -58,32 +54,33 @@ func TestRefusalsAreToldApart(t *testing.T) {
 }
 
 func TestHeadersAreDroids(t *testing.T) {
-	h := http.Header{"X-Api-Key": {"sk-client"}, "X-Goog-Api-Key": {"g"}, "X-Factory-Org-Id": {"stale"}, "Openai-Platform": {"x"}}
-	Headers(h, Identity{}, "/api/llm/o/v1/chat/completions", "kimi-k3", "s")
+	// droid names no organization with a key: an X-Factory-Org-Id a client sent goes too.
+	h := http.Header{"X-Api-Key": {"sk-client"}, "X-Goog-Api-Key": {"g"}, "X-Factory-Org-Id": {"stale"}}
+	Headers(h, "/api/llm/o/v1/chat/completions", "kimi-k3", "s")
 	if h.Get("X-Api-Key") != "" || h.Get("X-Goog-Api-Key") != "" || h.Get("X-Factory-Org-Id") != "" || h.Get("OpenAI-Platform") != "" {
-		t.Fatalf("a client's keys, a stale org or a platform stayed: %v", h)
+		t.Fatalf("a client's keys, an org or a platform stayed: %v", h)
 	}
 	if h.Get("X-Api-Provider") != "fireworks" || h.Get("X-Session-Id") != "s" {
 		t.Fatalf("%v", h)
 	}
 
 	h = http.Header{}
-	Headers(h, Identity{OrgID: "org_1"}, "/api/llm/o/v1/responses", "gpt-5.5", "s")
-	if h.Get("X-Api-Provider") != "openai" || h.Get("OpenAI-Platform") == "" || h.Get("X-Factory-Org-Id") != "org_1" {
+	Headers(h, "/api/llm/o/v1/responses", "gpt-5.5", "s")
+	if h.Get("X-Api-Provider") != "openai" || h.Get("OpenAI-Platform") == "" || h.Get("X-Factory-Org-Id") != "" {
 		t.Fatalf("%v", h)
 	}
 
 	h = http.Header{}
-	Headers(h, Identity{}, "/api/llm/a/v1/messages", "minimax-m2.7", "s")
+	Headers(h, "/api/llm/a/v1/messages", "minimax-m2.7", "s")
 	if h.Get("X-Api-Provider") != "fireworks" || h.Get("X-Api-Key") != "placeholder" {
 		t.Fatalf("an Anthropic-wire model of another vendor: %v", h)
 	}
 
-	// A model droid does not offer names its route's vendor.
+	// A model droid does not offer: openai on the OpenAI route, anthropic on the others, as upstream's send names it.
 	for path, want := range map[string]string{
-		"/api/llm/o/v1/chat/completions":                   "openai",
-		"/api/llm/a/v1/messages":                           "anthropic",
-		"/api/llm/g/v1/models/x-new:streamGenerateContent": "google",
+		"/api/llm/o/v1/chat/completions": "openai",
+		"/api/llm/a/v1/messages":         "anthropic",
+		"/api/llm/g/v1/generate":         "anthropic",
 	} {
 		if got := Upstream(path, "something-new"); got != want {
 			t.Errorf("%s: %q, want %q", path, got, want)

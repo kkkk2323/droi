@@ -105,8 +105,10 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 	}
 	encoding := req.Header.Get("Content-Encoding")
 	plain := raw
+	// The body as the Kernel sent it: a 413 leaves the older attachments out of it, and it is shaped once more.
+	var sentPlain []byte
 	if dec, err := decodeWireBody(encoding, raw); err == nil {
-		plain = dec
+		plain, sentPlain = dec, dec
 		if to, shaped, changed := factory.Request(path, plain); changed {
 			if wire, err := encodeWireBody(encoding, shaped); err == nil {
 				raw, plain, path = wire, shaped, to
@@ -126,7 +128,6 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 	}
 
 	tried := map[string]struct{}{}
-	refreshed := false
 	// A 413 is asked again once, with the older images and files left out (left of them).
 	shrunk, left := false, 0
 	presented := p.kernelKey(session)
@@ -143,7 +144,7 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		header := copyRequestHeaders(req.Header)
 		header.Set("Authorization", "Bearer "+key)
 		header.Set("Content-Length", strconv.Itoa(len(raw)))
-		factory.Headers(header, id, path, model, session)
+		factory.Headers(header, path, model, session)
 		base := factory.LLMBase(p.upstreamBaseURL, id)
 		upstreamName := ""
 		switch {
@@ -201,7 +202,8 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 			}
 			if !shrunk {
 				shrunk = true
-				if less, n := factory.LeaveOutAttachments(path, plain); n > 0 {
+				if less, n := factory.LeaveOutAttachments(req.URL.Path, sentPlain); n > 0 {
+					_, less, _ = factory.Request(req.URL.Path, less)
 					if wire, err := encodeWireBody(encoding, less); err == nil {
 						p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, false, "", errorDetail)
 						p.event(diag.Event{Kind: "request_shrunk", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: fmt.Sprintf("kernel: %d older images or files left out", n)})
@@ -234,12 +236,6 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 
 		why := ""
 		switch status := resp.StatusCode; {
-		case status == http.StatusForbidden && plainBody && factory.OrgRefused(status, refusal) && !refreshed:
-			// The organization whoami named is stale: ask again, and send once more with the same key.
-			refreshed = true
-			p.rotator.ForgetIdentity(key)
-			presented = key
-			why = "organization refused; whoami asked again"
 		case status == http.StatusUnauthorized || status == http.StatusForbidden:
 			p.rotator.MarkKeyHTTPError(key, status)
 			tried[key] = struct{}{}
