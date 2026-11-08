@@ -239,8 +239,8 @@ func (k kernelRunStarter) Close() {
 	k.link.Close()
 }
 
-// kernelStarter runs the Automations as Kernel conversations (M4 4L). A run's approval level is stored with the
-// conversation policies the Host keeps, so a Kernel that starts again gets it back.
+// kernelStarter runs the Automations as Kernel conversations (M4 4L). While a run works its approval level is stored
+// with the conversation policies the Host keeps, so a Kernel that starts again gets it back.
 func kernelStarter(h *host.Host, logf func(string)) runStarter {
 	link := host.NewKernelLink(host.KernelLinkOptions{
 		Client: kernel.ClientHost,

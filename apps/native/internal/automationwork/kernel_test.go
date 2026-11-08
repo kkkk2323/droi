@@ -25,6 +25,8 @@ type fakeRuns struct {
 	createErr error
 	submitErr error
 	status    kernel.SubmissionGet
+	archived  []kernel.ID
+	policies  []string
 }
 
 func (f *fakeRuns) note(s string) { f.mu.Lock(); f.calls = append(f.calls, s); f.mu.Unlock() }
@@ -42,6 +44,11 @@ func (f *fakeRuns) Create(_ context.Context, p kernel.CreateParams) (kernel.Crea
 
 func (f *fakeRuns) UpdateIndex(_ context.Context, p kernel.IndexUpdateParams) error {
 	f.note("index.update")
+	if p.Archived != nil && *p.Archived {
+		f.mu.Lock()
+		f.archived = append(f.archived, p.ID)
+		f.mu.Unlock()
+	}
 	if len(p.Title) > 0 {
 		_ = json.Unmarshal(p.Title, &f.title)
 	}
@@ -50,7 +57,10 @@ func (f *fakeRuns) UpdateIndex(_ context.Context, p kernel.IndexUpdateParams) er
 
 func (f *fakeRuns) PolicySet(_ context.Context, p kernel.PolicySetParams) (kernel.PolicyResult, error) {
 	f.note("policy.set")
+	f.mu.Lock()
 	f.policy = p
+	f.policies = append(f.policies, p.ID.String()+"="+p.Policy.Autonomy)
+	f.mu.Unlock()
 	return kernel.PolicyResult{}, nil
 }
 
@@ -216,7 +226,95 @@ func TestAnAutomationRunsOnTheKernel(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(kept) != 1 || kept[0] != "all" {
+	// Kept while the run worked, forgotten once it ended.
+	if strings.Join(kept, ",") != "all," {
 		t.Fatalf("the level kept for the run: %v", kept)
+	}
+}
+
+func TestAnAutomationsLevelOnTheKernel(t *testing.T) {
+	for level, want := range map[string]string{"": "all", "high": "all", "medium": "safe", "low": "edits", "off": "ask", "meduim": "ask"} {
+		if got := KernelAutonomy(level); got != want {
+			t.Errorf("%q is %q, want %q", level, got, want)
+		}
+	}
+}
+
+// A start that fails once the conversation is made archives it and forgets its level: the next try makes another.
+func TestAHalfStartedRunLeavesNoConversationListed(t *testing.T) {
+	f := &fakeRuns{submitErr: errors.New("connection closed")}
+	var kept []string
+	st := &KernelStarter{
+		Client:     func() (KernelRuns, error) { return f, nil },
+		KeepPolicy: func(id kernel.ID, level string) error { kept = append(kept, id.String()+"="+level); return nil },
+	}
+	var hs *HalfStartedError
+	if _, err := st.Start(context.Background(), RunSpec{RunID: "r", SkipPermissions: true}); !errors.As(err, &hs) {
+		t.Fatalf("start: %v", err)
+	}
+	if len(f.archived) != 1 || f.archived[0] != 42 {
+		t.Fatalf("archived %v", f.archived)
+	}
+	if strings.Join(kept, ",") != "42=all,42=" {
+		t.Fatalf("kept %v", kept)
+	}
+}
+
+// A Kernel that starts again during a run gets the run's level again on the new connection, and the level is
+// forgotten once the run ends.
+func TestARunsLevelGoesToANewConnection(t *testing.T) {
+	first := &fakeRuns{status: kernel.SubmissionGet{Status: "placed"}}
+	second := &fakeRuns{status: kernel.SubmissionGet{Status: "placed"}}
+	var mu sync.Mutex
+	current := KernelRuns(first)
+	var kept []string
+	ended := make(chan struct{}, 1)
+	st := &KernelStarter{
+		Client: func() (KernelRuns, error) { mu.Lock(); defer mu.Unlock(); return current, nil },
+		KeepPolicy: func(id kernel.ID, level string) error {
+			mu.Lock()
+			kept = append(kept, id.String()+"="+level)
+			mu.Unlock()
+			return nil
+		},
+		Every: 10 * time.Millisecond,
+	}
+	st.finished = func(string, automations.RunStatus, string) { ended <- struct{}{} }
+	defer st.Close()
+	if _, err := st.Start(context.Background(), RunSpec{RunID: "r", AutonomyLevel: "medium", Prompt: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	current = second
+	mu.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		second.mu.Lock()
+		got := strings.Join(second.policies, ",")
+		second.mu.Unlock()
+		if got == "42=safe" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the new connection's policies: %q", got)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	second.mu.Lock()
+	second.status = kernel.SubmissionGet{Status: "done"}
+	second.mu.Unlock()
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run's end never came")
+	}
+	st.Close()
+	mu.Lock()
+	defer mu.Unlock()
+	if strings.Join(kept, ",") != "42=safe,42=" {
+		t.Fatalf("kept %v", kept)
+	}
+	if n := strings.Count(strings.Join(first.policies, ","), "42="); n != 1 {
+		t.Fatalf("the first connection's policies: %v", first.policies)
 	}
 }

@@ -86,20 +86,23 @@ func (st *KernelStarter) log(s string) {
 }
 
 // KernelAutonomy is the Kernel's approval level for an Automation's: without asking ("") is all, and the three
-// levels are the window's own mapping of Low, Medium and High.
+// levels are the window's own mapping of Low, Medium and High. One it does not know, from a HEARTBEAT.md edited by
+// hand, is "ask", the level that asks most, as the window reads one.
 func KernelAutonomy(level string) string {
 	switch level {
 	case "low":
 		return "edits"
 	case "medium":
 		return "safe"
+	case "", "high":
+		return "all"
 	}
-	return "all"
+	return "ask"
 }
 
 // Start creates the run's conversation and submits its prompt. The conversation and the submission carry the run's
-// id as their request id, so a start tried again after a failure finds what the first one made rather than making
-// another.
+// id as their request id, so a call the Kernel took but did not answer is not taken twice. A start that fails once
+// the conversation is made archives it: the Scheduler tries again with a new run.
 func (st *KernelStarter) Start(ctx context.Context, run RunSpec) (string, error) {
 	c, err := st.Client()
 	if err != nil {
@@ -119,18 +122,32 @@ func (st *KernelStarter) Start(ctx context.Context, run RunSpec) (string, error)
 	if err != nil {
 		return "", fail(err, false)
 	}
+	agent := runAgent(info, run)
+	if agent == nil && run.ModelID != "" {
+		st.log(fmt.Sprintf("run %s: the Kernel does not offer the model %q; the run uses the Kernel's own", run.RunID, run.ModelID))
+	}
 	created, err := c.Create(ctx, kernel.CreateParams{
 		Kind:      AutomationKind,
 		Cwd:       run.Cwd,
-		Agent:     runAgent(info, run),
+		Agent:     agent,
 		RequestID: "automation-run:" + run.RunID,
 	})
 	if err != nil {
 		return "", fail(err, false)
 	}
 	id := created.ConversationID
+	discard := func(err error) error {
+		archived := true
+		actx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if aerr := c.UpdateIndex(actx, kernel.IndexUpdateParams{ID: id, Archived: &archived}); aerr != nil {
+			st.log(fmt.Sprintf("archiving the conversation %s of run %s: %v", id, run.RunID, aerr))
+		}
+		cancel()
+		st.forget(id)
+		return fail(err, true)
+	}
 	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: id, Title: kernel.TitleText(run.Title), TitleSource: kernel.TitleSourceChosen}); err != nil {
-		return "", fail(err, true)
+		return "", discard(err)
 	}
 	level := KernelAutonomy(string(run.AutonomyLevel))
 	if run.SkipPermissions {
@@ -139,18 +156,18 @@ func (st *KernelStarter) Start(ctx context.Context, run RunSpec) (string, error)
 	// Stored before it is pushed: a Kernel that starts again between the two gets it from the Host.
 	if st.KeepPolicy != nil {
 		if err := st.KeepPolicy(id, level); err != nil {
-			return "", fail(err, true)
+			return "", discard(err)
 		}
 	}
 	if _, err := c.PolicySet(ctx, kernel.PolicySetParams{ID: &id, Policy: kernel.PolicyChange{Autonomy: level}}); err != nil {
-		return "", fail(err, true)
+		return "", discard(err)
 	}
 	sub, err := c.Submit(ctx, kernel.SubmitParams{ID: id, Input: run.Prompt, WhenBusy: kernel.WhenBusyFollowUp, RequestID: "automation-run:" + run.RunID})
 	if err != nil {
-		return "", fail(err, true)
+		return "", discard(err)
 	}
 	st.follows.Add(1)
-	go st.follow(run.RunID, id, sub.SubmissionID)
+	go st.follow(run.RunID, id, sub.SubmissionID, level, c)
 	return id.String(), nil
 }
 
@@ -168,9 +185,28 @@ func runAgent(info kernel.HarnessInfo, run RunSpec) *kernel.AgentChange {
 	return change
 }
 
-// follow reads the run's submission until Pi settles it, through whatever connection the Host has then.
-func (st *KernelStarter) follow(runID string, id, submission kernel.ID) {
+// forget drops the level kept for a run's conversation: the run is over, and a stored level per run would pile up
+// in Settings and be pushed again on every connection.
+func (st *KernelStarter) forget(id kernel.ID) {
+	if st.KeepPolicy == nil {
+		return
+	}
+	if err := st.KeepPolicy(id, ""); err != nil {
+		st.log(fmt.Sprintf("forgetting the level of conversation %s: %v", id, err))
+	}
+}
+
+// follow reads the run's submission until Pi settles it, through whatever connection the Host has then. A new
+// connection is a Kernel that may have started again, with no level for the conversation: level ("" for none of the
+// run's own) is given to it again before the run's next tool call waits for an approval nobody gives.
+func (st *KernelStarter) follow(runID string, id, submission kernel.ID, level string, last KernelRuns) {
 	defer st.follows.Done()
+	end := func(status automations.RunStatus, text string) {
+		if level != "" {
+			st.forget(id)
+		}
+		st.report(runID, status, text)
+	}
 	every := st.Every
 	if every <= 0 {
 		every = 2 * time.Second
@@ -181,6 +217,9 @@ func (st *KernelStarter) follow(runID string, id, submission kernel.ID) {
 	for {
 		select {
 		case <-stop:
+			if level != "" {
+				st.forget(id)
+			}
 			return
 		case <-tick.C:
 		}
@@ -189,17 +228,24 @@ func (st *KernelStarter) follow(runID string, id, submission kernel.ID) {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if c != last && level != "" {
+			if _, err := c.PolicySet(ctx, kernel.PolicySetParams{ID: &id, Policy: kernel.PolicyChange{Autonomy: level}}); err != nil {
+				st.log(fmt.Sprintf("the level of run %s on a new connection: %v", runID, err))
+			} else {
+				last = c
+			}
+		}
 		got, err := c.SubmissionGet(ctx, kernel.AbortSubmissionParams{ID: id, SubmissionID: submission})
 		cancel()
 		if err != nil {
 			if kernel.Is(err, kernel.CodeSubmissionGone) || kernel.Is(err, kernel.CodeConversationGone) {
-				st.report(runID, automations.RunFailed, err.Error())
+				end(automations.RunFailed, err.Error())
 				return
 			}
 			continue
 		}
 		if status, text, ended := SubmissionOutcome(got); ended {
-			st.report(runID, status, text)
+			end(status, text)
 			return
 		}
 	}
