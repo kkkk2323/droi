@@ -94,6 +94,10 @@ type State struct {
 	// stale are the requests shown when a reopen began: they stay on screen until its answer says which
 	// still wait.
 	stale map[string]bool
+	// processes are the conversation's background processes as process.list last answered; processesAsked
+	// counts the reads begun (under the store's lock), so an older answer cannot replace a newer one.
+	processes      []kernel.Process
+	processesAsked int
 }
 
 // NewState makes the state of conversation id, empty until a view arrives.
@@ -342,6 +346,27 @@ func (s *State) pendingOf(kind string) []kernel.PendingRequest {
 		}
 	}
 	return out
+}
+
+// Processes are the conversation's background processes, oldest first, as Kernel last listed them.
+func (s *State) Processes() []kernel.Process {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.processes
+}
+
+// takeProcesses keeps process.list's answer and reports whether it differs from the one kept.
+func (s *State) takeProcesses(list []kernel.Process) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	was, _ := json.Marshal(s.processes)
+	now, _ := json.Marshal(list)
+	if bytes.Equal(was, now) {
+		return false
+	}
+	s.processes = list
+	s.revision++
+	return true
 }
 
 // takePending adds the requests conversation.open reported to the ones already heard of, leaving out any heard
@@ -794,6 +819,8 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	if changed {
 		st.notify(id)
 	}
+	// A Kernel without the capability answers an error, and the conversation simply lists none.
+	_ = st.ReadProcesses(ctx, k, gen, id)
 	return nil
 }
 
@@ -905,7 +932,37 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 	if changed {
 		st.notify(id)
 	}
+	if err == nil {
+		_ = st.ReadProcesses(ctx, k, gen, id)
+	}
 	return err
+}
+
+// ReadProcesses asks Kernel for conversation id's background processes and keeps the answer, if the conversation
+// is still open on connection generation gen and no later read began meanwhile. process.changed says only what
+// changed, so a window reads the whole list again on each.
+func (st *Store) ReadProcesses(ctx context.Context, k Kernel, gen int64, id kernel.ID) error {
+	st.mu.Lock()
+	st.ready()
+	state := st.states[id]
+	if state == nil || st.gen != gen {
+		st.mu.Unlock()
+		return nil
+	}
+	state.processesAsked++
+	mine := state.processesAsked
+	st.mu.Unlock()
+	res, err := k.Processes(ctx, id)
+	if err != nil {
+		return err
+	}
+	st.mu.Lock()
+	changed := st.gen == gen && st.states[id] == state && state.processesAsked == mine && state.takeProcesses(res.Processes)
+	st.mu.Unlock()
+	if changed {
+		st.notify(id)
+	}
+	return nil
 }
 
 // LoadEarlier brings the page of up to limit entries above the ones the conversation's state holds. It does

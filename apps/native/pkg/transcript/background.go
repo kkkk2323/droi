@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
 // Job is work a tool call left running once it answered: a command an
@@ -44,6 +46,22 @@ type Job struct {
 func ProcessJob(p protocol.SessionBackgroundProcess) Job {
 	return Job{ID: cmp.Or(p.ToolUseID, p.ID), ProcessID: p.ID, Summary: firstLine(p.Command, 120), Command: p.Command,
 		PID: int(p.Pid), OutputFile: p.OutputFile, StartedAt: p.StartedAtMs}
+}
+
+// KernelProcessJob is a background process as Kernel's process.list gives it: beside the bash_background call
+// that started it, and stoppable while it runs.
+func KernelProcessJob(p kernel.Process) Job {
+	j := Job{ID: cmp.Or(p.CallID, p.ID), Summary: firstLine(p.Command, 120), Command: p.Command, PID: p.PID,
+		OutputFile: p.LogPath, StartedAt: float64(p.StartedAt), ExitCode: p.ExitCode}
+	if p.Status == "running" {
+		j.ProcessID = p.ID
+		return j
+	}
+	j.Done, j.EndedAt = true, float64(p.EndedAt)
+	if p.Status == "failed" || p.Status == "stopped" {
+		j.Status = p.Status
+	}
+	return j
 }
 
 // Failed is whether the job ended badly, as far as is known.

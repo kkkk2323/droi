@@ -71,7 +71,6 @@ describe('the handshake and the connection', () => {
   })
 
   test('the empty M3 readers answer their shape', async () => {
-    expect(await client.call('process.list', { id: 1 })).toEqual({ processes: [] })
     expect(await client.call('mcp.list')).toEqual({ servers: [] })
     expect(await client.call('skills.list')).toEqual({ skills: [] })
   })

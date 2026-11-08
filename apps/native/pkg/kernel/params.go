@@ -433,9 +433,12 @@ type Process struct {
 	Command   string `json:"command,omitempty"`
 	StartedAt int64  `json:"startedAt,omitempty"`
 	LogPath   string `json:"logPath,omitempty"`
-	// Status is "running" or "exited".
+	// Status is "running", "exited", "failed" or "stopped".
 	Status   string `json:"status"`
 	ExitCode *int   `json:"exitCode,omitempty"`
+	EndedAt  int64  `json:"endedAt,omitempty"`
+	// CallID is the bash_background call that started it.
+	CallID string `json:"callId,omitempty"`
 }
 
 // ProcessesParams is process.list's params.

@@ -30,7 +30,7 @@
         "index": true,
         "import": true,
         "images": true,
-        "processes": false,
+        "processes": true,
         "approvals": true,
         "asks": true,
         "mcp": false,

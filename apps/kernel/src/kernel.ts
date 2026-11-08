@@ -6,11 +6,13 @@ import { SqliteStorage } from '@earendil-works/pi-durable/storage/sqlite'
 import { createToolProcesses, type ToolProcesses } from './tool-processes.ts'
 import type { MutableModels } from '@earendil-works/pi-ai'
 import { type KernelConfig } from './config.ts'
-import { codingTools } from './extensions/coding.ts'
+import { codingTools, shellChoice } from './extensions/coding.ts'
 import { approvalExtension } from './extensions/approval.ts'
 import { Approvals } from './policy/approvals.ts'
 import { askExtension } from './extensions/ask.ts'
 import { Asks } from './ask/asks.ts'
+import { backgroundExtension } from './extensions/background.ts'
+import { Background } from './processes/background.ts'
 import { PolicyStore } from './policy/store.ts'
 import { resourcesExtension } from './extensions/resources.ts'
 import { DisabledSkills } from './resources/disabled.ts'
@@ -39,7 +41,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   index: true,
   import: true,
   images: true,
-  processes: false,
+  processes: true,
   approvals: true,
   asks: true,
   mcp: false,
@@ -119,11 +121,14 @@ export async function startKernel(
     })
     let asks: Asks | undefined
     const askTool = askExtension(() => asks)
+    let background: Background | undefined
+    const backgroundTool = backgroundExtension(() => background)
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
     registry.install(approvalHook)
     registry.install(resources)
     registry.install(askTool)
+    registry.install(backgroundTool)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -138,6 +143,7 @@ export async function startKernel(
         approvalHook,
         resources,
         askTool,
+        backgroundTool,
         ...(options.extensions ?? []),
       ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
@@ -248,11 +254,27 @@ export async function startKernel(
     // the conversation), so it has no questions to take back.
     if (!config.readOnly) await asks.open()
 
+    background = new Background({
+      harness,
+      db,
+      dataDir: config.dataDir,
+      tools,
+      shell: shellChoice({
+        ...(options.platform === undefined ? {} : { platform: options.platform }),
+      }),
+      platform: options.platform ?? process.platform,
+      notify: (method, payload) => server?.broadcast(method, payload),
+      context,
+    })
+    // A read-only viewer starts nothing and settles nothing: the process that drives the data does.
+    if (!config.readOnly) await background.open()
+
     kernel = new Kernel({
       config,
       policy,
       approvals,
       asks,
+      background,
       db,
       storage,
       harness,
@@ -260,7 +282,7 @@ export async function startKernel(
       models,
       registry,
       disabledSkills,
-      tools: coding.names,
+      tools: [...coding.names, 'bash_background'],
       version: VERSION,
       piVersion: PI_VERSION,
       capabilities: CAPABILITIES,

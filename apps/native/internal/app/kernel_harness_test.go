@@ -34,7 +34,7 @@ type kernelSessions struct {
 // Why a test keeps its Sessions on the Fake Daemon: the plan item each waits for.
 const (
 	untilSubagents  = "subagents land as child conversations and droi.subagent entries (M3, 6.3)"
-	untilProcesses  = "background processes land in M3 (3F)"
+	untilProcesses  = "the Daemon's jobs are read from Execute's words; Kernel's bash_background is processes_kernel_test.go's"
 	untilCallTiming = "tok/s comes back in M4, when Kernel records each call's duration"
 	goesWithCleanup = "a conversation is never closed or cleaned up while idle (gap-analysis §4.1); the test goes with M2's cleanup"
 	untilPlanMode   = "Spec mode is replaced by plan mode (Q4, M3); the test goes with M2's cleanup"

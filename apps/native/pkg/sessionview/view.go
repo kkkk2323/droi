@@ -682,6 +682,7 @@ func (v *View) kernelFrame() *Snapshot {
 		return nil
 	}
 	v.refreshKernel(state)
+	v.Jobs()
 	if state.Opened() {
 		v.hasLoaded = true
 	}

@@ -13,7 +13,16 @@
     "jsonrpc": "2.0",
     "id": "16",
     "result": {
-      "processes": []
+      "processes": [
+        {
+          "id": "p-3f2a",
+          "pid": 48211,
+          "command": "pnpm dev",
+          "logPath": "/Users/me/Library/Application Support/Droi/kernel/logs/7/p-3f2a.log",
+          "startedAt": 1794000000000,
+          "status": "running"
+        }
+      ]
     }
   }
 }

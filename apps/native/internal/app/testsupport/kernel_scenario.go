@@ -54,7 +54,7 @@ var turnNeeds = map[string]string{
 	"permission":        "approvals land in M3 (3A), as approval.requested and a droi.approval entry",
 	"askUser":           "asks land in M3 (3B), as ask.requested and a droi.ask entry",
 	"queuedAskUser":     "a non-blocking ask lands in M3 (3B)",
-	"backgroundProcess": "background processes land in M3 (3F), as bash_background and a droi.process entry",
+	"backgroundProcess": "the turn names a process the test owns, while bash_background starts a real one: processes_kernel_test.go covers it",
 	"todo":              "the Kernel has no todo turn; §11 of the plan does not keep it",
 	"structured":        "structured output lands in M4 (4K), with model.complete and Memory 2.0",
 	"spec":              "Spec mode is replaced by plan mode (Q4, M3)",

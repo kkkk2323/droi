@@ -49,6 +49,7 @@ import { loadResources, type LoadedResources } from '../resources/index.ts'
 import type { DisabledSkills } from '../resources/disabled.ts'
 import { expandSlash } from '../resources/expand.ts'
 import type { Asks } from '../ask/asks.ts'
+import type { Background } from '../processes/background.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
 export const context: Context = BACKGROUND_CONTEXT
@@ -75,6 +76,8 @@ export type KernelOptions = {
   approvals: Approvals
   /** The `ask_user` questions waiting for a person. */
   asks: Asks
+  /** The `bash_background` processes. */
+  background: Background
   db: BunSqliteDatabase
   storage: Storage
   harness: Harness
@@ -171,7 +174,8 @@ export class Kernel implements Dispatcher {
         this.#readable()
         return value
       }
-    add('process.list', readOnlyAnswer({ processes: [] }))
+    add('process.list', (p) => this.#processList(p))
+    add('process.stop', (p) => this.#processStop(p))
     add('mcp.list', readOnlyAnswer({ servers: [] }))
     add('skills.list', (p) => this.#skillsList(p))
     add('skills.setDisabled', (p) => this.#skillsSetDisabled(p))
@@ -366,6 +370,7 @@ export class Kernel implements Dispatcher {
     this.#closing = true
     await this.#options.approvals.close()
     await this.#options.asks.close()
+    await this.#options.background.close()
     for (const live of this.#live.values()) live.detach()
     this.#live.clear()
     this.#tasks?.detach()
@@ -1345,6 +1350,23 @@ export class Kernel implements Dispatcher {
    * workspace half. Every call reads the files again: a skill a person just wrote is there on the next call,
    * which is what "the files are the source of truth" has to mean.
    */
+  async #processList(params: Record<string, unknown>): Promise<unknown> {
+    const id = requiredNumber(params, 'id')
+    await this.#conversation(id)
+    return { processes: await this.#options.background.list(id) }
+  }
+
+  async #processStop(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
+    const id = requiredNumber(params, 'id')
+    const processId = optionalString(params, 'processId')
+    if (processId === undefined || processId === '') {
+      throw invalidParams([{ path: 'processId', message: 'a process id is required' }])
+    }
+    await this.#conversation(id)
+    return { status: await this.#options.background.stop(id, processId) }
+  }
+
   async #skillsList(params: Record<string, unknown>): Promise<unknown> {
     this.#readable()
     const loaded = await this.#loadResources(params)
