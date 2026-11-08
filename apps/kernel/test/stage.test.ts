@@ -20,6 +20,7 @@ describe('stage', () => {
       const staged = await stage(
         built.map(({ platform, path }) => ({ platform, path })),
         join(dir, 'resources'),
+        '# notices',
       )
       expect(staged.map((path) => path.slice(dir.length + 1))).toEqual([
         'resources/darwin-amd64/darwin-x64-kernel',

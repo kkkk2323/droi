@@ -89,8 +89,9 @@ export async function build(
 export async function stage(
   built: { platform: string; path: string }[],
   into: string = resourcesRoot,
+  thirdParty?: string,
 ): Promise<string[]> {
-  const thirdParty = await thirdPartyNotices()
+  thirdParty ??= await thirdPartyNotices()
   const staged: string[] = []
   for (const artifact of built) {
     const entryTarget = targets.find((each) => each.platform === artifact.platform)

@@ -102,7 +102,7 @@ export async function thirdPartyNotices(): Promise<string> {
     '',
     '## Bun 1.3.14',
     '',
-    readFileSync(join(vendored, 'bun.md'), 'utf8').trim().replaceAll(/^## /gm, '### '),
+    readFileSync(join(vendored, 'bun-LICENSE.txt'), 'utf8').trim().replaceAll(/^## /gm, '### '),
     '',
   ]
   for (const pkg of packages) {
@@ -115,5 +115,9 @@ export async function thirdPartyNotices(): Promise<string> {
 }
 
 if (import.meta.main) {
-  process.stdout.write(await thirdPartyNotices())
+  process.stdout.write(
+    process.argv.includes('--packages')
+      ? JSON.stringify(await bundledPackages())
+      : await thirdPartyNotices(),
+  )
 }
