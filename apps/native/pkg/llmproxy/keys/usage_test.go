@@ -983,3 +983,25 @@ func TestFetchAllUsages_TransientInvalidAuthKeepsRefreshing(t *testing.T) {
 		t.Fatalf("the last good usage should be kept, got %+v", u)
 	}
 }
+
+// droid reads windowEnd with new Date: epoch milliseconds, a number or a string of digits, and null are windows too,
+// not a reply that cannot be read.
+func TestParseUsageResponse_WindowEndsDroidReads(t *testing.T) {
+	body := `{"usesTokenRateLimitsBilling":true,"limits":{"standard":{
+		"fiveHour":{"usedPercent":100,"windowEnd":1791763200000},
+		"weekly":{"usedPercent":10,"windowEnd":"1793000000000"},
+		"monthly":{"usedPercent":5,"windowEnd":null}}}}`
+	usage := parseUsageResponse("k", []byte(body))
+	if usage.Error != "" {
+		t.Fatalf("error %q", usage.Error)
+	}
+	if usage.StandardWindowEnd == nil || *usage.StandardWindowEnd != "2026-10-12T00:00:00Z" {
+		t.Fatalf("standard window end %v", usage.StandardWindowEnd)
+	}
+	if want := float64(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC).UnixMilli()); usage.StandardResetMs != want {
+		t.Fatalf("reset %v, want %v", usage.StandardResetMs, want)
+	}
+	if usage.ExpiresTsMs == nil || *usage.ExpiresTsMs != float64(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC).UnixMilli()) {
+		t.Fatalf("expires %v", usage.ExpiresTsMs)
+	}
+}
