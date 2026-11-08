@@ -35,6 +35,7 @@ fixed phrases, pi's compaction opening among them (yetone/magpie#952, #1316).
 | `openings.go`                                       | `PI_OPENING`/`PI_COMPAT`/`clientOpening` 478, `PI_SUMMARIES`/`piSummary` 494, `promptOpenings` 554         | pi's half only (see Deliberate differences)                                                                   |
 | `escape.go`                                         | `QUOTED_TOOL_PREFIX` 1447, `quotedToolText` 1459, `escapePhrases` 1474, `escapeDeep` 1490, `sanitizeBody` 1518 | tool output quoted as a JSON string, a `\u` escape for the first character elsewhere                     |
 | `phrases.go`                                        | `client-phrases.json`, `FALLBACK_PHRASES` 515, `REFUSED_PHRASES` 1449, `ESCAPE_IN_TOOL` 1457               | the strings are written with `\u` escapes, so reading this source cannot trip the check                       |
+| `fast.go`: `fastBody`, `FastBeta`                   | `FAST_BETA` 125, `FAST_OF` 126, `fastBody` 135, `send`'s beta 2077                                         | runs before the dialect shaping, as upstream's; the beta is set with the other headers (`Headers`)            |
 | `DroidLine`                                         | `DROID_LINE` 470                                                                                           | the same sentence, byte for byte                                                                              |
 4A added what a request needs around its body when the client holds no key (the
 Kernel, decision Q15): the proxy picks a Key Pool key and sends the request as
@@ -64,6 +65,7 @@ The subtests keep the upstream names, so a diff of upstream's tests finds them.
 | `escape_test.go`        | `request.test.mjs`'s three tool output cases (422, 450, 485); the phrase list against `client-phrases.json` |
 | `shape_request_test.go` | `droid.test.mjs`'s `temperature`/`top_p` (198) and 1017 (83) cases; `request.test.mjs` 168 and 204         |
 | `droidbody_test.go`     | `droid.test.mjs`'s opening cases, which are the built-in's `TestFactoryOpensAsDroid`                       |
+| `fast_test.go`          | `fast.test.mjs`, 3 of 4 whole; the fourth's order check (its first-24 check is magpie's picker)            |
 
 `shape_request_test.go`'s `context_management` case has no upstream test; it
 holds `anthropicBody`'s lines 1738-1743. The `compactContext` cases are not
@@ -71,8 +73,7 @@ ported: that adapter rewrites Claude Code's compaction, which Droi does not send
 
 ## What comes later
 
-4C-4E and 4H of the M4 plan (`shared/design/phased-plan.md` §6): `fastBody`
-and the Fast Mode pairs, the 413 attachment drop, the 403 explanations, the
+4D, 4E and 4H of the M4 plan (`shared/design/phased-plan.md` §6): the 413 attachment drop, the 403 explanations, the
 Anthropic tool schema wrapping, and the rest of the golden cases. Model display
 names, limits and prices come with 4F, the usage windows with 4G.
 

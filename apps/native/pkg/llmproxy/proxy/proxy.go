@@ -331,6 +331,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		model = extractModel(plain)
+		factory.FastBeta(outHeaders, upstreamPath, model)
 		requestedPool = keys.ModelBillingPool(model)
 		pool = requestedPool
 		bodyReader = bytes.NewReader(raw)
