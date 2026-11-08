@@ -44,9 +44,11 @@ type kernelHost struct {
 	// because the Key Pool had no key yet.
 	base          string
 	waitingForKey bool
-	last          KernelState
-	listeners     map[int]func(KernelState)
-	next          int
+	// memoryOn is whether the latest launch was given the Memory folder.
+	memoryOn  bool
+	last      KernelState
+	listeners map[int]func(KernelState)
+	next      int
 }
 
 // KernelEnabled reports whether this Host runs a Kernel: a person asked for it, and there is one to run.
@@ -158,6 +160,13 @@ func (h *Host) kernelEnv() []string {
 		return nil
 	}
 	env := []string{kernelLLMTokenEnv + "=" + token}
+	memoryOn := h.Settings.Get().MemoryEnabled
+	if memoryOn {
+		env = append(env, kernel.MemoryDirEnv+"="+h.MemoryDir())
+	}
+	k.mu.Lock()
+	k.memoryOn = memoryOn
+	k.mu.Unlock()
 	pool := h.KeyPool()
 	if conflict := h.baseURLConflict(); conflict != "" {
 		log.Println("droi: kernel: no Factory models:", conflict)
@@ -198,6 +207,24 @@ func (h *Host) kernelPoolChanged() {
 	k.base, k.waitingForKey = "", false
 	k.mu.Unlock()
 	log.Println("droi: kernel: the Key Pool's proxy changed; starting the Kernel again")
+	sup.Restart()
+}
+
+// kernelMemoryChanged starts the Kernel again when Memory was turned on or off since it started: the Memory folder
+// reaches it only at a launch, and a Kernel left as it was would keep its Memory tools, and write Memory Notes nothing
+// folds in, after Memory was turned off. Settings → Memory asks before it restarts.
+func (h *Host) kernelMemoryChanged() {
+	on := h.Settings.Get().MemoryEnabled
+	k := &h.kernel
+	k.mu.Lock()
+	sup := k.sup
+	if sup == nil || k.memoryOn == on {
+		k.mu.Unlock()
+		return
+	}
+	k.memoryOn = on
+	k.mu.Unlock()
+	log.Println("droi: kernel: Memory was turned on or off; starting the Kernel again")
 	sup.Restart()
 }
 

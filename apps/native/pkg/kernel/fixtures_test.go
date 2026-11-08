@@ -145,6 +145,7 @@ var notificationTypes = map[string]func() any{
 	NotifyIndexChanged:      func() any { return &IndexChanged{} },
 	NotifyWarning:           func() any { return &Warning{} },
 	NotifyPolicyChanged:     func() any { return &PolicyChanged{} },
+	NotifyMemoryRead:        func() any { return &MemoryRead{} },
 }
 
 // The contract's samples decode into this package's types without losing a

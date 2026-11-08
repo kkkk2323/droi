@@ -346,8 +346,8 @@ func answer(t *testing.T, ctx context.Context, c *kernel.Client, model kernel.Mo
 }
 
 // The Host's Kernel answers with Factory's models through the Key Pool, on the chat wire and on Anthropic's: the
-// request leaves the proxy with the pool's key and droid's headers, and the token the Kernel holds in place of a key
-// goes nowhere.
+// request leaves the proxy with the pool's key and droid's headers, but no organization (upstream's keyAccount sends
+// none), and the token the Kernel holds in place of a key goes nowhere.
 func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 	f := newFakeFactory(t)
 	hk := startHostKernel(t, f, true)
@@ -369,7 +369,7 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 	if len(seen) != 2 {
 		t.Fatalf("Factory saw %d model requests, want 2", len(seen))
 	}
-	if got := seen[0]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Provider") != "fireworks" || got.Get("X-Factory-Org-Id") != "org_test" {
+	if got := seen[0]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Provider") != "fireworks" || got.Get("X-Factory-Org-Id") != "" {
 		t.Fatalf("the chat request went out as %v", got)
 	}
 	if got := seen[1]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Key") != "placeholder" {
@@ -384,6 +384,67 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 			if strings.Contains(strings.Join(vals, " "), token) {
 				t.Fatalf("the Kernel's token left in %s", name)
 			}
+		}
+	}
+}
+
+// A Kernel started with Memory on is told the Memory folder; with it off, nothing, and its conversations have no
+// Memory (ADR 0042).
+func TestTheKernelIsToldTheMemoryFolderOnlyWithMemoryOn(t *testing.T) {
+	h := testHost(t)
+	t.Cleanup(h.KeyPool().Stop)
+	memoryEnv := func() []string {
+		var out []string
+		for _, kv := range h.kernelEnv() {
+			if strings.HasPrefix(kv, kernel.MemoryDirEnv+"=") {
+				out = append(out, kv)
+			}
+		}
+		return out
+	}
+	if got := memoryEnv(); len(got) != 0 {
+		t.Fatalf("Memory is off, and the Kernel got %v", got)
+	}
+	if err := h.Settings.Update(func(s *Settings) { s.MemoryEnabled = true }); err != nil {
+		t.Fatal(err)
+	}
+	if got := memoryEnv(); len(got) != 1 || got[0] != kernel.MemoryDirEnv+"="+h.MemoryDir() {
+		t.Fatalf("Memory is on, and the Kernel got %v", got)
+	}
+}
+
+// Turning Memory on or off starts the Kernel again, now told the Memory folder or not: its conversations get Memory,
+// or lose it, without restarting the app. A change of another setting leaves the Kernel running.
+func TestTurningMemoryOnOrOffStartsTheKernelAgain(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	hk.next(t, ctx)
+	gen := func() int {
+		k := &hk.h.kernel
+		k.mu.Lock()
+		defer k.mu.Unlock()
+		return k.last.Generation
+	}
+	first := gen()
+	hk.h.Changed()
+	time.Sleep(200 * time.Millisecond)
+	if gen() != first {
+		t.Fatal("a change that was not Memory's started the Kernel again")
+	}
+	for _, on := range []bool{true, false} {
+		if err := hk.h.Settings.Update(func(s *Settings) { s.MemoryEnabled = on }); err != nil {
+			t.Fatal(err)
+		}
+		hk.h.Changed()
+		hk.next(t, ctx)
+		k := &hk.h.kernel
+		k.mu.Lock()
+		memoryOn := k.memoryOn
+		k.mu.Unlock()
+		if memoryOn != on {
+			t.Fatalf("Memory on is %v, and the Kernel was started with it %v", on, memoryOn)
 		}
 	}
 }

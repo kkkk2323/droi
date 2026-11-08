@@ -140,6 +140,9 @@ type Scenario struct {
 	// "safe" or "all". "" is "all", so a scripted tool call runs without a card; a test of approvals asks for
 	// a lower level.
 	Autonomy string `json:"-"`
+
+	// MemoryDir, when set, starts the Kernel with Memory on that folder, as a Host with Memory on does.
+	MemoryDir string `json:"-"`
 }
 
 // FakeTitleAnswer is what an unscripted model.complete answers: a valid title for the schema the Kernel's
@@ -257,6 +260,9 @@ func Start(t testing.TB, sc Scenario) *Kernel {
 		"DROI_KERNEL_PROVIDERS="+providersJSON(model.baseURL),
 		"FAKE_PROVIDER_KEY=fake-key",
 	)
+	if sc.MemoryDir != "" {
+		cmd.Env = append(cmd.Env, kernel.MemoryDirEnv+"="+sc.MemoryDir)
+	}
 	// Start it in the workspace, not in this package's source directory: a tool that runs `pwd` or writes a
 	// relative path must land in a throwaway directory.
 	cmd.Dir = workspace

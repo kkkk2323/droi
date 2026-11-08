@@ -172,6 +172,13 @@ type ProcessChanged struct {
 	Tail string `json:"tail,omitempty"`
 }
 
+// MemoryRead is memory.read: the model read a Session Summary, File as its path in the Memory folder, at At (an ISO
+// time).
+type MemoryRead struct {
+	File string `json:"file"`
+	At   string `json:"at"`
+}
+
 // IndexChanged is index.changed: Droi's metadata of a conversation moved, so a
 // list redraws its row.
 type IndexChanged struct {

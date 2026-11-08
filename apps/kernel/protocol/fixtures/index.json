@@ -52,6 +52,7 @@
     "notifications/index.changed.json",
     "notifications/policy.changed.json",
     "notifications/policy.changed.default.json",
+    "notifications/memory.read.json",
     "notifications/warning.json"
   ],
   "errors": [

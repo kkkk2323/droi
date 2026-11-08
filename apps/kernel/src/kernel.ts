@@ -16,6 +16,7 @@ import { Background } from './processes/background.ts'
 import { McpServers } from './mcp/servers.ts'
 import type { CodemodeNamespace } from '@earendil-works/pi-durable/codemode'
 import { codemodeExtension } from './extensions/codemode.ts'
+import { memoryExtension } from './extensions/memory.ts'
 import { codemodeSandbox } from './codemode/sandbox.ts'
 import { McpAuth } from './mcp/oauth.ts'
 import { PolicyStore } from './policy/store.ts'
@@ -133,6 +134,13 @@ export async function startKernel(
     /** The MCP servers as codemode groups their tools: `McpServers` keeps the list current. */
     const namespaces: CodemodeNamespace[] = []
     const codemode = codemodeExtension({ sandbox: codemodeSandbox(), namespaces })
+    const memory =
+      config.memoryDir === undefined
+        ? undefined
+        : memoryExtension({
+            dir: config.memoryDir,
+            onRead: (file, at) => server?.broadcast('memory.read', { file, at: at.toISOString() }),
+          })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
     registry.install(approvalHook)
@@ -140,6 +148,7 @@ export async function startKernel(
     registry.install(askTool)
     registry.install(backgroundTool)
     registry.install(codemode)
+    if (memory !== undefined) registry.install(memory)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -156,6 +165,7 @@ export async function startKernel(
         askTool,
         backgroundTool,
         codemode,
+        ...(memory === undefined ? [] : [memory]),
         ...(options.extensions ?? []),
       ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its

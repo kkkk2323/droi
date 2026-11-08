@@ -48,6 +48,11 @@ export type KernelConfig = {
    * kernel uses `~/.droi`, so a kernel started by hand still finds them.
    */
   userDir: string
+  /**
+   * The Memory folder when Memory is on (`DROI_MEMORY_DIR`, ADR 0042): the Memory tools and the Memory Summary in
+   * each conversation's prompt. Without it a conversation has neither.
+   */
+  memoryDir?: string
   readOnly: boolean
   providers: ProviderConfig[]
   /**
@@ -220,6 +225,14 @@ export function userDirFromEnv(env: NodeJS.ProcessEnv = process.env): string {
   if (!isAbsolute(given)) throw new Error(`DROI_USER_DIR must be an absolute path, not ${given}`)
   return given
 }
+/** The Memory folder from `DROI_MEMORY_DIR`, undefined when Memory is off; a relative path is refused. */
+export function memoryDirFromEnv(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const given = env['DROI_MEMORY_DIR']
+  if (given === undefined || given.trim() === '') return undefined
+  if (!isAbsolute(given)) throw new Error(`DROI_MEMORY_DIR must be an absolute path, not ${given}`)
+  return given
+}
+
 /** Read the config file, or the empty config when there is none. */
 export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): KernelConfig {
   let file: Partial<KernelConfig> = {}
@@ -230,11 +243,13 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     file = parsed as Partial<KernelConfig>
   }
   const fromEnv = providersFromEnv(env)
+  const memoryDir = memoryDirFromEnv(env)
   return {
     port: args.port,
     host: args.host,
     dataDir: args.dataDir,
     userDir: userDirFromEnv(env),
+    ...(memoryDir === undefined ? {} : { memoryDir }),
     readOnly: args.readOnly,
     // The environment wins: it exists for a test that has no file to write.
     providers: fromEnv ?? validateProviders(file.providers ?? []),
