@@ -307,6 +307,9 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				if n.Decode(&changed) == nil {
 					a.policyChanged(changed)
 				}
+			case kernel.NotifyHarnessChanged:
+				// The Host gave the Kernel new models (or Memory): the picker offers what it has now.
+				go a.readModels(c, gen)
 			case kernel.NotifyMemoryRead:
 				var read kernel.MemoryRead
 				if n.Decode(&read) == nil && a.cfg.Memory != nil {

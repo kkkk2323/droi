@@ -190,6 +190,9 @@ var callers = []caller{
 	{MethodHarnessInfo, func(t *testing.T, ctx context.Context, c *Client, _ json.RawMessage) (any, error) {
 		return c.Harness(ctx)
 	}},
+	{MethodHarnessConfigure, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return struct{}{}, c.HarnessConfigure(ctx, *decodeParams[HarnessConfigureParams](t, raw))
+	}},
 	{MethodConversationCreate, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.Create(ctx, *decodeParams[CreateParams](t, raw))
 	}},

@@ -96,8 +96,8 @@ describe('the handshake and the connection', () => {
       notifications: string[]
       errors: string[]
     }
-    // The contract's 31 methods, each with one sample.
-    expect(index.methods.length).toBe(31)
+    // The contract's 32 methods, each with one sample.
+    expect(index.methods.length).toBe(32)
     expect(index.notifications.length).toBeGreaterThan(10)
 
     const known = new Set(kernel.kernel.methodNames())

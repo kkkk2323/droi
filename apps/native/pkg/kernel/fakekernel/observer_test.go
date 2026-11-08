@@ -49,6 +49,9 @@ func TestObserverRecordsEveryMethod(t *testing.T) {
 		call   func() error
 	}{
 		{kernel.MethodHarnessInfo, func() error { _, err := o.Harness(ctx); return err }},
+		{kernel.MethodHarnessConfigure, func() error {
+			return o.HarnessConfigure(ctx, kernel.HarnessConfigureParams{MemoryDir: kernel.None[string]()})
+		}},
 		{kernel.MethodConversationCreate, func() error {
 			_, err := o.Create(ctx, kernel.CreateParams{Cwd: k.Workspace, Kind: "chat"})
 			return err

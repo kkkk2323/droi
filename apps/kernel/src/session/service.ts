@@ -22,7 +22,11 @@ import type { Indexer } from '../indexer/index.ts'
 import type { ConversationMeta } from '../indexer/schema.ts'
 import type { ConversationRow } from '../indexer/schema.ts'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
-import type { AgentDefaults, KernelConfig } from '../config.ts'
+import type { AgentDefaults, KernelConfig, ProviderConfig } from '../config.ts'
+import { validateProviders } from '../config.ts'
+import { replaceProviders, supportedApi } from '../models.ts'
+import { selectMemory } from '../memory/select.ts'
+import { isAbsolute } from 'node:path'
 import { info, warn } from '../log.ts'
 import {
   Code,
@@ -145,6 +149,7 @@ export class Kernel implements Dispatcher {
       this.#readable()
       return this.#info()
     })
+    add('harness.configure', (p) => this.#harnessConfigure(p))
     add('conversation.create', (p) => this.#create(p))
     add('conversation.list', (p) => this.#list(p))
     add('conversation.open', (p, connection) => this.#open(p, connection))
@@ -469,6 +474,58 @@ export class Kernel implements Dispatcher {
         return policy === undefined ? {} : { policy }
       })(),
     }
+  }
+
+  // ── harness.configure ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * `harness.configure {providers?, memoryDir?}`: what the Host's settings changed, for a running kernel. A new
+   * catalog takes the place of the old at once, so every conversation's next request resolves its model in it; Memory
+   * turned on or off reaches each conversation at its next turn (selectMemory). A run under way is not touched.
+   * Every client hears `harness.changed` and reads `harness.info` again.
+   */
+  async #harnessConfigure(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
+    const { config, models } = this.#options
+    let providers: ProviderConfig[] | undefined
+    if (params['providers'] !== undefined) {
+      try {
+        providers = validateProviders(params['providers'])
+        for (const provider of providers) {
+          if (!supportedApi(provider.api)) {
+            throw new Error(
+              `provider ${provider.id} names an api the kernel does not ship: ${provider.api}`,
+            )
+          }
+        }
+      } catch (cause) {
+        throw invalidParams([
+          { path: 'providers', message: cause instanceof Error ? cause.message : String(cause) },
+        ])
+      }
+    }
+    let memoryDir: string | null | undefined
+    if ('memoryDir' in params) {
+      const given = params['memoryDir']
+      if (given !== null && (typeof given !== 'string' || !isAbsolute(given))) {
+        throw invalidParams([
+          { path: 'memoryDir', message: 'an absolute path, or null to turn Memory off' },
+        ])
+      }
+      memoryDir = given
+    }
+    if (providers !== undefined) {
+      replaceProviders(models, config.providers, providers)
+      config.providers = providers
+    }
+    if (memoryDir === null) delete config.memoryDir
+    else if (memoryDir !== undefined) config.memoryDir = memoryDir
+    info('harness configured', {
+      ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
+      ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),
+    })
+    this.#notifier?.broadcast('harness.changed', {})
+    return {}
   }
 
   /** `policy.set`: the default policy, or one conversation's own, changed and announced whole. */
@@ -1029,6 +1086,13 @@ export class Kernel implements Dispatcher {
     await selectServers(this.#options.mcp, this.#options.harness, conversation, context).catch(
       (cause: unknown) => warn('mcp servers not selected', { id, error: String(cause) }),
     )
+    // After the servers, whose selection keeps what it does not own: Memory as it is now, on or off.
+    await selectMemory(
+      this.#options.harness,
+      conversation,
+      this.#options.config.memoryDir !== undefined,
+      context,
+    ).catch((cause: unknown) => warn('memory not selected', { id, error: String(cause) }))
     // After the memo: a retry is the same request even if a template changed since.
     const input =
       content === undefined ? undefined : await this.#expandCommand(conversation, content)
@@ -1128,7 +1192,9 @@ export class Kernel implements Dispatcher {
       ...(record.status === 'unanswered' ? { reason: record.reason } : {}),
       // Why a turn ended unanswered, in the model's or the harness's words: a Host that ran the turn unattended
       // has nowhere else to read it.
-      ...(record.status === 'unanswered' && typeof record.detail === 'string' ? { detail: record.detail } : {}),
+      ...(record.status === 'unanswered' && typeof record.detail === 'string'
+        ? { detail: record.detail }
+        : {}),
     }
   }
   async #abortSubmission(params: Record<string, unknown>): Promise<unknown> {

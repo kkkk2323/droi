@@ -166,7 +166,7 @@ export function providersFromEnv(
   return validateProviders(parsed)
 }
 
-function validateProviders(value: unknown): ProviderConfig[] {
+export function validateProviders(value: unknown): ProviderConfig[] {
   if (!Array.isArray(value)) throw new Error('providers must be an array')
   for (const provider of value) {
     if (typeof provider !== 'object' || provider === null)

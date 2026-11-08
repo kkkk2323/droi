@@ -219,7 +219,8 @@ func (h *Host) changed() {
 
 // Changed tells listeners the settings changed.
 func (h *Host) Changed() {
-	h.kernelMemoryChanged()
+	// Off the caller's goroutine, often the window's: the Kernel may take a moment to answer.
+	go h.kernelMemoryChanged()
 	h.changed()
 }
 

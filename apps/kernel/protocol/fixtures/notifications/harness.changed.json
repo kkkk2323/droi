@@ -1,0 +1,9 @@
+{
+  "kind": "notification",
+  "method": "harness.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "harness.changed",
+    "params": {}
+  }
+}

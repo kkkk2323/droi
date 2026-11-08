@@ -62,6 +62,7 @@ func readIndex(t *testing.T) fixtureIndex {
 // conversation.create takes, or nil for the methods without params.
 var methodParams = map[string]any{
 	MethodHarnessInfo:         nil,
+	MethodHarnessConfigure:    &HarnessConfigureParams{},
 	MethodConversationCreate:  &CreateParams{},
 	MethodConversationList:    &ListParams{},
 	MethodConversationOpen:    &OpenParams{},
@@ -98,6 +99,7 @@ var methodParams = map[string]any{
 // methodResults is the result type of a method. An empty result is struct{}.
 var methodResults = map[string]any{
 	MethodHarnessInfo:         &HarnessInfo{},
+	MethodHarnessConfigure:    &struct{}{},
 	MethodConversationCreate:  &CreateResult{},
 	MethodConversationList:    &ListResult{},
 	MethodConversationOpen:    &OpenResult{},
@@ -146,6 +148,7 @@ var notificationTypes = map[string]func() any{
 	NotifyWarning:           func() any { return &Warning{} },
 	NotifyPolicyChanged:     func() any { return &PolicyChanged{} },
 	NotifyMemoryRead:        func() any { return &MemoryRead{} },
+	NotifyHarnessChanged:    func() any { return &HarnessChanged{} },
 }
 
 // The contract's samples decode into this package's types without losing a

@@ -801,6 +801,17 @@ type PolicyRule struct {
 	Path string `json:"path,omitempty"`
 }
 
+// HarnessConfigureParams is harness.configure's params: what the Host's settings changed, for a running Kernel.
+type HarnessConfigureParams struct {
+	// Providers takes the place of the Kernel's catalog, in DROI_KERNEL_PROVIDERS' shape; nil leaves it.
+	Providers json.RawMessage `json:"providers,omitempty"`
+	// MemoryDir turns Memory on with Some(the Memory folder) or off with None; nil leaves it.
+	MemoryDir *Field[string] `json:"memoryDir,omitempty"`
+}
+
+// HarnessChanged is harness.changed's params: none; harness.info answers what changed.
+type HarnessChanged struct{}
+
 // PolicySetParams is policy.set's params. A missing ID is the default policy, a
 // number is that conversation's own.
 type PolicySetParams struct {

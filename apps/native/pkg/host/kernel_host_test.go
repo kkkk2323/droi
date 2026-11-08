@@ -176,8 +176,9 @@ func kernelBinaryForTest(t *testing.T) string {
 // fakeFactory is enough of Factory for the Key Pool and two models: billing, whoami, a streamed chat completion and a
 // streamed Anthropic message.
 type fakeFactory struct {
-	mu   sync.Mutex
-	seen []http.Header
+	mu     sync.Mutex
+	seen   []http.Header
+	bodies []string
 	*httptest.Server
 }
 
@@ -185,9 +186,10 @@ func newFakeFactory(t *testing.T) *fakeFactory {
 	f := &fakeFactory{}
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		note := func() {
-			_, _ = io.Copy(io.Discard, r.Body)
+			body, _ := io.ReadAll(r.Body)
 			f.mu.Lock()
 			f.seen = append(f.seen, r.Header.Clone())
+			f.bodies = append(f.bodies, string(body))
 			f.mu.Unlock()
 			w.Header().Set("Content-Type", "text/event-stream")
 		}
@@ -229,6 +231,16 @@ func (f *fakeFactory) requests() []http.Header {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]http.Header(nil), f.seen...)
+}
+
+// lastBody is the latest model request's body.
+func (f *fakeFactory) lastBody() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.bodies) == 0 {
+		return ""
+	}
+	return f.bodies[len(f.bodies)-1]
 }
 
 // poolKey is the Key Pool key the fake Factory serves.
@@ -413,38 +425,72 @@ func TestTheKernelIsToldTheMemoryFolderOnlyWithMemoryOn(t *testing.T) {
 	}
 }
 
-// Turning Memory on or off starts the Kernel again, now told the Memory folder or not: its conversations get Memory,
-// or lose it, without restarting the app. A change of another setting leaves the Kernel running.
-func TestTurningMemoryOnOrOffStartsTheKernelAgain(t *testing.T) {
+// generation is the Kernel generation the Host runs now.
+func (hk *hostKernel) generation() int {
+	k := &hk.h.kernel
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.last.Generation
+}
+
+// stillRunning fails when the Kernel was started again since generation gen.
+func (hk *hostKernel) stillRunning(t *testing.T, gen int) {
+	t.Helper()
+	if got := hk.generation(); got != gen {
+		t.Fatalf("the Kernel was started again: generation %d, was %d", got, gen)
+	}
+	select {
+	case <-hk.clients:
+		t.Fatal("the window connected to a new Kernel")
+	default:
+	}
+}
+
+// harnessChanged waits for harness.changed on c.
+func harnessChanged(t *testing.T, ctx context.Context, c *kernel.Client) {
+	t.Helper()
+	for {
+		select {
+		case n, ok := <-c.Notifications():
+			if !ok {
+				t.Fatal("the connection closed before harness.changed")
+			}
+			if n.Method == kernel.NotifyHarnessChanged {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("no harness.changed")
+		}
+	}
+}
+
+// Turning Memory on or off reaches the running Kernel: a conversation's next request has the Memory tools, or has
+// them no more, and the Kernel and its connections keep running. A change of another setting tells it nothing.
+func TestTurningMemoryOnOrOffReachesTheRunningKernel(t *testing.T) {
 	f := newFakeFactory(t)
 	hk := startHostKernel(t, f, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	hk.next(t, ctx)
-	gen := func() int {
-		k := &hk.h.kernel
-		k.mu.Lock()
-		defer k.mu.Unlock()
-		return k.last.Generation
+	c := hk.next(t, ctx)
+	first := hk.generation()
+	chat, _ := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
+	answer(t, ctx, c, chat)
+	if strings.Contains(f.lastBody(), "memory_note") {
+		t.Fatal("with Memory off, the model was offered the Memory tools")
 	}
-	first := gen()
 	hk.h.Changed()
 	time.Sleep(200 * time.Millisecond)
-	if gen() != first {
-		t.Fatal("a change that was not Memory's started the Kernel again")
-	}
+	hk.stillRunning(t, first)
 	for _, on := range []bool{true, false} {
 		if err := hk.h.Settings.Update(func(s *Settings) { s.MemoryEnabled = on }); err != nil {
 			t.Fatal(err)
 		}
 		hk.h.Changed()
-		hk.next(t, ctx)
-		k := &hk.h.kernel
-		k.mu.Lock()
-		memoryOn := k.memoryOn
-		k.mu.Unlock()
-		if memoryOn != on {
-			t.Fatalf("Memory on is %v, and the Kernel was started with it %v", on, memoryOn)
+		harnessChanged(t, ctx, c)
+		hk.stillRunning(t, first)
+		answer(t, ctx, c, chat)
+		if got := strings.Contains(f.lastBody(), "memory_note"); got != on {
+			t.Fatalf("Memory on is %v, and the model was offered the Memory tools: %v", on, got)
 		}
 	}
 }
@@ -463,35 +509,59 @@ func TestADaemonStartingWithoutTheKeyPoolLeavesTheKernelsModels(t *testing.T) {
 	answer(t, ctx, c, chat)
 }
 
-// A Key Pool proxy that stopped, or moved to another address, under the Kernel starts the Kernel again on the one
-// that runs now.
+// A change whose call failed because the Kernel was being stopped does not start it again: once the Host stopped its
+// Kernel, the fallback restart of a change that began before leaves it stopped.
+func TestAChangeThatFailedAsTheKernelStoppedLeavesItStopped(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	hk.next(t, ctx)
+	k := &hk.h.kernel
+	k.mu.Lock()
+	sup, runs := k.sup, k.runs
+	k.mu.Unlock()
+	hk.h.stopKernel()
+	hk.h.restartKernel(sup, runs)
+	time.Sleep(300 * time.Millisecond)
+	if st := sup.State(); st.Status != KernelStopped {
+		t.Fatalf("the stopped Kernel is %s", st.Status)
+	}
+}
+
+// A Key Pool proxy that stopped, or moved to another address, under the Kernel gives the running Kernel its models on
+// the one that runs now.
 func TestTheHostsKernelFollowsTheKeyPoolsProxy(t *testing.T) {
 	f := newFakeFactory(t)
 	hk := startHostKernel(t, f, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	c := hk.next(t, ctx)
+	first := hk.generation()
 	chat, _ := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
 	answer(t, ctx, c, chat)
 	hk.h.KeyPool().Stop()
-	c = hk.next(t, ctx)
+	harnessChanged(t, ctx, c)
+	hk.stillRunning(t, first)
 	answer(t, ctx, c, chat)
 }
 
-// A Kernel started before the Key Pool had a key has no models; the first key starts it again with them.
+// A Kernel started before the Key Pool had a key has no models; the first key gives the running Kernel them.
 func TestTheHostsKernelGetsFactorysModelsOnceAKeyIsAdded(t *testing.T) {
 	f := newFakeFactory(t)
 	hk := startHostKernel(t, f, false)
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	c := hk.next(t, ctx)
+	first := hk.generation()
 	if _, ok := offered(t, ctx, c, "factory-chat", ""); ok {
 		t.Fatal("a Kernel with no key behind it offers Factory's models")
 	}
 	if err := hk.h.KeyPool().Add(ctx, poolKey); err != nil {
 		t.Fatal(err)
 	}
-	c = hk.next(t, ctx)
+	harnessChanged(t, ctx, c)
+	hk.stillRunning(t, first)
 	chat, ok := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
 	if !ok {
 		t.Fatal("no Factory models after the first key")
