@@ -438,4 +438,54 @@ describe('the unread marker', () => {
     await restart()
     expect((await seenRow(client, id))?.viewedAt).toBeNull()
   }, 60_000)
+
+  test('an open with seen false leaves the unread mark as it was', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const faux = fauxCatalog()
+    const { client } = await boot(data.dir, faux)
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: data.dir },
+      kind: 'chat',
+    })
+    const id = created['conversationId'] as number
+    await client.call('index.update', { id, viewedAt: null })
+    await client.call('conversation.open', { id, seen: false })
+    expect((await seenRow(client, id))?.viewedAt).toBeNull()
+    await client.call('conversation.open', { id })
+    expect((await seenRow(client, id))?.viewedAt).not.toBeNull()
+  }, 60_000)
+
+  test('a stop writes the index entries still waiting for their flush', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const faux = fauxCatalog()
+    const { kernel, client } = await boot(data.dir, faux)
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: data.dir },
+      kind: 'chat',
+    })
+    const id = created['conversationId'] as number
+    faux.faux.appendResponses([fauxAssistantMessage('the last answer before the stop')])
+    await client.call('conversation.submit', { id, input: 'go' })
+    let last = 0
+    for (let i = 0; i < 200 && last === 0; i++) {
+      const page = (await client.call('conversation.entries', { id, limit: 50 }))['items'] as {
+        id: number
+        kind: string
+      }[]
+      last = page.find((entry) => entry.kind === 'pi.assistant')?.id ?? 0
+      if (last === 0) await Bun.sleep(5)
+    }
+    expect(last).toBeGreaterThan(0)
+    client.close()
+    await kernel.stop()
+    const db = new BunSqliteDatabase(join(data.dir, 'kernel.sqlite'))
+    const mark = await db.get<{ entry_id: number }>(
+      'SELECT entry_id FROM droi_index_watermarks WHERE conversation_id = ?',
+      id,
+    )
+    await db.close()
+    expect(mark?.entry_id ?? 0).toBeGreaterThanOrEqual(last)
+  }, 60_000)
 })

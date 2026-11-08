@@ -277,6 +277,10 @@ export async function startKernel(
         // Pi's `harness.close()` seals admission and settles its own writes; the Storage keeps the file
         // open until it is closed too, and only then may the database close.
         clearInterval(failedWatch)
+        // Before the harness, which closes the database with it: what waits for the next flush is written now
+        // rather than rebuilt by the next start's catch-up. A commit the harness still settles is past the
+        // watermark, and that catch-up reads it.
+        await indexer?.close().catch(() => undefined)
         // A failed Session already closed itself; closing again is a no-op, not an error.
         await harness?.close(context).catch(() => undefined)
         // After the harness, so no tool starts while this runs; before the storage, so a shutdown leaves no
