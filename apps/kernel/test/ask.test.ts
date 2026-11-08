@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
+import { Database } from 'bun:sqlite'
+import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
 import type { KernelConfig } from '../src/config.ts'
@@ -207,6 +209,26 @@ describe('a blocking question', () => {
     expect(result.model?.[0]?.isError).toBe(true)
     expect(b.window.notifications.some((note) => note.method === 'ask.requested')).toBe(false)
   }, 60_000)
+
+  for (const [name, questions] of [
+    ['no questions', []],
+    ['a blank question', [{ question: '   ' }]],
+  ] as const) {
+    test(`with ${name} nothing waits`, async () => {
+      const b = await boot()
+      const id = await conversation(b)
+      b.faux.faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('ask_user', { ...question, questions }), {
+          stopReason: 'toolUse',
+        }),
+        fauxAssistantMessage('ok'),
+      ])
+      await b.window.call('conversation.submit', { id, input: 'go' })
+      const result = await toolResult(b.window, id)
+      expect(result.model?.[0]?.isError).toBe(true)
+      expect(b.window.notifications.some((note) => note.method === 'ask.requested')).toBe(false)
+    }, 60_000)
+  }
 })
 
 describe('a question that does not block', () => {
@@ -280,5 +302,58 @@ describe('a question that does not block', () => {
         : undefined,
     )
     expect(asks(await entries(second.window, id))).toEqual(['pending', 'answered'])
+  }, 60_000)
+
+  test('a row left by a process that died after the answer does not bring the question back', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const first = await boot({}, { dir: data.dir, cleanup: () => undefined })
+    const id = await conversation(first)
+    first.faux.faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('ask_user', { ...question, blocking: false }), {
+        stopReason: 'toolUse',
+      }),
+      fauxAssistantMessage('carrying on'),
+      fauxAssistantMessage('got it'),
+    ])
+    await first.window.call('conversation.submit', { id, input: 'go' })
+    const asked = await first.window.waitForMethod('ask.requested')
+    await first.window.call('ask.respond', {
+      requestId: asked.params['requestId'],
+      answers: [{ questionId: 'q1', selected: ['fail'] }],
+    })
+    await until(async () =>
+      (await entries(first.window, id)).some((entry) => textOf(entry).includes('got it'))
+        ? true
+        : undefined,
+    )
+    first.window.close()
+    first.phone.close()
+    await first.kernel.stop()
+
+    // What a crash between the answer's commit and the row's removal leaves.
+    const db = new Database(join(data.dir, 'kernel.sqlite'))
+    db.run(
+      'INSERT INTO droi_open_questions (request_id, conversation_id, request, at) VALUES (?, ?, ?, ?)',
+      [asked.params['requestId'] as string, id, JSON.stringify(asked.params), Date.now()],
+    )
+    db.close()
+
+    const second = await boot({}, { dir: data.dir, cleanup: () => undefined })
+    expect((await second.window.call('conversation.open', { id }))['pending']).toBeUndefined()
+    expect(
+      (
+        await second.window.fails('ask.respond', {
+          requestId: asked.params['requestId'],
+          cancelled: true,
+        })
+      ).code,
+    ).toBe(-32007)
+    second.window.close()
+    second.phone.close()
+    await second.kernel.stop()
+    const after = new Database(join(data.dir, 'kernel.sqlite'))
+    expect(after.query('SELECT COUNT(*) AS n FROM droi_open_questions').get()).toEqual({ n: 0 })
+    after.close()
   }, 60_000)
 })

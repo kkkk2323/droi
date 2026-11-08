@@ -244,10 +244,9 @@ export async function startKernel(
       ...(config.approvalTimeoutMs === undefined ? {} : { timeoutMs: config.approvalTimeoutMs }),
       context,
     })
-    // A read-only viewer only reads the questions another process keeps open.
-    await asks.open().catch((cause: unknown) => {
-      if (!config.readOnly) throw cause
-    })
+    // A read-only viewer lists no waiting cards (`conversation.open` leaves them to the process that drives
+    // the conversation), so it has no questions to take back.
+    if (!config.readOnly) await asks.open()
 
     kernel = new Kernel({
       config,

@@ -88,16 +88,25 @@ export class Asks {
       request TEXT NOT NULL,
       at INTEGER NOT NULL
     )`)
-    const rows = await this.#options.db.all<{ request: string }>(
-      'SELECT request FROM droi_open_questions ORDER BY at',
+    const rows = await this.#options.db.all<{ request_id: string; request: string }>(
+      'SELECT request_id, request FROM droi_open_questions ORDER BY at',
     )
     for (const row of rows) {
+      let request: AskRequest
       try {
-        const request = JSON.parse(row.request) as AskRequest
-        this.#waiting.set(request.requestId, request)
+        request = JSON.parse(row.request) as AskRequest
       } catch {
         // A row this build cannot read is a question nobody can answer here.
+        await this.#forget(row.request_id)
+        continue
       }
+      // The row and the transcript are two writes: a process that died between them leaves a row whose
+      // question was already answered, or never asked. The transcript decides.
+      if ((await this.#lastStatus(request)) !== 'pending') {
+        await this.#forget(request.requestId)
+        continue
+      }
+      this.#waiting.set(request.requestId, request)
     }
   }
 
@@ -108,8 +117,12 @@ export class Asks {
 
   /** The tool: ask, and for a blocking question wait for the answer. */
   async ask(args: AskArgs, conversationId: number, context: Context): Promise<AskResult> {
+    // The schema's minLength lets whitespace through.
     if (args.context.trim() === '') {
       return error('context must say what the answers are for; ask again with it.')
+    }
+    if (args.questions.some((q) => q.question.trim() === '')) {
+      return error('Each question needs its text; ask again.')
     }
     const questions: AskQuestion[] = args.questions.map((q, index) => ({
       questionId: q.questionId ?? `q${index + 1}`,
@@ -129,21 +142,23 @@ export class Asks {
       context: args.context.trim(),
       blocking: args.blocking !== false,
     }
-    await this.#record(request, { status: 'pending' })
-
     if (!request.blocking) {
+      // The row first: a restart drops a row the transcript does not show as pending, but cannot bring back
+      // a pending question that has no row.
+      await this.#options.db.run(
+        'INSERT OR REPLACE INTO droi_open_questions (request_id, conversation_id, request, at) VALUES (?, ?, ?, ?)',
+        request.requestId,
+        conversationId,
+        JSON.stringify(request),
+        Date.now(),
+      )
+      try {
+        await this.#record(request, { status: 'pending' })
+      } catch (failure) {
+        await this.#forget(request.requestId)
+        throw failure
+      }
       this.#waiting.set(request.requestId, request)
-      await this.#options.db
-        .run(
-          'INSERT OR REPLACE INTO droi_open_questions (request_id, conversation_id, request, at) VALUES (?, ?, ?, ?)',
-          request.requestId,
-          conversationId,
-          JSON.stringify(request),
-          Date.now(),
-        )
-        .catch((failure: unknown) =>
-          warn('open question not kept', { requestId: request.requestId, error: String(failure) }),
-        )
       this.#options.notify('ask.requested', request)
       return {
         output: [
@@ -155,6 +170,7 @@ export class Asks {
       }
     }
 
+    await this.#record(request, { status: 'pending' })
     let settle!: (outcome: Outcome) => void
     const answered = new Promise<Outcome>((resolve) => {
       settle = resolve
@@ -215,7 +231,17 @@ export class Asks {
         warn('ask answer not recorded', { requestId, error: String(failure) }),
       )
     } else {
-      await this.#answerLater(waiting, change, cancelled ? undefined : answerText(waiting, answers))
+      try {
+        await this.#answerLater(
+          waiting,
+          change,
+          cancelled ? undefined : answerText(waiting, answers),
+        )
+      } catch (failure) {
+        // Still open: the card stays answerable, and this caller learns it did not take.
+        this.#waiting.set(requestId, waiting)
+        throw failure
+      }
     }
     this.#options.notify('ask.resolved', {
       requestId,
@@ -267,9 +293,14 @@ export class Asks {
   ): Promise<void> {
     const harness = this.#options.harness
     const conversation = await harness.conversation(waiting.id as never, this.#options.context)
+    if (conversation === undefined) {
+      // The conversation was deleted: there is nothing left to answer into.
+      await this.#forget(waiting.requestId)
+      return
+    }
     await harness.commit(async (tx) => {
       // Pi admits a submission before any write of the same commit.
-      if (text !== undefined && conversation !== undefined) {
+      if (text !== undefined) {
         await conversation.submit(tx, {
           type: 'input',
           content: `My answer to your question (${waiting.context})\n\n${text}`,
@@ -281,10 +312,42 @@ export class Asks {
         data: this.#data(waiting, change) as never,
       })
     }, this.#options.context)
-    await this.#options.db
-      .run('DELETE FROM droi_open_questions WHERE request_id = ?', waiting.requestId)
-      .catch(() => undefined)
+    await this.#forget(waiting.requestId)
     if (text !== undefined) await this.#options.submitted(waiting.id).catch(() => undefined)
+  }
+
+  async #forget(requestId: string): Promise<void> {
+    await this.#options.db
+      .run('DELETE FROM droi_open_questions WHERE request_id = ?', requestId)
+      .catch((failure: unknown) =>
+        warn('open question row not removed', { requestId, error: String(failure) }),
+      )
+  }
+
+  /** The status of the newest `droi.ask` record of a question, newest page first; undefined when none. */
+  async #lastStatus(request: AskRequest): Promise<string | undefined> {
+    const conversation = await this.#options.harness.conversation(
+      request.id as never,
+      this.#options.context,
+    )
+    if (conversation === undefined) return undefined
+    let cursor: unknown
+    do {
+      const page = await conversation.entries(
+        { order: 'descending' },
+        200,
+        cursor as never,
+        this.#options.context,
+      )
+      for (const entry of page.items) {
+        const data = entry.data as { requestId?: unknown; status?: unknown } | undefined
+        if (entry.kind === 'droi.ask' && data?.requestId === request.requestId) {
+          return typeof data.status === 'string' ? data.status : undefined
+        }
+      }
+      cursor = page.next
+    } while (cursor !== undefined)
+    return undefined
   }
 
   /** End a blocking question nobody answered: `abandoned` in the transcript, cancelled by the kernel on the wire. */

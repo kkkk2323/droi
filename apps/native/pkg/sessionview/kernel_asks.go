@@ -67,6 +67,8 @@ func (v *View) kernelAskCard(c *ui.Context, q kernel.PendingRequest) {
 			}
 			if err != nil {
 				v.env.Update(func() { *answering = false })
+			} else {
+				v.env.Update(func() { v.promptErr = "" })
 			}
 			v.answerFailed(err)
 		}()

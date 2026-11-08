@@ -330,7 +330,10 @@ transcript holds nothing.
 ### The index
 
 Pi's SQLite file holds the transcripts; Droi's own tables (`droi_` prefix) hold what a list, a search and
-a restart need, and the kernel rebuilds every one of them from the transcripts when it has to
+a restart need, and the kernel rebuilds every one of them from the transcripts when it has to, except two that
+record what a person or a live process decided and that a reset never drops: `droi_disabled_skills` and
+`droi_open_questions` (the non-blocking questions still open; a start drops a row whose question the
+transcript no longer shows as pending)
 (`shared/design/kernel-index-ownership.md` has the rules and their reasons):
 
 | Rule                                           | What it means                                                                                                                                                                                                                                                                                                                                                                           |
@@ -782,7 +785,7 @@ So `conversation.open` answers the requests still waiting on that conversation:
   {"kind": "approval", "requestId": "req-x3rtg4", "id": 7, "tool": "bash",
    "args": {"command": "rm -rf build"}, "options": [...], "scopeHint": "ask"},
   {"kind": "ask", "requestId": "req-ask-77", "id": 7,
-   "questions": [...], "context": "Asked while running the test command."}
+   "questions": [...], "context": "Asked while running the test command.", "blocking": true}
 ]
 ```
 

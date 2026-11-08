@@ -110,7 +110,7 @@ func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, works
 			if len(approvals) > 0 {
 				v.ApprovalCards(c, approvals)
 			}
-			if len(blocking) > 0 || len(queued) > 0 && len(approvals) == 0 {
+			if len(blocking)+len(queued) > 0 {
 				v.KernelAskCards(c, append(blocking, queued...))
 			}
 			if prompts {
