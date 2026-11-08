@@ -43,7 +43,7 @@ droid would.
 
 | Go                             | upstream (`index.mjs`)                               | notes                                                                                                                  |
 | ------------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `models.go`                    | `MODELS` 59-116, `byId` 118, wires 33-39             | id, wire and vendor only; names, limits, efforts and prices come with the picker (4F)                                  |
+| `models.go`                    | `MODELS` 59-116, `byId` 118, wires 33-39             | name, wire, vendor, limits, efforts, images and token multiplier; the Host hands them to the Kernel (`kernelProviders`) |
 | `headers.go`: `Headers`        | `factoryHeaders` 342-349, `send`'s headers 2071-2092 | the Authorization is the proxy's (the pool key); `X-Session-Id` is per conversation (`SessionID`), not one per process |
 | `headers.go`: `ClientVersion`  | `VERSION` 23                                         | the same release, a constant: there is no droid to ask any more                                                        |
 | `identity.go`: `LLMBase`       | `base` 329, `llmBase` 333-339                        | a base that is not Factory's own API (a test server, a proxy in front) is kept                                         |
@@ -57,6 +57,12 @@ says or for its size, rather than for the key.
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `attachments.go`: `LeaveOutAttachments`, `TooLarge`     | `KEEP_ATTACHMENTS`/`LEFT_OUT`/`TOO_LARGE_HINT` 717-722, `DIALECTS` 734, `leaveOutAttachments` 744, `tooLarge` 782 | the proxy asks once more on a 413 (`proxy/kernel.go`), as upstream's `smaller` 2119 does |
 | `explain.go`: `ContentPolicyHint`, `VendorError`, `UpstreamIDs`, `ErrorBody` | `explain` 428 (its content refusal), `vendorError` 952, `upstreamIds` 436, `errorReply` 792 | a content refusal goes back as a 400 with its code, as upstream's 2145-2153 |
+
+4F added a model's price now.
+
+| Go                | upstream (`index.mjs`)                     | notes                                                                                                         |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `price.go`: `Price` | `PROMOTIONS` 173-179, `rateOf` 186-190    | every promotion of droid 0.241.1's registry, ended ones too, so the price agrees with droid's at any instant |
 
 `route_test.go` checks every model id against the excerpts of droid's registry
 upstream keeps in `testdata/` (copied byte for byte; `client-phrases.json` is
@@ -75,6 +81,7 @@ The subtests keep the upstream names, so a diff of upstream's tests finds them.
 | `droidbody_test.go`     | `droid.test.mjs`'s opening cases, which are the built-in's `TestFactoryOpensAsDroid`                       |
 | `fast_test.go`          | `fast.test.mjs`, 3 of 4 whole; the fourth's order check (its first-24 check is magpie's picker)            |
 | `attachments_test.go`   | `size.test.mjs`'s fourth case; `content-policy.test.mjs`'s last (`contentRefused`)                         |
+| `rate_test.go`          | `rate.test.mjs`'s first three, and every model at each promotion's start and end (its last two are magpie's provider hook) |
 | `proxy/kernel_test.go`  | `size.test.mjs`'s first three; `content-policy.test.mjs`'s first three and the upstream-error-header case |
 
 `content-policy.test.mjs`'s whoami case is not ported: the Key Pool tries

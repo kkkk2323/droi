@@ -1,0 +1,55 @@
+// Excerpts, byte for byte, of droid 0.241.1 (@factory/cli-darwin-arm64@0.241.1,
+// bin/droid, its bundled model registry): each offered model's cost, and the
+// promotions the entries name (cost.promotions), which are defined apart from
+// them. magpie shows a model's tokenMultiplier (less a running promotion's
+// discount) beside the model as its rate, and the multiplier before the
+// discount as rateWas, struck through.
+"claude-fable-5.1":cost:{tokenMultiplier:4,cacheReadTokenMultiplier:0.025,outputTokenMultiplier:5}
+"claude-fable-5":cost:{tokenMultiplier:4,outputTokenMultiplier:5}
+"claude-opus-5-5":cost:{tokenMultiplier:1.6,cacheReadTokenMultiplier:0.05,outputTokenMultiplier:5}
+"claude-opus-5-5-fast":cost:{tokenMultiplier:3.2,cacheReadTokenMultiplier:0.05,outputTokenMultiplier:5}
+"claude-opus-5":cost:{tokenMultiplier:2}
+"claude-opus-5-fast":cost:{tokenMultiplier:4}
+"claude-opus-4-8":cost:{tokenMultiplier:2}
+"claude-opus-4-8-fast":cost:{tokenMultiplier:4}
+"claude-sonnet-5-5":cost:{tokenMultiplier:0.8,outputTokenMultiplier:5,cacheReadTokenMultiplier:0.05}
+"claude-sonnet-5":cost:{tokenMultiplier:0.8,outputTokenMultiplier:5}
+"claude-sonnet-4-6":cost:{tokenMultiplier:1.2}
+"claude-haiku-5-5":cost:{tokenMultiplier:0.04,outputTokenMultiplier:5}
+"claude-haiku-4-5-20251001":cost:{tokenMultiplier:0.4}
+"gpt-6.1-sol":cost:{tokenMultiplier:0.8,cacheReadTokenMultiplier:0.05,outputTokenMultiplier:5}
+"gpt-6-sol":cost:{tokenMultiplier:0.8,outputTokenMultiplier:5}
+"gpt-6-astra":cost:{tokenMultiplier:4,outputTokenMultiplier:5,promotions:[M]}
+"gpt-6-luna":cost:{tokenMultiplier:0.04,outputTokenMultiplier:5}
+"gpt-5.6-sol":cost:{tokenMultiplier:2,outputTokenMultiplier:5,promotions:[M,Pt]}
+"gpt-5.6-terra":cost:{tokenMultiplier:0.8,outputTokenMultiplier:6,promotions:[M]}
+"gpt-5.6-luna":cost:{tokenMultiplier:0.08,outputTokenMultiplier:6,promotions:[M]}
+"gpt-5.5":cost:{tokenMultiplier:2,outputTokenMultiplier:6,promotions:[M]}
+"gpt-5.5-fast":cost:{tokenMultiplier:5,outputTokenMultiplier:6,promotions:[M]}
+"gpt-5.4":cost:{tokenMultiplier:1,outputTokenMultiplier:6,promotions:[M]}
+"gpt-5.4-fast":cost:{tokenMultiplier:2,outputTokenMultiplier:6,promotions:[M]}
+"gpt-5.3-codex":cost:{tokenMultiplier:0.7,promotions:[M]}
+"gpt-5.3-codex-fast":cost:{tokenMultiplier:1.4,outputTokenMultiplier:8,promotions:[M]}
+"grok-4.7":cost:{tokenMultiplier:0.8,cacheReadTokenMultiplier:0.25,outputTokenMultiplier:3}
+"grok-4.6":cost:{tokenMultiplier:0.8,cacheReadTokenMultiplier:0.25,outputTokenMultiplier:3,promotions:[M]}
+"glm-5.3":cost:{tokenMultiplier:0.56,outputTokenMultiplier:3.15}
+"glm-5.3-flash":cost:{tokenMultiplier:0.06,cacheReadTokenMultiplier:0.2,outputTokenMultiplier:3.34}
+"glm-5.2":cost:{tokenMultiplier:0.56,outputTokenMultiplier:3.15}
+"kimi-k3":cost:{tokenMultiplier:1.2,outputTokenMultiplier:5}
+"deepseek-v4.1-flash":cost:{tokenMultiplier:0.12,cacheReadTokenMultiplier:0.024,outputTokenMultiplier:4}
+"qwen3.8-max":cost:{tokenMultiplier:0.8,outputTokenMultiplier:3}
+"minimax-m3":cost:{tokenMultiplier:0.12,outputTokenMultiplier:4}
+"minimax-m2.7":cost:{tokenMultiplier:0.12,outputTokenMultiplier:4}
+"mistral-large-4":cost:{tokenMultiplier:0.544,cacheReadTokenMultiplier:0.103,outputTokenMultiplier:3.08,promotions:[{discount:0.5,startsAt:new Date("2026-10-06T00:00:00Z"),expiresAt:new Date("2026-10-20T00:00:00Z"),label:"50% off, launch discount"}]}
+"mistral-medium-3.5":cost:{tokenMultiplier:0.6,outputTokenMultiplier:5}
+"nemotron-3-ultra":cost:{tokenMultiplier:0.24,outputTokenMultiplier:4}
+"gemini-4-argon":cost:{tokenMultiplier:1.6,outputTokenMultiplier:5,cacheReadTokenMultiplier:0.05,promotions:[{discount:0.5,startsAt:new Date("2026-10-13T16:00:00Z"),expiresAt:new Date("2026-12-01T08:00:00Z"),label:"50% off"}]}
+"gemini-3.1-pro-preview":cost:{tokenMultiplier:0.8}
+"gemini-3.8-flash":cost:{tokenMultiplier:0.6,outputTokenMultiplier:5,promotions:[Mt]}
+"gemini-3.7-flash":cost:{tokenMultiplier:0.6,outputTokenMultiplier:5,promotions:[Mt]}
+"gemini-3.6-flash":cost:{tokenMultiplier:0.6,outputTokenMultiplier:5}
+"gemini-3.5-flash":cost:{tokenMultiplier:0.6}
+"gemini-3-flash-preview":cost:{tokenMultiplier:0.2}
+M={discount:0.6,startsAt:new Date("2026-08-29T04:00:00Z"),expiresAt:new Date("2026-09-05T02:00:00Z"),label:"60% off"}
+Pt={discount:0.2,startsAt:new Date("2026-08-22T00:00:00Z"),expiresAt:new Date("2026-11-22T00:00:00Z"),label:"20% off"}
+Mt={discount:0.5,startsAt:new Date("2026-08-17T21:10:19Z"),expiresAt:new Date("2027-01-01T08:00:00Z"),label:"50% off"}
