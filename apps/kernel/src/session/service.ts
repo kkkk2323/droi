@@ -48,6 +48,7 @@ import type { Approvals } from '../policy/approvals.ts'
 import { loadResources, type LoadedResources } from '../resources/index.ts'
 import type { DisabledSkills } from '../resources/disabled.ts'
 import { expandSlash } from '../resources/expand.ts'
+import type { Asks } from '../ask/asks.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
 export const context: Context = BACKGROUND_CONTEXT
@@ -72,6 +73,8 @@ export type KernelOptions = {
   policy: PolicyStore
   /** The calls waiting for a person. */
   approvals: Approvals
+  /** The `ask_user` questions waiting for a person. */
+  asks: Asks
   db: BunSqliteDatabase
   storage: Storage
   harness: Harness
@@ -155,6 +158,10 @@ export class Kernel implements Dispatcher {
     add('approval.respond', (p, connection) => {
       this.#writable()
       return this.#options.approvals.respond(p, connection.client)
+    })
+    add('ask.respond', (p, connection) => {
+      this.#writable()
+      return this.#options.asks.respond(p, connection.client)
     })
     // The three readers of M3 answer their shape now, so a client can call the whole surface; every
     // write of M3 is gated, and `gated()` answers it `-32009` while its capability is false.
@@ -358,6 +365,7 @@ export class Kernel implements Dispatcher {
   async close(): Promise<void> {
     this.#closing = true
     await this.#options.approvals.close()
+    await this.#options.asks.close()
     for (const live of this.#live.values()) live.detach()
     this.#live.clear()
     this.#tasks?.detach()
@@ -454,7 +462,10 @@ export class Kernel implements Dispatcher {
   #openExtras(id: number): Record<string, unknown> {
     if (this.#options.config.readOnly) return {}
     const policy = this.#options.policy.known(id)
-    const pending = this.#options.approvals.pendingFor(id)
+    const pending = [
+      ...this.#options.approvals.pendingFor(id),
+      ...this.#options.asks.pendingFor(id),
+    ]
     return {
       ...(policy === undefined ? {} : { policy }),
       ...(pending.length === 0 ? {} : { pending }),

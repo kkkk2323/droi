@@ -330,7 +330,10 @@ transcript holds nothing.
 ### The index
 
 Pi's SQLite file holds the transcripts; Droi's own tables (`droi_` prefix) hold what a list, a search and
-a restart need, and the kernel rebuilds every one of them from the transcripts when it has to
+a restart need, and the kernel rebuilds every one of them from the transcripts when it has to, except two that
+record what a person or a live process decided and that a reset never drops: `droi_disabled_skills` and
+`droi_open_questions` (the non-blocking questions still open; a start drops a row whose question the
+transcript no longer shows as pending)
 (`shared/design/kernel-index-ownership.md` has the rules and their reasons):
 
 | Rule                                           | What it means                                                                                                                                                                                                                                                                                                                                                                           |
@@ -627,15 +630,15 @@ The kernel's own kinds are model-invisible bookkeeping that a client renders as 
 shapes the kernel guarantees — the first three exist today, the rest are fixed now and written in M3/M4,
 so a client can build the card before the feature lands:
 
-| kind            | `data`                                                                       | Written            | Exists |
-| --------------- | ---------------------------------------------------------------------------- | ------------------ | ------ |
-| `droi.meta`     | `{createdAt, requestId?, requestFingerprint?, kind?, workspace?, parentId?}` | the kernel         | yes    |
-| `droi.request`  | `{requestId, fingerprint, submissionId}`                                     | the kernel         | yes    |
-| `droi.note`     | `{text}`                                                                     | the kernel         | yes    |
-| `droi.approval` | `{requestId, tool, args, status, outcome?, scope?, at}`                      | the approval layer | M3     |
-| `droi.ask`      | `{requestId, questions[], context, status, answers?, at}`                    | the ask tool       | M3     |
-| `droi.subagent` | `{parentCallId, childConversationId, title, status}`                         | the subagent tool  | M4     |
-| `droi.process`  | `{processId, pid, command, logPath, status, exitCode?, at}`                  | `bash_background`  | M3     |
+| kind            | `data`                                                                          | Written            | Exists |
+| --------------- | ------------------------------------------------------------------------------- | ------------------ | ------ |
+| `droi.meta`     | `{createdAt, requestId?, requestFingerprint?, kind?, workspace?, parentId?}`    | the kernel         | yes    |
+| `droi.request`  | `{requestId, fingerprint, submissionId}`                                        | the kernel         | yes    |
+| `droi.note`     | `{text}`                                                                        | the kernel         | yes    |
+| `droi.approval` | `{requestId, tool, args, status, outcome?, scope?, at}`                         | the approval layer | M3     |
+| `droi.ask`      | `{requestId, questions[], context, blocking, status, answers?, cancelled?, at}` | the ask tool       | M3     |
+| `droi.subagent` | `{parentCallId, childConversationId, title, status}`                            | the subagent tool  | M4     |
+| `droi.process`  | `{processId, pid, command, logPath, status, exitCode?, at}`                     | `bash_background`  | M3     |
 
 `status` is the entry's current state, one of `pending` / `allowed` / `denied` / `abandoned` for an
 approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
@@ -782,7 +785,7 @@ So `conversation.open` answers the requests still waiting on that conversation:
   {"kind": "approval", "requestId": "req-x3rtg4", "id": 7, "tool": "bash",
    "args": {"command": "rm -rf build"}, "options": [...], "scopeHint": "ask"},
   {"kind": "ask", "requestId": "req-ask-77", "id": 7,
-   "questions": [...], "context": "Asked while running the test command."}
+   "questions": [...], "context": "Asked while running the test command.", "blocking": true}
 ]
 ```
 
@@ -803,6 +806,22 @@ Three fields a card needs:
 - `by` on `approval.resolved` / `ask.resolved` is the `X-Droi-Client` header of the connection that
   answered (`window`, `phone`, `host`), `unknown` for a connection that sent none, and `kernel` for a
   request the kernel settled itself (its ten-minute timeout, or a restart).
+
+### The `ask_user` tool
+
+The model asks with `{context, blocking?, questions: [{questionId?, question, options?: [{id, label}], multiSelect?}]}`.
+`context` is required and non-empty; `questionId` defaults to `q1`, `q2`, … in order. Every connection gets
+`ask.requested`, and `ask.respond {requestId, answers}` answers it, or `{requestId, cancelled: true}` dismisses
+it. Each answer is `{questionId, selected?, text?}`: option ids the question offered (one unless
+`multiSelect`), a text of the person's own, or both. Every question must have one; anything else is
+`-32602`, and a later response to an answered question is `-32007`.
+
+- **Blocking** (the default): the run waits. The answer is the tool's result, as `Q: … / A: …` lines with the
+  options' labels; a dismissal, the ten-minute timeout, an abort or a stop give an error result instead.
+- **Not blocking** (`blocking: false`): the tool returns at once and the run goes on. The answer becomes the
+  conversation's next user message, which the kernel submits itself (`followUp` while a run is under way), in
+  the same commit as the `answered` record. Such a question outlives the run and the process: it is kept until
+  it is answered, and `conversation.open` lists it after a restart.
 
 ### MCP servers, and the ones a repository brings
 
@@ -948,7 +967,7 @@ the `<skill>` block the model is sent.
 | `approval.requested` | `{requestId, id, tool, args, options[], scopeHint?}`                                                                                                                                                                 |
 | `approval.resolved`  | `{requestId, id, outcome, by}`                                                                                                                                                                                       |
 | `ask.requested`      | `{requestId, id, questions[], context, blocking?}` — `context` is required and non-empty: the sentence that says what the answer is for                                                                              |
-| `ask.resolved`       | `{requestId, id, answers?, cancelled}`                                                                                                                                                                               |
+| `ask.resolved`       | `{requestId, id, answers?, cancelled, by}`                                                                                                                                                                           |
 | `task.changed`       | `{taskId, kind, status, conversationId}`                                                                                                                                                                             |
 | `mcp.changed`        | `{servers[]}`                                                                                                                                                                                                        |
 | `process.changed`    | `{id, processId, status, exitCode?, tail?}` — `status` is `running`, `exited`, `stopped` or `failed`; a `droi.process` entry says `done` where a notice says `exited`                                                |

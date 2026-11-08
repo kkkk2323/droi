@@ -40,6 +40,7 @@ type Kernel interface {
 	Processes(ctx context.Context, id kernel.ID) (kernel.ProcessesResult, error)
 	StopProcess(ctx context.Context, p kernel.StopProcessParams) (kernel.Status, error)
 	RespondApproval(ctx context.Context, p kernel.ApprovalRespondParams) (kernel.Status, error)
+	RespondAsk(ctx context.Context, p kernel.AskRespondParams) (kernel.Status, error)
 }
 
 // InboxItem is one input waiting for the run in progress: pi.inbox's items[], in submission-id order. Mode is
@@ -85,12 +86,12 @@ type State struct {
 	// landed says a whole view has been applied since the last conversation.open asked for one. Kernel starts
 	// the subscription before it answers, so a push that arrives during the round trip is the newer of the two.
 	landed bool
-	// approvals are the calls waiting for a person, in the order they were asked. answered are the ones this
-	// connection heard answered: approval.requested and approval.resolved reach every connection on a queue of
-	// their own, so conversation.open's pending list can land after the answer it predates.
-	approvals []kernel.PendingRequest
-	answered  map[string]bool
-	// stale are the approvals shown when a reopen began: they stay on screen until its answer says which
+	// requests are the approvals and questions waiting for a person, in the order they were asked. answered are
+	// the ones this connection heard answered: the requests and their answers reach every connection on a queue
+	// of their own, so conversation.open's pending list can land after the answer it predates.
+	requests []kernel.PendingRequest
+	answered map[string]bool
+	// stale are the requests shown when a reopen began: they stay on screen until its answer says which
 	// still wait.
 	stale map[string]bool
 }
@@ -320,19 +321,30 @@ func (s *State) expectOpen() {
 	s.landed = false
 	s.answered = nil
 	s.stale = map[string]bool{}
-	for _, p := range s.approvals {
+	for _, p := range s.requests {
 		s.stale[p.RequestID] = true
 	}
 }
 
 // Approvals are the calls of this conversation that wait for a person, oldest first.
-func (s *State) Approvals() []kernel.PendingRequest {
+func (s *State) Approvals() []kernel.PendingRequest { return s.pendingOf(kernel.PendingApproval) }
+
+// Asks are the ask_user questions of this conversation that wait for an answer, oldest first.
+func (s *State) Asks() []kernel.PendingRequest { return s.pendingOf(kernel.PendingAsk) }
+
+func (s *State) pendingOf(kind string) []kernel.PendingRequest {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.approvals
+	var out []kernel.PendingRequest
+	for _, p := range s.requests {
+		if p.Kind == kind {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
-// takePending adds the approvals conversation.open reported to the ones already heard of, leaving out any heard
+// takePending adds the requests conversation.open reported to the ones already heard of, leaving out any heard
 // answered since.
 func (s *State) takePending(pending []kernel.PendingRequest) bool {
 	s.mu.Lock()
@@ -343,21 +355,21 @@ func (s *State) takePending(pending []kernel.PendingRequest) bool {
 		for _, p := range pending {
 			listed[p.RequestID] = true
 		}
-		kept := s.approvals[:0:0]
-		for _, p := range s.approvals {
+		kept := s.requests[:0:0]
+		for _, p := range s.requests {
 			if s.stale[p.RequestID] && !listed[p.RequestID] {
 				changed = true
 				continue
 			}
 			kept = append(kept, p)
 		}
-		s.approvals, s.stale = kept, nil
+		s.requests, s.stale = kept, nil
 		if changed {
 			s.revision++
 		}
 	}
 	for _, p := range pending {
-		if p.Kind == kernel.PendingApproval && s.addApproval(p) {
+		if (p.Kind == kernel.PendingApproval || p.Kind == kernel.PendingAsk) && s.addRequest(p) {
 			changed = true
 		}
 	}
@@ -368,22 +380,32 @@ func (s *State) takePending(pending []kernel.PendingRequest) bool {
 func (s *State) ApplyApproval(n kernel.ApprovalRequested) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.addApproval(kernel.PendingRequest{
+	return s.addRequest(kernel.PendingRequest{
 		Kind: kernel.PendingApproval, RequestID: n.RequestID, ID: n.ID,
 		Tool: n.Tool, Args: n.Args, Options: n.Options, ScopeHint: n.ScopeHint,
 	})
 }
 
-func (s *State) addApproval(p kernel.PendingRequest) bool {
-	if s.answered[p.RequestID] || slices.ContainsFunc(s.approvals, func(q kernel.PendingRequest) bool { return q.RequestID == p.RequestID }) {
+// ApplyAsk takes ask.requested.
+func (s *State) ApplyAsk(n kernel.AskRequested) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.addRequest(kernel.PendingRequest{
+		Kind: kernel.PendingAsk, RequestID: n.RequestID, ID: n.ID,
+		Questions: n.Questions, Context: n.Context, Blocking: n.Blocking,
+	})
+}
+
+func (s *State) addRequest(p kernel.PendingRequest) bool {
+	if s.answered[p.RequestID] || slices.ContainsFunc(s.requests, func(q kernel.PendingRequest) bool { return q.RequestID == p.RequestID }) {
 		return false
 	}
-	s.approvals = append(slices.Clip(s.approvals), p)
+	s.requests = append(slices.Clip(s.requests), p)
 	s.revision++
 	return true
 }
 
-// ApplyResolved takes approval.resolved: the card goes, whoever answered.
+// ApplyResolved takes approval.resolved and ask.resolved: the card goes, whoever answered.
 func (s *State) ApplyResolved(requestID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -391,11 +413,11 @@ func (s *State) ApplyResolved(requestID string) bool {
 		s.answered = map[string]bool{}
 	}
 	s.answered[requestID] = true
-	i := slices.IndexFunc(s.approvals, func(q kernel.PendingRequest) bool { return q.RequestID == requestID })
+	i := slices.IndexFunc(s.requests, func(q kernel.PendingRequest) bool { return q.RequestID == requestID })
 	if i < 0 {
 		return false
 	}
-	s.approvals = slices.Delete(slices.Clone(s.approvals), i, i+1)
+	s.requests = slices.Delete(slices.Clone(s.requests), i, i+1)
 	s.revision++
 	return true
 }
@@ -975,6 +997,16 @@ func (st *Store) ApplyApproval(gen int64, n kernel.ApprovalRequested) bool {
 
 // ApplyResolved routes approval.resolved.
 func (st *Store) ApplyResolved(gen int64, n kernel.ApprovalResolved) bool {
+	return st.applyTo(gen, n.ID, func(s *State) bool { return s.ApplyResolved(n.RequestID) })
+}
+
+// ApplyAsk routes ask.requested, as ApplyApproval does an approval.
+func (st *Store) ApplyAsk(gen int64, n kernel.AskRequested) bool {
+	return st.applyTo(gen, n.ID, func(s *State) bool { return s.ApplyAsk(n) })
+}
+
+// ApplyAskResolved routes ask.resolved.
+func (st *Store) ApplyAskResolved(gen int64, n kernel.AskResolved) bool {
 	return st.applyTo(gen, n.ID, func(s *State) bool { return s.ApplyResolved(n.RequestID) })
 }
 

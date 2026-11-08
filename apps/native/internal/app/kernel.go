@@ -149,6 +149,14 @@ func (k *kernelConn) RespondApproval(ctx context.Context, p kernel.ApprovalRespo
 	return c.RespondApproval(ctx, p)
 }
 
+func (k *kernelConn) RespondAsk(ctx context.Context, p kernel.AskRespondParams) (kernel.Status, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.Status{}, err
+	}
+	return c.RespondAsk(ctx, p)
+}
+
 func (k *kernelConn) UpdateIndex(ctx context.Context, p kernel.IndexUpdateParams) error {
 	c, err := k.client()
 	if err != nil {
@@ -264,6 +272,21 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				var res kernel.ApprovalResolved
 				if n.Decode(&res) == nil {
 					a.sessions.ApplyResolved(gen, res)
+					a.awaitApproval(res.ID, res.RequestID, false)
+				}
+			case kernel.NotifyAskRequested:
+				var req kernel.AskRequested
+				if n.Decode(&req) == nil {
+					a.sessions.ApplyAsk(gen, req)
+					// A question the agent works on past does not hold the Session.
+					if req.Blocking {
+						a.awaitApproval(req.ID, req.RequestID, true)
+					}
+				}
+			case kernel.NotifyAskResolved:
+				var res kernel.AskResolved
+				if n.Decode(&res) == nil {
+					a.sessions.ApplyAskResolved(gen, res)
 					a.awaitApproval(res.ID, res.RequestID, false)
 				}
 			case kernel.NotifyPolicyChanged:

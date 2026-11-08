@@ -111,7 +111,7 @@ func (s *Snapshot) WorkingState() protocol.DroidWorkingState {
 	if s.Session != nil {
 		return s.Session.WorkingState()
 	}
-	if s.State != nil && len(s.State.Approvals()) > 0 {
+	if s.State != nil && (len(s.State.Approvals()) > 0 || len(BlockingAsks(s.State.Asks())) > 0) {
 		return protocol.DroidWorkingStateWaitingForToolConfirmation
 	}
 	if s.Running {

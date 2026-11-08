@@ -74,3 +74,22 @@ func TestAFailedReopenKeepsTheCards(t *testing.T) {
 		t.Fatalf("approvals = %v, want [old]", got)
 	}
 }
+
+// Questions live beside approvals: each list holds its own kind, and an answer takes either.
+func TestQuestionsAndApprovalsAreKeptApart(t *testing.T) {
+	s := NewState(7)
+	s.ApplyApproval(kernel.ApprovalRequested{RequestID: "a", ID: 7})
+	s.ApplyAsk(kernel.AskRequested{RequestID: "q", ID: 7, Blocking: true})
+	s.takePending([]kernel.PendingRequest{{Kind: kernel.PendingAsk, RequestID: "later", ID: 7}})
+	if got := approvalIDs(s); len(got) != 1 || got[0] != "a" {
+		t.Fatalf("approvals = %v", got)
+	}
+	asks := s.Asks()
+	if len(asks) != 2 || asks[0].RequestID != "q" || len(BlockingAsks(asks)) != 1 || len(QueuedAsks(asks)) != 1 {
+		t.Fatalf("asks = %+v", asks)
+	}
+	s.ApplyResolved("q")
+	if len(s.Asks()) != 1 {
+		t.Fatalf("asks after the answer = %+v", s.Asks())
+	}
+}

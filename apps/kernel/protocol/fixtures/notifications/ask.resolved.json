@@ -14,7 +14,8 @@
           "text": null
         }
       ],
-      "cancelled": false
+      "cancelled": false,
+      "by": "window"
     }
   }
 }

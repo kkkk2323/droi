@@ -9,6 +9,8 @@ import { type KernelConfig } from './config.ts'
 import { codingTools } from './extensions/coding.ts'
 import { approvalExtension } from './extensions/approval.ts'
 import { Approvals } from './policy/approvals.ts'
+import { askExtension } from './extensions/ask.ts'
+import { Asks } from './ask/asks.ts'
 import { PolicyStore } from './policy/store.ts'
 import { resourcesExtension } from './extensions/resources.ts'
 import { DisabledSkills } from './resources/disabled.ts'
@@ -39,7 +41,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   images: true,
   processes: false,
   approvals: true,
-  asks: false,
+  asks: true,
   mcp: false,
   skills: true,
   codemode: false,
@@ -115,10 +117,13 @@ export async function startKernel(
       userDir: config.userDir,
       disabled: () => disabledSkills?.names() ?? new Set(),
     })
+    let asks: Asks | undefined
+    const askTool = askExtension(() => asks)
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
     registry.install(approvalHook)
     registry.install(resources)
+    registry.install(askTool)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -128,7 +133,13 @@ export async function startKernel(
     })
 
     const settings: HarnessSettings = {
-      extensions: [coding.extension, approvalHook, resources, ...(options.extensions ?? [])],
+      extensions: [
+        coding.extension,
+        approvalHook,
+        resources,
+        askTool,
+        ...(options.extensions ?? []),
+      ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
       // own, and on Windows each costs about 16 ms, so they stay at Pi's defaults, not faster.
       ...(config.progress === undefined ? {} : { progress: config.progress }),
@@ -222,10 +233,26 @@ export async function startKernel(
       context,
     })
 
+    asks = new Asks({
+      harness,
+      db,
+      notify: (method, payload) => server?.broadcast(method, payload),
+      submitted: async (id) => {
+        await kernel?.track(id)
+        await kernel?.refreshBusy(id)
+      },
+      ...(config.approvalTimeoutMs === undefined ? {} : { timeoutMs: config.approvalTimeoutMs }),
+      context,
+    })
+    // A read-only viewer lists no waiting cards (`conversation.open` leaves them to the process that drives
+    // the conversation), so it has no questions to take back.
+    if (!config.readOnly) await asks.open()
+
     kernel = new Kernel({
       config,
       policy,
       approvals,
+      asks,
       db,
       storage,
       harness,
@@ -249,7 +276,7 @@ export async function startKernel(
 
     // After a crash, close the questions the dead process left waiting before anything resumes. A
     // read-only viewer writes nothing, so it leaves them as it found them.
-    if (!config.readOnly) await reconcilePending(harness, context)
+    if (!config.readOnly) await reconcilePending(harness, context, asks.openIds())
 
     server = serve({
       host: config.host,
