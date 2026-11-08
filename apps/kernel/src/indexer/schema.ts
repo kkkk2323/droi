@@ -1,7 +1,7 @@
 import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
 
 /** The shape of the index's own tables. A different value clears the caches and rebuilds them. */
-export const INDEX_VERSION = '3'
+export const INDEX_VERSION = '4'
 
 /**
  * Droi's own tables, in the same SQLite file as Pi's (`pi_` prefix), so a conversation's metadata and
@@ -14,6 +14,11 @@ export const INDEX_VERSION = '3'
  * a single token. Trigram indexes every three-character sequence instead, so `text LIKE '%…%'` is answered
  * by the index — for Chinese, Japanese and Korean as well as for English, where it also matches inside a
  * word (parseConfig for "seConfig").
+ *
+ * Trigram cannot answer a term of two characters, and two characters is the common Chinese word (内存, 配置).
+ * `droi_entries_bigrams` answers those: each run of Chinese, Japanese or Korean in an entry, as the overlapping
+ * pairs of its characters, one token each (`unicode61` splits on the spaces between them). A two-character term in
+ * those scripts is then one token to match, over the whole history.
  *
  * `droi_index_watermarks` remembers, **per conversation**, the highest entry ID whose text is indexed. Per
  * conversation, not one number: a single number would have to advance past every conversation at once, and
@@ -84,6 +89,11 @@ const statements = [
     conversation UNINDEXED,
     tokenize = 'trigram'
   )`,
+  `CREATE VIRTUAL TABLE IF NOT EXISTS droi_entries_bigrams USING fts5(
+    grams,
+    conversation UNINDEXED,
+    tokenize = 'unicode61'
+  )`,
 ]
 
 /** The tokenizer the index was built with; a database built another way is rebuilt. */
@@ -147,6 +157,7 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
   // One connection and one transaction: either the whole reset lands or none of it does.
   const reset = async (tx: SqliteExecutor): Promise<void> => {
     await tx.exec('DELETE FROM droi_entries_fts')
+    await tx.exec('DELETE FROM droi_entries_bigrams')
     await tx.exec('DELETE FROM droi_index_watermarks')
     await tx.exec('DELETE FROM droi_requests')
     // An import key is rebuilt from the `droi.import` entries the catch-up then re-reads, so this cache goes

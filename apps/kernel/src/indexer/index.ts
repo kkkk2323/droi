@@ -69,6 +69,15 @@ type PendingRow = {
   eventAt?: number
 }
 
+/** An entry `history_search` found: its kind and time when the transcript still has it. */
+export type HistoryHit = {
+  entryId: number
+  text: string
+  conversation: ConversationRow
+  kind?: string
+  at?: number
+}
+
 /** One indexed entry, with what an import memo carries for the key cache. */
 type PendingEntry = {
   id: number
@@ -565,6 +574,15 @@ export class Indexer {
           entry.text,
           entry.conversation,
         )
+        const grams = bigrams(entry.text)
+        if (grams !== '') {
+          await tx.run(
+            'INSERT OR REPLACE INTO droi_entries_bigrams (rowid, grams, conversation) VALUES (?, ?, ?)',
+            entry.id,
+            grams,
+            entry.conversation,
+          )
+        }
       }
       for (const [conversationId, entryId] of next) {
         await tx.run(
@@ -913,6 +931,76 @@ export class Indexer {
   }
 
   /**
+   * The newest entries that hold every word of `text`, at most `limit`, for `history_search`: the entry, its kind,
+   * when it was written, its text and its conversation's row. Memory's own conversations are left out, and so are
+   * Automation and Workstream runs and the conversations another one owns (subagents, Workstream agents) unless
+   * `include` names them; `leftOut` counts the conversations that matched but were left out that way.
+   */
+  async history(query: {
+    text: string
+    limit: number
+    exclude?: number
+    include?: readonly ('automations' | 'workstreams' | 'subagents')[]
+  }): Promise<{ hits: HistoryHit[]; leftOut: number }> {
+    await this.flush()
+    const words = searchWords(query.text)
+    if (words.length === 0) return { hits: [], leftOut: 0 }
+    const include = new Set(query.include ?? [])
+    const hidden: string[] = []
+    // IFNULL: a conversation without a kind is a person's own, and NOT (NULL = ...) would drop it.
+    if (!include.has('automations')) hidden.push("IFNULL(kind, '') = 'automation'")
+    if (!include.has('workstreams')) hidden.push("IFNULL(kind, '') = 'workstream'")
+    if (!include.has('subagents')) hidden.push('owner_id IS NOT NULL')
+    const searched = ["IFNULL(kind, '') <> 'memory'"]
+    const params: number[] = []
+    if (query.exclude !== undefined) {
+      searched.push('id <> ?')
+      params.push(query.exclude)
+    }
+    const shown = hidden.length === 0 ? '1' : `NOT (${hidden.join(' OR ')})`
+    const { clauses, values } = likeClauses(words)
+    const matching = (conversations: string) =>
+      `FROM droi_entries_fts WHERE ${clauses.join(' AND ')}
+         AND conversation IN (SELECT id FROM droi_conversations WHERE ${searched.join(' AND ')} AND ${conversations})`
+    const found = await this.#db.all<{ rowid: number; text: string; conversation: number }>(
+      `SELECT rowid, text, conversation ${matching(shown)} ORDER BY rowid DESC LIMIT ?`,
+      ...values,
+      ...params,
+      query.limit,
+    )
+    const leftOut =
+      hidden.length === 0
+        ? 0
+        : ((
+            await this.#db.get<{ count: number }>(
+              `SELECT COUNT(DISTINCT conversation) AS count ${matching(`(${hidden.join(' OR ')})`)}`,
+              ...values,
+              ...params,
+            )
+          )?.count ?? 0)
+    const rows = new Map<number, ConversationRow>()
+    for (const id of new Set(found.map((hit) => hit.conversation))) {
+      const row = await this.conversation(id)
+      if (row !== undefined) rows.set(id, row)
+    }
+    const hits: HistoryHit[] = []
+    for (const hit of found) {
+      const conversation = rows.get(hit.conversation)
+      if (conversation === undefined) continue
+      const stored = await this.#storage.entry(hit.rowid as never, context)
+      const at = stored === undefined ? undefined : entryTimestamp(stored.entry)
+      hits.push({
+        entryId: hit.rowid,
+        text: hit.text,
+        conversation,
+        ...(stored === undefined ? {} : { kind: stored.entry.kind }),
+        ...(at === undefined ? {} : { at }),
+      })
+    }
+    return { hits, leftOut }
+  }
+
+  /**
    * Work out the repository of every conversation that has a `workspace` but no `repo_root` yet: the
    * rows a build before this one wrote, and the rows a rebuilt index has just recomputed.
    *
@@ -1137,11 +1225,34 @@ export function escapeLike(word: string): string {
   return word.replace(/[\\%_]/g, (character) => `\\${character}`)
 }
 
+/** A run of the scripts that put no spaces between words. */
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu
+
+/** Whether a word is two characters of those scripts, which `droi_entries_bigrams` answers. */
+export function isCjkPair(word: string): boolean {
+  const chars = [...word]
+  return chars.length === 2 && word.match(CJK)?.[0] === word
+}
+
+/**
+ * Every pair of neighbouring characters in each Chinese, Japanese or Korean run of `text`, once each, separated
+ * by spaces: what `droi_entries_bigrams` indexes. Case does not matter in these scripts, and nothing else is kept.
+ */
+export function bigrams(text: string): string {
+  const seen = new Set<string>()
+  for (const run of text.match(CJK) ?? []) {
+    const chars = [...run]
+    for (let i = 0; i + 1 < chars.length; i++) seen.add(chars[i]! + chars[i + 1]!)
+  }
+  return [...seen].join(' ')
+}
+
 /**
  * The SQL for a search: the words as LIKE patterns, and whether each needs the bounded scan.
  *
  * A word of three or more characters is answered by the trigram index (`text LIKE ?`, which the index
- * optimizes as `L0`). A shorter one cannot be, so its clause carries its own bound — the newest
+ * optimizes as `L0`). Two characters of Chinese, Japanese or Korean are one token of `droi_entries_bigrams`.
+ * Any other shorter word cannot be answered by an index, so its clause carries its own bound — the newest
  * `SHORT_TERM_WINDOW` rows — instead of reading the whole table.
  */
 export function likeClauses(words: readonly string[]): {
@@ -1154,6 +1265,9 @@ export function likeClauses(words: readonly string[]): {
     if ([...word].length >= 3) {
       clauses.push("text LIKE ? ESCAPE '\\'")
       values.push(`%${escapeLike(word)}%`)
+    } else if (isCjkPair(word)) {
+      clauses.push('rowid IN (SELECT rowid FROM droi_entries_bigrams WHERE grams MATCH ?)')
+      values.push(`"${word}"`)
     } else {
       // Bounded by **row count**, not by an ID arithmetic: Pi mints IDs for conversations, documents,
       // tasks and submissions too, so `MAX(rowid) - 50000` is not "the last 50,000 entries".

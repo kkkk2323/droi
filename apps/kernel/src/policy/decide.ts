@@ -35,6 +35,7 @@ const CLASSES: Readonly<Record<string, ToolClass>> = {
   memory_read: 'meta',
   memory_list: 'meta',
   memory_note: 'meta',
+  history_search: 'meta',
 }
 
 /** The tools whose `command` argument is a command line. */

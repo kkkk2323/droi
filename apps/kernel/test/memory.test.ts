@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import type { ToolRegistration } from '@earendil-works/pi-durable'
-import { MEMORY_SECTION, memoryExtension } from '../src/extensions/memory.ts'
+import { MEMORY_SECTION, historyText, memoryExtension } from '../src/extensions/memory.ts'
 import { memoryContext, writeNote } from '../src/memory/folder.ts'
 import { decide } from '../src/policy/decide.ts'
 import { memoryDirFromEnv } from '../src/config.ts'
@@ -289,10 +289,13 @@ describe("a conversation's Memory", () => {
       await kernel.stop()
     }
     cleanups.push(stop)
-    const create = async () =>
-      (await client.call('conversation.create', { agent: { model: faux.model, cwd: dataDir } }))[
-        'conversationId'
-      ] as number
+    const create = async (kind?: string) =>
+      (
+        await client.call('conversation.create', {
+          agent: { model: faux.model, cwd: dataDir },
+          ...(kind === undefined ? {} : { kind }),
+        })
+      )['conversationId'] as number
     const ask = async (id: number, input: string) => {
       const before = seen.length
       await client.call('conversation.submit', { id, input })
@@ -395,6 +398,94 @@ describe("a conversation's Memory", () => {
     await again.ask(id, 'after the compaction')
     expect(again.seen.at(-1)!.memory).toContain('A changed developer.')
   }, 60_000)
+
+  test('history_search finds a two-character Chinese word in earlier conversations, newest first, the same each time', async () => {
+    const search = (args: Parameters<typeof fauxToolCall>[1]) => () =>
+      fauxAssistantMessage(fauxToolCall('history_search', args), { stopReason: 'toolUse' })
+    const done = () => fauxAssistantMessage('done')
+    const { seen, create, ask } = await boot(folder(), [
+      undefined as never,
+      undefined as never,
+      undefined as never,
+      search({ query: '内存' }),
+      done,
+      search({ query: '内存', include: ['automations'] }),
+      done,
+      search({ query: '内存' }),
+      done,
+      search({ query: 'kubernetes' }),
+      done,
+    ])
+    const older = await create()
+    await ask(older, '旧的决定：内存配置放在 config.ts')
+    const newer = await create()
+    await ask(newer, '这里记录了内存配置的决定: use parseConfig')
+    const automation = await create('automation')
+    await ask(automation, '自动化里的内存检查')
+    const current = await create()
+    /** The text of the last tool result the model was sent. */
+    const result = () => {
+      const messages = seen.at(-1)!.messages as { role: string; content?: { text?: string }[] }[]
+      const last = messages.filter((message) => message.role === 'toolResult').at(-1)
+      return (last?.content ?? []).map((part) => part.text ?? '').join('')
+    }
+
+    await ask(current, 'what did we decide about 内存?')
+    const first = result()
+    expect(first).toStartWith(
+      '2 messages in earlier conversations hold every word of "内存", newest first:\n',
+    )
+    expect(first.indexOf(`Conversation ${newer} `)).toBeLessThan(
+      first.indexOf(`Conversation ${older} `),
+    )
+    expect(first).toMatch(
+      /- entry \d+ · user · \d{4}-\d\d-\d\d \d\d:\d\d UTC: 这里记录了\*\*内存\*\*配置的决定: use parseConfig\n/,
+    )
+    expect(first).not.toContain(`Conversation ${automation} `)
+    expect(first).not.toContain(`Conversation ${current} `)
+    expect(first).toEndWith(
+      '\n1 more conversation matches among Automation runs, Workstream runs and subagents; include names them.\n',
+    )
+
+    await ask(current, 'and in automations?')
+    const all = result()
+    expect(all).toContain(`Conversation ${automation} `)
+    expect(all).not.toContain('more conversation')
+
+    await ask(current, 'once more')
+    expect(result()).toBe(first)
+
+    await ask(current, 'kubernetes?')
+    expect(result()).toBe('Nothing in earlier conversations matches "kubernetes".')
+  }, 60_000)
+
+  test('history_search answers at most 20 messages, each about 200 characters with its words marked', () => {
+    const conversation = { id: 7, title: 'Many', last_activity_at: Date.UTC(2026, 10, 1) } as never
+    const hits = Array.from({ length: 20 }, (_, i) => ({
+      entryId: 100 - i,
+      text: `line ${i} about 内存`,
+      conversation,
+      kind: 'pi.assistant',
+      at: Date.UTC(2026, 10, 1, 9, 30),
+    }))
+    const text = historyText('内存', hits)
+    expect(text.split('\n').filter((line) => line.startsWith('- entry ')).length).toBe(20)
+    expect(text).toContain(
+      'Conversation 7 · 2026-11-01 · Many\n- entry 100 · assistant · 2026-11-01 09:30 UTC: line 0 about **内存**',
+    )
+    const long = historyText('Needle a.b', [
+      { entryId: 1, text: `${'a'.repeat(500)} needle a.b ${'b'.repeat(500)}`, conversation },
+    ])
+    const line = long.split('\n').find((l) => l.startsWith('- entry 1: '))!
+    expect(line).toContain(` **needle** **a.b** `)
+    expect(line.startsWith('- entry 1: …')).toBe(true)
+    expect(line.endsWith('…')).toBe(true)
+    // About 200 characters of text, plus the marks and the ellipses.
+    expect(Array.from(line.slice('- entry 1: '.length)).length).toBeLessThanOrEqual(200 + 8 + 2)
+    expect(historyText('x', [], 3)).toBe(
+      'Nothing in earlier conversations matches "x".\n\n3 more conversations match among Automation runs, Workstream runs and subagents; include names them.\n',
+    )
+  })
 
   test('with Memory off a conversation has no Memory and no Memory tools', async () => {
     const { seen, create, ask } = await boot(undefined)

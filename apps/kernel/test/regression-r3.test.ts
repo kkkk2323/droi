@@ -435,9 +435,10 @@ test('R3 short search counts entries rather than the gap in Pi global IDs', asyn
     await indexer.touch(2, 2, { createdAt: 2 })
     await indexer.flush()
     await db.run(
-      "INSERT INTO droi_entries_fts(rowid,text,conversation) VALUES(1,'古老内存记录',1),(100000,'newest entry',2)",
+      "INSERT INTO droi_entries_fts(rowid,text,conversation) VALUES(1,'an old db record',1),(100000,'newest entry',2)",
     )
-    const found = await indexer.list({ text: '内存' })
+    // Two Latin letters take the bounded scan; two Chinese characters have an index of their own (search.test.ts).
+    const found = await indexer.list({ text: 'db' })
     console.log('R3_SPARSE_SHORT_SEARCH', { entryCount: 2, found: found.items })
     expect(found.items.map((x) => x.id)).toContain(1)
   } finally {

@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { defineExtension, defineTool, section } from '@earendil-works/pi-durable'
 import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
-import { int, obj, opt, str } from '@earendil-works/pi-schema'
+import { arr, int, obj, oneOf, opt, str } from '@earendil-works/pi-schema'
+import type { HistoryHit, Indexer } from '../indexer/index.ts'
+import { searchWords } from '../indexer/index.ts'
 import {
   SESSION_SUMMARIES_DIR,
   list,
@@ -17,6 +19,8 @@ export type MemoryOptions = {
   dir: string
   /** A Session Summary was read: the Host counts it, so the summary does not age out. */
   onRead: (path: string, at: Date) => void
+  /** The index `history_search` reads; undefined until the Kernel has opened it. */
+  history?: () => Indexer | undefined
   now?: () => Date
 }
 
@@ -127,13 +131,118 @@ export function memoryExtension(options: MemoryOptions): Extension {
       )
     },
   })
+  const historySearch = defineTool({
+    name: 'history_search',
+    description:
+      "Search the words of earlier conversations on this computer, as they were said. Answer from the Memory Summary and the Session Summaries first (memory_search, memory_read); use this only when they do not settle the question, since it costs more. Answers the newest messages that hold every word, at most 20, each with its conversation, kind, time and an excerpt with the words marked. Automation and Workstream runs and subagents' conversations are left out unless include names them, and the answer says how many were.",
+    parameters: obj({
+      query: str({
+        description:
+          'Specific words, such as an error, a file name or a decision; all must appear. Two Chinese characters are a word.',
+      }),
+      include: opt(
+        arr(oneOf(['automations', 'workstreams', 'subagents']), {
+          description: 'Also search these conversations.',
+        }),
+      ),
+      limit: opt(int({ minimum: 1, maximum: 20, description: 'Default 20.' })),
+    }),
+    replay: 'safe',
+    callers: ['model'],
+    async execute(args, api) {
+      const index = options.history?.()
+      if (index === undefined) return answer('Earlier conversations cannot be searched yet.', true)
+      if (args.query.trim() === '') return answer('history_search needs a query.', true)
+      const { hits, leftOut } = await index.history({
+        text: args.query,
+        limit: bounded(args.limit, 20, 20),
+        exclude: api.conversationId as unknown as number,
+        ...(args.include === undefined ? {} : { include: args.include }),
+      })
+      return answer(historyText(args.query, hits, leftOut))
+    },
+  })
   return defineExtension({
     name: 'memory',
-    tools: [memorySearch, memoryRead, memoryList, memoryNote] as ToolRegistration[],
+    tools: [memorySearch, memoryRead, memoryList, memoryNote, historySearch] as ToolRegistration[],
     sections: [
       section(MEMORY_SECTION, ({ shown }) => shown[MEMORY_SECTION] ?? memoryContext(options.dir), {
         tag: false,
       }),
     ],
   })
+}
+
+/** How much of an entry an answer shows: about 200 characters around the first word it holds. */
+const BEFORE = 60
+const AFTER = 140
+
+/**
+ * The answer of `history_search`: the hits grouped by conversation, in the order the search gave them, and how many
+ * conversations matched but were left out.
+ */
+export function historyText(query: string, hits: readonly HistoryHit[], leftOut = 0): string {
+  const more =
+    leftOut === 0
+      ? ''
+      : `\n${leftOut} more ${leftOut === 1 ? 'conversation matches' : 'conversations match'} among Automation runs, Workstream runs and subagents; include names them.\n`
+  if (hits.length === 0)
+    return `Nothing in earlier conversations matches ${JSON.stringify(query)}.${more === '' ? '' : `\n${more}`}`
+  const words = searchWords(query)
+  const groups = new Map<number, string[]>()
+  const heads = new Map<number, string>()
+  for (const hit of hits) {
+    const c = hit.conversation
+    if (!heads.has(c.id)) {
+      heads.set(
+        c.id,
+        `Conversation ${c.id} · ${day(c.last_activity_at)} · ${c.title ?? '(untitled)'}`,
+      )
+      groups.set(c.id, [])
+    }
+    const about = [
+      `entry ${hit.entryId}`,
+      ...(hit.kind === undefined ? [] : [hit.kind.replace(/^pi\./, '')]),
+      ...(hit.at === undefined ? [] : [minute(hit.at)]),
+    ].join(' · ')
+    groups.get(c.id)!.push(`- ${about}: ${excerpt(hit.text, words)}`)
+  }
+  let out = `${hits.length} messages in earlier conversations hold every word of ${JSON.stringify(query)}, newest first:\n`
+  for (const [id, lines] of groups) out += `\n${heads.get(id)}\n${lines.join('\n')}\n`
+  return out + more
+}
+
+function day(at: number): string {
+  return new Date(at).toISOString().slice(0, 10)
+}
+
+function minute(at: number): string {
+  return `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
+/**
+ * The text around the first of `words` it holds, on one line, with an ellipsis where it was cut and every word
+ * marked as **word**.
+ */
+function excerpt(text: string, words: readonly string[]): string {
+  const lower = text.toLowerCase()
+  const found = words.map((word) => lower.indexOf(word.toLowerCase())).filter((index) => index >= 0)
+  const at = found.length === 0 ? 0 : Math.min(...found)
+  const chars = Array.from(text)
+  // The index is in UTF-16 units; the cut is in characters, so a surrogate pair is never split.
+  const start = Math.max(0, Array.from(text.slice(0, at)).length - BEFORE)
+  const end = Math.min(chars.length, start + BEFORE + AFTER)
+  const middle = chars
+    .slice(start, end)
+    .join('')
+    .split(/\s+/)
+    .filter((part) => part !== '')
+    .join(' ')
+  // Longest first, so a word inside another is marked once, as part of the longer one.
+  const pattern = [...words]
+    .sort((a, b) => b.length - a.length)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
+  const marked = pattern === '' ? middle : middle.replace(new RegExp(pattern, 'giu'), '**$&**')
+  return `${start > 0 ? '…' : ''}${marked}${end < chars.length ? '…' : ''}`
 }
