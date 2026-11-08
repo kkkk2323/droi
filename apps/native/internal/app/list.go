@@ -119,6 +119,10 @@ func (a *App) startList() uint64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.listGen++
+	if a.reading == nil {
+		a.reading = map[uint64]uint64{}
+	}
+	a.reading[a.listGen] = a.indexSeq
 	return a.listGen
 }
 
@@ -128,6 +132,13 @@ func (a *App) startList() uint64 {
 func (a *App) setList(gen uint64, page []sessions.Summary, edge int64, more bool, err error) *olderPages {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	from := a.reading[gen]
+	delete(a.reading, gen)
+	defer func() {
+		if len(a.reading) == 0 {
+			a.indexLog = nil
+		}
+	}()
 	if gen != a.listGen {
 		return nil
 	}
@@ -145,6 +156,7 @@ func (a *App) setList(gen uint64, page []sessions.Summary, edge int64, more bool
 	a.listRev++
 	if !more {
 		a.listed = page
+		a.replayIndexLocked(from)
 		a.older = olderRead
 		a.olderGen++
 		a.keepList()

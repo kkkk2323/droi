@@ -10,6 +10,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
@@ -173,4 +174,92 @@ func TestANewSessionNeedsAUsableDirectory(t *testing.T) {
 	h.frame()
 	h.start("Hello")
 	h.until("the error", func() bool { return h.hasText("/no/such/place is not a usable directory.") })
+}
+
+// TestARefreshKeepsArchivedRowsShown: with archived Sessions shown, every read of the list has them, however
+// recent: a refresh (a new Session, a busy row the list did not have) does not drop them.
+func TestARefreshKeepsArchivedRowsShown(t *testing.T) {
+	h := kernelHarness(t)
+	c := h.testConn()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := c.Create(ctx, kernel.CreateParams{Cwd: h.kernel.k.Workspace, Kind: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archived := true
+	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: res.ConversationID, Title: kernel.TitleText("Recent archive"), Archived: &archived}); err != nil {
+		t.Fatal(err)
+	}
+	prefs.ShowArchived.Set(h.a.prefs, true)
+	h.a.reloadList()
+	id := res.ConversationID.String()
+	if findSummary(h.a.listedNow(), id) == nil {
+		t.Fatal("the archived conversation is not listed with archived Sessions shown")
+	}
+	h.a.refreshList()
+	if findSummary(h.a.listedNow(), id) == nil {
+		t.Fatal("a refresh dropped a recent archived row")
+	}
+}
+
+// TestAnUnarchivedRowComesBack: a row archived elsewhere leaves the list, and comes back when it is unarchived,
+// also one the window first heard of from Kernel, and one whose last activity puts it beyond the first page.
+func TestAnUnarchivedRowComesBack(t *testing.T) {
+	h := kernelHarness(t)
+	c := h.testConn()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	yes, no := true, false
+
+	res, err := c.Create(ctx, kernel.CreateParams{Cwd: h.kernel.k.Workspace, Kind: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: res.ConversationID, Title: kernel.TitleText("Made elsewhere")}); err != nil {
+		t.Fatal(err)
+	}
+	id := res.ConversationID.String()
+	h.until("the new row", func() bool { return findSummary(h.a.listedNow(), id) != nil })
+	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: res.ConversationID, Archived: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the archived row to leave", func() bool { return findSummary(h.a.listedNow(), id) == nil })
+	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: res.ConversationID, Archived: &no}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the unarchived row", func() bool { return findSummary(h.a.listedNow(), id) != nil })
+
+	old := time.Now().Add(-48 * time.Hour).UnixMilli()
+	imported, err := c.Import(ctx, kernel.ImportParams{Cwd: h.kernel.k.Workspace, Kind: "chat", Title: "An old archive",
+		CreatedAt: &old, Archived: &yes, Entries: []kernel.ImportEntry{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range kernelPage + 1 {
+		if _, err := c.Create(ctx, kernel.CreateParams{Cwd: h.kernel.k.Workspace, Kind: "chat"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h.a.reloadList()
+	if err := c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: imported.ConversationID, Archived: &no}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("the old unarchived row", func() bool { return findSummary(h.a.listedNow(), imported.ConversationID.String()) != nil })
+}
+
+// TestAnIndexChangeOutlivesARead: a read of the list answers with rows from before an index change that arrived
+// while it was out; the change is applied to them again, so an archived row does not come back.
+func TestAnIndexChangeOutlivesARead(t *testing.T) {
+	h := kernelHarness(t)
+	row := *findSummary(h.a.listedNow(), h.d.Sessions[0].SessionID)
+	conv, _ := h.a.kernelID(row.SessionID)
+	before := h.a.listedNow()
+	gen := h.a.startList()
+	archived := true
+	h.a.applyIndexChanged(kernel.IndexChanged{ID: conv, Archived: &archived, LastActivityAt: row.UpdatedAt * 1000})
+	h.a.setList(gen, slices.Clone(before), 0, false, nil)
+	if findSummary(h.a.listedNow(), row.SessionID) != nil {
+		t.Fatal("a read from before the archive brought the row back")
+	}
 }

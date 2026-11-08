@@ -1,12 +1,11 @@
 package app
 
-// The session list on Kernel: conversation.list's pages, mapped to the rows the sidebar draws, and kept up to date
-// by index.changed and conversation.busy without reading the list again.
+// The session list on Kernel: conversation.list read whole, mapped to the rows the sidebar draws, and kept up to
+// date by index.changed and conversation.busy without reading the list again.
 
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"slices"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
@@ -17,68 +16,45 @@ import (
 // maxListPages bounds a read of the whole list: a cursor that never ends must not keep the window reading.
 const maxListPages = 50
 
-// kernelPages are Kernel's list, through conversation.list. Kernel lists the live conversations or the archived
-// ones, never both, so with archived Sessions shown the pages after the first are the rest of the live ones and
-// then every archived one.
+// kernelPage is how many rows one conversation.list asks for: Kernel's own cap (limits.maxConversationsPerPage).
+const kernelPage = 200
+
+// kernelPages are Kernel's list, through conversation.list. Every read is the whole list, at once: Kernel lists the
+// live conversations or the archived ones, never both, and a row comes back to the list where its last activity
+// puts it (an unarchived one can be far down), so no part of an earlier read can stand for the rows a new one has
+// not reached yet. Kernel answers from one SQL table, so the whole list is a few calls.
 type kernelPages struct {
-	a      *App
-	c      *kernel.Client
-	show   bool
-	cursor json.RawMessage
+	a    *App
+	c    *kernel.Client
+	show bool
 }
 
 func (p *kernelPages) first(ctx context.Context) ([]sessions.Summary, int64, bool, error) {
-	res, err := p.c.List(ctx, kernel.ListParams{Limit: sessionPage})
+	read, err := p.read(ctx, kernel.ListParams{Limit: kernelPage})
 	if err != nil {
 		return nil, 0, false, err
 	}
-	page := p.a.kernelSummaries(res.Items)
-	more := len(res.Cursor) > 0 && len(res.Items) > 0
-	if more {
-		p.cursor = res.Cursor
-	}
-	if !more && !p.show {
-		return page, 0, false, nil
-	}
-	var edge int64
-	for i, s := range page {
-		if i == 0 || s.UpdatedAt < edge {
-			edge = s.UpdatedAt
-		}
-	}
-	return page, edge, true, nil
-}
-
-func (p *kernelPages) rest(ctx context.Context, stale func() bool) ([]sessions.Summary, error) {
-	var read []kernel.Summary
-	if p.cursor != nil {
-		items, err := p.read(ctx, kernel.ListParams{Limit: sessionPage, Cursor: p.cursor}, stale)
-		if err != nil || stale() {
-			return nil, err
-		}
-		read = append(read, items...)
-	}
 	if p.show {
 		archived := true
-		items, err := p.read(ctx, kernel.ListParams{Limit: sessionPage, Archived: &archived}, stale)
-		if err != nil || stale() {
-			return nil, err
+		more, err := p.read(ctx, kernel.ListParams{Limit: kernelPage, Archived: &archived})
+		if err != nil {
+			return nil, 0, false, err
 		}
-		read = append(read, items...)
+		read = append(read, more...)
 	}
-	return p.a.kernelSummaries(read), nil
+	return p.a.kernelSummaries(read), 0, false, nil
 }
 
+// rest is never asked for: first reads the whole list.
+func (p *kernelPages) rest(context.Context, func() bool) ([]sessions.Summary, error) { return nil, nil }
+
 // read reads the pages of a list from params' cursor on, to the end.
-func (p *kernelPages) read(ctx context.Context, params kernel.ListParams, stale func() bool) ([]kernel.Summary, error) {
+func (p *kernelPages) read(ctx context.Context, params kernel.ListParams) ([]kernel.Summary, error) {
 	var read []kernel.Summary
 	for range maxListPages {
 		res, err := p.c.List(ctx, params)
 		if err != nil {
 			return nil, err
-		}
-		if stale() {
-			return nil, nil
 		}
 		read = append(read, res.Items...)
 		if len(res.Cursor) == 0 || len(res.Items) == 0 || bytes.Equal(res.Cursor, params.Cursor) {
@@ -124,28 +100,51 @@ func (a *App) kernelSummary(s kernel.Summary) sessions.Summary {
 	return sum
 }
 
+// indexEvent is an index.changed the window applied while a read of the list was out: the read's rows are from
+// before it, so it is applied to them again when they land.
+type indexEvent struct {
+	seq uint64
+	n   kernel.IndexChanged
+}
+
 // applyIndexChanged moves a row as index.changed says: a new title, archived or not, a later activity. A
 // conversation the list does not have yet (made by another window, an Automation, or this one a moment ago) is
 // read with the list, once.
 func (a *App) applyIndexChanged(n kernel.IndexChanged) {
-	id := a.sessionIDOf(n.ID)
 	show := prefs.ShowArchived.Get(a.prefs)
-	hidden := n.Archived != nil && *n.Archived && !show
 	a.mu.Lock()
+	if len(a.reading) > 0 {
+		a.indexSeq++
+		a.indexLog = append(a.indexLog, indexEvent{seq: a.indexSeq, n: n})
+	}
+	read := a.applyIndexLocked(n, show)
+	a.mu.Unlock()
+	if read {
+		go a.refreshList()
+	}
+	a.redraw()
+}
+
+// applyIndexLocked is applyIndexChanged with a.mu held. It reports whether the list is to be read for the row.
+func (a *App) applyIndexLocked(n kernel.IndexChanged, show bool) bool {
+	id := a.sessionIDOf(n.ID)
+	hidden := n.Archived != nil && *n.Archived && !show
 	i := slices.IndexFunc(a.listed, func(s sessions.Summary) bool { return s.SessionID == id })
-	read := false
 	switch {
 	case i < 0:
-		read = a.listDone && !hidden && !a.asked[id]
-		if read {
-			if a.asked == nil {
-				a.asked = map[string]bool{}
-			}
-			a.asked[id] = true
+		if !a.listDone || hidden || a.asked[id] {
+			return false
 		}
+		if a.asked == nil {
+			a.asked = map[string]bool{}
+		}
+		a.asked[id] = true
+		return true
 	case hidden:
 		a.listed = slices.Delete(slices.Clone(a.listed), i, i+1)
 		a.listRev++
+		// It was a list row: unarchived, it is one again, and the list is read for it then.
+		delete(a.asked, id)
 	default:
 		list := slices.Clone(a.listed)
 		s := &list[i]
@@ -165,9 +164,16 @@ func (a *App) applyIndexChanged(n kernel.IndexChanged) {
 		a.listed = list
 		a.listRev++
 	}
-	a.mu.Unlock()
-	if read {
-		go a.refreshList()
+	return false
+}
+
+// replayIndexLocked applies again, to rows a read of the list started at from just put in place, the index changes
+// that arrived while it was out; and forgets the ones no read still out needs. a.mu is held.
+func (a *App) replayIndexLocked(from uint64) {
+	show := prefs.ShowArchived.Get(a.prefs)
+	for _, e := range a.indexLog {
+		if e.seq > from {
+			a.applyIndexLocked(e.n, show)
+		}
 	}
-	a.redraw()
 }
