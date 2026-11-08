@@ -34,6 +34,8 @@ export function config(dir: string, overrides: Partial<KernelConfig> = {}): Kern
     port: 0,
     host: '127.0.0.1',
     dataDir: dir,
+    // Never the person's own directory: a test that read `~/.droi` would depend on this machine.
+    userDir: join(dir, 'user'),
     readOnly: false,
     providers: [],
     // Tool calls run without asking unless a test is about asking: most tests are not about approvals.

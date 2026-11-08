@@ -45,6 +45,9 @@ import { ViewWindow, parseMode, parseWindow } from './watch.ts'
 import type { PolicyStore } from '../policy/store.ts'
 import { parsePolicyChange } from '../policy/store.ts'
 import type { Approvals } from '../policy/approvals.ts'
+import { loadResources, type LoadedResources } from '../resources/index.ts'
+import type { DisabledSkills } from '../resources/disabled.ts'
+import { expandSlash } from '../resources/expand.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
 export const context: Context = BACKGROUND_CONTEXT
@@ -75,6 +78,8 @@ export type KernelOptions = {
   indexer: Indexer
   models: MutableModels
   registry: Registry
+  /** The skills a person turned off. */
+  disabledSkills: DisabledSkills
   /** The tools this build offers, by name, for `harness.info`. */
   tools: string[]
   version: string
@@ -161,7 +166,9 @@ export class Kernel implements Dispatcher {
       }
     add('process.list', readOnlyAnswer({ processes: [] }))
     add('mcp.list', readOnlyAnswer({ servers: [] }))
-    add('skills.list', readOnlyAnswer({ skills: [] }))
+    add('skills.list', (p) => this.#skillsList(p))
+    add('skills.setDisabled', (p) => this.#skillsSetDisabled(p))
+    add('resources.list', (p) => this.#resourcesList(p))
     this.methods = handlers
   }
 
@@ -985,12 +992,15 @@ export class Kernel implements Dispatcher {
         if (known.submissionId !== undefined) return { submissionId: known.submissionId }
       }
     }
+    // After the memo: a retry is the same request even if a template changed since.
+    const input =
+      content === undefined ? undefined : await this.#expandCommand(conversation, content)
     const draft = (
       wantsContinue === true
         ? { type: 'continue' as const, requestId }
         : {
             type: 'input' as const,
-            content: content as never,
+            content: input as never,
             requestId,
             whenBusy: whenBusy as 'steer' | 'followUp' | 'reject' | undefined,
             whenIdle: whenIdle as 'reject' | undefined,
@@ -1027,6 +1037,24 @@ export class Kernel implements Dispatcher {
     await this.track(id)
     await this.refreshBusy(id)
     return { submissionId }
+  }
+
+  /**
+   * An input that starts with a slash command, expanded: a prompt template or a skill of the conversation's
+   * directories. Only the input's first text block is read; anything that names no command goes as it was.
+   */
+  async #expandCommand(conversation: Conversation, content: unknown): Promise<unknown> {
+    const first = typeof content === 'string' ? content : firstText(content)
+    if (first === undefined || !first.startsWith('/')) return content
+    const agent = await conversation.agent(context)
+    const loaded = loadResources({ userDir: this.#options.config.userDir, workspace: agent.cwd })
+    const expanded = expandSlash(first, loaded, this.#options.disabledSkills.names())
+    if (expanded === undefined) return content
+    if (typeof content === 'string') return expanded
+    const blocks = [...(content as { type: string; text?: string }[])]
+    const index = blocks.findIndex((block) => block.type === 'text')
+    blocks[index] = { ...blocks[index]!, text: expanded }
+    return blocks
   }
 
   async #abort(params: Record<string, unknown>): Promise<unknown> {
@@ -1295,6 +1323,78 @@ export class Kernel implements Dispatcher {
     }
     const status = await this.#options.harness.abortTask(taskId as never, context)
     return { status }
+  }
+
+  // ── skills.list, resources.list ──────────────────────────────────────────────────────────────
+
+  /**
+   * The skills this kernel can load, in the order a client shows them.
+   *
+   * Without `id` only the user's own directory is read; with one, that conversation's `cwd` decides the
+   * workspace half. Every call reads the files again: a skill a person just wrote is there on the next call,
+   * which is what "the files are the source of truth" has to mean.
+   */
+  async #skillsList(params: Record<string, unknown>): Promise<unknown> {
+    this.#readable()
+    const loaded = await this.#loadResources(params)
+    return { skills: this.#wireSkills(loaded) }
+  }
+
+  /** Turn a skill off or on again, by name: everywhere it is found, for every conversation. */
+  async #skillsSetDisabled(params: Record<string, unknown>): Promise<unknown> {
+    this.#writable()
+    const name = optionalString(params, 'name')
+    const disabled = optionalBoolean(params, 'disabled')
+    if (name === undefined || name === '') {
+      throw invalidParams([{ path: 'name', message: 'a skill name is required' }])
+    }
+    if (disabled === undefined) {
+      throw invalidParams([{ path: 'disabled', message: 'true or false is required' }])
+    }
+    await this.#options.disabledSkills.set(name, disabled)
+    return this.#skillsList({})
+  }
+
+  #wireSkills(loaded: LoadedResources): unknown[] {
+    const disabled = this.#options.disabledSkills.names()
+    return loaded.skills.map((skill) => ({
+      name: skill.name,
+      scope: skill.scope,
+      path: skill.path,
+      description: skill.description,
+      enabled: !disabled.has(skill.name),
+    }))
+  }
+
+  /**
+   * Everything the kernel would load for a conversation: its skills, the slash commands it expands, and the
+   * `AGENTS.md` chain in the order it is applied.
+   */
+  async #resourcesList(params: Record<string, unknown>): Promise<unknown> {
+    this.#readable()
+    const loaded = await this.#loadResources(params)
+    return {
+      skills: this.#wireSkills(loaded),
+      prompts: loaded.prompts.map((prompt) => ({
+        name: prompt.name,
+        scope: prompt.scope,
+        path: prompt.path,
+        ...(prompt.description === undefined ? {} : { description: prompt.description }),
+      })),
+      contextFiles: loaded.contextFiles.map((file) => ({ path: file.path, bytes: file.bytes })),
+    }
+  }
+
+  /** The files around one conversation, or around the user's own directory when no conversation is named. */
+  async #loadResources(params: Record<string, unknown>): Promise<LoadedResources> {
+    const id = optionalNumber(params, 'id')
+    let workspace: string | undefined
+    if (id !== undefined) {
+      const conversation = await this.#conversation(id)
+      const agent = await conversation.agent(context)
+      workspace = agent.cwd
+    }
+    return loadResources({ userDir: this.#options.config.userDir, workspace })
   }
 
   // ── index.update ──────────────────────────────────────────────────────────────────────────────
@@ -1692,13 +1792,11 @@ function normalize(value: unknown): unknown {
  */
 const GATED: Readonly<Record<string, string>> = {
   'model.complete': 'models',
-  'resources.list': 'resources',
   'process.stop': 'processes',
   'ask.respond': 'asks',
   'mcp.set': 'mcp',
   'mcp.authorize': 'mcp',
   'mcp.authorize.cancel': 'mcp',
-  'skills.setDisabled': 'skills',
 }
 
 function gateOf(method: string): string | undefined {
@@ -1750,6 +1848,15 @@ export function parseListCursor(
 }
 
 /** `input` as Pi takes it: a string, or text and image blocks. */
+/** The text of an input's first text block, when it opens with one. */
+function firstText(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined
+  const block = content.find((item: { type?: unknown }) => item.type === 'text') as
+    | { text?: unknown }
+    | undefined
+  return typeof block?.text === 'string' ? block.text : undefined
+}
+
 function parseInput(value: unknown): unknown {
   if (typeof value === 'string') return value
   if (!Array.isArray(value)) {

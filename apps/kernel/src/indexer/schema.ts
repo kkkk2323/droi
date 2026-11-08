@@ -74,6 +74,11 @@ const statements = [
     conversation_id INTEGER PRIMARY KEY,
     entry_id INTEGER NOT NULL
   )`,
+  // The skills a person turned off. A setting, not a cache: the reset below leaves it alone.
+  `CREATE TABLE IF NOT EXISTS droi_disabled_skills (
+    name TEXT PRIMARY KEY,
+    at INTEGER NOT NULL
+  )`,
   `CREATE VIRTUAL TABLE IF NOT EXISTS droi_entries_fts USING fts5(
     text,
     conversation UNINDEXED,

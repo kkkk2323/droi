@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { Policy } from './policy/decide.ts'
+import { homedir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 
 /** One provider the Host points the kernel at, and the models it may use. */
 export type ProviderConfig = {
@@ -33,6 +35,12 @@ export type KernelConfig = {
   port: number
   host: string
   dataDir: string
+  /**
+   * The user's own directory: personal skills, prompt templates and `AGENTS.md`, and later the global
+   * `mcp.json`. The Host passes it in `DROI_USER_DIR` because the brand decides the path; without it the
+   * kernel uses `~/.droi`, so a kernel started by hand still finds them.
+   */
+  userDir: string
   readOnly: boolean
   providers: ProviderConfig[]
   /**
@@ -194,6 +202,17 @@ function parseAgentDefaults(value: unknown): AgentDefaults | undefined {
   }
 }
 
+/**
+ * The user's own directory: `DROI_USER_DIR` when the Host set it, else `~/.droi` — the brand's folder,
+ * which is also where the Host keeps its scratch conversations. A relative path is refused: the kernel's own
+ * working directory is not a place to write files into.
+ */
+export function userDirFromEnv(env: NodeJS.ProcessEnv = process.env): string {
+  const given = env['DROI_USER_DIR']
+  if (given === undefined || given.trim() === '') return join(homedir(), '.droi')
+  if (!isAbsolute(given)) throw new Error(`DROI_USER_DIR must be an absolute path, not ${given}`)
+  return given
+}
 /** Read the config file, or the empty config when there is none. */
 export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): KernelConfig {
   let file: Partial<KernelConfig> = {}
@@ -208,6 +227,7 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     port: args.port,
     host: args.host,
     dataDir: args.dataDir,
+    userDir: userDirFromEnv(env),
     readOnly: args.readOnly,
     // The environment wins: it exists for a test that has no file to write.
     providers: fromEnv ?? validateProviders(file.providers ?? []),

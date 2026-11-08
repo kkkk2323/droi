@@ -456,9 +456,10 @@ Three qualifications a client that reads a range needs:
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
-M1 answers the M3 methods still: `process.list` returns `{"processes":[]}`,
-`mcp.list` and `skills.list` return an empty list, and `policy.set`, `resources.list`, the write
-methods and the two `*.respond` methods are `-32009` until their capability is true. `model.complete` is built: it reports
+The M3 methods not built yet still answer their M1 shape: `process.list` returns `{"processes":[]}`,
+`mcp.list` returns an empty list, and `policy.set`, the write methods and the two `*.respond` methods are
+`-32009` until their capability is true. `skills.list`, `skills.setDisabled` and `resources.list` are built
+(`skills` and `resources` are true). `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
 
@@ -908,6 +909,22 @@ them, and never reads them itself.
 
 The slash commands the kernel expands are exactly `prompts[].name` and `skills[].name`. A client's own
 commands (a new conversation, a compaction, a model change) never reach the kernel.
+
+`conversation.submit` expands an input whose first text block is `/name args`: a prompt template's body with
+`$1`…`$n`, `$@`/`$ARGUMENTS`, `${N:-default}` and `${@:N[:L]}` filled from the arguments (split like a shell),
+or, for a skill, the skill's instructions in a `<skill name=… location=…>` block followed by the arguments.
+Templates are looked up first; a disabled skill, and anything that names no command (`/usr/bin …`), goes as
+typed. A `requestId` is matched against the input as typed, so a retry is the same request after a template
+changed.
+
+Every request carries two system prompt sections built from the same files: `skills` lists the enabled skills
+the model may load (not those whose frontmatter says `disable-model-invocation: true`), each with its
+`SKILL.md` path, and `project-context` carries the `AGENTS.md` chain, broadest first, up to 32 KiB; a file past
+the limit is cut and the rest named. Both are read again before each request.
+
+`skills.setDisabled {name, disabled}` turns a skill off by name, wherever it is found, and answers
+`skills.list`. It is a setting the kernel keeps in its database (not a cache: an index reset keeps it); a
+read-only kernel refuses it with `-32008`. `skills.list` takes the same optional `id` as `resources.list`.
 
 ## Notifications
 
