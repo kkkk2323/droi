@@ -18,6 +18,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/alerts"
 	"github.com/kkkk2323/droi/apps/native/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/internal/titles"
 	"github.com/kkkk2323/droi/apps/native/internal/updates"
 	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
@@ -282,6 +283,9 @@ type App struct {
 	// kernelAlerts follows the busy and idle of Kernel's conversations, as watchAlerts follows the Daemon's
 	// working states.
 	kernelAlerts *alerts.Tracker
+	// titles names the conversations a person started once their first round ends. It belongs with the Host,
+	// and moves there when the Host holds the Kernel connection itself.
+	titles *titles.Manager
 	// loops are the Daemon's loops. Guarded by mu.
 	loops loopsState
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
@@ -327,6 +331,7 @@ func New(cfg Config) *App {
 		sessions:     sessionview.NewStore(keptViews),
 		kernelAlerts: alerts.NewTracker(),
 	}
+	a.titles = titles.New(titles.Config{Source: &a.kernel, TitleSource: a.titleSource})
 	a.unsubscribe = append(a.unsubscribe, a.sessions.Subscribe(func(kernel.ID) { a.redraw() }))
 	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update}
 	pickFolder := a.pickFolder

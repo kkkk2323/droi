@@ -141,6 +141,34 @@ func (k *kernelConn) StopProcess(ctx context.Context, p kernel.StopProcessParams
 	return c.StopProcess(ctx, p)
 }
 
+func (k *kernelConn) UpdateIndex(ctx context.Context, p kernel.IndexUpdateParams) error {
+	c, err := k.client()
+	if err != nil {
+		return err
+	}
+	return c.UpdateIndex(ctx, p)
+}
+
+func (k *kernelConn) ModelComplete(ctx context.Context, p kernel.ModelCompleteParams) (kernel.ModelCompleteResult, error) {
+	c, err := k.client()
+	if err != nil {
+		return kernel.ModelCompleteResult{}, err
+	}
+	return c.ModelComplete(ctx, p)
+}
+
+// titleSource is titles.Config.TitleSource: where the title of a conversation the list holds came from. Only a
+// conversation a person started in a chat or a Scratch folder is named; Automations and Workstreams name their own.
+func (a *App) titleSource(_ context.Context, conv kernel.ID) (string, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	s := findSummary(a.listed, a.sessionIDOf(conv))
+	if s == nil || (s.Kind != "chat" && s.Kind != "scratch") {
+		return "", false
+	}
+	return s.TitleSource, true
+}
+
 // UseKernel hands the App the Kernel connection of generation gen: the Host calls it on every connect and
 // reconnect, from any goroutine. The pages' calls go to it from now on, the conversations they have open are
 // opened again on it, and its pushes reach them. A generation older than the one in use is ignored.
@@ -200,6 +228,7 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				if n.Decode(&busy) == nil {
 					a.sessions.ApplyBusy(gen, busy)
 					a.alertBusy(busy)
+					a.titles.Busy(a.ctx, busy)
 				}
 			case kernel.NotifyIndexChanged:
 				var changed kernel.IndexChanged

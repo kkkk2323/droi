@@ -89,13 +89,14 @@ func (a *App) kernelSummaries(items []kernel.Summary) []sessions.Summary {
 
 func (a *App) kernelSummary(s kernel.Summary) sessions.Summary {
 	sum := sessions.Summary{
-		SessionID: a.sessionIDOf(s.ID),
-		Title:     trimOr(s.Title, L("Untitled session")),
-		Cwd:       s.Workspace,
-		RepoRoot:  s.RepoRoot,
-		UpdatedAt: max(s.LastActivityAt, s.CreatedAt) / 1000,
-		Kind:      s.Kind,
-		Preview:   s.Preview,
+		SessionID:   a.sessionIDOf(s.ID),
+		Title:       trimOr(s.Title, L("Untitled session")),
+		Cwd:         s.Workspace,
+		RepoRoot:    s.RepoRoot,
+		UpdatedAt:   max(s.LastActivityAt, s.CreatedAt) / 1000,
+		Kind:        s.Kind,
+		Preview:     s.Preview,
+		TitleSource: s.TitleSource,
 	}
 	if s.Archived {
 		sum.ArchivedAt = "archived"
@@ -157,7 +158,7 @@ func (a *App) applyIndexLocked(n kernel.IndexChanged, show bool) bool {
 	default:
 		list := slices.Clone(a.listed)
 		s := &list[i]
-		s.Title = L("Untitled session")
+		s.Title, s.TitleSource = L("Untitled session"), n.TitleSource
 		if n.Title != nil {
 			s.Title = trimOr(*n.Title, s.Title)
 		}
