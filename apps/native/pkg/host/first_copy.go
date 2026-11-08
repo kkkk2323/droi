@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 )
@@ -30,6 +32,10 @@ type FirstCopy struct {
 	// Skipped names what could not be copied and was left out on purpose: a
 	// link that points nowhere, a device. Paths are relative to ~/.factory.
 	Skipped []string
+	// Differs names what both folders have, with different contents: Droi's
+	// was kept, and ReplaceFromFactoryHome takes droid's in its place when the
+	// user chooses that. Paths are relative to ~/.factory.
+	Differs []string
 }
 
 // Empty reports that nothing was copied: everything was already Droi's, which
@@ -75,9 +81,12 @@ func ImportFactoryHome(factoryDir, userDir string) (FirstCopy, error) {
 		errs = append(errs, err)
 	}
 	for _, name := range []string{"mcp.json", "AGENTS.md"} {
-		ok, err := copyFileIfAbsent(filepath.Join(factoryDir, name), filepath.Join(userDir, name))
+		ok, differs, err := copyFileIfAbsent(filepath.Join(factoryDir, name), filepath.Join(userDir, name))
 		if err != nil {
 			errs = append(errs, err)
+		}
+		if differs {
+			copied.Differs = append(copied.Differs, name)
 		}
 		if name == "mcp.json" {
 			copied.MCP = ok
@@ -106,6 +115,12 @@ func (h *Host) ImportFactoryHome() (FirstCopy, error) {
 	return ImportFactoryHome(filepath.Join(h.cfg.Home, ".factory"), brand.UserFolder(h.cfg.Home))
 }
 
+// ReplaceFromFactoryHome is Settings' answer to what the import found different: droid's copies of names in
+// place of Droi's, which move into the folder it answers.
+func (h *Host) ReplaceFromFactoryHome(names []string) (string, error) {
+	return ReplaceFromFactoryHome(filepath.Join(h.cfg.Home, ".factory"), brand.UserFolder(h.cfg.Home), names, time.Now())
+}
+
 // copySkills copies each skill under factoryDir/skills that dst does not have.
 // A skill is one entry of that folder — a folder with its SKILL.md, or a single
 // file — and is copied whole or not at all: it is written beside its place and
@@ -131,10 +146,13 @@ func copySkills(factoryDir, dst string, copied *FirstCopy) error {
 			continue
 		}
 		target := filepath.Join(dst, name)
+		from := filepath.Join(src, name)
 		if _, err := os.Lstat(target); err == nil {
+			if !sameContent(from, target, 0) {
+				copied.Differs = append(copied.Differs, filepath.Join("skills", name))
+			}
 			continue
 		}
-		from := filepath.Join(src, name)
 		// Stat, not Lstat: a skill that is a link to the user's own checkout is a
 		// skill the user uses, and the copy takes what the link names.
 		info, err := os.Stat(from)
@@ -219,27 +237,133 @@ func copyDir(from, to string) ([]string, error) {
 }
 
 // copyFileIfAbsent copies src to dst unless dst exists, whole or not at all,
-// and answers whether it copied anything.
-func copyFileIfAbsent(src, dst string) (bool, error) {
+// and answers whether it copied anything, and whether a dst that was there
+// differs from src.
+func copyFileIfAbsent(src, dst string) (copied, differs bool, err error) {
 	if _, err := os.Lstat(dst); err == nil {
-		return false, nil
+		return false, !sameContent(src, dst, 0), nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return false, err
+		return false, false, err
 	}
 	info, err := os.Stat(src)
 	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+		return false, false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	if !info.Mode().IsRegular() {
-		return false, nil
+		return false, false, nil
 	}
 	if _, err := placeWhole(src, dst, false); err != nil {
-		return false, fmt.Errorf("host: copy %s: %w", filepath.Base(src), err)
+		return false, false, fmt.Errorf("host: copy %s: %w", filepath.Base(src), err)
 	}
-	return true, nil
+	return true, false, nil
+}
+
+// sameContent reports whether src, as the copy would read it (links
+// followed), holds what dst holds: the same files with the same bytes. A src
+// that cannot be read is no difference worth asking about.
+func sameContent(src, dst string, depth int) bool {
+	si, err := os.Stat(src)
+	if err != nil {
+		return true
+	}
+	di, err := os.Stat(dst)
+	if err != nil || si.IsDir() != di.IsDir() || depth > 32 {
+		return false
+	}
+	if !si.IsDir() {
+		if !si.Mode().IsRegular() {
+			return true
+		}
+		if si.Size() != di.Size() {
+			return false
+		}
+		a, errA := os.ReadFile(src)
+		b, errB := os.ReadFile(dst)
+		return errA == nil && errB == nil && bytes.Equal(a, b)
+	}
+	se, errS := os.ReadDir(src)
+	de, errD := os.ReadDir(dst)
+	if errS != nil || errD != nil {
+		return false
+	}
+	names := map[string]bool{}
+	for _, e := range de {
+		names[e.Name()] = true
+	}
+	for _, e := range se {
+		path := filepath.Join(src, e.Name())
+		if info, err := os.Stat(path); err != nil || !(info.IsDir() || info.Mode().IsRegular()) {
+			continue
+		}
+		if !names[e.Name()] || !sameContent(path, filepath.Join(dst, e.Name()), depth+1) {
+			return false
+		}
+		delete(names, e.Name())
+	}
+	return len(names) == 0
+}
+
+// replacedFolder holds, by when, what ReplaceFromFactoryHome moved out of the
+// way, inside the user's directory.
+const replacedFolder = ".replaced"
+
+// ReplaceFromFactoryHome puts droid's copy of each of names (as Differs names
+// them) in place of Droi's. Droi's is not deleted: it moves into
+// <userDir>/.replaced/<time>/, which it answers, so the user can take it back.
+func ReplaceFromFactoryHome(factoryDir, userDir string, names []string, now time.Time) (string, error) {
+	if factoryDir == "" || userDir == "" {
+		return "", errors.New("host: replace from ~/.factory: no source or no target")
+	}
+	for _, name := range names {
+		if !importable(name) {
+			return "", fmt.Errorf("host: replace from ~/.factory: %q is not something the import brings over", name)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(userDir, replacedFolder), 0o755); err != nil {
+		return "", err
+	}
+	// A folder of its own each time: two replaces within a second must not put the second's over the first's.
+	backup, err := os.MkdirTemp(filepath.Join(userDir, replacedFolder), now.Format("2006-01-02T15-04-05")+"-")
+	if err != nil {
+		return "", err
+	}
+	var errs []error
+	for _, name := range names {
+		from, target, kept := filepath.Join(factoryDir, name), filepath.Join(userDir, name), filepath.Join(backup, name)
+		info, err := os.Stat(from)
+		if err != nil || !(info.IsDir() || info.Mode().IsRegular()) {
+			errs = append(errs, fmt.Errorf("host: replace %s: droid's copy cannot be read: %v", name, err))
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(kept), 0o755); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := os.Rename(target, kept); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("host: replace %s: %w", name, err))
+			continue
+		}
+		if _, err := placeWhole(from, target, info.IsDir()); err != nil {
+			// Droi's own comes back rather than leaving nothing in its place.
+			_ = os.Rename(kept, target)
+			errs = append(errs, fmt.Errorf("host: replace %s: %w", name, err))
+		}
+	}
+	return backup, errors.Join(errs...)
+}
+
+// importable reports whether name is one of the things the import brings
+// over: mcp.json, AGENTS.md or one skill.
+func importable(name string) bool {
+	if name == "mcp.json" || name == "AGENTS.md" {
+		return true
+	}
+	dir, skill := filepath.Split(name)
+	return filepath.Clean(dir) == "skills" && skill != "" && skill[0] != '.' && skill != ".." &&
+		filepath.Base(skill) == skill
 }
 
 // copyFile writes src's bytes to a new file dst with src's permission bits, so

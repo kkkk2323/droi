@@ -2,6 +2,22 @@ package l10n
 
 // zh is Simplified Chinese, by the English text passed to L.
 var zh = map[string]string{
+	"Import from droid": "从 droid 导入",
+	"Droi keeps its own skills, MCP servers and AGENTS.md in %s. The first start copied them from ~/.factory; changes to either folder after that stay in it.": "Droi 的 Skill、MCP 服务器和 AGENTS.md 保存在 %s。首次启动时从 ~/.factory 复制过来；之后在任一文件夹里的改动只留在那个文件夹。",
+	"Import again": "再次导入",
+	"Copies the skills, MCP servers and AGENTS.md that ~/.factory has and Droi does not. Nothing of Droi's is replaced.": "复制 ~/.factory 里有、Droi 里没有的 Skill、MCP 服务器和 AGENTS.md。不会替换 Droi 已有的内容。",
+	"Import":                              "导入",
+	"Import from ~/.factory":              "从 ~/.factory 导入",
+	"Importing…":                          "正在导入…",
+	"Droi's own copies were moved to %s.": "Droi 原来的副本已移到 %s。",
+	"Show in folder":                      "在文件夹中显示",
+	"Left out, as links that point nowhere or not files: %s": "已跳过（链接指向的位置不存在，或不是文件）：%s",
+	"Different in ~/.factory, and Droi's kept: %s":           "~/.factory 中的版本不同，已保留 Droi 的：%s",
+	"Use droid's":            "改用 droid 的",
+	"Use droid's copies":     "改用 droid 的副本",
+	"Nothing new to import.": "没有可导入的新内容。",
+	"Imported %s.":           "已导入 %s。",
+	"1 skill":                "1 个 Skill",
 	"The output is cut here; the script read all of it.": "输出在此截断；脚本读到了完整内容。",
 	"%d models": "%d 个模型",
 	"Routes coding agents to models from multiple providers through one local endpoint. Its models appear in the model picker for new Sessions on this computer without changing your droid CLI or Factory App settings.": "通过同一本地端点接入多家服务商的模型，加入这台电脑新会话的模型列表。不会写入 droid CLI 设置，不影响 CLI 和 Factory App。",

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
@@ -54,9 +55,12 @@ type kernelHost struct {
 	// configuring is held from reading a setting to the Kernel having it, so two changes reach it in their order.
 	configuring sync.Mutex
 	unhearLink  func()
-	last        KernelState
-	listeners   map[int]func(KernelState)
-	next        int
+	// starting is closed once the launch startKernel began off the caller's goroutine has started the Supervisor,
+	// or decided not to; stopKernel waits for it, so a Supervisor it stopped is never started after.
+	starting  chan struct{}
+	last      KernelState
+	listeners map[int]func(KernelState)
+	next      int
 }
 
 // KernelEnabled reports whether this Host runs a Kernel: a person asked for it, and there is one to run.
@@ -106,13 +110,32 @@ func (h *Host) startKernel() {
 	k.sup = &KernelSupervisor{
 		Binary:  h.kernelBinary(),
 		DataDir: filepath.Join(h.cfg.UserData, "kernel"),
+		UserDir: brand.UserFolder(h.cfg.Home),
 		Env:     h.kernelEnv,
 		OnState: h.kernelChanged,
 	}
-	sup := k.sup
+	sup, runs := k.sup, k.runs
+	starting := make(chan struct{})
+	k.starting = starting
 	k.mu.Unlock()
 	h.linkKernel()
-	sup.Start()
+	// Off the caller's goroutine, the window's at launch: the first copy of a large skills folder takes a while.
+	go func() {
+		defer close(starting)
+		// Before the Kernel starts: a Kernel that made an empty skills folder first would read as the user's choice.
+		if copied, err := h.CopyFactoryHome(); err != nil {
+			log.Println("droi: kernel: copying ~/.factory:", err)
+		} else if !copied.Empty() || len(copied.Skipped) > 0 {
+			log.Printf("droi: kernel: copied from ~/.factory: %d skills, mcp.json %v, AGENTS.md %v; left out %v",
+				copied.Skills, copied.MCP, copied.Agents, copied.Skipped)
+		}
+		k.mu.Lock()
+		current := k.sup == sup && k.runs == runs
+		k.mu.Unlock()
+		if current {
+			sup.Start()
+		}
+	}()
 }
 
 // linkKernel gives the Host a connection of its own to the Kernel, for configureKernel. Every notification reaches
@@ -154,6 +177,8 @@ func (h *Host) stopKernel() {
 	h.KeyPool().SetKernelToken("")
 	link, unhear := k.link, k.unhearLink
 	k.link, k.unhearLink = nil, nil
+	starting := k.starting
+	k.starting = nil
 	k.mu.Unlock()
 	if link != nil {
 		unhear()
@@ -161,6 +186,9 @@ func (h *Host) stopKernel() {
 	}
 	if sup == nil {
 		return
+	}
+	if starting != nil {
+		<-starting
 	}
 	// A change under way ends with the link closed under it; its fallback restart then sees runs moved on. Waiting
 	// for it keeps a restart that already began from launching after the Stop below.
