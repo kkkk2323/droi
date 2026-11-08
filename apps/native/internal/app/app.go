@@ -282,6 +282,9 @@ type App struct {
 	// it.
 	kernel   kernelConn
 	sessions *sessionview.Store
+	// updateReadyAt is when RelaunchIfIdle first found an installed update, which it waits on for the Sessions to
+	// be idle; zero while there is none.
+	updateReadyAt time.Time
 	// kernelAlerts follows the busy and idle of Kernel's conversations, as watchAlerts follows the Daemon's
 	// working states.
 	kernelAlerts *alerts.Tracker

@@ -42,7 +42,9 @@ waits for the user: the corner card offers Update, Details and Skip this version
 it is installed, "Restart now" (or About's "Restart to update") starts the new version.
 With Settings → About → "Install updates automatically" on, the check installs what it
 finds, and the app restarts into it once no Session works or waits for an answer and the
-window is in the background, checking every minute.
+window is in the background, checking every minute. On a Kernel an update that has waited
+three hours for that restarts anyway, still only with the window in the background: the Kernel
+resumes the runs a restart interrupts (ADR 0038). On the Daemon it waits as long as it takes.
 
 MyGo's updater does the rest: it downloads the delta for the running version when there is
 one (else the whole archive, as an app more than one version behind does), checks the
