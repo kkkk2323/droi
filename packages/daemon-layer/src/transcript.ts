@@ -1,20 +1,37 @@
-// Turn the SDK's flat message list into what the transcript renders: user
-// turns, assistant turns whose tool calls carry their results, and nothing
-// for bare tool-result messages, which only exist to complete a tool call.
-import type { ContentBlock, FactoryDroidMessage } from '@factory/droid-sdk'
+// Turn a Kernel conversation's entries into what the transcript renders (the Go window's
+// pkg/transcript BuildView, for the phone): a user entry opens a turn, and the answers
+// after it join it, since one answer spans several entries once a tool round hands the
+// run to a new generation. A tool call carries its result, read from the tool-result entry
+// that completes it; a codemode call carries the calls its script made. The answer being
+// written (pi.live's generation) closes the transcript while the run lasts.
+import type { Entry, LiveDoc, PiContent, PiMessage } from './kernel-wire'
 
-export type ToolUseBlock = Extract<ContentBlock, { type: 'tool_use' }>
-export type ToolResultBlock = Extract<ContentBlock, { type: 'tool_result' }>
-export type TextBlock = Extract<ContentBlock, { type: 'text' }>
-export type ThinkingBlock = Extract<ContentBlock, { type: 'thinking' }>
+export interface ToolUse {
+  id: string
+  name: string
+  input: Record<string, unknown>
+}
+
+export interface ToolResult {
+  /** The output as the row shows it: the harness's rendering of its diagnostics left out. */
+  text: string
+  images: string[]
+  isError: boolean
+  /** The run was stopped, or a restart cut the call off: it did not fail. */
+  interrupted: boolean
+  /** A rule or a person refused it before it ran. */
+  blocked: boolean
+  /** The harness's diagnostics: a truncation, where the full output is, an exit code. */
+  notes: string
+  /** The tool's own details: an edit's diff, a script's calls. */
+  details: unknown
+}
 
 export interface ToolCall {
-  use: ToolUseBlock
-  result: ToolResultBlock | null
-  /**
-   * Set on a Script or WaitForScript call: the calls its run made while this
-   * call was the latest one watching it (see script-runs.ts).
-   */
+  use: ToolUse
+  /** Null while the call runs. */
+  result: ToolResult | null
+  /** Set on a codemode call: the calls its script made, in order. */
   nested?: ToolCall[]
 }
 
@@ -24,24 +41,9 @@ export type TranscriptBlock =
   | { kind: 'thinking'; id: string; text: string; durationMs: number | undefined }
   /** A run of tool calls with nothing said in between; rendered as one cluster. */
   | { kind: 'tools'; id: string; calls: ToolCall[] }
-  /** A Task call: work handed to a subagent, shown on its own (see subagents.ts). */
-  | { kind: 'subagent'; id: string; call: ToolCall }
 
-/** The tool that starts a subagent. */
-export const TASK_TOOL = 'Task'
-
-/** The tool that runs a program calling other tools, and the one that waits on a run past its first minute. */
-export const SCRIPT_TOOL = 'Script'
-export const WAIT_FOR_SCRIPT_TOOL = 'WaitForScript'
-
-/** The run a Script or WaitForScript call is about: the Script's own tool use id. */
-export function scriptRunOf(use: ToolUseBlock): string | null {
-  if (use.scriptExecution) return null
-  if (use.name === SCRIPT_TOOL) return use.id
-  const watched = use.input['toolCallId']
-  if (use.name === WAIT_FOR_SCRIPT_TOOL && typeof watched === 'string') return watched
-  return null
-}
+/** The Kernel's tool that runs a script calling the conversation's other tools. */
+export const SCRIPT_TOOL = 'codemode'
 
 export interface TranscriptEntry {
   id: string
@@ -49,117 +51,470 @@ export interface TranscriptEntry {
   blocks: TranscriptBlock[]
   createdAt: number
   isError: boolean
+  /** A line the Kernel or the computer left in the transcript, which nothing answers. */
+  note?: boolean
+  /** The answer being written now: it changes until its entry is stored. */
+  streaming?: boolean
 }
 
-export function buildTranscript(messages: readonly FactoryDroidMessage[]): TranscriptEntry[] {
-  const results = new Map<string, ToolResultBlock>()
-  for (const message of messages) {
-    if (message.role !== 'tool') continue
-    for (const block of message.content) {
-      if (block.type === 'tool_result') results.set(block.toolUseId, block)
+const STOPPED = 'Stopped'
+const NO_ANSWER = 'The model could not answer this turn.'
+const INTERRUPTED = 'Interrupted'
+
+/** The transcript of a conversation's entries and its pi.live. */
+export function buildTranscript(
+  entries: readonly Entry[],
+  live?: LiveDoc | null,
+): TranscriptEntry[] {
+  const results = new Map<string, ToolResult>()
+  const scripts = new Map<string, ToolCall[]>()
+  for (const entry of entries) {
+    if (entry.kind !== 'pi.tool-result') continue
+    const diagnostics = diagnosticsOf(entry)
+    for (const m of entry.model ?? []) {
+      if (m.role !== 'toolResult' || !m.toolCallId) continue
+      results.set(m.toolCallId, resultOf(m, diagnostics))
+      if (m.toolName === SCRIPT_TOOL)
+        scripts.set(m.toolCallId, codemodeNested(m.toolCallId, m.details))
     }
   }
+  const liveScripts = liveNested(live)
+  const scriptCalls = (id: string) => scripts.get(id) ?? liveScripts.get(id) ?? []
 
-  // A call a Script made goes under the latest call watching its run, so the
-  // calls a WaitForScript saw show where that wait sits in the turn.
-  const watching = new Map<string, ToolCall>()
-  const entries: TranscriptEntry[] = []
-  for (const message of messages) {
-    // A user-only message is the Daemon telling the user something (a usage
-    // limit, a model swap): a system message live, a user message once
-    // loaded. It reads as the Droid's, as in Factory's own app.
-    const role =
-      message.visibility === 'user_only' && (message.role === 'system' || message.role === 'user')
-        ? 'assistant'
-        : message.role
-    if (role !== 'user' && role !== 'assistant') continue
-    if (message.isUserVisible === false) continue
-    const blocks: TranscriptBlock[] = []
-    message.content.forEach((block, index) => {
-      const id = `${message.id}:${index}`
-      switch (block.type) {
-        case 'text':
-          if (block.text) blocks.push({ kind: 'text', id, text: block.text })
-          break
-        case 'image':
-          if (block.source.type === 'base64')
-            blocks.push({ kind: 'image', id, src: dataUrl(block.source) })
-          break
-        case 'thinking':
-          if (block.thinking)
-            blocks.push({
-              kind: 'thinking',
-              id,
-              text: block.thinking,
-              durationMs: block.durationMs,
-            })
-          break
-        case 'tool_use': {
-          const call: ToolCall = { use: block, result: results.get(block.id) ?? null }
-          const owner = block.scriptExecution
-            ? watching.get(block.scriptExecution.outerToolUseId)
-            : undefined
-          if (owner) {
-            owner.nested!.push(call)
-            break
-          }
-          const run = scriptRunOf(block)
-          if (run) {
-            call.nested = []
-            watching.set(run, call)
-          }
-          if (block.name === TASK_TOOL) {
-            blocks.push({ kind: 'subagent', id, call })
-            break
-          }
-          const last = blocks[blocks.length - 1]
-          if (last?.kind === 'tools') last.calls.push(call)
-          else blocks.push({ kind: 'tools', id, calls: [call] })
-          break
+  const out: TranscriptEntry[] = []
+  // Set by what moves the context on (a reset, a compaction) and by a note: the answer after
+  // one opens its own row rather than joining the one before.
+  let boundary = false
+  for (const entry of entries) {
+    switch (entry.kind) {
+      case 'pi.user': {
+        const blocks = blocksOf(entry, results, scriptCalls, false)
+        if (blocks.length === 0) {
+          // A handoff or a written submission: the model reads it and the transcript shows nothing.
+          boundary = true
+          continue
         }
-        default:
-          break
+        out.push({
+          id: String(entry.id),
+          role: 'user',
+          blocks,
+          createdAt: createdAt(entry),
+          isError: false,
+        })
+        boundary = false
+        break
       }
-    })
-    // A user message with nothing to show is a record, not a turn: the
-    // Daemon persists each hook run as one (`hookEventName`, no content), and
-    // a message that was only a system reminder loses its text on the way.
-    if (blocks.length === 0) continue
-    const previous = entries[entries.length - 1]
-    // One turn arrives as several assistant messages (reasoning, tool calls,
-    // text); shown as one entry so nothing splits it. Tool runs join up too.
-    if (role === 'assistant' && previous?.role === 'assistant') {
-      for (const block of blocks) {
-        const last = previous.blocks[previous.blocks.length - 1]
-        if (block.kind === 'tools' && last?.kind === 'tools') last.calls.push(...block.calls)
-        else previous.blocks.push(block)
+      case 'pi.assistant': {
+        let blocks = blocksOf(entry, results, scriptCalls, true)
+        const { failed, stopped } = answerEnd(entry.model ?? [])
+        if (blocks.length === 0) {
+          // A refused or cancelled request can end with nothing; the turn did happen.
+          const said = emptyAnswerSentence(entry.model ?? [], failed, stopped)
+          if (said === null) continue
+          blocks = [{ kind: 'text', id: `${entry.id}:0:0`, text: said }]
+        }
+        const last = out[out.length - 1]
+        if (last && last.role === 'assistant' && !last.note && !boundary) {
+          joinAnswer(last, blocks, createdAt(entry), failed)
+        } else {
+          out.push({
+            id: String(entry.id),
+            role: 'assistant',
+            blocks,
+            createdAt: createdAt(entry),
+            isError: failed,
+          })
+        }
+        boundary = false
+        break
       }
-      previous.createdAt = message.createdAt
-      previous.isError = previous.isError || message.isError === true
-      continue
+      case 'pi.reset':
+      case 'pi.compaction':
+        boundary = true
+        break
+      case 'droi.note': {
+        const text = typeof entry.data?.['text'] === 'string' ? (entry.data['text'] as string) : ''
+        if (!text) continue
+        out.push({
+          id: String(entry.id),
+          role: 'assistant',
+          note: true,
+          blocks: [{ kind: 'text', id: `${entry.id}:0:0`, text }],
+          createdAt: createdAt(entry),
+          isError: false,
+        })
+        boundary = true
+        break
+      }
     }
-    entries.push({
-      id: message.id,
-      role,
-      blocks,
-      createdAt: message.createdAt,
-      isError: message.isError === true,
-    })
   }
-  return entries
+  const writing = streamingEntry(live, results, scriptCalls)
+  if (writing) {
+    const last = out[out.length - 1]
+    if (last && last.role === 'assistant' && !last.note && !boundary) {
+      // The row being written is the turn's own: a copy, so the stored row's object stays as it was.
+      const joined: TranscriptEntry = { ...last, blocks: last.blocks.slice(), streaming: true }
+      joinAnswer(joined, writing.blocks, writing.createdAt, false)
+      out[out.length - 1] = joined
+    } else out.push(writing)
+  }
+  const failure = runFailureEntry(live, out)
+  if (failure) out.push(failure)
+  return out
 }
 
-// The SDK hands out the same source object for an image on every read; the
-// same string back keeps entries comparable without scanning megabytes.
-const dataUrls = new WeakMap<object, string>()
+function blocksOf(
+  entry: Entry,
+  results: ReadonlyMap<string, ToolResult>,
+  scriptCalls: (id: string) => ToolCall[],
+  answer: boolean,
+): TranscriptBlock[] {
+  return blocksOfMessages(String(entry.id), entry.model ?? [], results, scriptCalls, answer)
+}
 
-function dataUrl(source: { mediaType: string; data: string }): string {
-  let url = dataUrls.get(source)
-  if (url === undefined) {
-    url = `data:${source.mediaType};base64,${source.data}`
-    dataUrls.set(source, url)
+function blocksOfMessages(
+  id: string,
+  messages: readonly PiMessage[],
+  results: ReadonlyMap<string, ToolResult>,
+  scriptCalls: (id: string) => ToolCall[],
+  answer: boolean,
+): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = []
+  const stopped = answer && answerEnd(messages).stopped
+  messages.forEach((m, mi) => {
+    contentOf(m).forEach((c, i) => {
+      // The identity carries the message as well as the block: one entry may hold several.
+      const blockId = `${id}:${mi}:${i}`
+      if (c.type === 'text') {
+        const text = (c as { text?: unknown }).text
+        if (typeof text === 'string' && text) blocks.push({ kind: 'text', id: blockId, text })
+        return
+      }
+      if (c.type === 'image') {
+        const { data, mimeType } = c as { data?: unknown; mimeType?: unknown }
+        if (typeof data === 'string' && typeof mimeType === 'string')
+          blocks.push({ kind: 'image', id: blockId, src: dataUrl(mimeType, data) })
+        return
+      }
+      if (!answer) return
+      if (c.type === 'thinking') {
+        const { thinking, durationMs } = c as { thinking?: unknown; durationMs?: unknown }
+        if (typeof thinking === 'string' && thinking)
+          blocks.push({
+            kind: 'thinking',
+            id: blockId,
+            text: thinking,
+            durationMs: typeof durationMs === 'number' ? durationMs : undefined,
+          })
+        return
+      }
+      if (c.type === 'toolCall') {
+        const t = c as { id?: unknown; name?: unknown; arguments?: unknown }
+        const callId = typeof t.id === 'string' ? t.id : blockId
+        const name = typeof t.name === 'string' ? t.name : ''
+        const call: ToolCall = {
+          use: { id: callId, name, input: inputOf(t.arguments) },
+          result: results.get(callId) ?? (stopped ? interrupted() : null),
+        }
+        if (name === SCRIPT_TOOL) call.nested = scriptCalls(callId)
+        const last = blocks[blocks.length - 1]
+        if (last?.kind === 'tools') last.calls.push(call)
+        else blocks.push({ kind: 'tools', id: blockId, calls: [call] })
+      }
+    })
+  })
+  return blocks
+}
+
+function contentOf(m: PiMessage): PiContent[] {
+  // A message whose sender had only text is stored with its content as a bare string.
+  if (typeof m.content === 'string') return m.content ? [{ type: 'text', text: m.content }] : []
+  return Array.isArray(m.content) ? m.content : []
+}
+
+function inputOf(args: unknown): Record<string, unknown> {
+  return typeof args === 'object' && args !== null && !Array.isArray(args)
+    ? (args as Record<string, unknown>)
+    : {}
+}
+
+/** How an answer ended, read from the last message that says. */
+export function answerEnd(messages: readonly PiMessage[]): { failed: boolean; stopped: boolean } {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    switch (messages[i]!.stopReason) {
+      case 'error':
+        return { failed: true, stopped: false }
+      case 'aborted':
+        return { failed: false, stopped: true }
+      case 'stop':
+      case 'toolUse':
+      case 'length':
+        return { failed: false, stopped: false }
+    }
+    if (messages[i]!.errorMessage) return { failed: true, stopped: false }
   }
-  return url
+  return { failed: false, stopped: false }
+}
+
+function emptyAnswerSentence(
+  messages: readonly PiMessage[],
+  failed: boolean,
+  stopped: boolean,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const said = messages[i]!.errorMessage
+    if (said) return said
+  }
+  if (failed) return NO_ANSWER
+  if (stopped) return STOPPED
+  return null
+}
+
+function joinAnswer(
+  target: TranscriptEntry,
+  blocks: TranscriptBlock[],
+  at: number,
+  failed: boolean,
+): void {
+  for (const block of blocks) {
+    const last = target.blocks[target.blocks.length - 1]
+    if (block.kind === 'tools' && last?.kind === 'tools') {
+      target.blocks[target.blocks.length - 1] = { ...last, calls: [...last.calls, ...block.calls] }
+    } else target.blocks.push(block)
+  }
+  target.createdAt = at
+  target.isError = target.isError || failed
+}
+
+function createdAt(entry: Entry): number {
+  const messages = entry.model ?? []
+  const last = messages[messages.length - 1]
+  if (last && typeof last.timestamp === 'number') return last.timestamp
+  const at = entry.data?.['at']
+  return typeof at === 'number' ? at : 0
+}
+
+interface Diagnostic {
+  severity?: string
+  code?: string
+  message?: string
+}
+
+function diagnosticsOf(entry: Entry): Diagnostic[] {
+  const list = entry.data?.['diagnostics']
+  return Array.isArray(list) ? (list as Diagnostic[]) : []
+}
+
+/** Pi's rendering of the diagnostics for the model, which closes a result's content. */
+function renderedDiagnostics(list: readonly Diagnostic[]): string {
+  if (list.length === 0) return ''
+  return `<harness>\n${list.map((d) => `[${d.severity}] ${d.message}`).join('\n')}\n</harness>`
+}
+
+function resultOf(m: PiMessage, diagnostics: readonly Diagnostic[]): ToolResult {
+  const output: string[] = []
+  const images: string[] = []
+  for (const c of contentOf(m)) {
+    if (c.type === 'text') {
+      const text = (c as { text?: unknown }).text
+      if (typeof text === 'string' && text) output.push(text)
+    } else if (c.type === 'image') {
+      const { data, mimeType } = c as { data?: unknown; mimeType?: unknown }
+      if (typeof data === 'string' && typeof mimeType === 'string')
+        images.push(dataUrl(mimeType, data))
+    }
+  }
+  // Pi renders the diagnostics as the content's last item exactly when there are some.
+  if (output.length > 0 && output[output.length - 1] === renderedDiagnostics(diagnostics))
+    output.pop()
+  const ending = diagnostics[diagnostics.length - 1]?.code
+  const interruptedEnd = ending === 'aborted' || ending === 'interrupted' || ending === 'abandoned'
+  const blocked = ending === 'blocked'
+  return {
+    text: withoutTrailingNewlines(output.join('\n')),
+    images,
+    isError: !interruptedEnd && !blocked && m.isError === true,
+    interrupted: interruptedEnd,
+    blocked,
+    notes: diagnostics
+      .map((d) => d.message ?? '')
+      .filter(Boolean)
+      .join('\n'),
+    details: m.details,
+  }
+}
+
+function interrupted(): ToolResult {
+  return {
+    text: INTERRUPTED,
+    images: [],
+    isError: false,
+    interrupted: true,
+    blocked: false,
+    notes: '',
+    details: undefined,
+  }
+}
+
+function withoutTrailingNewlines(text: string): string {
+  return text.replace(/[\r\n]+$/, '')
+}
+
+/** The calls a finished script made, from its result's details (the Kernel's `details.calls`). */
+function codemodeNested(parent: string, details: unknown): ToolCall[] {
+  const calls = (details as { calls?: unknown } | undefined)?.calls
+  if (!Array.isArray(calls)) return []
+  return calls.map((raw) => {
+    const c = raw as {
+      id?: unknown
+      name?: unknown
+      args?: unknown
+      arguments?: unknown
+      status?: unknown
+      error?: unknown
+      output?: unknown
+      truncated?: unknown
+    }
+    const text =
+      typeof c.output === 'string' && c.output
+        ? c.output
+        : typeof c.error === 'string'
+          ? c.error
+          : ''
+    const status = c.status
+    const result: ToolResult | null =
+      status === 'running'
+        ? null
+        : {
+            text: withoutTrailingNewlines(text),
+            images: [],
+            isError: status === 'error',
+            interrupted: status === 'cancelled',
+            blocked: false,
+            notes: c.truncated === true ? 'The output is cut here; the script read all of it.' : '',
+            details: undefined,
+          }
+    return {
+      use: {
+        id: `${parent}/c${String(c.id)}`,
+        name: typeof c.name === 'string' ? c.name : '',
+        input: rowArguments(c.arguments, c.args),
+      },
+      result,
+    }
+  })
+}
+
+/** The calls running scripts are making now, by the script's call id. */
+function liveNested(live: LiveDoc | null | undefined): Map<string, ToolCall[]> {
+  const out = new Map<string, ToolCall[]>()
+  for (const n of live?.nestedTools ?? []) {
+    const result: ToolResult | null =
+      n.status === 'done' || n.summary?.isError
+        ? {
+            text: withoutTrailingNewlines(n.output ?? n.summary?.error ?? ''),
+            images: [],
+            isError: n.summary?.isError === true,
+            interrupted: false,
+            blocked: false,
+            notes: '',
+            details: undefined,
+          }
+        : null
+    const list = out.get(n.parentCallId) ?? []
+    list.push({ use: { id: n.callId, name: n.name, input: inputOf(n.arguments) }, result })
+    out.set(n.parentCallId, list)
+  }
+  return out
+}
+
+/** A call's arguments as a row shows them: the whole object, or Pi's preview of them (cut to 200 characters). */
+function rowArguments(args: unknown, preview: unknown): Record<string, unknown> {
+  if (typeof args === 'object' && args !== null && !Array.isArray(args))
+    return args as Record<string, unknown>
+  if (typeof preview === 'string') {
+    try {
+      return inputOf(JSON.parse(preview))
+    } catch {
+      return { arguments: preview }
+    }
+  }
+  return {}
+}
+
+/** The answer pi.live is writing now, while its run lasts. */
+function streamingEntry(
+  live: LiveDoc | null | undefined,
+  results: ReadonlyMap<string, ToolResult>,
+  scriptCalls: (id: string) => ToolCall[],
+): TranscriptEntry | null {
+  const message = (live?.generation as { message?: PiMessage } | undefined)?.message
+  if (!live?.run || !message) return null
+  const blocks = blocksOfMessages('live', [message], results, scriptCalls, true)
+  if (blocks.length === 0) return null
+  return {
+    id: `live:${live.run.taskId}`,
+    role: 'assistant',
+    blocks,
+    createdAt: typeof message.timestamp === 'number' ? message.timestamp : Date.now(),
+    isError: false,
+    streaming: true,
+  }
+}
+
+/** Why the last run ended without an answer, when it did and the transcript does not say so already. */
+function runFailureEntry(
+  live: LiveDoc | null | undefined,
+  entries: readonly TranscriptEntry[],
+): TranscriptEntry | null {
+  const f = live?.runFailure
+  if (!f || live?.run) return null
+  if (entries[entries.length - 1]?.isError) return null
+  let text: string
+  switch (f.reason) {
+    case 'aborted':
+    case 'reset':
+    case 'nothing_to_answer':
+      return null
+    case 'model_error':
+      text = f.detail || NO_ANSWER
+      break
+    case 'no_model':
+      text = 'No model is set for this session. Choose one under the composer.'
+      break
+    case 'turn_limit':
+      text = `The run stopped after ${f.detail}, the most this session takes in one run.`
+      break
+    default:
+      text = `The run stopped: ${f.detail || f.reason}`
+  }
+  const id = `failure:${f.taskId}`
+  return {
+    id,
+    role: 'assistant',
+    blocks: [{ kind: 'text', id: `${id}:0:0`, text }],
+    createdAt: 0,
+    isError: true,
+  }
+}
+
+function dataUrl(mediaType: string, data: string): string {
+  return `data:${mediaType};base64,${data}`
+}
+
+function sameResult(a: ToolResult | null, b: ToolResult | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return (
+    a.text === b.text &&
+    a.isError === b.isError &&
+    a.interrupted === b.interrupted &&
+    a.blocked === b.blocked &&
+    a.notes === b.notes &&
+    a.images.length === b.images.length &&
+    a.images.every((src, i) => src === b.images[i]) &&
+    JSON.stringify(a.details) === JSON.stringify(b.details)
+  )
 }
 
 function sameCalls(a: readonly ToolCall[], b: readonly ToolCall[]): boolean {
@@ -167,7 +522,9 @@ function sameCalls(a: readonly ToolCall[], b: readonly ToolCall[]): boolean {
 }
 
 function sameCall(a: ToolCall, b: ToolCall): boolean {
-  if (a.use !== b.use || a.result !== b.result) return false
+  if (a.use.id !== b.use.id || a.use.name !== b.use.name) return false
+  if (JSON.stringify(a.use.input) !== JSON.stringify(b.use.input)) return false
+  if (!sameResult(a.result, b.result)) return false
   if (!a.nested || !b.nested) return a.nested === b.nested
   return sameCalls(a.nested, b.nested)
 }
@@ -183,8 +540,6 @@ function sameBlock(a: TranscriptBlock, b: TranscriptBlock): boolean {
       return a.text === (b as typeof a).text && a.durationMs === (b as typeof a).durationMs
     case 'tools':
       return sameCalls(a.calls, (b as typeof a).calls)
-    case 'subagent':
-      return sameCall(a.call, (b as typeof a).call)
   }
 }
 
@@ -193,6 +548,8 @@ function sameEntry(a: TranscriptEntry, b: TranscriptEntry): boolean {
     a.role === b.role &&
     a.createdAt === b.createdAt &&
     a.isError === b.isError &&
+    a.note === b.note &&
+    a.streaming === b.streaming &&
     a.blocks.length === b.blocks.length &&
     a.blocks.every((block, i) => sameBlock(block, b.blocks[i]!))
   )
@@ -200,8 +557,8 @@ function sameEntry(a: TranscriptEntry, b: TranscriptEntry): boolean {
 
 /**
  * A freshly built transcript that keeps the previous build's entry objects
- * wherever nothing changed, so rows can skip rendering. The SDK rebuilds every
- * message on each read; while a turn streams, only its last entry is new.
+ * wherever nothing changed, so rows can skip rendering. While a turn streams,
+ * only its last entry is new.
  */
 export function reuseUnchanged(
   previous: readonly TranscriptEntry[],
@@ -222,31 +579,13 @@ export function reuseUnchanged(
   return changed ? entries : previous
 }
 
-export function toolResultText(result: ToolResultBlock | null): string {
-  if (!result) return ''
-  const content: unknown = result.content
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .filter(
-        (part: unknown): part is { text: unknown } =>
-          typeof part === 'object' && part !== null && 'text' in part,
-      )
-      .map((part) => String(part.text))
-      .join('\n')
-  }
-  return ''
+export function toolResultText(result: ToolResult | null): string {
+  return result?.text ?? ''
 }
 
-/** The pictures a tool handed back (a Read of an image file, a screenshot), as data URLs. */
-export function toolResultImages(result: ToolResultBlock | null): string[] {
-  const content = result?.content
-  if (!Array.isArray(content)) return []
-  const images: string[] = []
-  for (const part of content) {
-    if (part.type === 'image' && part.source.type === 'base64') images.push(dataUrl(part.source))
-  }
-  return images
+/** The pictures a tool handed back (a read of an image file, a screenshot), as data URLs. */
+export function toolResultImages(result: ToolResult | null): string[] {
+  return result?.images ?? []
 }
 
 // Building a formatter is the slow part of toLocaleTimeString; a turn's

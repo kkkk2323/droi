@@ -168,6 +168,42 @@ describe('conversations', () => {
     watcher.close()
   })
 
+  test('the list says which conversations are running, for a client that connects mid-run', async () => {
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: process.cwd() },
+    })
+    const id = created['conversationId'] as number
+    faux.faux.setResponses([slowAnswer('slow answer')])
+    await client.call('conversation.submit', { id, input: 'take your time' })
+    await client.waitFor(
+      (note) =>
+        note.method === 'conversation.busy' &&
+        note.params['id'] === id &&
+        note.params['run'] !== null,
+      10_000,
+    )
+    client.notifications.length = 0
+    const late = new Client(kernel.port)
+    const running = (await late.call('conversation.list', {}))['items'] as {
+      id: number
+      busy?: boolean
+    }[]
+    expect(running.find((item) => item.id === id)?.busy).toBe(true)
+    await client.waitFor(
+      (note) =>
+        note.method === 'conversation.busy' &&
+        note.params['id'] === id &&
+        note.params['run'] === null,
+      10_000,
+    )
+    const done = (await late.call('conversation.list', {}))['items'] as {
+      id: number
+      busy?: boolean
+    }[]
+    expect(done.find((item) => item.id === id)?.busy).toBeUndefined()
+    late.close()
+  })
+
   test('a second submit while busy queues, and abort ends the run', async () => {
     const created = await client.call('conversation.create', {
       agent: { model: faux.model, cwd: process.cwd() },

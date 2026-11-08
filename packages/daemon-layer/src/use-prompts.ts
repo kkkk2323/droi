@@ -1,132 +1,73 @@
-// Pending Prompts (permission requests and ask-user questions) for one Session,
-// read from the SDK controller. The Daemon sends every Prompt to every attached
-// Client and resolves it for all of them when the first answer lands (ADR
-// 0003); the controller mirrors that, so a Prompt disappears here whether this
+// The Prompts of one Session: approvals the Kernel asks for before a call runs, and the
+// questions of its ask_user tool. Every connection hears each request; the first answer
+// wins and every connection then hears it resolved, so a Prompt leaves here whether this
 // Client answered it or another one did.
-import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react'
-import { useDaemonConnection } from './connection-context'
+import { useCallback, useMemo, useState } from 'react'
+import { useKernelConnection } from './connection-context'
+import { KernelError } from './kernel-socket'
+import { kernelStore, useKernelSnapshot } from './kernel-state'
+import { conversationIdOf, KernelCode, type ApprovalRequest, type AskRequest } from './kernel-wire'
 
 export interface Prompts {
-  permissions: PendingPermission[]
-  askUser: PendingAskUserRequest[]
+  permissions: ApprovalRequest[]
+  askUser: AskRequest[]
 }
 
 const NONE: Prompts = { permissions: [], askUser: [] }
 
 export function usePrompts(sessionId: string): Prompts {
-  const { controller } = useDaemonConnection()
-  const version = useRef(0)
-  const snapshot = useRef<{ version: number; value: Prompts }>({ version: -1, value: NONE })
+  const { approvals, asks } = useKernelSnapshot()
+  const id = conversationIdOf(sessionId)
+  return useMemo(() => {
+    const permissions = [...approvals.values()].filter((r) => r.id === id)
+    const askUser = [...asks.values()].filter((r) => r.id === id)
+    return permissions.length + askUser.length === 0 ? NONE : { permissions, askUser }
+  }, [approvals, asks, id])
+}
 
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      const bump = () => {
-        version.current += 1
-        listener()
-      }
-      controller.on('permissionRequested', bump)
-      controller.on('permissionResolved', bump)
-      controller.on('permissionTimeout', bump)
-      controller.on('askUserRequested', bump)
-      controller.on('askUserResolved', bump)
-      controller.on('sessionLoaded', bump)
-      return () => {
-        controller.off('permissionRequested', bump)
-        controller.off('permissionResolved', bump)
-        controller.off('permissionTimeout', bump)
-        controller.off('askUserRequested', bump)
-        controller.off('askUserResolved', bump)
-        controller.off('sessionLoaded', bump)
-      }
-    },
-    [controller],
-  )
-
-  const getSnapshot = useCallback((): Prompts => {
-    if (snapshot.current.version === version.current) return snapshot.current.value
-    const value: Prompts = {
-      permissions: controller.getPendingPermissionsForSession(sessionId),
-      askUser: controller.getPendingAskUserRequests().filter((r) => r.sessionId === sessionId),
-    }
-    snapshot.current = { version: version.current, value }
-    return value
-  }, [controller, sessionId])
-
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+/** One answer of an ask: the options picked, a text of the person's own, or both. */
+export interface AskAnswer {
+  questionId: string
+  selected?: string[]
+  text?: string
 }
 
 export interface PromptActions {
-  answerPermission(permission: PendingPermission, selectedOption: string): Promise<void>
-  answerQuestions(
-    request: PendingAskUserRequest,
-    answers: Array<{ index: number; question: string; answer: string }>,
-  ): Promise<void>
-  cancelQuestions(request: PendingAskUserRequest): Promise<void>
+  /** `optionId` is one of the approval's own options (proceed_once, cancel, …). */
+  answerPermission(permission: ApprovalRequest, optionId: string): Promise<void>
+  answerQuestions(request: AskRequest, answers: AskAnswer[]): Promise<void>
+  cancelQuestions(request: AskRequest): Promise<void>
   error: string | null
 }
 
-export function usePromptActions(sessionId: string): PromptActions {
-  const { controller } = useDaemonConnection()
+export function usePromptActions(_sessionId: string): PromptActions {
+  const connection = useKernelConnection()
+  const store = kernelStore(connection)
   const [error, setError] = useState<string | null>(null)
 
-  const answerPermission = useCallback(
-    async (permission: PendingPermission, selectedOption: string) => {
+  const answer = useCallback(
+    async (method: string, requestId: string, params: Record<string, unknown>) => {
+      setError(null)
       try {
-        await controller.respondToPermission({
-          permissionId: permission.requestId,
-          sessionId,
-          selectedOption: selectedOption as never,
-        })
+        await connection.call(method, { requestId, ...params })
+        store.answered(requestId)
       } catch (cause) {
-        // Another Client got there first; the Daemon already told us so via
-        // permission_resolved and the card is gone. Nothing to show.
-        if (!isAlreadyResolved(cause)) setError(describe(cause))
+        // Another Client got there first; the Kernel tells every Client so, and the card goes.
+        if (cause instanceof KernelError && cause.code === KernelCode.requestNotFound) {
+          store.answered(requestId)
+          return
+        }
+        setError(cause instanceof Error ? cause.message : String(cause))
       }
     },
-    [controller, sessionId],
+    [connection, store],
   )
 
-  const answerQuestions = useCallback(
-    async (request: PendingAskUserRequest, answers: PromptAnswers) => {
-      try {
-        await controller.respondToAskUser({
-          requestId: request.requestId,
-          sessionId,
-          result: { answers },
-        })
-      } catch (cause) {
-        if (!isAlreadyResolved(cause)) setError(describe(cause))
-      }
-    },
-    [controller, sessionId],
-  )
-
-  const cancelQuestions = useCallback(
-    async (request: PendingAskUserRequest) => {
-      try {
-        await controller.respondToAskUser({
-          requestId: request.requestId,
-          sessionId,
-          result: { cancelled: true, answers: [] },
-        })
-      } catch (cause) {
-        if (!isAlreadyResolved(cause)) setError(describe(cause))
-      }
-    },
-    [controller, sessionId],
-  )
-
-  return { answerPermission, answerQuestions, cancelQuestions, error }
-}
-
-type PromptAnswers = Array<{ index: number; question: string; answer: string }>
-
-function isAlreadyResolved(error: unknown): boolean {
-  const message = describe(error)
-  return /no pending|not found/i.test(message)
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return {
+    answerPermission: (permission, optionId) =>
+      answer('approval.respond', permission.requestId, { outcome: optionId }),
+    answerQuestions: (request, answers) => answer('ask.respond', request.requestId, { answers }),
+    cancelQuestions: (request) => answer('ask.respond', request.requestId, { cancelled: true }),
+    error,
+  }
 }

@@ -1,8 +1,8 @@
-// One connection, to the selected Paired Computer, through the shared daemon
+// One connection, to the selected Paired Computer's Kernel, through the shared daemon
 // layer. A different computer, address or Pairing Token builds a new
 // connection and a new QueryClient, so nothing of the last one carries over.
 import { ConnectionProvider } from '@droi/daemon-layer/connection-context'
-import { createDaemonConnection } from '@droi/daemon-layer/connection'
+import { createKernelConnection } from '@droi/daemon-layer/connection'
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { AppState } from 'react-native'
@@ -51,7 +51,7 @@ function Connected({
   // one connection. (No StrictMode here: a second effect run would reuse a
   // disposed connection.)
   const [live] = useState(() => ({
-    connection: createDaemonConnection({
+    connection: createKernelConnection({
       kind: 'remote',
       gatewayUrl: address,
       relayUrl: relay,

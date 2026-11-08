@@ -3,10 +3,12 @@ import { defineConfig, devices } from '@playwright/test'
 const phonePort = 5174
 
 // ADR 0006: the Phone App's web build (react-native-web) in a phone-sized
-// browser against the Fake Daemon. The build exists only for these tests;
-// native hardware is replaced by web stand-ins.
+// browser against a Fake Kernel: the real Kernel and Gateway, with a scripted
+// model. The build exists only for these tests; native hardware is replaced by
+// web stand-ins.
 export default defineConfig({
   testDir: '.',
+  globalSetup: './global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,

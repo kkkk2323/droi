@@ -1,58 +1,57 @@
 import type { Page } from '@playwright/test'
-import type { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
-import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { exchange, userEntry } from './fake-kernel/history'
 import { expect, openSessionList, pairPhone, pickSession, standIns, test } from './fixtures'
+import type { FakeKernel } from './fake-kernel/fake-kernel'
 
-const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
-const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
-
-test.use({ scenario: { sessions: [deploy, notes] } })
-
-function workingState(daemon: FakeDaemon, sessionId: string, newState: string) {
-  daemon.notify(sessionId, { type: 'droid_working_state_changed', newState })
-}
-
-/** Subscribes the phone to both Sessions and leaves Notes on screen. */
-async function watchBoth(page: Page) {
-  await pickSession(page, /Deploy/)
-  await pickSession(page, /Notes/)
-}
+test.use({
+  scenario: {
+    autonomy: 'ask',
+    sessions: [
+      { title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] },
+      { title: 'Notes', cwd: 'acme-web', entries: exchange('todo', 'Noted.') },
+    ],
+  },
+})
 
 const played = async (page: Page) => {
   const { sounds, haptics } = await standIns(page)
   return { sounds, haptics }
 }
 
+/** Deploy asks to run a command, waits for the computer to allow it, then finishes. */
+async function askThenFinish(fakeKernel: FakeKernel, before: () => Promise<void>) {
+  fakeKernel.model.push(
+    { match: 'clean up', call: { name: 'bash', arguments: { command: 'echo cleaned' } } },
+    { match: 'clean up', text: 'Cleaned.' },
+  )
+  await fakeKernel.submit('Deploy', 'clean up')
+  await before()
+  await fakeKernel.approve('Deploy')
+}
+
 test('finishing and needing input each play their sound and haptic', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
-  await watchBoth(page)
-  workingState(fakeDaemon, deploy.sessionId, 'streaming_assistant_message')
-  workingState(fakeDaemon, deploy.sessionId, 'waiting_for_tool_confirmation')
+  await pairPhone(page, fakeKernel)
+  await pickSession(page, /Notes/)
+  await askThenFinish(fakeKernel, () =>
+    expect.poll(() => played(page)).toEqual({ sounds: ['needs-input'], haptics: ['needs-input'] }),
+  )
   await expect
     .poll(() => played(page))
-    .toEqual({ sounds: ['needs-input'], haptics: ['needs-input'] })
-  workingState(fakeDaemon, deploy.sessionId, 'idle')
-  await expect
-    .poll(() => played(page))
-    .toEqual({
-      sounds: ['needs-input', 'finished'],
-      haptics: ['needs-input', 'finished'],
-    })
+    .toEqual({ sounds: ['needs-input', 'finished'], haptics: ['needs-input', 'finished'] })
 })
 
 test('the Session on screen stays quiet; another is unread until opened', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
-  await watchBoth(page)
-  workingState(fakeDaemon, notes.sessionId, 'streaming_assistant_message')
-  workingState(fakeDaemon, notes.sessionId, 'idle')
-  workingState(fakeDaemon, deploy.sessionId, 'streaming_assistant_message')
-  workingState(fakeDaemon, deploy.sessionId, 'idle')
+  await pairPhone(page, fakeKernel)
+  await pickSession(page, /Notes/)
+  await fakeKernel.turn('Notes', 'and then?', { text: 'Then this.', delayMs: 100 })
+  await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Then this.')
+  await fakeKernel.turn('Deploy', 'status?', { text: 'All green.', delayMs: 100 })
   await expect.poll(() => played(page)).toEqual({ sounds: ['finished'], haptics: ['finished'] })
 
   let list = await openSessionList(page)
@@ -68,16 +67,17 @@ test('the Session on screen stays quiet; another is unread until opened', async 
   await expect(list.getByRole('img', { name: 'Unread' })).toHaveCount(0)
 })
 
-test('per-event switches turn the sound and the haptic off', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('per-event switches turn the sound and the haptic off', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   await openSessionList(page)
   await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('switch', { name: 'Sound when finished' }).click()
   await page.getByRole('switch', { name: 'Haptic when it needs input' }).click()
   await page.goBack()
 
-  await watchBoth(page)
-  workingState(fakeDaemon, deploy.sessionId, 'waiting_for_tool_confirmation')
-  workingState(fakeDaemon, deploy.sessionId, 'idle')
+  await pickSession(page, /Notes/)
+  await askThenFinish(fakeKernel, () =>
+    expect.poll(() => played(page)).toEqual({ sounds: ['needs-input'], haptics: [] }),
+  )
   await expect.poll(() => played(page)).toEqual({ sounds: ['needs-input'], haptics: ['finished'] })
 })

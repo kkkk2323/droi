@@ -134,13 +134,12 @@ export interface SessionSummaryCache {
   /** Absent in caches written before worktrees. */
   worktree?: SessionWorktree | null
   updatedAt: number
+  activityAt: number
+  viewedAt: number | null
+  kind: string | null
   archivedAt: string | null
   parentId: string | null
-  /** Absent in caches written before subagents were told apart. */
-  callingSessionId?: string | null
-  callingToolUseId?: string | null
-  /** Absent in caches written before Workstream agents were left out of the list. */
-  tags?: SessionTag[]
+  tags: SessionTag[]
 }
 
 const summaryPreferences = new Map<string, LocalPreference<SessionSummaryCache[]>>()
@@ -148,7 +147,8 @@ const summaryPreferences = new Map<string, LocalPreference<SessionSummaryCache[]
 export function sessionSummaries(computerId: string): LocalPreference<SessionSummaryCache[]> {
   let preference = summaryPreferences.get(computerId)
   if (!preference) {
-    preference = createPreference<SessionSummaryCache[]>(`droi.sessions.${computerId}`, [], {
+    // The Kernel's Sessions; a list kept from the Daemon's would name Sessions it does not have.
+    preference = createPreference<SessionSummaryCache[]>(`droi.kernelSessions.${computerId}`, [], {
       parse: (raw) => {
         const value: unknown = JSON.parse(raw)
         return Array.isArray(value) ? (value as SessionSummaryCache[]) : []

@@ -1,49 +1,37 @@
-import type { RecordedRequest } from '@droi/fake-daemon/fake-daemon'
-import { session, userMessage } from '@droi/fake-daemon/scenario'
-import { streamedReply } from '@droi/fake-daemon/turns'
+import { nextTime, userEntry } from './fake-kernel/history'
 import { expect, openNewSession, openSessionList, pairPhone, test } from './fixtures'
-
-function sessionIdOf(request: RecordedRequest): string {
-  return String((request.params as Record<string, unknown>)['sessionId'])
-}
-
-const older = session('Old work', '/Users/dev/billing-service', [userMessage('a')])
-const newer = session('Recent work', '/Users/dev/acme-web', [userMessage('b')])
 
 test.use({
   scenario: {
-    sessions: [older, newer],
-    validDirectories: ['/Users/dev/fresh-project'],
+    models: [{ id: 'gpt-5', name: 'GPT-5', thinking: ['low', 'medium', 'high'] }],
+    sessions: [
+      {
+        title: 'Old work',
+        cwd: 'billing-service',
+        entries: [userEntry('a', nextTime() - 60 * 60_000)],
+      },
+      { title: 'Recent work', cwd: 'acme-web', entries: [userEntry('b')] },
+    ],
     skills: [{ name: 'handoff', description: 'Compact the conversation' }],
-    handlers: { 'daemon.add_user_message': streamedReply({ deltas: ['On it.'] }) },
   },
 })
 
 test('starts a Session in a recent Workspace with the chosen model', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  fakeKernel.model.push({ match: 'Refactor the invoices', text: 'On it.' })
+  await pairPhone(page, fakeKernel)
   const form = await openNewSession(page)
   await expect(form.getByRole('button', { name: 'Workspace' })).toHaveText(/acme-web\?/)
-  const firstDraft = await fakeDaemon.waitForRequest('daemon.initialize_session')
-  expect(firstDraft.params).toMatchObject({
-    cwd: '/Users/dev/acme-web',
-    tags: [{ name: 'droi.draft' }],
-  })
 
   await form.getByRole('button', { name: 'Workspace' }).click()
   await page
     .getByRole('dialog', { name: 'Workspace' })
-    .getByRole('radio', {
-      name: 'billing-service',
-    })
+    .getByRole('radio', { name: 'billing-service' })
     .click()
   await expect(form.getByRole('button', { name: 'Workspace' })).toHaveText(/billing-service\?/)
-  const draft = await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
-  expect(draft.params).toMatchObject({ cwd: '/Users/dev/billing-service' })
-  const closed = await fakeDaemon.waitForRequest('daemon.close_session')
-  expect(closed.params).toMatchObject({ sessionId: sessionIdOf(firstDraft) })
 
   await form.getByRole('button', { name: 'Model', exact: true }).click()
   await page
@@ -54,105 +42,124 @@ test('starts a Session in a recent Workspace with the chosen model', async ({
 
   await form.getByRole('textbox', { name: 'Message' }).fill('Refactor the invoices')
   await form.getByRole('button', { name: 'Start session' }).click()
-  const takeover = await fakeDaemon.waitForRequest('daemon.update_session_settings')
-  expect(takeover.params).toMatchObject({
-    sessionId: sessionIdOf(draft),
-    modelId: 'gpt-5',
-    tags: [],
+  expect(await phoneWire.waitForCall('conversation.create')).toMatchObject({
+    cwd: fakeKernel.folder('billing-service'),
+    kind: 'chat',
+    agent: { model: { provider: 'fake', modelId: 'gpt-5' } },
   })
-  const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-  expect(sent.params).toMatchObject({
-    sessionId: sessionIdOf(draft),
-    text: 'Refactor the invoices',
+  expect(await phoneWire.waitForCall('conversation.submit')).toMatchObject({
+    input: 'Refactor the invoices',
   })
   const transcript = page.getByRole('log', { name: 'Transcript' })
   await expect(transcript.getByRole('article', { name: 'You' })).toContainText(
     'Refactor the invoices',
   )
-  expect(fakeDaemon.requests.filter((r) => r.method === 'daemon.initialize_session')).toHaveLength(
-    2,
-  )
+  await expect(transcript).toContainText('On it.')
+  expect(phoneWire.count('conversation.create')).toBe(1)
+  // It works where it was asked to.
+  const listed = await fakeKernel.kernel.call<{
+    items: Array<{ title: string; workspace: string }>
+  }>('conversation.list')
+  expect(
+    listed.items.find(
+      (i) => i.workspace === fakeKernel.folder('billing-service') && i.title !== 'Old work',
+    ),
+  ).toBeTruthy()
 })
 
-test('a typed path is checked by the Daemon and starts a Session there', async ({
+test('a typed path is checked by the computer and starts a Session there', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  fakeKernel.model.push({ match: 'Hello', text: 'Hi there.' })
+  const fresh = fakeKernel.folder('fresh-project')
+  await pairPhone(page, fakeKernel)
   const form = await openNewSession(page)
-  const abandoned = await fakeDaemon.waitForRequest('daemon.initialize_session')
   await form.getByRole('button', { name: 'Workspace' }).click()
   await page.getByRole('button', { name: 'Other folder…' }).click()
   await expect(form.getByRole('heading', { name: 'Where should Droid work?' })).toBeVisible()
   const path = form.getByRole('textbox', { name: 'Workspace path' })
   await path.fill('/nope/missing')
   await form.getByRole('button', { name: 'Start', exact: true }).click()
-  await expect(form.getByRole('alert')).toContainText('Directory does not exist: /nope/missing')
+  await expect(form.getByRole('alert')).toContainText('/nope/missing')
 
-  await path.fill('/Users/dev/fresh-project')
+  await path.fill(fresh)
   await form.getByRole('button', { name: 'Start', exact: true }).click()
   const message = page.getByRole('textbox', { name: 'Message' })
   await expect(message).toHaveAttribute('placeholder', 'Ask anything')
-  // The Daemon lists a Session once it has its first message.
   await message.fill('Hello')
   await page.getByRole('button', { name: 'Send' }).click()
-  await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('On it.')
+  await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Hi there.')
   const list = await openSessionList(page)
   await expect(list.getByRole('group', { name: 'fresh-project' })).toBeVisible()
-  // The draft opened for the recent Workspace is not left behind.
-  const closed = await fakeDaemon.waitForRequest('daemon.close_session')
-  expect(closed.params).toMatchObject({ sessionId: sessionIdOf(abandoned) })
 })
 
-test('"/" lists the Workspace’s skills before the first send', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('"/" lists the user’s own skills before the first send', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   const form = await openNewSession(page)
-  await fakeDaemon.waitForRequest('daemon.initialize_session')
   await form.getByRole('textbox', { name: 'Message' }).fill('/')
   const menu = page.getByRole('menu', { name: 'Commands and skills' })
   await expect(menu.getByRole('menuitem')).toHaveText([/\/handoff.*Skill/])
 })
 
-test('leaving the page closes the draft, which never shows in the list', async ({
-  page,
-  fakeDaemon,
-}) => {
-  await pairPhone(page, fakeDaemon)
+test('leaving the page makes no Session', async ({ page, fakeKernel, phoneWire }) => {
+  await pairPhone(page, fakeKernel)
   await openNewSession(page)
-  const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
   const list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Recent work/ })).toBeVisible()
   await expect(list.getByRole('button', { name: /Old work/ })).toBeVisible()
   await expect(list.getByRole('group')).toHaveCount(2)
-  const closed = await fakeDaemon.waitForRequest('daemon.close_session')
-  expect(closed.params).toMatchObject({ sessionId: sessionIdOf(draft) })
-  const again = await openSessionList(page)
-  await expect(again.getByRole('group')).toHaveCount(2)
+  expect(phoneWire.count('conversation.create')).toBe(0)
 })
 
-test('Script picked for tool calls starts a Session that calls tools through Script', async ({
+test('Direct for tool calls starts a Session without scripts', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   const form = await openNewSession(page)
-  const draft = await fakeDaemon.waitForRequest('daemon.initialize_session')
-  expect(draft.params).not.toHaveProperty('toolExecutionMode')
   const tools = form.getByRole('button', { name: 'Tool calls', exact: true })
-  await expect(tools).toHaveText(/Direct/)
   await tools.click()
   const sheet = page.getByRole('dialog', { name: 'Tool calls' })
   await expect(sheet.getByRole('radio')).toHaveText(['Direct', 'Script'])
-  await sheet.getByRole('radio', { name: 'Script' }).click()
-  await expect(tools).toHaveText(/Script/)
+  await sheet.getByRole('radio', { name: 'Direct' }).click()
+  await expect(tools).toHaveText(/Direct/)
 
   await form.getByRole('button', { name: 'Start session' }).click()
-  // A Session's tool mode is fixed when it is created, so the draft gives way to a new one.
-  const created = await fakeDaemon.waitForRequest('daemon.initialize_session', 2)
-  expect(created.params).toMatchObject({
-    cwd: '/Users/dev/acme-web',
-    toolExecutionMode: 'script_only',
+  expect(await phoneWire.waitForCall('conversation.create')).toMatchObject({
+    cwd: fakeKernel.folder('acme-web'),
+    agent: { extensions: { remove: ['codemode'] } },
   })
-  const closed = await fakeDaemon.waitForRequest('daemon.close_session')
-  expect(closed.params).toMatchObject({ sessionId: sessionIdOf(draft) })
+  // Its model is offered no codemode, which a Session started as usual is.
+  fakeKernel.model.push({ match: 'direct please', text: 'Direct it is.' })
+  await page.getByRole('textbox', { name: 'Message' }).fill('direct please')
+  await page.getByRole('button', { name: 'Send' }).click()
+  const direct = await fakeKernel.model.waitForTurn('direct please')
+  await fakeKernel.turn('Recent work', 'as usual', { text: 'Usual.' })
+  const usual = await fakeKernel.model.waitForTurn('as usual')
+  expect(usual.tools).toContain('codemode')
+  expect(direct.tools).not.toContain('codemode')
+  expect(direct.tools).toContain('bash')
+})
+
+test.describe('on a computer whose Session defaults name a model', () => {
+  test.use({
+    scenario: {
+      models: [{ id: 'gpt-5', name: 'GPT-5', thinking: ['low', 'medium', 'high'] }],
+      defaultModel: 'gpt-5',
+      sessions: [{ title: 'Recent work', cwd: 'acme-web', entries: [userEntry('b')] }],
+    },
+  })
+
+  test('a Session started without picking one has that model', async ({ page, fakeKernel }) => {
+    fakeKernel.model.push({ match: 'Look around', text: 'Looked.' })
+    await pairPhone(page, fakeKernel)
+    const form = await openNewSession(page)
+    await expect(form.getByRole('button', { name: 'Model', exact: true })).toHaveText(/GPT-5/)
+    await form.getByRole('textbox', { name: 'Message' }).fill('Look around')
+    await form.getByRole('button', { name: 'Start session' }).click()
+    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Looked.')
+    await expect(page.getByRole('button', { name: 'Model', exact: true })).toHaveText(/GPT-5/)
+  })
 })

@@ -7,6 +7,7 @@ package testsupport
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -117,6 +118,11 @@ func WindowScenario(sc fakedaemon.Scenario) (fakekernel.Scenario, error) {
 		}
 	}
 	sc.Sessions = nil
+	// The Session defaults are the Daemon's to answer on Kernel too: the window reads them from it.
+	if _, ok := sc.Input["defaults"]; ok {
+		sc.Input = maps.Clone(sc.Input)
+		delete(sc.Input, "defaults")
+	}
 	out, err := KernelScenario(sc)
 	if err != nil {
 		return out, err

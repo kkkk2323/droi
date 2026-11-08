@@ -462,6 +462,17 @@ export class Kernel implements Dispatcher {
       capabilities: this.#options.capabilities,
       providers,
       models,
+      // What a new conversation starts with when its create names no model.
+      ...(config.agent?.provider !== undefined && config.agent.modelId !== undefined
+        ? {
+            agent: {
+              model: { provider: config.agent.provider, modelId: config.agent.modelId },
+              ...(config.agent.thinkingLevel === undefined
+                ? {}
+                : { thinkingLevel: config.agent.thinkingLevel }),
+            },
+          }
+        : {}),
       extensions:
         this.#options.tools.length === 0
           ? []
@@ -515,6 +526,8 @@ export class Kernel implements Dispatcher {
       }
       memoryDir = given
     }
+    let agent: DefaultAgent | null | undefined
+    if ('agent' in params) agent = this.#defaultAgent(params['agent'])
     let appSection: string | null | undefined
     if ('section' in params) {
       const given = params['section']
@@ -529,6 +542,18 @@ export class Kernel implements Dispatcher {
     }
     if (memoryDir === null) delete config.memoryDir
     else if (memoryDir !== undefined) config.memoryDir = memoryDir
+    if (agent !== undefined) {
+      // The rest of the config file's agent (a cwd, instructions) stays.
+      const {
+        provider: _provider,
+        modelId: _modelId,
+        thinkingLevel: _thinking,
+        ...rest
+      } = config.agent ?? {}
+      const next = agent === null ? rest : { ...rest, ...agent }
+      if (Object.keys(next).length === 0) delete config.agent
+      else config.agent = next
+    }
     if (appSection !== undefined) {
       const app = config.app ?? { mcpServers: {}, blockOnLoad: [], alwaysAllow: [] }
       if (appSection === null) delete app.section
@@ -538,10 +563,41 @@ export class Kernel implements Dispatcher {
     info('harness configured', {
       ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
       ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),
+      ...(agent === undefined
+        ? {}
+        : { agent: agent === null ? null : `${agent.provider}/${agent.modelId}` }),
       ...(appSection === undefined ? {} : { section: appSection !== null }),
     })
     this.#notifier?.broadcast('harness.changed', {})
     return {}
+  }
+
+  /** `harness.configure`'s `agent`: a model this kernel offers and its thinking level, or null for none. */
+  #defaultAgent(value: unknown): DefaultAgent | null {
+    if (value === null) return null
+    if (typeof value !== 'object' || Array.isArray(value)) {
+      throw invalidParams([{ path: 'agent', message: 'an object, or null for none' }])
+    }
+    const source = value as Record<string, unknown>
+    const model = source['model']
+    if (typeof model !== 'object' || model === null) {
+      throw invalidParams([{ path: 'agent.model', message: '{provider, modelId} is required' }])
+    }
+    const { provider, modelId } = parseModel(model, 'agent')
+    if (this.#options.models.getModel(provider, modelId) === undefined) {
+      throw invalidParams([
+        { path: 'agent.model', message: `this kernel offers no ${provider}/${modelId}` },
+      ])
+    }
+    const thinking = source['thinkingLevel']
+    if (thinking !== undefined && thinking !== null && typeof thinking !== 'string') {
+      throw invalidParams([{ path: 'agent.thinkingLevel', message: 'a string is required' }])
+    }
+    return {
+      provider,
+      modelId,
+      ...(typeof thinking === 'string' ? { thinkingLevel: thinking } : {}),
+    }
   }
 
   /** `policy.set`: the default policy, or one conversation's own, changed and announced whole. */
@@ -997,7 +1053,10 @@ export class Kernel implements Dispatcher {
       cursor: parseListCursor(optionalObject(params, 'cursor')),
       limit: limit === undefined ? undefined : Math.min(limit, MAX_PAGE),
     })
-    const items = page.items.map(wireSummary)
+    // `busy` is what a client that connects mid-run cannot otherwise know until the run's next change.
+    const items = page.items.map((row) =>
+      this.#busy.get(row.id)?.run != null ? { ...wireSummary(row), busy: true } : wireSummary(row),
+    )
     return page.next === undefined ? { items } : { items, cursor: page.next }
   }
 
@@ -1949,6 +2008,9 @@ function gateOf(method: string): string | undefined {
 function invalidTitle(field: string): never {
   throw invalidParams([{ path: field, message: 'a string or null is required' }])
 }
+
+/** The model a new conversation starts with when its create names none, as `harness.configure` sets it. */
+type DefaultAgent = { provider: string; modelId: string; thinkingLevel?: string }
 
 function parseModel(value: unknown, prefix: string): ModelRef {
   if (typeof value !== 'object' || value === null) {

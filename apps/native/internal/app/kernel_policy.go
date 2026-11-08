@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
 	"log"
 	"slices"
 	"sync"
@@ -59,6 +61,9 @@ type policyState struct {
 	// level is the default level gen's connection was given, "" before it was given one.
 	level string
 	gen   int64
+	// agent is the default agent agentGen's connection was given, as sent; "" before it was given one.
+	agent    string
+	agentGen int64
 
 	push sync.Mutex
 }
@@ -161,14 +166,54 @@ func (a *App) pushDefault(c *kernel.Client, gen int64) bool {
 	return true
 }
 
-// defaultsChanged is the Session defaults' Changed: a new default level goes to Kernel.
+// defaultsChanged is the Session defaults' Changed: a new default level and model go to Kernel.
 func (a *App) defaultsChanged(defaults.View) {
 	a.kernel.mu.Lock()
 	c, gen := a.kernel.c, a.kernel.gen
 	a.kernel.mu.Unlock()
 	if c != nil {
 		go a.pushDefault(c, gen)
+		go a.pushDefaultAgent(c, gen)
 	}
+}
+
+// pushDefaultAgent gives connection gen the model the Session defaults name, so a conversation another client makes
+// without naming one (a phone's) starts as this window's would. It waits for the defaults and for the models Kernel
+// offers, whose arrival pushes it again; a model Kernel does not offer is not given.
+func (a *App) pushDefaultAgent(c *kernel.Client, gen int64) {
+	dv := a.defaults.Get()
+	if dv == nil || dv.ModelID == "" {
+		return
+	}
+	offered := a.kernel.offered()
+	i := slices.IndexFunc(offered, func(m kernel.ModelInfo) bool { return m.ID == dv.ModelID })
+	if i < 0 {
+		return
+	}
+	agent := kernel.DefaultAgent{Model: kernel.ModelRef{Provider: offered[i].Provider, ModelID: dv.ModelID}}
+	if slices.Contains(offered[i].Thinking, dv.ReasoningEffort) {
+		agent.ThinkingLevel = dv.ReasoningEffort
+	}
+	sent, _ := json.Marshal(agent)
+	a.policy.push.Lock()
+	defer a.policy.push.Unlock()
+	a.policy.mu.Lock()
+	same := a.policy.agentGen == gen && a.policy.agent == string(sent)
+	a.policy.mu.Unlock()
+	if same {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
+	if err := c.HarnessConfigure(ctx, kernel.HarnessConfigureParams{Agent: kernel.Some(agent)}); err != nil {
+		if !kernel.Is(err, kernel.CodeReadOnly) && !kernel.Is(err, kernel.CodeUnsupported) {
+			log.Println("droi: kernel: the default model:", err)
+		}
+		return
+	}
+	a.policy.mu.Lock()
+	a.policy.agent, a.policy.agentGen = string(sent), gen
+	a.policy.mu.Unlock()
 }
 
 // policyChanged takes policy.changed. Only a conversation's rules are stored from it: its level in the snapshot is

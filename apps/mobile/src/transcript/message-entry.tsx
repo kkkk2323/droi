@@ -14,7 +14,6 @@ import { Reply } from '../markdown/json-render'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
-import { SubagentCard } from './subagent-card'
 import { ThinkingSection } from './thinking-section'
 import { ToolCluster } from './tool-cluster'
 
@@ -121,8 +120,6 @@ function renderBlock(
       )
     case 'tools':
       return <ToolCluster calls={block.calls} />
-    case 'subagent':
-      return <SubagentCard call={block.call} />
   }
 }
 

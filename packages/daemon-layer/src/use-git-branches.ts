@@ -1,7 +1,7 @@
-// The Git branches of a Workspace, which also tells whether it is a Git
-// repository at all (the Daemon makes worktrees only of those).
+// The Git branches of a Workspace, which also tells whether it is a Git repository at all
+// (worktrees are made only of those), as the computer's git answers through the Gateway.
 import { useQuery } from '@tanstack/react-query'
-import { useConnectionState, useDaemonConnection } from './connection-context'
+import { useConnectionState, useKernelConnection } from './connection-context'
 
 export interface GitBranches {
   isGitRepository: boolean
@@ -9,20 +9,20 @@ export interface GitBranches {
   currentBranch: string | null
 }
 
-/** Undefined until the Daemon has answered; null path (no Workspace) is never asked. */
+/** Undefined until the computer has answered; null path (no Workspace) is never asked. */
 export function useGitBranches(path: string | null): GitBranches | undefined {
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   const connected = useConnectionState().status === 'connected'
   const query = useQuery({
     queryKey: ['git-branches', path],
     enabled: connected && path !== null,
     staleTime: 30_000,
     queryFn: async (): Promise<GitBranches> => {
-      const result = await connection.controller.listGitBranches(path!)
+      const found = await connection.workspaces.inspect(path!)
       return {
-        isGitRepository: result.isGitRepository,
-        branches: result.branches,
-        currentBranch: result.currentBranch,
+        isGitRepository: found.isGitRepository,
+        branches: found.branches,
+        currentBranch: found.currentBranch || null,
       }
     },
   })

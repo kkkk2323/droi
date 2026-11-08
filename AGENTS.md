@@ -65,7 +65,8 @@ packages/
                    # state hooks, Gateway contract, local preferences); no DOM or Electron;
                    # src/kernel/ is its client for the Kernel's protocol (2.0, ADR 0038)
 tests/          # @droi/tests: the Playwright suites, one config per folder
-└── mobile/        # The Phone App's web build against the Fake Daemon
+└── mobile/        # The Phone App's web build against a Fake Kernel (fake-kernel/: the Kernel
+                   # behind the real Gateway, internal/phonegateway, with a scripted model)
 scripts/        # install:phone, release.sh, measure-cpu.py
 docs/           # ADRs, agent docs, the README screenshot
 ```
@@ -88,7 +89,7 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 | `go vet ./apps/native/...`                                   | Also with `GOOS=windows` when the change touches Windows                                                                |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows)                                         |
 | `pnpm test`                                                  | Run vitest once                                                                                                         |
-| `pnpm test:e2e:phone`                                        | Export the Phone App for web and run Playwright against it (Fake Daemon)                                                |
+| `pnpm test:e2e:phone`                                        | Export the Phone App for web and run Playwright against it (Fake Kernel: needs Bun and Go; `DROI_KERNEL_BIN` picks a build) |
 | `pnpm install:phone`                                         | Build a signed Release of the Phone App and install it on the connected iPhone                                          |
 | `pnpm typecheck`                                             | TypeScript validation (root + Phone App + tests)                                                                        |
 | `pnpm lint` / `pnpm lint:fix`                                | oxlint                                                                                                                  |
@@ -109,7 +110,7 @@ there, not in a Release; the workflow runs the view tests in shards of that bina
 cover the same tests). Format with that gofmt, which is go.mod's
 Go: a `gofmt` on PATH from another Go lays out `pkg/l10n/zh.go` differently, and the PR
 workflow rejects it (`go test ./apps/native` checks this too). Run
-`pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the Fake Daemon
+`pnpm test:e2e:phone` when the Phone App, the shared daemon layer, the Kernel or the Gateway
 changed. For what only an iPhone can show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
 
 ## droid-sdk-go
@@ -122,10 +123,9 @@ The Go SDK (`github.com/kkkk2323/droid-sdk-go`) and the Fake Daemon
 (`@droi/fake-daemon`, which the Go SDK's `fakedaemon` package embeds) come from
 [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) at a tag. To change either, change
 that repository (its README says how to rebuild the Fake Daemon), tag a release, then move
-both pins here to it: `apps/native/go.mod` (`go get github.com/kkkk2323/droid-sdk-go@<tag>`
-from `apps/native`) and `@droi/fake-daemon` in `tests/package.json`. While working on both,
-`go work use <checkout>` and `link:<checkout>/fake-daemon` use a local checkout; do not
-commit them.
+the pin here to it: `apps/native/go.mod` (`go get github.com/kkkk2323/droid-sdk-go@<tag>`
+from `apps/native`). The Phone App's suite no longer uses the Fake Daemon. While working on both,
+`go work use <checkout>` uses a local checkout; do not commit it.
 
 The Phone App is pinned to Expo SDK 57 (ADR 0006). Expo changes its APIs every
 SDK: read the versioned docs (`https://docs.expo.dev/versions/v57.0.0/`) or the
@@ -165,7 +165,7 @@ installed types before using an Expo module, and add Expo packages with
 - README screenshot: `DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots`
   draws the native app against the Fake Daemon into `docs/screenshot.png` (skipped in a normal run)
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
-- E2E tests never need a Factory API key; they run against the Fake Daemon
+- E2E tests never need a Factory API key: the Phone App's run against a Fake Kernel, whose model is scripted
 - Live tests against a real Daemon, through the local droid-proxy (`dp`) with a cheap model:
   `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/pkg/host ./apps/native/pkg/gateway ./apps/native/internal/hostrun -run Live -v -timeout 30m`
   (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration).

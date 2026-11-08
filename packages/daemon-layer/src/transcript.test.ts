@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import type { FactoryDroidMessage } from '@factory/droid-sdk'
+import type { Entry, LiveDoc, PiMessage } from './kernel-wire'
 import {
   buildTranscript,
   formatDuration,
@@ -10,256 +10,290 @@ import {
   turnEnds,
 } from './transcript'
 
-const message = (
-  role: 'user' | 'assistant' | 'tool' | 'system',
-  content: unknown[],
-  extra: Partial<FactoryDroidMessage> = {},
-): FactoryDroidMessage =>
-  ({
-    id: `${role}-${Math.random()}`,
-    role,
-    content,
-    createdAt: 1,
-    updatedAt: 1,
-    ...extra,
-  }) as FactoryDroidMessage
+let nextId = 100
+const entry = (kind: string, model: PiMessage[], data?: Record<string, unknown>): Entry => ({
+  id: nextId++,
+  conversationId: 7,
+  kind,
+  model,
+  ...(data ? { data } : {}),
+})
+const user = (content: PiMessage['content'], timestamp = 1): Entry =>
+  entry('pi.user', [{ role: 'user', content, timestamp }])
+const assistant = (content: unknown[], extra: Partial<PiMessage> = {}, timestamp = 2): Entry =>
+  entry('pi.assistant', [
+    {
+      role: 'assistant',
+      content: content as PiMessage['content'],
+      stopReason: 'stop',
+      timestamp,
+      ...extra,
+    },
+  ])
+const call = (id: string, name: string, args: Record<string, unknown> = {}) => ({
+  type: 'toolCall',
+  id,
+  name,
+  arguments: args,
+})
+const result = (
+  id: string,
+  name: string,
+  text: string,
+  extra: Partial<PiMessage> = {},
+  data?: Record<string, unknown>,
+): Entry =>
+  entry(
+    'pi.tool-result',
+    [
+      {
+        role: 'toolResult',
+        toolCallId: id,
+        toolName: name,
+        content: [{ type: 'text', text }],
+        isError: false,
+        timestamp: 3,
+        ...extra,
+      },
+    ],
+    data,
+  )
 
 describe('buildTranscript', () => {
-  test('attaches tool results to their tool calls and drops tool messages', () => {
+  test('a tool round joins its answer, with each call carrying its result', () => {
     const entries = buildTranscript([
-      message('user', [{ type: 'text', text: 'run it' }]),
-      message('assistant', [
-        { type: 'thinking', thinking: 'plan', durationMs: 42 },
-        { type: 'tool_use', id: 'call-1', name: 'Execute', input: { command: 'ls' } },
-      ]),
-      message('tool', [{ type: 'tool_result', toolUseId: 'call-1', content: 'a\nb' }]),
-      message('assistant', [{ type: 'text', text: 'done' }]),
+      user('run it'),
+      assistant(
+        [
+          { type: 'thinking', thinking: 'plan', durationMs: 42 },
+          call('c1', 'bash', { command: 'ls' }),
+        ],
+        { stopReason: 'toolUse' },
+      ),
+      result('c1', 'bash', 'a\nb\n'),
+      assistant([{ type: 'text', text: 'done' }], {}, 4),
     ])
     expect(entries.map((e) => e.role)).toEqual(['user', 'assistant'])
-    const [, assistant] = entries
-    expect(assistant!.blocks.map((b) => b.kind)).toEqual(['thinking', 'tools', 'text'])
-    const tools = assistant!.blocks[1]
-    if (tools?.kind !== 'tools') throw new Error('expected tools block')
+    expect(entries[0]!.blocks).toEqual([{ kind: 'text', id: expect.any(String), text: 'run it' }])
+    const answer = entries[1]!
+    expect(answer.blocks.map((b) => b.kind)).toEqual(['thinking', 'tools', 'text'])
+    expect(answer.createdAt).toBe(4)
+    const tools = answer.blocks[1]
+    if (tools?.kind !== 'tools') throw new Error('expected tools')
+    expect(tools.calls[0]!.use).toEqual({ id: 'c1', name: 'bash', input: { command: 'ls' } })
     expect(toolResultText(tools.calls[0]!.result)).toBe('a\nb')
   })
 
-  test('inline images become image blocks with a data URL', () => {
+  test('calls with nothing between them are one cluster across entries', () => {
     const entries = buildTranscript([
-      message('user', [
-        { type: 'text', text: 'see' },
-        { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: 'AAAA' } },
-      ]),
+      user('go'),
+      assistant([call('a', 'read')], { stopReason: 'toolUse' }),
+      result('a', 'read', 'x'),
+      assistant([call('b', 'read')], { stopReason: 'toolUse' }),
+      result('b', 'read', 'y'),
     ])
-    expect(entries[0]!.blocks).toEqual([
-      { kind: 'text', id: expect.any(String), text: 'see' },
-      { kind: 'image', id: expect.any(String), src: 'data:image/png;base64,AAAA' },
-    ])
-  })
-
-  test('a Task call stands on its own and splits the tool run around it', () => {
-    const entries = buildTranscript([
-      message('assistant', [
-        { type: 'tool_use', id: 'a', name: 'Read', input: {} },
-        { type: 'tool_use', id: 't', name: 'Task', input: { subagent_type: 'explorer' } },
-        { type: 'tool_use', id: 'b', name: 'Grep', input: {} },
-      ]),
-      message('tool', [{ type: 'tool_result', toolUseId: 't', content: 'report' }]),
-    ])
-    const blocks = entries[0]!.blocks
-    expect(blocks.map((b) => b.kind)).toEqual(['tools', 'subagent', 'tools'])
-    const task = blocks[1]
-    if (task?.kind !== 'subagent') throw new Error('expected subagent block')
-    expect(toolResultText(task.call.result)).toBe('report')
-  })
-
-  test("a Script's calls go under the latest call watching its run, in order", () => {
-    const nested = (id: string, name: string) =>
-      message('assistant', [
-        {
-          type: 'tool_use',
-          id,
-          name,
-          input: {},
-          scriptExecution: { runId: 'run', outerToolUseId: 'run' },
-        },
-      ])
-    const entries = buildTranscript([
-      message('user', [{ type: 'text', text: 'go' }]),
-      message('assistant', [
-        { type: 'tool_use', id: 'run', name: 'Script', input: { script: '' } },
-        { type: 'tool_use', id: 'other', name: 'ToolSearch', input: {} },
-      ]),
-      nested('run-1', 'Read'),
-      message('tool', [{ type: 'tool_result', toolUseId: 'run-1', content: 'text' }]),
-      nested('run-3', 'Execute'),
-      message('tool', [
-        {
-          type: 'tool_result',
-          toolUseId: 'run',
-          content: '{"toolCallId":"run","status":"running"}',
-        },
-      ]),
-      message('assistant', [{ type: 'text', text: 'Still going; waiting.' }]),
-      message('assistant', [
-        { type: 'tool_use', id: 'wait', name: 'WaitForScript', input: { toolCallId: 'run' } },
-      ]),
-      nested('run-5', 'Execute'),
-    ])
-    expect(entries.map((e) => e.role)).toEqual(['user', 'assistant'])
     const blocks = entries[1]!.blocks
-    expect(blocks.map((b) => b.kind)).toEqual(['tools', 'text', 'tools'])
-    const [first, , second] = blocks
-    if (first?.kind !== 'tools' || second?.kind !== 'tools') throw new Error('expected tools')
-    expect(first.calls.map((c) => c.use.id)).toEqual(['run', 'other'])
-    expect(first.calls[0]!.nested!.map((c) => c.use.id)).toEqual(['run-1', 'run-3'])
-    expect(toolResultText(first.calls[0]!.nested![0]!.result)).toBe('text')
-    expect(first.calls[1]!.nested).toBeUndefined()
-    expect(second.calls.map((c) => c.use.id)).toEqual(['wait'])
-    expect(second.calls[0]!.nested!.map((c) => c.use.id)).toEqual(['run-5'])
+    expect(blocks).toHaveLength(1)
+    if (blocks[0]?.kind !== 'tools') throw new Error('expected tools')
+    expect(blocks[0].calls.map((c) => c.use.id)).toEqual(['a', 'b'])
   })
 
-  test("a Script's call whose run is not in the transcript stays a call of its own", () => {
+  test('a call still running has no result, and one on a stopped answer was interrupted', () => {
+    const running = buildTranscript([
+      user('go'),
+      assistant([call('a', 'bash')], { stopReason: 'toolUse' }),
+    ])
+    const block = running[1]!.blocks[0]
+    if (block?.kind !== 'tools') throw new Error('expected tools')
+    expect(block.calls[0]!.result).toBeNull()
+    const stopped = buildTranscript([
+      user('go'),
+      assistant([call('a', 'bash')], { stopReason: 'aborted' }),
+    ])
+    const cut = stopped[1]!.blocks[0]
+    if (cut?.kind !== 'tools') throw new Error('expected tools')
+    expect(cut.calls[0]!.result).toMatchObject({ interrupted: true, isError: false })
+  })
+
+  test("the harness's rendering of its diagnostics is left out, and its ending is read", () => {
+    const diagnostics = [{ severity: 'info', code: 'aborted', message: 'The run was stopped.' }]
     const entries = buildTranscript([
-      message('assistant', [
+      user('go'),
+      assistant([call('a', 'bash')], { stopReason: 'toolUse' }),
+      entry(
+        'pi.tool-result',
+        [
+          {
+            role: 'toolResult',
+            toolCallId: 'a',
+            toolName: 'bash',
+            isError: true,
+            content: [
+              { type: 'text', text: 'partial' },
+              { type: 'text', text: '<harness>\n[info] The run was stopped.\n</harness>' },
+            ],
+          },
+        ],
+        { diagnostics },
+      ),
+    ])
+    const block = entries[1]!.blocks[0]
+    if (block?.kind !== 'tools') throw new Error('expected tools')
+    expect(block.calls[0]!.result).toMatchObject({
+      text: 'partial',
+      notes: 'The run was stopped.',
+      interrupted: true,
+      isError: false,
+    })
+  })
+
+  test('pictures, sent and handed back, are data URLs', () => {
+    const entries = buildTranscript([
+      user([
+        { type: 'text', text: 'see' },
+        { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+      ]),
+      assistant([call('a', 'read', { path: 'x.png' })], { stopReason: 'toolUse' }),
+      entry('pi.tool-result', [
         {
-          type: 'tool_use',
-          id: 'n',
-          name: 'Read',
-          input: {},
-          scriptExecution: { runId: 'gone', outerToolUseId: 'gone' },
+          role: 'toolResult',
+          toolCallId: 'a',
+          toolName: 'read',
+          content: [{ type: 'image', data: 'BBBB', mimeType: 'image/jpeg' }],
         },
       ]),
     ])
-    const tools = entries[0]!.blocks[0]
-    if (tools?.kind !== 'tools') throw new Error('expected tools')
-    expect(tools.calls.map((c) => c.use.id)).toEqual(['n'])
+    expect(entries[0]!.blocks[1]).toEqual({
+      kind: 'image',
+      id: expect.any(String),
+      src: 'data:image/png;base64,AAAA',
+    })
+    const block = entries[1]!.blocks[0]
+    if (block?.kind !== 'tools') throw new Error('expected tools')
+    expect(toolResultImages(block.calls[0]!.result)).toEqual(['data:image/jpeg;base64,BBBB'])
   })
 
-  test('consecutive tool calls form one cluster; text splits clusters', () => {
-    const entries = buildTranscript([
-      message('assistant', [
-        { type: 'tool_use', id: 'a', name: 'Read', input: {} },
-        { type: 'tool_use', id: 'b', name: 'Grep', input: {} },
-        { type: 'text', text: 'found it' },
-        { type: 'tool_use', id: 'c', name: 'Edit', input: {} },
-      ]),
-    ])
-    const blocks = entries[0]!.blocks
-    expect(blocks.map((b) => (b.kind === 'tools' ? b.calls.length : b.kind))).toEqual([
-      2,
-      'text',
-      1,
-    ])
-  })
-
-  test('consecutive assistant messages merge into one entry; a user turn splits them', () => {
-    const entries = buildTranscript([
-      message('assistant', [{ type: 'tool_use', id: 'a', name: 'Read', input: {} }], {
-        createdAt: 1,
+  test("a script's calls hang under it: those it made, and those it is making", () => {
+    const done = buildTranscript([
+      user('go'),
+      assistant([call('s', 'codemode', { code: 'await tools.read({path: "a"})' })], {
+        stopReason: 'toolUse',
       }),
-      message('assistant', [{ type: 'tool_use', id: 'b', name: 'Grep', input: {} }], {
-        createdAt: 2,
+      result('s', 'codemode', 'out', {
+        details: {
+          calls: [{ id: 1, name: 'read', arguments: { path: 'a' }, status: 'ok', output: 'A' }],
+        },
       }),
-      message('assistant', [{ type: 'text', text: 'done' }], { createdAt: 3 }),
-      message('user', [{ type: 'text', text: 'thanks' }]),
-      message('assistant', [{ type: 'text', text: 'welcome' }]),
     ])
-    expect(entries.map((e) => e.role)).toEqual(['assistant', 'user', 'assistant'])
-    const first = entries[0]!
-    expect(first.blocks.map((b) => (b.kind === 'tools' ? b.calls.length : b.kind))).toEqual([
-      2,
-      'text',
+    const block = done[1]!.blocks[0]
+    if (block?.kind !== 'tools') throw new Error('expected tools')
+    expect(block.calls[0]!.nested).toEqual([
+      {
+        use: { id: 's/c1', name: 'read', input: { path: 'a' } },
+        result: expect.objectContaining({ text: 'A' }),
+      },
     ])
-    expect(first.createdAt).toBe(3)
-  })
-
-  test('skips empty messages and hidden messages', () => {
-    const entries = buildTranscript([
-      message('assistant', []),
-      message('user', [{ type: 'text', text: 'hidden' }], { isUserVisible: false }),
-      message('assistant', [{ type: 'text', text: '' }]),
-      // The Daemon's record of a hook run: a user message with nothing in it.
-      message('user', [], { hookEventName: 'UserPromptSubmit', hookStatus: 'completed' } as never),
-    ])
-    expect(entries).toEqual([])
-  })
-
-  test("the Daemon's user-only notices read as the Droid's, live (system) or loaded (user)", () => {
-    for (const role of ['system', 'user'] as const) {
-      const notice = () =>
-        message(role, [{ type: 'text', text: "You've reached your usage limit." }], {
-          visibility: 'user_only',
-        } as never)
-      const entries = buildTranscript([
-        message('user', [{ type: 'text', text: 'hi' }]),
-        message('user', [], {
-          hookEventName: 'UserPromptSubmit',
-          visibility: 'user_only',
-        } as never),
-        notice(),
-        notice(),
-      ])
-      expect(entries.map((e) => e.role)).toEqual(['user', 'assistant'])
-      expect(entries[1]!.blocks.map((b) => b.kind)).toEqual(['text', 'text'])
-      expect(turnEnds(entries, false).has(entries[1]!.id)).toBe(true)
-    }
-    expect(buildTranscript([message('system', [{ type: 'text', text: 'x' }])])).toEqual([])
-  })
-
-  test("a hook record between two assistant messages does not split the assistant's entry", () => {
-    const entries = buildTranscript([
-      message('assistant', [{ type: 'tool_use', id: 'a', name: 'Read', input: {} }]),
-      message('user', [], { hookEventName: 'UserPromptSubmit' } as never),
-      message('assistant', [{ type: 'text', text: 'done' }]),
-    ])
-    expect(entries.map((e) => e.role)).toEqual(['assistant'])
-  })
-
-  test('tool results may be block arrays', () => {
-    expect(
-      toolResultText({
-        type: 'tool_result',
-        toolUseId: 'x',
-        content: [{ type: 'text', text: 'hi' }],
-      } as never),
-    ).toBe('hi')
-  })
-
-  test('a tool result carries the pictures it handed back, the text without them', () => {
-    const result = {
-      type: 'tool_result',
-      toolUseId: 'x',
-      content: [
-        { type: 'text', text: 'Image file: shot.png' },
-        { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: 'AAAA' } },
-        { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
+    const live: LiveDoc = {
+      run: { taskId: 1, inputs: [], turns: 1 },
+      nestedTools: [
+        {
+          parentCallId: 's',
+          callId: 'n1',
+          name: 'bash',
+          arguments: { command: 'ls' },
+          status: 'running',
+        },
       ],
-    } as never
-    expect(toolResultText(result)).toBe('Image file: shot.png')
-    expect(toolResultImages(result)).toEqual(['data:image/png;base64,AAAA'])
+    }
+    const running = buildTranscript(
+      [user('go'), assistant([call('s', 'codemode', { code: 'x' })], { stopReason: 'toolUse' })],
+      live,
+    )
+    const runningBlock = running[1]!.blocks[0]
+    if (runningBlock?.kind !== 'tools') throw new Error('expected tools')
+    expect(runningBlock.calls[0]!.nested).toEqual([
+      { use: { id: 'n1', name: 'bash', input: { command: 'ls' } }, result: null },
+    ])
+  })
+
+  test('an answer after a compaction or a note opens its own row', () => {
+    const entries = buildTranscript([
+      user('go'),
+      assistant([{ type: 'text', text: 'one' }]),
+      entry('pi.compaction', [{ role: 'user', content: 'summary' }]),
+      assistant([{ type: 'text', text: 'two' }]),
+      entry('droi.note', [], { text: 'Imported from droid', at: 5 }),
+      assistant([{ type: 'text', text: 'three' }]),
+    ])
+    expect(entries.map((e) => (e.blocks[0] as { text: string }).text)).toEqual([
+      'go',
+      'one',
+      'two',
+      'Imported from droid',
+      'three',
+    ])
+    expect(entries[3]!.note).toBe(true)
+  })
+
+  test('the answer being written closes the transcript while the run lasts', () => {
+    const stored = [
+      user('go'),
+      assistant([call('a', 'read')], { stopReason: 'toolUse' }),
+      result('a', 'read', 'x'),
+    ]
+    const live: LiveDoc = {
+      run: { taskId: 9, inputs: [], turns: 1 },
+      generation: {
+        attempt: 1,
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Hel' }] },
+      } as LiveDoc['generation'],
+    }
+    const writing = buildTranscript(stored, live)
+    expect(writing).toHaveLength(2)
+    expect(writing[1]!.streaming).toBe(true)
+    expect(writing[1]!.blocks.map((b) => b.kind)).toEqual(['tools', 'text'])
+    // The stored answer's own row is not changed by the one being written.
+    const without = buildTranscript(stored)
+    expect(without[1]!.blocks).toHaveLength(1)
+    expect(buildTranscript(stored, { ...live, run: null })).toHaveLength(2)
+  })
+
+  test('a run that ended without an answer says why, and a stopped one says nothing', () => {
+    const failed = buildTranscript([user('go')], {
+      run: null,
+      runFailure: { taskId: 3, reason: 'model_error', detail: 'Rate limited' },
+    })
+    expect(failed[1]).toMatchObject({ isError: true, blocks: [{ text: 'Rate limited' }] })
     expect(
-      toolResultImages({ type: 'tool_result', toolUseId: 'x', content: 'x' } as never),
-    ).toEqual([])
-    expect(toolResultImages(null)).toEqual([])
+      buildTranscript([user('go')], { runFailure: { taskId: 3, reason: 'aborted' } }),
+    ).toHaveLength(1)
+    const empty = buildTranscript([user('go'), assistant([], { stopReason: 'aborted' })])
+    expect(empty[1]).toMatchObject({ blocks: [{ text: 'Stopped' }] })
+  })
+
+  test('a user message with nothing to show is no row, but still ends the turn before it', () => {
+    const entries = buildTranscript([
+      user('go'),
+      assistant([{ type: 'text', text: 'one' }]),
+      user([]),
+      assistant([{ type: 'text', text: 'two' }]),
+    ])
+    expect(entries).toHaveLength(3)
   })
 })
 
 describe('turnEnds', () => {
-  const at = (role: 'user' | 'assistant', createdAt: number, content: unknown[]) =>
-    message(role, content, { createdAt, updatedAt: createdAt })
   const text = (t: string) => [{ type: 'text', text: t }]
-  const tool = (id: string) => [{ type: 'tool_use', id, name: 'Read', input: {} }]
 
   test('a reply followed by a user message closes the turn, with the time since the prompt', () => {
     const entries = buildTranscript([
-      at('user', 1_000, text('go')),
-      at('assistant', 5_000, text('done')),
-      at('user', 9_000, text('thanks')),
-      at('assistant', 9_500, text('welcome')),
+      user('go', 1_000),
+      assistant(text('done'), {}, 5_000),
+      user('thanks', 9_000),
+      assistant(text('welcome'), {}, 9_500),
     ])
     const ends = turnEnds(entries, true)
     expect(ends.get(entries[1]!.id)).toEqual({ endedAt: 5_000, startedAt: 1_000 })
-    // The last entry is still being written.
     expect(ends.has(entries[3]!.id)).toBe(false)
     expect(turnEnds(entries, false).get(entries[3]!.id)).toEqual({
       endedAt: 9_500,
@@ -267,23 +301,10 @@ describe('turnEnds', () => {
     })
   })
 
-  test('a user message that steers a turn in progress does not close it', () => {
+  test('the last entry closes once the Kernel rests, even on tool calls', () => {
     const entries = buildTranscript([
-      at('user', 1_000, text('go')),
-      at('assistant', 2_000, tool('a')),
-      at('user', 3_000, text('also check b')),
-      at('assistant', 8_000, [...tool('b'), ...text('both done')]),
-    ])
-    const ends = turnEnds(entries, false)
-    expect(ends.has(entries[1]!.id)).toBe(false)
-    // The turn's duration counts from the prompt that started it.
-    expect(ends.get(entries[3]!.id)).toEqual({ endedAt: 8_000, startedAt: 1_000 })
-  })
-
-  test('the last entry closes once the Daemon rests, even on tool calls', () => {
-    const entries = buildTranscript([
-      at('user', 1_000, text('go')),
-      at('assistant', 2_000, tool('a')),
+      user('go', 1_000),
+      assistant([call('a', 'read')], { stopReason: 'toolUse' }, 2_000),
     ])
     expect(turnEnds(entries, true).size).toBe(0)
     expect(turnEnds(entries, false).get(entries[1]!.id)).toEqual({
@@ -291,21 +312,11 @@ describe('turnEnds', () => {
       startedAt: 1_000,
     })
   })
-
-  test('a turn with no prompt before it has a time but no duration', () => {
-    const entries = buildTranscript([at('assistant', 2_000, text('hi'))])
-    expect(turnEnds(entries, false).get(entries[0]!.id)).toEqual({
-      endedAt: 2_000,
-      startedAt: null,
-    })
-  })
 })
 
 describe('formatTurnEnd', () => {
   const now = new Date(2026, 8, 29, 23, 30)
   const endedAt = new Date(2026, 8, 29, 23, 13).getTime()
-
-  // The clock time follows the locale (23:13 or 11:13 PM).
   const time = String.raw`^\d{1,2}:13(?: PM)?`
 
   test('the time alone without a start, or when the turn took under a second', () => {
@@ -330,34 +341,37 @@ describe('formatDuration', () => {
 })
 
 describe('reuseUnchanged', () => {
-  // The SDK copies every message on each read but keeps the blocks inside.
-  const copies = (messages: FactoryDroidMessage[]) => messages.map((m) => ({ ...m }))
-  const use = { type: 'tool_use', id: 'call-1', name: 'Read', input: {} }
-  const image = { type: 'image', source: { type: 'base64', mediaType: 'image/png', data: 'AAAA' } }
-  const asked = message('user', [{ type: 'text', text: 'look' }, image])
-  const reading = message('assistant', [use])
-  const answered = message('tool', [{ type: 'tool_result', toolUseId: 'call-1', content: 'x' }])
+  const asked = user([
+    { type: 'text', text: 'look' },
+    { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+  ])
+  const reading = assistant([call('c', 'read')], { stopReason: 'toolUse' })
+  const answered = result('c', 'read', 'x')
+  const copy = (e: Entry): Entry => JSON.parse(JSON.stringify(e))
 
   test('keeps every entry, and the list, when nothing changed', () => {
     const first = buildTranscript([asked, reading, answered])
-    const again = reuseUnchanged(first, buildTranscript(copies([asked, reading, answered])))
-    expect(again).toBe(first)
+    expect(reuseUnchanged(first, buildTranscript([asked, reading, answered].map(copy)))).toBe(first)
   })
 
   test('replaces only the entry that changed', () => {
     const first = buildTranscript([asked, reading])
-    const next = reuseUnchanged(first, buildTranscript(copies([asked, reading, answered])))
-    expect(next).not.toBe(first)
+    const next = reuseUnchanged(first, buildTranscript([asked, reading, answered].map(copy)))
     expect(next[0]).toBe(first[0])
     expect(next[1]).not.toBe(first[1])
   })
 
-  test('a streamed text keeps earlier entries and renews the growing one', () => {
-    const reply = (text: string) => message('assistant', [{ type: 'text', text }], { id: 'reply' })
-    const first = buildTranscript([asked, reply('Hel')])
-    const next = reuseUnchanged(first, buildTranscript([asked, reply('Hello')]))
+  test('a streamed answer keeps earlier entries and renews the growing one', () => {
+    const live = (t: string): LiveDoc => ({
+      run: { taskId: 1, inputs: [], turns: 1 },
+      generation: {
+        attempt: 1,
+        message: { role: 'assistant', content: [{ type: 'text', text: t }] },
+      } as LiveDoc['generation'],
+    })
+    const first = buildTranscript([asked], live('Hel'))
+    const next = reuseUnchanged(first, buildTranscript([asked], live('Hello')))
     expect(next[0]).toBe(first[0])
-    expect(next[1]).not.toBe(first[1])
     expect(next[1]!.blocks[0]).toMatchObject({ text: 'Hello' })
   })
 })

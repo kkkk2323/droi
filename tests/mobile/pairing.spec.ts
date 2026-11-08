@@ -1,17 +1,22 @@
-import { session, userMessage } from '@droi/fake-daemon/scenario'
-import { expect, openSessionList, pairPhone, pasteLink, pickSession, test } from './fixtures'
+import { exchange, userEntry } from './fake-kernel/history'
+import { expect, openSessionList, pairPhone, pasteLink, test } from './fixtures'
 
-const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
-const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
-const docs = session('Docs', '/Users/dev/handbook', [userMessage('write')])
-
-test.use({ scenario: { sessions: [deploy, notes, docs] } })
+test.use({
+  scenario: {
+    autonomy: 'ask',
+    sessions: [
+      { title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] },
+      { title: 'Notes', cwd: 'acme-web', entries: exchange('todo', 'Noted.') },
+      { title: 'Docs', cwd: 'handbook', entries: exchange('write', 'Written.') },
+    ],
+  },
+})
 
 test('pasting a pairing link connects and lists the Sessions grouped by Workspace', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   const list = await openSessionList(page)
   await expect(page.getByRole('button', { name: 'Switch computer, Test Mac' })).toBeVisible()
   await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
@@ -23,33 +28,33 @@ test('pasting a pairing link connects and lists the Sessions grouped by Workspac
   ).toBeVisible()
 })
 
-test('the Pairing Token goes to the keychain, not to app storage', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('the Pairing Token goes to the keychain, not to app storage', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   const stored = await page.evaluate(() => ({
     app: JSON.stringify({ ...localStorage }),
     keychain: JSON.stringify({ ...sessionStorage }),
   }))
-  expect(stored.keychain).toContain(fakeDaemon.token)
-  expect(stored.app).not.toContain(fakeDaemon.token)
-  expect(stored.app).toContain(fakeDaemon.meta.computerId)
+  expect(stored.keychain).toContain(fakeKernel.token)
+  expect(stored.app).not.toContain(fakeKernel.token)
+  expect(stored.app).toContain(fakeKernel.computerId)
 })
 
 test('a working Session and a Session waiting on a Prompt show different states', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
-  // Opening a Session subscribes the phone to its notifications.
-  await pickSession(page, /Deploy/)
-  await pickSession(page, /Notes/)
-  fakeDaemon.notify(deploy.sessionId, {
-    type: 'droid_working_state_changed',
-    newState: 'streaming_assistant_message',
-  })
-  fakeDaemon.notify(notes.sessionId, {
-    type: 'droid_working_state_changed',
-    newState: 'waiting_for_tool_confirmation',
-  })
+  fakeKernel.model.push(
+    {
+      match: 'deploy now',
+      text: 'Deploying, step by step, slowly.',
+      chunks: ['Deploying', ', step', ' by step', ', slowly.'],
+      delayMs: 4_000,
+    },
+    { match: 'clean up', call: { name: 'bash', arguments: { command: 'rm -rf build' } } },
+  )
+  await pairPhone(page, fakeKernel)
+  await fakeKernel.submit('Deploy', 'deploy now')
+  await fakeKernel.submit('Notes', 'clean up')
   const list = await openSessionList(page)
   const deployRow = list.getByRole('button', { name: /Deploy/ })
   const notesRow = list.getByRole('button', { name: /Notes/ })
@@ -67,17 +72,15 @@ test('a link without the address or an unreachable computer says so', async ({ p
   await expect(page.getByRole('heading', { name: 'Pair with a computer' })).toBeVisible()
 })
 
-test('typing in the search box asks the Daemon and lists the hits with their snippets', async ({
+test('typing in the search box asks the Kernel and lists the hits with the matching message', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   const list = await openSessionList(page)
   await list.getByRole('searchbox', { name: 'Search sessions' }).fill('ship')
   const results = list.getByRole('region', { name: 'Search results' })
   await expect(results.getByRole('listitem')).toHaveCount(1)
-  const searched = await fakeDaemon.waitForRequest('daemon.search_sessions')
-  expect(searched.params).toMatchObject({ query: 'ship' })
   await expect(results.getByRole('button', { name: /Deploy/ })).toContainText('ship it')
   await expect(list.getByRole('group', { name: 'acme-web' })).toHaveCount(0)
   await results.getByRole('button', { name: /Deploy/ }).click()
@@ -86,19 +89,21 @@ test('typing in the search box asks the Daemon and lists the hits with their sni
 })
 
 test.describe('with more Sessions than one page', () => {
-  const many = Array.from({ length: 105 }, (_, i) =>
-    session(`Task ${String(i + 1).padStart(3, '0')}`, '/Users/dev/acme-web', [userMessage('go')]),
-  )
+  // The Kernel lists 200 a page.
+  const many = Array.from({ length: 205 }, (_, i) => ({
+    title: `Task ${String(i + 1).padStart(3, '0')}`,
+    cwd: 'acme-web',
+    entries: [userEntry('go')],
+  }))
   test.use({ scenario: { sessions: many } })
 
-  test('"Load older sessions" brings the rest', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('"Load older sessions" brings the rest', async ({ page, fakeKernel }) => {
+    await pairPhone(page, fakeKernel)
     const list = await openSessionList(page)
     const web = list.getByRole('group', { name: 'acme-web' })
-    await expect(web.getByRole('button', { name: /Task 105/ })).toBeVisible()
+    await expect(web.getByRole('button', { name: /Task 205/ })).toBeVisible()
     await expect(web.getByRole('button', { name: /Task 001/ })).toHaveCount(0)
     await list.getByRole('button', { name: 'Load older sessions' }).click()
-    await fakeDaemon.waitForRequest('daemon.list_available_sessions', 2)
     await expect(web.getByRole('button', { name: /Task 001/ })).toBeAttached()
     await expect(list.getByRole('button', { name: 'Load older sessions' })).toHaveCount(0)
   })

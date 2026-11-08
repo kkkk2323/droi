@@ -405,17 +405,17 @@ page shorter than `limit` is the last.
 32 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
-| Method                 | Params                                                                        | Result                                                                    | Capability      | M1  |
-| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------- | --- |
-| `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?}` | —               | yes |
-| `harness.configure`    | `{providers?, memoryDir?, section?}`                                          | `{}`                                                                      | —               | no  |
-| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                  | `conversations` | yes |
-| `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                      | `conversations` | yes |
-| `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                             | `conversations` | yes |
-| `conversation.unwatch` | `{id}`                                                                        | `{}`                                                                      | `conversations` | yes |
-| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                          | `conversations` | yes |
-| `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                                      | `conversations` | yes |
-| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?, detail?}`               | `conversations` | no  |
+| Method                 | Params                                                                        | Result                                                                            | Capability      | M1  |
+| ---------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- | --- |
+| `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?, agent?}` | —               | yes |
+| `harness.configure`    | `{providers?, memoryDir?, section?, agent?}`                                  | `{}`                                                                              | —               | no  |
+| `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                          | `conversations` | yes |
+| `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                              | `conversations` | yes |
+| `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                                     | `conversations` | yes |
+| `conversation.unwatch` | `{id}`                                                                        | `{}`                                                                              | `conversations` | yes |
+| `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                                  | `conversations` | yes |
+| `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                                              | `conversations` | yes |
+| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?, detail?}`                       | `conversations` | no  |
 
 The Kernel reports only what Pi keeps: `status`, `entry` and `answer`, plus `reason` for one that ended without
 an answer and, when Pi kept it, `detail`: why, in the model's or the harness's words, for a client that ran the
@@ -526,6 +526,8 @@ Three fields a sidebar groups and sorts by:
   truncation rule — a person may type exactly what the kernel would have guessed. `index.update` with
   `title: null` gives the conversation back its automatic name, the first line of its first user message,
   as `auto` (or no title, until there is a message). An empty string is a title a person chose.
+- `busy: true` marks a conversation whose run is under way, so a client that connects mid-run can show it
+  before the run's next `conversation.busy`; absent otherwise.
 - `preview` is the first line of the newest message in the transcript — the answer once there is one, the
   question while it is still being written — cut to 200 characters with an ellipsis. It is plain text: no
   search marks, no entry kinds.
@@ -859,15 +861,18 @@ the summary does not age out.
 
 ### Settings that change while the kernel runs
 
-`harness.configure {providers?, memoryDir?, section?}` is how the Host's settings reach a running kernel, so none of them
+`harness.configure {providers?, memoryDir?, section?, agent?}` is how the Host's settings reach a running kernel, so none of them
 restarts it or stops a run (ADR 0038). `providers` (the shape of `DROI_KERNEL_PROVIDERS`) takes the place of the
 catalog at once: each conversation's next request resolves its model in the new one, and a conversation whose model
 is gone ends its next run without an answer. `memoryDir`, an absolute path or `null`, turns Memory on or off: the `memory`
 extension is installed always and selected per conversation before each turn, as the MCP servers are, so the change
 reaches every conversation at its next turn; a turn under way keeps what it had. Keys never cross the wire: a
 provider names the environment variable its key is read from. `section`, a string or `null`, takes the place of
-the app's prompt section (below) from each conversation's next turn. Every connection hears `harness.changed {}`. A
-read-only kernel refuses it.
+the app's prompt section (below) from each conversation's next turn. `agent`, `{model: {provider, modelId},
+thinkingLevel?}` or `null`, is what a new conversation starts with when its create names no model: the Session
+defaults' model, which every client then starts with, a phone included. The model must be one the kernel offers;
+`harness.info` reports it as `agent` while one is set. Every connection hears `harness.changed {}`. A read-only
+kernel refuses it.
 
 ### The brand's app (ADR 0041)
 
@@ -1090,7 +1095,7 @@ the `<skill>` block the model is sent.
 | `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?, viewedAt}` — `viewedAt` is `null` while a client has asked for the dot                                                                                       |
 | `policy.changed`     | `{id, policy}` — the whole snapshot of that scope; `id` is `null` for the default policy                                                                                                                             |
 | `memory.read`        | `{file, at}` — a Session Summary the model read with `memory_read`, as its path in the Memory folder, and when                                                                                                       |
-| `harness.changed`    | `{}` — `harness.configure` changed the providers, the models or Memory: read `harness.info` again                                                                                                                    |
+| `harness.changed`    | `{}` — `harness.configure` changed the providers, the models, Memory or the default agent: read `harness.info` again                                                                                                 |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only

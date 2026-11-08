@@ -3,12 +3,12 @@
 // cannot drift apart.
 
 /**
- * WebSocket path the Client connects to; frames are forwarded to the Daemon.
+ * WebSocket path the Client connects to; frames go to the computer's Kernel unchanged.
  * A plain GET on the same path answers 204 or 401 so a Client can tell a bad
- * Pairing Token apart from an unreachable Daemon, which browsers hide behind
- * one opaque WebSocket error.
+ * Pairing Token apart from an unreachable Kernel, which browsers hide behind
+ * one opaque WebSocket error. A Gateway of a Droi without it answers 404.
  */
-export const GATEWAY_DAEMON_PATH = '/daemon'
+export const GATEWAY_KERNEL_PATH = '/kernel'
 
 /** Query parameter carrying the Pairing Token on the WebSocket upgrade. */
 export const GATEWAY_TOKEN_QUERY = 'token'
@@ -41,14 +41,9 @@ export interface GatewayMeta {
    * from a Droi older than the Relay.
    */
   relay?: string
+  /** The computer's Sessions are its Kernel's (ADR 0038); absent or false from a Droi that runs only the Daemon. */
+  kernel?: boolean
 }
-
-/**
- * Value the Client puts in `daemon.authenticate.params.apiKey`. The Gateway
- * replaces it with the real Factory API key, so its content never matters; a
- * fixed marker keeps the frame recognisable in logs and tests.
- */
-export const GATEWAY_API_KEY_PLACEHOLDER = 'droi-gateway'
 
 /**
  * Scratch Workspaces (ADR 0008): the Gateway answers these itself, POST with
@@ -186,15 +181,59 @@ export function gatewaySessionViewedUrl(
   return url.toString()
 }
 
-export function gatewayDaemonUrl(gatewayHttpUrl: string, pairingToken: string): string {
-  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_DAEMON_PATH)
+export function gatewayKernelUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_KERNEL_PATH)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
   return url.toString()
 }
 
 export function gatewayPairingCheckUrl(gatewayHttpUrl: string, pairingToken: string): string {
-  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_DAEMON_PATH)
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_KERNEL_PATH)
   url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  return url.toString()
+}
+
+/**
+ * The computer's folders, which the Kernel cannot answer for before a Session works in one:
+ * GET the Workspace at `path` (400 with the reason when it cannot be one), GET what its
+ * working tree changed, POST to make a worktree (`base` the branch, `prompt` the first
+ * message, which names it), answered 201 with a WorktreeMade.
+ */
+export const GATEWAY_WORKSPACE_PATH = '/workspace'
+export const GATEWAY_GIT_CHANGES_PATH = '/git-changes'
+export const GATEWAY_WORKTREE_PATH = '/worktrees'
+
+export interface WorkspaceFound {
+  path: string
+  isGitRepository: boolean
+  branches: string[]
+  currentBranch: string
+}
+
+export interface GitChangesFound {
+  isGitRepository: boolean
+  branch: string
+  detached: boolean
+  files: Array<{ path: string; status: string; additions: number; deletions: number }>
+  additions: number
+  deletions: number
+}
+
+export interface WorktreeMade {
+  path: string
+  branch: string
+  repoRoot: string
+}
+
+export function gatewayWorkspaceUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  endpoint: string,
+  query: Record<string, string>,
+): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, endpoint)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value)
   return url.toString()
 }

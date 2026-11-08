@@ -11,7 +11,7 @@ export interface ComputerSessions {
   live: boolean
   isPending: boolean
   error: Error | null
-  /** Sessions older than the ones listed wait on the Daemon; null when the list is complete. */
+  /** Sessions older than the ones listed wait on the computer; null when the list is complete. */
   older: { loading: boolean; load: () => void } | null
 }
 
@@ -41,21 +41,15 @@ function toCache(s: SessionSummary): SessionSummaryCache {
     repoRoot: s.repoRoot,
     worktree: s.worktree,
     updatedAt: s.updatedAt,
+    activityAt: s.activityAt,
+    viewedAt: s.viewedAt,
+    kind: s.kind,
     archivedAt: s.archivedAt,
     parentId: s.parentId,
-    callingSessionId: s.callingSessionId,
-    callingToolUseId: s.callingToolUseId,
     tags: s.tags,
   }
 }
 
 function fromCache(s: SessionSummaryCache): SessionSummary {
-  return {
-    ...s,
-    worktree: s.worktree ?? null,
-    messagesCount: null,
-    tags: s.tags ?? [],
-    callingSessionId: s.callingSessionId ?? null,
-    callingToolUseId: s.callingToolUseId ?? null,
-  }
+  return { ...s, worktree: s.worktree ?? null, messagesCount: null }
 }

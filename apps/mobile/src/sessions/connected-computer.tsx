@@ -1,15 +1,9 @@
 // What every page of the connected computer shares: its Session list, the
-// Sessions started here that the Daemon does not list yet, unread marks and
-// subagent runs. It sits above the stack, so alerts are raised once, and the
-// Session on screen is the one the route names.
+// Sessions started here that the Kernel does not list yet, and unread marks. It
+// sits above the stack, so alerts are raised once, and the Session on screen is
+// the one the route names.
 import { usePreference } from '@droi/daemon-layer/local-preference'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
-import {
-  SubagentLinksProvider,
-  subagentsByToolUse,
-  useSubagentRuns,
-  type SubagentRun,
-} from '@droi/daemon-layer/subagents'
 import { useNavigationContainerRef, usePathname, useRouter } from 'expo-router'
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { usePhoneAlerts } from '../alerts/use-phone-alerts'
@@ -25,10 +19,9 @@ export interface ConnectedComputer {
   computer: PairedComputer
   sessions: ComputerSessions
   unread: ReadonlySet<string>
-  runs: ReadonlyMap<string, SubagentRun>
-  /** A listed Session, or one started here that the Daemon lists only after its first message. */
+  /** A listed Session, or one started here that the list does not have yet. */
   find: (sessionId: string) => SessionSummary | null
-  /** Keeps a Session just started here until the Daemon lists it. */
+  /** Keeps a Session just started here until the list has it. */
   started: (session: SessionSummary) => void
   /** Shows a Session: back to it when it is already on the stack, pushed otherwise. */
   open: (sessionId: string) => void
@@ -63,10 +56,7 @@ export function ConnectedComputerProvider({
   const sessions = useComputerSessions(computer.id)
   const [created, setCreated] = useState<ReadonlyMap<string, SessionSummary>>(new Map())
   const onScreen = pathname.startsWith('/session/') ? pathname.slice('/session/'.length) : null
-  const unread = usePhoneAlerts(onScreen)
-  const runs = useSubagentRuns(
-    sessions.sessions.filter((s) => s.callingSessionId).map((s) => s.sessionId),
-  )
+  const unread = usePhoneAlerts(onScreen, sessions.sessions)
   const value = useMemo<ConnectedComputer>(() => {
     const open = (sessionId: string) => {
       if (stackedSessions(navigation.getRootState()).includes(sessionId)) {
@@ -79,22 +69,13 @@ export function ConnectedComputerProvider({
       computer,
       sessions,
       unread,
-      runs,
       find: (sessionId) =>
         sessions.sessions.find((s) => s.sessionId === sessionId) ?? created.get(sessionId) ?? null,
       started: (session) => setCreated((prev) => new Map(prev).set(session.sessionId, session)),
       open,
     }
-  }, [computer, sessions, unread, runs, created, navigation, router])
-  return (
-    <ConnectedComputerContext value={value}>
-      <SubagentLinksProvider
-        value={{ byToolUse: subagentsByToolUse(sessions.sessions), runs, open: value.open }}
-      >
-        {children}
-      </SubagentLinksProvider>
-    </ConnectedComputerContext>
-  )
+  }, [computer, sessions, unread, created, navigation, router])
+  return <ConnectedComputerContext value={value}>{children}</ConnectedComputerContext>
 }
 
 interface RouteState {

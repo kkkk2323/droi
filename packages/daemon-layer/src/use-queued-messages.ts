@@ -1,72 +1,61 @@
-// Messages the Daemon is holding for a running Session (see use-turn.ts), read
-// from the SDK store, plus removing one before it goes out or taking it back
-// into the composer.
-//
-// Cancelling a turn makes the Daemon drop what it held; the SDK keeps those
-// messages on this Client as `local_paused_after_esc`, so nothing typed is
-// lost. A paused message exists only here: it is removed locally and goes out
-// again only when sent from the composer.
-import type { MultiSessionStateManager } from '@factory/droid-sdk'
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react'
+// Messages waiting for the running turn (pi.inbox), and those a stop took back (paused,
+// kept on this Client only); removing one before it goes out, or taking it back into the
+// composer.
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 import { isImageMediaType, type ImageAttachment } from './attachments'
-import { useDaemonConnection } from './connection-context'
-import { SESSION_EVENT } from './sdk-enums'
+import { useKernelConnection } from './connection-context'
+import { conversationStore } from './kernel-conversations'
+import { conversationIdOf, type InboxItem } from './kernel-wire'
+import { contentOf } from './use-turn'
 import { uuid } from './uuid'
 
-export type QueuedMessage = ReturnType<
-  NonNullable<ReturnType<MultiSessionStateManager['getSessionManager']>>['getQueuedMessages']
->[number]
+export interface QueuedMessage {
+  /** `kernel:<submissionId>` for one the Kernel holds, `paused:<…>` for one kept here. */
+  requestId: string
+  kind: 'steer' | 'followUp' | 'paused'
+  text: string
+  images: Array<{ data: string; mediaType: string }>
+}
 
 const NONE: QueuedMessage[] = []
+const KERNEL_PREFIX = 'kernel:'
 
-/** Kinds the Daemon holds; the rest live on this Client only. */
-const HELD_BY_DAEMON = new Set<string>(['daemon_queued_discardable', 'daemon_queued_end_of_loop'])
-/** Kinds handed to the running turn (⌘↩) rather than waiting for it to end. */
-const STEERING = new Set<string>(['daemon_queued_discardable', 'local_deferred_after_esc'])
-
-export function isHeldByDaemon(message: QueuedMessage): boolean {
-  return HELD_BY_DAEMON.has(message.kind)
+export function isHeldByKernel(message: QueuedMessage): boolean {
+  return message.kind !== 'paused'
 }
 
-/** Kept back on this Client since a cancelled turn; sending it again is up to the user. */
+/** Kept back on this Client since a stopped turn; sending it again is up to the user. */
 export function isPaused(message: QueuedMessage): boolean {
-  return message.kind === 'local_paused_after_esc'
+  return message.kind === 'paused'
 }
 
+/** Handed to the running turn rather than waiting for it to end. */
 export function isSteering(message: QueuedMessage): boolean {
-  return STEERING.has(message.kind)
+  return message.kind === 'steer'
 }
 
 export function useQueuedMessages(sessionId: string): QueuedMessage[] {
-  const { sessionState } = useDaemonConnection()
-  const version = useRef(0)
-  const snapshot = useRef<{ version: number; value: QueuedMessage[] }>({
-    version: -1,
-    value: NONE,
-  })
-
+  const store = conversationStore(useKernelConnection())
+  const id = conversationIdOf(sessionId)
   const subscribe = useCallback(
-    (listener: () => void) =>
-      sessionState.subscribeToSessionEvents(
-        [SESSION_EVENT.queuedMessagesUpdated, SESSION_EVENT.loadStateChanged],
-        (_event, payload) => {
-          if (payload.sessionId !== sessionId) return
-          version.current += 1
-          listener()
-        },
-      ),
-    [sessionState, sessionId],
+    (listener: () => void) => (id === null ? () => {} : store.subscribe(id, listener)),
+    [store, id],
   )
-
-  const getSnapshot = useCallback((): QueuedMessage[] => {
-    if (snapshot.current.version === version.current) return snapshot.current.value
-    const manager = sessionState.getSessionManager(sessionId)
-    const value = manager?.getQueuedMessages() ?? NONE
-    snapshot.current = { version: version.current, value: value.length === 0 ? NONE : value }
-    return snapshot.current.value
-  }, [sessionState, sessionId])
-
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const get = useCallback(() => (id === null ? null : store.snapshot(id)), [store, id])
+  const snap = useSyncExternalStore(subscribe, get, get)
+  return useMemo(() => {
+    if (!snap) return NONE
+    const inbox = (snap.docs['pi.inbox'] as { items?: InboxItem[] } | undefined)?.items ?? []
+    const queued: QueuedMessage[] = inbox
+      .filter((item) => item.mode === 'steer' || item.mode === 'followUp')
+      .map((item) => ({
+        requestId: `${KERNEL_PREFIX}${item.id}`,
+        kind: item.mode as 'steer' | 'followUp',
+        ...contentOf(item.content),
+      }))
+    for (const p of snap.paused) queued.push({ ...p, kind: 'paused' })
+    return queued.length === 0 ? NONE : queued
+  }, [snap])
 }
 
 /** What a queued message holds, in the composer's terms. */
@@ -78,67 +67,58 @@ export interface QueuedContent {
 export function useQueuedMessageActions(sessionId: string): {
   remove(requestId: string): Promise<void>
   /** Removes the message and hands back its content, for the composer to send again. */
-  take(requestId: string): Promise<QueuedContent | null>
+  take(message: QueuedMessage): Promise<QueuedContent | null>
   error: string | null
 } {
-  const { controller, sessionState } = useDaemonConnection()
+  const connection = useKernelConnection()
+  const store = conversationStore(connection)
   const [error, setError] = useState<string | null>(null)
+  const id = conversationIdOf(sessionId)
   const remove = useCallback(
     async (requestId: string) => {
+      if (id === null) return
       setError(null)
-      const manager = sessionState.getSessionManager(sessionId)
-      const message = manager?.getQueuedMessages().find((m) => m.requestId === requestId)
+      if (!requestId.startsWith(KERNEL_PREFIX)) {
+        store.dropPaused(id, requestId)
+        return
+      }
       try {
-        if (message && !isHeldByDaemon(message)) {
-          manager!.clearQueuedMessage(requestId)
-          return
-        }
-        await controller.resolveQueuedUserMessage(sessionId, {
-          requestId,
-          action: 'delete' as never,
+        await connection.call('submission.abort', {
+          id,
+          submissionId: Number(requestId.slice(KERNEL_PREFIX.length)),
         })
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
+        throw cause
       }
     },
-    [controller, sessionState, sessionId],
+    [connection, store, id],
   )
   const take = useCallback(
-    async (requestId: string): Promise<QueuedContent | null> => {
-      const manager = sessionState.getSessionManager(sessionId)
-      const message = manager?.getQueuedMessages().find((m) => m.requestId === requestId)
-      if (!message) return null
-      await remove(requestId)
+    async (message: QueuedMessage): Promise<QueuedContent | null> => {
+      try {
+        await remove(message.requestId)
+      } catch {
+        // A turn took it meanwhile: it is sent, and nothing comes back to the composer.
+        return null
+      }
       return queuedContent(message)
     },
-    [sessionState, sessionId, remove],
+    [remove],
   )
-  return { remove, take, error }
+  return { remove: (requestId) => remove(requestId).catch(() => {}), take, error }
 }
 
 /** Plain text of a queued message, for the strip above the composer. */
 export function queuedText(message: QueuedMessage): string {
-  return message.content
-    .map((block) => (block.type === 'text' ? block.text : block.type === 'image' ? '[image]' : ''))
-    .filter(Boolean)
-    .join(' ')
+  return [message.text, ...message.images.map(() => '[image]')].filter(Boolean).join(' ')
 }
 
 export function queuedContent(message: QueuedMessage): QueuedContent {
-  const text = message.content
-    .map((block) => (block.type === 'text' ? block.text : ''))
-    .filter(Boolean)
-    .join('\n')
   const images: ImageAttachment[] = []
-  for (const block of message.content) {
-    if (block.type !== 'image' || block.source.type !== 'base64') continue
-    if (!isImageMediaType(block.source.mediaType)) continue
-    images.push({
-      id: uuid(),
-      name: 'image',
-      mediaType: block.source.mediaType,
-      data: block.source.data,
-    })
+  for (const image of message.images) {
+    if (!isImageMediaType(image.mediaType)) continue
+    images.push({ id: uuid(), name: 'image', mediaType: image.mediaType, data: image.data })
   }
-  return { text, images }
+  return { text: message.text, images }
 }

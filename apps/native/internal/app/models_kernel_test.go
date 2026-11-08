@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
 )
 
 func (a *App) kernelModelIDs() []string {
@@ -38,4 +39,22 @@ func TestTheWindowOffersTheModelsTheHostGaveTheRunningKernel(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.until("the new model", func() bool { return slices.Contains(h.a.kernelModelIDs(), "hot/hot-model") })
+}
+
+// TestTheSessionDefaultsModelIsTheKernelsDefault: the model the Session defaults name is the one Kernel starts a
+// conversation with when its create names none, so a Session a phone starts has the model this window's would.
+func TestTheSessionDefaultsModelIsTheKernelsDefault(t *testing.T) {
+	sc := sessionsScenario()
+	sc.Input = map[string]any{"defaults": map[string]any{"modelId": fakekernel.ModelID}}
+	h := newHarness(t, sc, "")
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	want := kernel.ModelRef{Provider: fakekernel.ProviderID, ModelID: fakekernel.ModelID}
+	h.until("Kernel's default model", func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		info, err := h.testConn().Harness(ctx)
+		return err == nil && info.Agent != nil && info.Agent.Model == want
+	})
 }

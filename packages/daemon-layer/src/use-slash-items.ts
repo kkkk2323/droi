@@ -1,9 +1,11 @@
-// What "/" can start in the composer: the commands the Client runs itself,
-// the Workspace's custom commands and the skills a user may invoke. The Daemon
-// expands "/name args" itself when the message arrives, so for the latter two
-// the Client only has to offer the names.
+// What "/" can start in the composer: the commands the Client runs itself, and the prompt
+// templates and skills the Kernel expands (`resources.list`). The Kernel expands "/name args"
+// itself when the message arrives, so for those the Client only has to offer the names.
+// Without a Session only the personal ones are listed: the Workspace's need a conversation
+// whose folder decides them.
 import { useQuery } from '@tanstack/react-query'
-import { useConnectionState, useDaemonConnection } from './connection-context'
+import { useConnectionState, useKernelConnection } from './connection-context'
+import { conversationIdOf } from './kernel-wire'
 
 export interface SlashItem {
   name: string
@@ -13,73 +15,77 @@ export interface SlashItem {
   kind: 'command' | 'skill'
 }
 
-/** Commands the composer handles before anything reaches the Daemon (see session-view.tsx). */
+/** Commands the composer handles before anything reaches the Kernel (see session-screen.tsx). */
 export const BUILTIN_SLASH_ITEMS: SlashItem[] = [
   {
     name: 'compact',
-    description: 'Summarise the conversation and continue in a new session',
+    description: 'Summarise the conversation to free up context',
     argumentHint: '[instructions]',
     kind: 'command',
   },
 ]
 
-/**
- * `builtins` are the commands the caller handles itself; they come first and
- * win over a Workspace command of the same name. Without a Session only they
- * are offered.
- */
 export const SLASH_ITEMS_QUERY_KEY = ['slash-items'] as const
 
+interface Resources {
+  prompts: Array<{ name: string; description?: string }>
+  skills: Array<{ name: string; description?: string; enabled?: boolean }>
+}
+
+/**
+ * `builtins` are the commands the caller handles itself; they come first and
+ * win over a Workspace command of the same name.
+ */
 export function useSlashItems(
   sessionId: string | null,
   builtins: SlashItem[] = BUILTIN_SLASH_ITEMS,
 ): SlashItem[] {
-  const { controller } = useDaemonConnection()
+  const connection = useKernelConnection()
   const connected = useConnectionState().status === 'connected'
+  const id = sessionId === null ? null : conversationIdOf(sessionId)
   const query = useQuery({
     queryKey: [...SLASH_ITEMS_QUERY_KEY, sessionId],
-    enabled: connected && sessionId !== null,
+    enabled: connected,
     staleTime: 60_000,
-    queryFn: async (): Promise<SlashItem[]> => {
-      const [commands, skills] = await Promise.all([
-        controller.listCommands(sessionId!),
-        controller.listSkills(sessionId!),
-      ])
-      const items: SlashItem[] = []
-      const taken = new Set<string>()
-      for (const c of commands.commands) {
-        if (taken.has(c.name)) continue
-        taken.add(c.name)
-        items.push({
-          name: c.name,
-          description: c.description,
-          argumentHint: c.argumentHint ?? null,
-          kind: 'command',
-        })
-      }
-      for (const skill of skills.skills) {
-        if (skill.userInvocable === false || skill.enabled === false || taken.has(skill.name)) {
-          continue
-        }
-        items.push({
-          name: skill.name,
-          description: skill.description ?? '',
-          argumentHint: null,
-          kind: 'skill',
-        })
-      }
-      return items
-    },
+    queryFn: async (): Promise<SlashItem[]> =>
+      slashItemsOf(await connection.call<Resources>('resources.list', id === null ? {} : { id })),
   })
   return mergeSlashItems(builtins, query.data ?? NO_ITEMS)
 }
 
 const NO_ITEMS: SlashItem[] = []
 
-export function mergeSlashItems(builtins: SlashItem[], fromDaemon: SlashItem[]): SlashItem[] {
-  if (fromDaemon.length === 0) return builtins
+/** The Kernel's templates, then its enabled skills; a template wins over a skill of its name. */
+export function slashItemsOf(resources: Resources): SlashItem[] {
+  const items: SlashItem[] = []
+  const taken = new Set<string>()
+  for (const prompt of resources.prompts) {
+    if (taken.has(prompt.name)) continue
+    taken.add(prompt.name)
+    items.push({
+      name: prompt.name,
+      description: prompt.description ?? '',
+      argumentHint: null,
+      kind: 'command',
+    })
+  }
+  for (const skill of resources.skills) {
+    if (skill.enabled === false || taken.has(skill.name)) continue
+    taken.add(skill.name)
+    items.push({
+      name: skill.name,
+      description: skill.description ?? '',
+      argumentHint: null,
+      kind: 'skill',
+    })
+  }
+  return items
+}
+
+export function mergeSlashItems(builtins: SlashItem[], fromKernel: SlashItem[]): SlashItem[] {
+  if (fromKernel.length === 0) return builtins
   const names = new Set(builtins.map((i) => i.name))
-  return [...builtins, ...fromDaemon.filter((i) => !names.has(i.name))]
+  return [...builtins, ...fromKernel.filter((i) => !names.has(i.name))]
 }
 
 /** The "/word" being typed at the start of the composer, or null. */

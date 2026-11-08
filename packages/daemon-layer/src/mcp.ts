@@ -1,67 +1,92 @@
-// MCP Servers as the Daemon reports them for a Session, and what a Client may
-// do with each. The Daemon owns the configuration (`~/.factory/mcp.json` at
-// the user level, the Workspace's `.factory/mcp.json` at the project level,
-// the organization's policy above both) and the connections; a Client lists,
-// switches, adds and removes through it, as the droid CLI's `/mcp` does.
-import type { DaemonSessionController } from '@factory/droid-sdk'
+// MCP Servers as the computer's Kernel reports them (apps/kernel/protocol/README.md, "MCP
+// servers"), and what a Client may do with each. Two files feed the list: the user's global
+// mcp.json, which a Client switches, adds to and removes from, and a repository's own
+// .factory/mcp.json, whose servers run only once the person allows them. A server the brand's
+// app gives is not the user's, so nothing here changes it.
 
-type Listed = Awaited<ReturnType<DaemonSessionController['listMcpServers']>>
-export type McpServer = Listed['servers'][number]
-export type McpSummary = Listed['summary']
-export type McpTool = Awaited<ReturnType<DaemonSessionController['listMcpTools']>>['tools'][number]
-export type McpRegistryEntry = Awaited<
-  ReturnType<DaemonSessionController['listMcpRegistry']>
->['servers'][number]
-export type AddMcpServerInput = Omit<
-  Parameters<DaemonSessionController['addMcpServer']>[0],
-  'sessionId'
->
-export type McpServerType = AddMcpServerInput['type']
+export type McpTransport = 'stdio' | 'http'
+export type McpStatus = 'connected' | 'connecting' | 'failed' | 'disabled' | 'untrusted'
+
+/** One server as `mcp.list` and `mcp.changed` report it. */
+export interface McpServer {
+  name: string
+  transport?: McpTransport
+  status: McpStatus
+  enabled: boolean
+  /** The tools' names as the model sees them, `<server>___<tool>`; empty until it connects. */
+  tools: string[]
+  error: string | null
+  /** Set for a server a repository's own file brings. */
+  repoRoot?: string
+  /** A server the brand's app gives. */
+  app?: boolean
+  trusted?: boolean
+  /** A repository server's config as allowing it must name it: what the person was shown. */
+  fingerprint?: string
+  command?: string
+  args?: string[]
+  url?: string
+}
+
+/** What `mcp.set` takes to add a global server. */
+export interface AddMcpServerInput {
+  name: string
+  transport: McpTransport
+  command?: string
+  args?: string[]
+  url?: string
+  headers?: Record<string, string>
+}
 
 export const STATUS_LABELS: Record<string, string> = {
   connecting: 'Connecting',
   connected: 'Connected',
-  disconnected: 'Disconnected',
   failed: 'Failed',
   disabled: 'Disabled',
+  untrusted: 'Waiting for your OK',
 }
 
-/**
- * Droi's Memory Server (ADR 0010), which the Desktop Shell attaches through
- * the Runtime Overlay. The name is the one the Shell registers it under.
- */
-export const DROI_MEMORY_SERVER = 'memory'
-
-/** The levels of the mcp.json files a user edits. */
-const USER_CONFIGURED = new Set(['user', 'project', 'folder'])
-
-/**
- * Its only switch is the Memory setting in the Desktop Shell. The name is a
- * common one, so a server of that name in the user's or the Workspace's
- * mcp.json is theirs: the Daemon names the overlay's level runtime.
- */
-export function isDroiMemory(server: McpServer): boolean {
-  return server.name === DROI_MEMORY_SERVER && !USER_CONFIGURED.has(String(server.source))
-}
-
-/** The organization's servers are policy and Droi's Memory is the Shell's; nothing here changes them. */
+/** A repository's server and the brand's app's are not the user's mcp.json to switch. */
 export function isReadOnly(server: McpServer): boolean {
-  return String(server.source) === 'org' || isDroiMemory(server)
+  return server.repoRoot !== undefined || server.app === true
 }
 
-/** Only a server in the user's own `mcp.json` can be removed from here. */
+/** Only a server in the user's own mcp.json can be removed from here. */
 export function canRemove(server: McpServer): boolean {
-  return String(server.source) === 'user' && !isDroiMemory(server)
+  return !isReadOnly(server)
 }
 
+/** An HTTP server that answered 401: the Kernel retries it only once someone signs in. */
 export function needsSignIn(server: McpServer): boolean {
-  return server.requiresAuth === true && server.hasAuthTokens !== true
+  return server.status === 'failed' && (server.error ?? '').startsWith('authorization required')
+}
+
+/** A repository's server that waits for the person to allow what it runs. */
+export function needsTrust(server: McpServer): boolean {
+  return server.status === 'untrusted'
+}
+
+/** What a repository's server would run, as the confirmation shows it. */
+export function serverCommand(server: McpServer): string {
+  if (server.command) return [server.command, ...(server.args ?? [])].join(' ')
+  return server.url ?? ''
+}
+
+/** A tool's name without its server's prefix. */
+export function toolLabel(server: Pick<McpServer, 'name'>, tool: string): string {
+  const prefix = `${server.name.replace(/[^A-Za-z0-9_-]/g, '_')}___`
+  return tool.startsWith(prefix) ? tool.slice(prefix.length) : tool
+}
+
+/** The key a sign-in is kept under: a global server and a repository's of one name are two servers. */
+export function serverKey(server: Pick<McpServer, 'name' | 'repoRoot'>): string {
+  return `${server.repoRoot ?? ''}\u0000${server.name}`
 }
 
 /** What a Client's form collects for a new server; every field a string. */
 export interface ServerForm {
   name: string
-  type: McpServerType
+  transport: McpTransport
   command: string
   /** Whitespace-separated. */
   args: string
@@ -72,7 +97,7 @@ export interface ServerForm {
 
 export const EMPTY_SERVER_FORM: ServerForm = {
   name: '',
-  type: 'stdio',
+  transport: 'stdio',
   command: '',
   args: '',
   url: '',
@@ -81,7 +106,7 @@ export const EMPTY_SERVER_FORM: ServerForm = {
 
 const NAME = /^[A-Za-z0-9_-]+$/
 
-/** The Daemon's parameters for the form, or what is wrong with it. */
+/** The server the form describes, or what is wrong with it. */
 export function parseServerForm(
   form: ServerForm,
 ): { ok: true; params: AddMcpServerInput } | { ok: false; error: string } {
@@ -90,11 +115,14 @@ export function parseServerForm(
   if (!NAME.test(name)) {
     return { ok: false, error: 'Server name can only contain letters, digits, "-", and "_".' }
   }
-  if (form.type === 'stdio') {
+  if (form.transport === 'stdio') {
     const command = form.command.trim()
     if (!command) return { ok: false, error: 'Enter the command that starts the server.' }
     const args = form.args.split(/\s+/).filter(Boolean)
-    return { ok: true, params: { name, type: 'stdio', command, ...(args.length ? { args } : {}) } }
+    return {
+      ok: true,
+      params: { name, transport: 'stdio', command, ...(args.length ? { args } : {}) },
+    }
   }
   const url = form.url.trim()
   if (!/^https?:\/\//.test(url))
@@ -109,51 +137,11 @@ export function parseServerForm(
   }
   return {
     ok: true,
-    params: {
-      name,
-      type: form.type,
-      url,
-      ...(Object.keys(headers).length ? { headers } : {}),
-    },
+    params: { name, transport: 'http', url, ...(Object.keys(headers).length ? { headers } : {}) },
   }
 }
 
-/** A registry entry as the form would hold it, ready to adjust and add. */
-export function formFromRegistry(entry: McpRegistryEntry): ServerForm {
-  return {
-    ...EMPTY_SERVER_FORM,
-    name: entry.name,
-    type: entry.type,
-    command: entry.command ?? '',
-    args: (entry.args ?? []).join(' '),
-    url: entry.url ?? '',
-  }
-}
-
-// A catalogue entry's command may carry a value to fill in first, written as
-// an upper-case name (`--adyenApiKey=ADYEN_API_KEY`).
-const PLACEHOLDER = /(?:^|=)[A-Z][A-Z0-9]*_[A-Z0-9_]+$/
-
-/** Whether a catalogue entry has a value to fill in before it can be added as it is. */
-export function needsSetup(entry: McpRegistryEntry): boolean {
-  return [...(entry.args ?? []), entry.url ?? ''].some((part) => PLACEHOLDER.test(part))
-}
-
-/** The catalogue entries not added yet whose name or description matches the search. */
-export function filterRegistry(
-  entries: readonly McpRegistryEntry[],
-  query: string,
-  taken: readonly string[],
-): McpRegistryEntry[] {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  return entries.filter((entry) => {
-    if (taken.includes(entry.name)) return false
-    const text = `${entry.name} ${entry.description}`.toLowerCase()
-    return words.every((word) => text.includes(word))
-  })
-}
-
-/** The servers sorted for a list: the user's and the project's first, by name; the organization's after. */
+/** The servers sorted for a list: the user's first, by name; a repository's and the app's after. */
 export function sortServers(servers: readonly McpServer[]): McpServer[] {
   return [...servers].sort(
     (a, b) => Number(isReadOnly(a)) - Number(isReadOnly(b)) || a.name.localeCompare(b.name),

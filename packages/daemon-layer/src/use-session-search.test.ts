@@ -1,23 +1,27 @@
 import { describe, expect, test } from 'vitest'
-import { snippetRuns } from './use-session-search'
+import { markedRuns } from './use-session-search'
 
-describe('snippetRuns', () => {
-  test('splits a snippet into plain and matched runs', () => {
-    expect(snippetRuns('…the <mark>sidebar</mark> width is off')).toEqual([
-      { text: '…the ', match: false, offset: 0 },
-      { text: 'sidebar', match: true, offset: 5 },
-      { text: ' width is off', match: false, offset: 12 },
+describe('markedRuns', () => {
+  test('marks every place the text has the query, in any case', () => {
+    expect(markedRuns('the Sidebar width, the sidebar', 'sidebar')).toEqual([
+      { text: 'the ', match: false, offset: 0 },
+      { text: 'Sidebar', match: true, offset: 4 },
+      { text: ' width, the ', match: false, offset: 11 },
+      { text: 'sidebar', match: true, offset: 23 },
     ])
   })
 
-  test('drops other tags and collapses line breaks', () => {
-    expect(snippetRuns('a\n  <b>b</b> <mark>c</mark>')).toEqual([
+  test('collapses line breaks', () => {
+    expect(markedRuns('a\n  b c', 'c')).toEqual([
       { text: 'a b ', match: false, offset: 0 },
       { text: 'c', match: true, offset: 4 },
     ])
   })
 
-  test('an empty snippet has no runs', () => {
-    expect(snippetRuns('')).toEqual([])
+  test('text without the query is one plain run; empty text has none', () => {
+    expect(markedRuns('nothing here', 'zz')).toEqual([
+      { text: 'nothing here', match: false, offset: 0 },
+    ])
+    expect(markedRuns('', 'x')).toEqual([])
   })
 })

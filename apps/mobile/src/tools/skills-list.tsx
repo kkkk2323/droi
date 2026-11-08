@@ -1,13 +1,7 @@
-// The Session's skills grouped by where they live, each with the switch the
-// Daemon allows (skills.ts has the rules).
-import {
-  LOCATION_LABELS,
-  disabledLabel,
-  groupSkills,
-  skillSwitch,
-  type Skill,
-  type SkillLevel,
-} from '@droi/daemon-layer/skills'
+// The Session's skills grouped by where they live: the project's (the Session's
+// folder and its parents) and the user's own. Turning one off is the Kernel's
+// setting, for every Session.
+import { SCOPE_LABELS, groupSkills, type Skill } from '@droi/daemon-layer/skills'
 import { useSkillActions, useSkills } from '@droi/daemon-layer/use-skills'
 import { StyleSheet, Switch, View } from 'react-native'
 import { Spinner } from '../ui/activity'
@@ -26,21 +20,20 @@ export function SkillsList({ sessionId }: { sessionId: string }) {
       {actions.error ? <Failure message={actions.error} /> : null}
       {groupSkills(view.skills).map((group) => (
         <View
-          key={group.location}
+          key={group.scope}
           role="group"
-          aria-label={LOCATION_LABELS[group.location] ?? group.location}
+          aria-label={SCOPE_LABELS[group.scope] ?? group.scope}
           style={styles.group}
         >
           <Text size="xs" weight="medium" tone="muted">
-            {LOCATION_LABELS[group.location] ?? group.location}
+            {SCOPE_LABELS[group.scope] ?? group.scope}
           </Text>
           {group.skills.map((skill) => (
             <SkillRow
-              key={`${skill.location}:${skill.name}`}
+              key={`${skill.scope}:${skill.name}`}
               skill={skill}
-              projectAvailable={view.projectAvailable}
               saving={actions.saving === skill.name}
-              onSwitch={(disabled, level) => void actions.setDisabled(skill.name, disabled, level)}
+              onSwitch={(disabled) => void actions.setDisabled(skill.name, disabled)}
             />
           ))}
         </View>
@@ -51,28 +44,21 @@ export function SkillsList({ sessionId }: { sessionId: string }) {
 
 function SkillRow({
   skill,
-  projectAvailable,
   saving,
   onSwitch,
 }: {
   skill: Skill
-  projectAvailable: boolean
   saving: boolean
-  onSwitch: (disabled: boolean, level: SkillLevel) => void
+  onSwitch: (disabled: boolean) => void
 }) {
   const colors = useColors()
-  const off = skill.enabled === false
-  const toggle = skillSwitch(skill, projectAvailable)
-  // Personal skills have no switch at all; the rest show one, locked when
-  // something other than this switch turned the skill off.
-  const personal = String(skill.location) === 'personal'
+  const off = !skill.enabled
   return (
     <View role="listitem" aria-label={skill.name} style={[styles.row, off ? styles.off : null]}>
       <View style={styles.body}>
         <View style={styles.titleRow}>
           <Text weight="medium">{skill.name}</Text>
-          {off ? <Badge>{disabledLabel(skill)}</Badge> : null}
-          {skill.userInvocable === false ? <Badge>Model only</Badge> : null}
+          {off ? <Badge>Disabled</Badge> : null}
           {saving ? <Spinner size={12} color={colors.mutedForeground} /> : null}
         </View>
         {skill.description ? (
@@ -81,17 +67,13 @@ function SkillRow({
           </Text>
         ) : null}
       </View>
-      {personal ? null : (
-        <Switch
-          aria-label={`${skill.name} enabled`}
-          value={!off}
-          disabled={!toggle || saving}
-          onValueChange={(checked) => {
-            if (toggle) onSwitch(!checked, toggle.level)
-          }}
-          trackColor={{ true: colors.primary }}
-        />
-      )}
+      <Switch
+        aria-label={`${skill.name} enabled`}
+        value={!off}
+        disabled={saving}
+        onValueChange={(checked) => onSwitch(!checked)}
+        trackColor={{ true: colors.primary }}
+      />
     </View>
   )
 }

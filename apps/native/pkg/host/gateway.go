@@ -38,6 +38,15 @@ func (h *Host) clientHiddenTools() []string {
 // both run it. The caller sets what differs: Port, RemoteAccess, LocalToken
 // and App.
 func (h *Host) GatewayOptions(version string, moveToTrash func(string) error) gateway.Options {
+	opts := h.gatewayOptions(version, moveToTrash)
+	if h.KernelEnabled() {
+		opts.KernelURL, opts.KernelToken = h.KernelURL, h.KernelToken
+		opts.Workspaces = NewWorkspaces(func() string { return filepath.Join(h.FactoryHome(), "worktrees") })
+	}
+	return opts
+}
+
+func (h *Host) gatewayOptions(version string, moveToTrash func(string) error) gateway.Options {
 	return gateway.Options{
 		DaemonURL:          func() string { return h.Daemon.State().URL() },
 		PairingToken:       func() string { return h.Settings.Get().PairingToken },

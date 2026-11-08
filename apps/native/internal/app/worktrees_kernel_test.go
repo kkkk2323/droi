@@ -213,22 +213,6 @@ func TestOnKernelSettingsDeletesAWorktreeAfterSayingWhatItHolds(t *testing.T) {
 	})
 }
 
-func TestAWorktreesNameIsItsFirstWords(t *testing.T) {
-	for in, want := range map[string]string{
-		"Fix the flaky login test": "fix-the-flaky-login-test",
-		"  修复 bug #12!":            "bug-12",
-		"":                         "session",
-		"中文":                       "session",
-	} {
-		if got := worktreeSlug(in); got != want {
-			t.Errorf("%q: %q, want %q", in, got, want)
-		}
-	}
-	if got := worktreeSlug(strings.Repeat("word ", 30)); len(got) > 41 || strings.HasSuffix(got, "-") {
-		t.Errorf("a long one: %q", got)
-	}
-}
-
 // The Host's delete is forced, so a worktree it could not check is not deleted: the button stays off.
 func TestOnKernelAWorktreeThatCannotBeCheckedIsNotDeleted(t *testing.T) {
 	h := kernelHarness(t)
