@@ -223,10 +223,27 @@ func TestStopKeepsOnlyWhatKernelWithdrew(t *testing.T) {
 type stallingKernel struct {
 	Kernel
 	// ui stands for the UI thread: the page's Update runs under it, and the test reads the page under it.
-	ui    sync.Mutex
-	mu    sync.Mutex
-	abort func(context.Context, kernel.AbortParams) error
-	get   func(context.Context, kernel.AbortSubmissionParams) (kernel.SubmissionGet, error)
+	ui     sync.Mutex
+	mu     sync.Mutex
+	abort  func(context.Context, kernel.AbortParams) error
+	get    func(context.Context, kernel.AbortSubmissionParams) (kernel.SubmissionGet, error)
+	submit func(context.Context, kernel.SubmitParams) (kernel.SubmitResult, error)
+}
+
+func (k *stallingKernel) takeSubmit(fn func(context.Context, kernel.SubmitParams) (kernel.SubmitResult, error)) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.submit = fn
+}
+
+func (k *stallingKernel) Submit(ctx context.Context, p kernel.SubmitParams) (kernel.SubmitResult, error) {
+	k.mu.Lock()
+	fn := k.submit
+	k.mu.Unlock()
+	if fn != nil {
+		return fn(ctx, p)
+	}
+	return k.Kernel.Submit(ctx, p)
 }
 
 func (k *stallingKernel) takeAbort(fn func(context.Context, kernel.AbortParams) error) {
@@ -358,8 +375,15 @@ func TestStopFindsAMessageItsViewHasNotListedYet(t *testing.T) {
 		t.Fatal(err)
 	}
 	v.Send("keep me", nil, protocol.QueuePlacementEndOfLoop)
-	await(t, "the page to record its submission", func() bool { return len(st.queuedInputs(id)) == 1 })
-	sub := kernel.ID(st.queuedInputs(id)[0].ID)
+	var sub kernel.ID
+	await(t, "the page to record its submission", func() bool {
+		inputs, waiting := st.queuedInputs(id)
+		if len(inputs) == 1 && len(waiting) == 0 {
+			sub = kernel.ID(inputs[0].ID)
+			return true
+		}
+		return false
+	})
 	if rec, err := c.SubmissionGet(ctx, kernel.AbortSubmissionParams{ID: id, SubmissionID: sub}); err != nil || rec.Status != "queued" {
 		t.Fatalf("the message is %+v (%v), want queued", rec, err)
 	}
@@ -370,5 +394,154 @@ func TestStopFindsAMessageItsViewHasNotListedYet(t *testing.T) {
 	await(t, "the paused message", func() bool { return len(st.Paused(id)) == 1 })
 	if q := st.Paused(id); queuedTextOf(q[0]) != "keep me" {
 		t.Errorf("Stop kept %q", queuedTextOf(q[0]))
+	}
+}
+
+// TestStopWaitsForASendKernelHasNotAnswered: Kernel has queued a message, and its answer with the submission's id is
+// still on the way when Stop is pressed. The abort withdraws the message; Stop waits for the id to learn that, and
+// keeps it.
+func TestStopWaitsForASendKernelHasNotAnswered(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{AllowUnmatched: true, Fallback: "ok", Steps: []fakekernel.Step{slowAnswer("first")}})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	st := NewStore(3)
+	sk := &stallingKernel{Kernel: c}
+	// No pump, as in TestStopFindsAMessageItsViewHasNotListedYet: the page learns of the message only from its send.
+	v := New(strconvID(id), Env{Kernel: sk, Sessions: st, Revisions: &Revisions{}})
+	v.Open()
+	await(t, "the page to open", func() bool { s := v.Frame(); return s != nil && s.Loaded })
+	ctx := context.Background()
+	if _, err := c.Submit(ctx, kernel.SubmitParams{ID: id, Input: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	queued, release := make(chan struct{}), make(chan struct{})
+	sk.takeSubmit(func(ctx context.Context, p kernel.SubmitParams) (kernel.SubmitResult, error) {
+		res, err := c.Submit(ctx, p)
+		close(queued)
+		<-release
+		return res, err
+	})
+	aborted := make(chan struct{})
+	sk.takeAbort(func(ctx context.Context, p kernel.AbortParams) error {
+		defer close(aborted)
+		return c.Abort(ctx, p)
+	})
+	v.Send("keep me", nil, protocol.QueuePlacementEndOfLoop)
+	<-queued
+	v.Interrupt()
+	<-aborted
+	close(release)
+	await(t, "the paused message", func() bool { return len(st.Paused(id)) == 1 })
+	if q := st.Paused(id); queuedTextOf(q[0]) != "keep me" {
+		t.Errorf("Stop kept %q", queuedTextOf(q[0]))
+	}
+}
+
+// TestAWithdrawnMessageStaysWithdrawnAfterStop: the user takes a queued message back, then stops the run. The message
+// is gone from Kernel because the user removed it, not because of the abort; Stop does not bring it back.
+func TestAWithdrawnMessageStaysWithdrawnAfterStop(t *testing.T) {
+	p, _ := queuedPage(t)
+	if err := p.v.Withdraw(p.queued()[0]); err != nil {
+		t.Fatal(err)
+	}
+	p.v.Interrupt()
+	await(t, "the run to stop", func() bool {
+		s := p.v.Frame()
+		return p.o.Count(kernel.MethodConversationAbort) == 1 && s != nil && !s.Running
+	})
+	time.Sleep(200 * time.Millisecond)
+	if q := p.st.Paused(p.id); len(q) != 0 {
+		t.Fatalf("Stop brought back %d withdrawn messages", len(q))
+	}
+}
+
+// TestALateStopDoesNotBringBackARemovedMessage: Stop and Escape both read the queue; the first keeps the message,
+// the user removes it, then the second lands. The second does not keep it again.
+func TestALateStopDoesNotBringBackARemovedMessage(t *testing.T) {
+	p, k := queuedPage(t)
+	var mu sync.Mutex
+	calls := 0
+	entered := make(chan struct{}, 2)
+	releases := []chan struct{}{make(chan struct{}), make(chan struct{})}
+	k.takeAbort(func(ctx context.Context, a kernel.AbortParams) error {
+		mu.Lock()
+		i := calls
+		calls++
+		mu.Unlock()
+		entered <- struct{}{}
+		<-releases[i]
+		return p.o.Abort(ctx, a)
+	})
+	p.v.Interrupt()
+	p.v.Interrupt()
+	<-entered
+	<-entered
+	close(releases[0])
+	var q []session.QueuedMessage
+	await(t, "the first stop to keep the message", func() bool { q = p.st.Paused(p.id); return len(q) == 1 })
+	if err := p.v.Withdraw(q[0]); err != nil {
+		t.Fatal(err)
+	}
+	close(releases[1])
+	await(t, "the second stop to read the message", func() bool { return p.o.Count(kernel.MethodSubmissionGet) >= 2 })
+	time.Sleep(200 * time.Millisecond)
+	if q := p.st.Paused(p.id); len(q) != 0 {
+		t.Fatalf("the late stop brought back %+v", q)
+	}
+}
+
+// TestWhatAPageSentSettles: the page forgets a submission once the conversation shows it is no longer queued: a run
+// that placed it, or an idle answer to an open asked after it was recorded. A pushed idle view may be older than the
+// submission (pushes are coalesced), so it settles nothing.
+func TestWhatAPageSentSettles(t *testing.T) {
+	ctx := context.Background()
+	item := InboxItem{Mode: kernel.WhenBusyFollowUp, Content: json.RawMessage(`"later"`)}
+	record := func(st *Store, sub kernel.ID) { st.submitted(7, st.sending(7, item), sub, true) }
+	pending := func(st *Store) []int64 {
+		inputs, _ := st.queuedInputs(7)
+		var ids []int64
+		for _, in := range inputs {
+			ids = append(ids, in.ID)
+		}
+		return ids
+	}
+	idle := kernel.View{Conversation: kernel.Conversation{ID: 7}}
+	running := func(inputs string) kernel.View {
+		return kernel.View{Conversation: kernel.Conversation{ID: 7}, Docs: map[string]json.RawMessage{
+			"pi.live": json.RawMessage(`{"run":{"taskId":3,"inputs":` + inputs + `,"turns":1}}`),
+		}}
+	}
+
+	st := NewStore(3)
+	record(st, 5)
+	if err := st.Open(ctx, &fakeKernel{views: map[kernel.ID]kernel.View{7: idle}}, 7, kernel.Window{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := pending(st); len(got) != 0 {
+		t.Errorf("an idle open asked after the send still holds %v", got)
+	}
+
+	st = NewStore(3)
+	k := &fakeKernel{views: map[kernel.ID]kernel.View{7: idle}, onOpen: func(kernel.OpenParams) { record(st, 6) }}
+	if err := st.Open(ctx, k, 7, kernel.Window{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := pending(st); !slices.Equal(got, []int64{6}) {
+		t.Errorf("a send recorded while the open was on its way: %v, want [6]", got)
+	}
+	st.ApplyView(0, kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Value: &idle})
+	if got := pending(st); !slices.Equal(got, []int64{6}) {
+		t.Errorf("a pushed idle view settled %v", got)
+	}
+	v := running("[6]")
+	st.ApplyView(0, kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Value: &v})
+	if got := pending(st); len(got) != 0 {
+		t.Errorf("a run that placed it still holds %v", got)
+	}
+	record(st, 8)
+	v = running("[1]")
+	st.ApplyView(0, kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Value: &v})
+	if got := pending(st); !slices.Equal(got, []int64{8}) {
+		t.Errorf("a run that has not placed it: %v, want [8]", got)
 	}
 }

@@ -531,8 +531,12 @@ type Store struct {
 	turns map[turnKey]chan struct{}
 	// paused and sent are the inputs the window holds for a conversation (store_inputs.go). Unlike states, they are
 	// never evicted: they are the user's words.
-	paused map[kernel.ID][]session.QueuedMessage
-	sent   map[kernel.ID]map[int64]InboxItem
+	paused   map[kernel.ID][]session.QueuedMessage
+	sent     map[kernel.ID]map[int64]sentInput
+	inflight map[kernel.ID][]*inflight
+	disposed map[kernel.ID]map[int64]bool
+	// seq counts the submissions recorded in sent.
+	seq uint64
 }
 
 // turnKey is a conversation on one connection generation.
@@ -563,7 +567,13 @@ func (st *Store) ready() {
 		st.paused = map[kernel.ID][]session.QueuedMessage{}
 	}
 	if st.sent == nil {
-		st.sent = map[kernel.ID]map[int64]InboxItem{}
+		st.sent = map[kernel.ID]map[int64]sentInput{}
+	}
+	if st.inflight == nil {
+		st.inflight = map[kernel.ID][]*inflight{}
+	}
+	if st.disposed == nil {
+		st.disposed = map[kernel.ID]map[int64]bool{}
 	}
 	if st.max < 1 {
 		st.max = 1
@@ -609,6 +619,8 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	st.order = append(st.order, id)
 	st.windows[id] = window
 	gen := st.gen
+	// The answer is read after the call goes out: if it is idle, every submission recorded before now was placed.
+	mark := st.seq
 	evicted := st.unwatchesLocked(st.trimLocked(id))
 	turn := st.turnLocked(id)
 	st.mu.Unlock()
@@ -635,6 +647,7 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 		return err
 	}
 	changed := state.takeOpen(opened.View)
+	st.settleLocked(id, mark)
 	st.mu.Unlock()
 	if changed {
 		st.notify(id)
@@ -715,6 +728,7 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 	}
 	window := st.windows[id]
 	state.expectOpen()
+	mark := st.seq
 	turn := st.turnLocked(id)
 	st.mu.Unlock()
 
@@ -734,6 +748,7 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 		changed = state.failOpen(err)
 	} else {
 		changed = state.takeOpen(opened.View)
+		st.settleLocked(id, mark)
 	}
 	st.mu.Unlock()
 	if changed {
@@ -792,6 +807,7 @@ func (st *Store) ApplyView(gen int64, n kernel.ViewNotification) bool {
 	if gen == st.gen {
 		if state := st.states[n.ID]; state != nil {
 			changed = state.Apply(n)
+			st.settleLocked(n.ID, 0)
 		}
 	}
 	st.mu.Unlock()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -53,24 +54,27 @@ func whenBusyOf(placement protocol.QueuePlacement) string {
 }
 
 // submit sends a message to the conversation Kernel drives. Each send has its own request id, so a retry of the
-// same call is answered as the first one rather than queued twice. The submission is recorded once Kernel answers,
-// so a Stop before the view that queues it arrives still finds it.
+// same call is answered as the first one rather than queued twice. It is recorded before it goes out, so a Stop
+// before Kernel answers, or before the view that queues it arrives, still finds it.
 func (v *View) submit(id kernel.ID, text string, images []attachments.Image, placement protocol.QueuePlacement) {
 	p := kernel.SubmitParams{ID: id, Input: submitInput(text, images), WhenBusy: whenBusyOf(placement), RequestID: uuid.NewString()}
+	content, _ := json.Marshal(p.Input)
+	mode := p.WhenBusy
+	if mode == "" {
+		mode = kernel.WhenBusyFollowUp
+	}
+	sending := v.env.Sessions.sending(id, InboxItem{Mode: mode, Content: content})
 	go func() {
 		res, err := v.env.Kernel.Submit(v.env.Ctx, p)
+		v.env.Sessions.submitted(id, sending, res.SubmissionID, err == nil)
 		if err != nil {
 			v.Fail(err)
-			return
 		}
-		content, _ := json.Marshal(p.Input)
-		mode := p.WhenBusy
-		if mode == "" {
-			mode = kernel.WhenBusyFollowUp
-		}
-		v.env.Sessions.submitted(id, InboxItem{ID: int64(res.SubmissionID), Mode: mode, Content: content})
 	}()
 }
+
+// stopWaitsForSends is how long Stop waits for a send Kernel has not answered, to learn whether the abort took it.
+const stopWaitsForSends = 30 * time.Second
 
 // interruptKernel stops the run. Kernel withdraws the queued inputs with it, which the Daemon's path kept on this
 // computer as paused messages; so do these: what the user queued is not thrown away by Stop. Only the inputs Kernel
@@ -78,16 +82,55 @@ func (v *View) submit(id kernel.ID, text string, images []attachments.Image, pla
 // again would send it twice. One whose fate cannot be read is kept too, and the error said: the words are only here.
 func (v *View) interruptKernel(id kernel.ID) {
 	store := v.env.Sessions
-	queued := store.queuedInputs(id)
+	queued, waiting := store.queuedInputs(id)
 	go func() {
 		if err := v.env.Kernel.Abort(v.env.Ctx, kernel.AbortParams{ID: id}); err != nil {
 			v.Fail(err)
 			return
 		}
 		var kept []session.QueuedMessage
-		var decided []int64
 		var unread error
+		keep := func(item InboxItem, requestID string) {
+			if q, ok := queuedOf(item); ok {
+				q.Kind = session.KindLocalPausedAfterEsc
+				q.RequestID = requestID
+				kept = append(kept, q)
+			}
+		}
+		// A send still in flight when Stop was pressed may have been queued, and withdrawn by the abort: its id
+		// says which, once Kernel answers it.
+		timeout := time.NewTimer(stopWaitsForSends)
+		defer timeout.Stop()
+		expired := false
+		for _, f := range waiting {
+			if !expired {
+				select {
+				case <-f.done:
+				case <-timeout.C:
+					expired = true
+				case <-v.env.Ctx.Done():
+					return
+				}
+			}
+			select {
+			case <-f.done:
+				if f.ok {
+					item := f.item
+					item.ID = f.id
+					queued = append(queued, item)
+				}
+			default:
+				unread = errors.New("no answer from Kernel")
+				keep(f.item, pausedPrefix+uuid.NewString())
+			}
+		}
+		var decided []int64
+		seen := map[int64]bool{}
 		for _, item := range queued {
+			if seen[item.ID] {
+				continue
+			}
+			seen[item.ID] = true
 			rec, err := v.env.Kernel.SubmissionGet(v.env.Ctx, kernel.AbortSubmissionParams{ID: id, SubmissionID: kernel.ID(item.ID)})
 			if err == nil {
 				decided = append(decided, item.ID)
@@ -97,11 +140,7 @@ func (v *View) interruptKernel(id kernel.ID) {
 			} else if unread == nil {
 				unread = err
 			}
-			if q, ok := queuedOf(item); ok {
-				q.Kind = session.KindLocalPausedAfterEsc
-				q.RequestID = pausedID(item.ID)
-				kept = append(kept, q)
-			}
+			keep(item, pausedID(item.ID))
 		}
 		store.settled(id, decided)
 		store.pause(id, kept)
@@ -220,6 +259,9 @@ func (v *View) withdrawKernel(id kernel.ID, q session.QueuedMessage) error {
 	if !strings.HasPrefix(q.RequestID, kernelQueuePrefix) || err != nil {
 		return fmt.Errorf("%q is not a queued Kernel submission", q.RequestID)
 	}
-	_, err = v.env.Kernel.AbortSubmission(v.env.Ctx, kernel.AbortSubmissionParams{ID: id, SubmissionID: kernel.ID(n)})
-	return err
+	if _, err := v.env.Kernel.AbortSubmission(v.env.Ctx, kernel.AbortSubmissionParams{ID: id, SubmissionID: kernel.ID(n)}); err != nil {
+		return err
+	}
+	v.env.Sessions.withdrawn(id, n)
+	return nil
 }
