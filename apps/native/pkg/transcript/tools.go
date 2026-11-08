@@ -340,7 +340,10 @@ func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 // Two shapes carry a call's result: the Daemon attaches it to the call (Result), and the Kernel hands it over as
 // its own entry, which BuildView reads into ResultView. A reader that looked only at Result called every Kernel
 // call unfinished, so a cluster said "Running read" long after the result had arrived.
-func callPending(c *ToolCall) bool {
+func callPending(c *ToolCall) bool { return Pending(c) }
+
+// Pending says whether a call, the Daemon's or Kernel's, is still to be answered.
+func Pending(c *ToolCall) bool {
 	if c.ResultView != nil {
 		return c.ResultView.Pending
 	}
@@ -424,6 +427,9 @@ var (
 )
 
 func ReadScriptRun(c *ToolCall) ScriptRun {
+	if c.ResultView != nil {
+		return kernelScriptRun(*c.ResultView)
+	}
 	run := ScriptRun{Images: ResultImages(c.Result)}
 	parts := textParts(c.Result)
 	if len(parts) == 0 {
@@ -460,6 +466,23 @@ func ReadScriptRun(c *ToolCall) ScriptRun {
 		}
 	}
 	run.Output = strings.Join(parts, "\n")
+	return run
+}
+
+// kernelScriptRun is a codemode call's run: Kernel's result is the text the model read, and how the call ended.
+func kernelScriptRun(v ToolResultView) ScriptRun {
+	run := ScriptRun{Images: v.Images}
+	switch {
+	case v.Pending:
+		run.Status = "running"
+		run.Output = v.Text
+	case v.Interrupted:
+		run.Status, run.Output = "cancelled", v.Text
+	case v.IsError || v.Blocked:
+		run.Status, run.Error = "failed", joinLine(v.Text, "\n", v.Notes)
+	default:
+		run.Status, run.Output = "completed", v.Text
+	}
 	return run
 }
 
@@ -521,6 +544,10 @@ type ScriptInput struct{ Name, Text string }
 // ScriptSource is the program a Script runs and the long literals it reads
 // as `inputs.<name>`.
 func ScriptSource(c *ToolCall) (script string, inputs []ScriptInput, ok bool) {
+	if c.Use.Name == CodemodeTool {
+		script, ok = c.Input["code"].(string)
+		return script, []ScriptInput{}, ok
+	}
 	if c.Use.Name != ScriptTool {
 		return "", nil, false
 	}

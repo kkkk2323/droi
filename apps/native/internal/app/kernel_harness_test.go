@@ -38,7 +38,7 @@ const (
 	untilCallTiming = "tok/s comes back in M4, when Kernel records each call's duration"
 	goesWithCleanup = "a conversation is never closed or cleaned up while idle (gap-analysis §4.1); the test goes with M2's cleanup"
 	untilPlanMode   = "Spec mode is replaced by plan mode (Q4, M3); the test goes with M2's cleanup"
-	untilCodemode   = "a new Session's tool mode (tool calls or scripts) comes with codemode (M3, 3E)"
+	untilCodemode   = "the Daemon's tool mode is its initialize_session's; Kernel's Direct is codemode_kernel_test.go's"
 )
 
 // onDaemon holds the tests that keep their Sessions on the Fake Daemon, by name, with why.

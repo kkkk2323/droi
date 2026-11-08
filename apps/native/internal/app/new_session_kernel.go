@@ -12,11 +12,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
+
+// kernelCodemode is the extension that offers a conversation's model scripts (codemode, on by default).
+const kernelCodemode = "codemode"
 
 // onKernel reports whether the window lists and starts its Sessions on Kernel: once the Host handed it a
 // connection.
@@ -61,7 +65,15 @@ func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.
 	if err != nil {
 		return "", err
 	}
-	res, err := c.Create(a.ctx, kernel.CreateParams{Agent: a.newAgent(p.ModelID, string(p.ReasoningEffort)), Cwd: cwd, Kind: kind, RequestID: uuid.NewString()})
+	agent := a.newAgent(p.ModelID, string(p.ReasoningEffort))
+	// Kernel offers scripts beside direct calls (codemode); Direct is the page's way to take them away.
+	if p.ToolExecutionMode == protocol.ToolExecutionMode(defaults.DirectOnly) {
+		if agent == nil {
+			agent = &kernel.AgentChange{}
+		}
+		agent.Extensions = kernel.Some(kernel.NameSet{Remove: []string{kernelCodemode}})
+	}
+	res, err := c.Create(a.ctx, kernel.CreateParams{Agent: agent, Cwd: cwd, Kind: kind, RequestID: uuid.NewString()})
 	if err != nil {
 		return "", err
 	}

@@ -31,6 +31,8 @@ export const releaseTargets = targets
 
 const root = new URL('.', import.meta.url).pathname
 const entry = join(root, 'src/main.ts')
+/** Codemode's worker thread: a second entrypoint, the only way a compiled binary can start it (src/codemode/sandbox.ts). */
+const worker = join(root, 'src/codemode-worker.ts')
 const outRoot = join(root, '..', '..', 'apps', 'native', 'assets', 'kernel')
 
 export type BuildOptions = {
@@ -51,7 +53,7 @@ export async function build(
     const dir = join(out, entryTarget.platform)
     mkdirSync(dir, { recursive: true })
     const executable = join(dir, 'executable' in entryTarget ? entryTarget.executable : 'kernel')
-    await $`bun build --compile --target=${entryTarget.target} ${options.minify === false ? '' : '--minify'} --outfile ${executable} ${entry}`.quiet()
+    await $`bun build --compile --target=${entryTarget.target} ${options.minify === false ? '' : '--minify'} --outfile ${executable} ${entry} ${worker}`.quiet()
     // The wasm lands beside the executable; keep it in the same directory the binary looks in.
     for (const file of readdirSync(dir)) {
       if (file.endsWith('.wasm')) continue

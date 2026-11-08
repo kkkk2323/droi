@@ -13,6 +13,7 @@ import {
   type McpTransport,
   type Tool,
 } from '@earendil-works/pi-mcp'
+import type { CodemodeNamespace } from '@earendil-works/pi-durable/codemode'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
 import { setToolClass } from '../policy/decide.ts'
 import { info, warn } from '../log.ts'
@@ -85,6 +86,8 @@ export type McpServersOptions = {
   notify: (method: string, payload: unknown) => void
   /** The credentials of an HTTP server that asks for authorization (mcp/oauth.ts). */
   authProvider?: (name: string, url: string) => AuthProvider | undefined
+  /** Codemode's groups of tools, one per connected server: kept current here, read by codemode as it goes. */
+  namespaces?: CodemodeNamespace[]
   version: string
   context: Context
 }
@@ -122,6 +125,8 @@ export class McpServers {
   #diagnostics: { path: string; message: string }[] = []
   #closed = false
   #queue: Promise<unknown> = Promise.resolve()
+  /** The extension of each entry of `options.namespaces`, in the same order. */
+  readonly #namespaceOwners: string[] = []
 
   constructor(options: McpServersOptions) {
     this.#options = options
@@ -536,6 +541,13 @@ export class McpServers {
           }),
     })
     this.#options.registry.install(extension)
+    this.#setNamespace(server, {
+      name: server.name,
+      prefix: `${cleanName(server.name)}___`,
+      ...(instructions === undefined || instructions.trim() === ''
+        ? {}
+        : { instructions: instructions.trim() }),
+    })
   }
 
   #uninstall(server: Server): void {
@@ -544,6 +556,22 @@ export class McpServers {
     }
     for (const name of server.classified) setToolClass(name, server.extension, undefined)
     server.classified = []
+    this.#setNamespace(server, undefined)
+  }
+
+  /** Codemode's namespaces, one per extension: two repositories' servers of one name keep one each. */
+  #setNamespace(server: Server, namespace: CodemodeNamespace | undefined): void {
+    const list = this.#options.namespaces
+    if (list === undefined) return
+    const at = this.#namespaceOwners.indexOf(server.extension)
+    if (at >= 0) {
+      list.splice(at, 1)
+      this.#namespaceOwners.splice(at, 1)
+    }
+    if (namespace !== undefined) {
+      list.push(namespace)
+      this.#namespaceOwners.push(server.extension)
+    }
   }
 
   #set(server: Server, status: ServerStatus, error: string | null): void {
@@ -601,13 +629,16 @@ export function toolName(
   tool: string,
   used: ReadonlySet<string> = new Set(),
 ): string {
-  const clean = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, '_')
-  let name = `${clean(server)}___${clean(tool)}`
+  let name = `${cleanName(server)}___${cleanName(tool)}`
   if (name.length > MAX_TOOL_NAME || used.has(name)) {
     const hash = createHash('sha256').update(`${server}\u0000${tool}`).digest('hex').slice(0, 8)
     name = `${name.slice(0, MAX_TOOL_NAME - 9)}_${hash}`
   }
   return name
+}
+
+function cleanName(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '_')
 }
 
 /** A server's own key: the global one by its name, a repository's by its root and its name. */

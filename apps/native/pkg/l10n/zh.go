@@ -2,6 +2,7 @@ package l10n
 
 // zh is Simplified Chinese, by the English text passed to L.
 var zh = map[string]string{
+	"The output is cut here; the script read all of it.": "输出在此截断；脚本读到了完整内容。",
 	"%d models": "%d 个模型",
 	"Routes coding agents to models from multiple providers through one local endpoint. Its models appear in the model picker for new Sessions on this computer without changing your droid CLI or Factory App settings.": "通过同一本地端点接入多家服务商的模型，加入这台电脑新会话的模型列表。不会写入 droid CLI 设置，不影响 CLI 和 Factory App。",
 	"Could not read the model list at %s. Make sure Magpie is running, then refresh.":                                                   "无法读取 %s 的模型列表。请确认 Magpie 正在运行后刷新。",
