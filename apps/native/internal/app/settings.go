@@ -58,6 +58,7 @@ type settingsState struct {
 	loaded                    bool
 	err                       string
 	worktrees                 managedWorktrees
+	factoryImport             factoryImport
 }
 
 // settingsPage is the SettingsPage: the sections down the left, the one
@@ -421,6 +422,7 @@ func (a *App) advancedTab(c *ui.Context) {
 				}))
 		},
 	)
+	a.factoryImportGroup(c)
 	a.droiDroidGroup(c)
 	a.settingGroup(c, L("Factory API"), "", func() {
 		desc := L("Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).")

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
@@ -106,12 +107,20 @@ func (h *Host) startKernel() {
 	k.sup = &KernelSupervisor{
 		Binary:  h.kernelBinary(),
 		DataDir: filepath.Join(h.cfg.UserData, "kernel"),
+		UserDir: brand.UserFolder(h.cfg.Home),
 		Env:     h.kernelEnv,
 		OnState: h.kernelChanged,
 	}
 	sup := k.sup
 	k.mu.Unlock()
 	h.linkKernel()
+	// Before the Kernel starts: a Kernel that made an empty skills folder first would read as the user's choice.
+	if copied, err := h.CopyFactoryHome(); err != nil {
+		log.Println("droi: kernel: copying ~/.factory:", err)
+	} else if !copied.Empty() || len(copied.Skipped) > 0 {
+		log.Printf("droi: kernel: copied from ~/.factory: %d skills, mcp.json %v, AGENTS.md %v; left out %v",
+			copied.Skills, copied.MCP, copied.Agents, copied.Skipped)
+	}
 	sup.Start()
 }
 

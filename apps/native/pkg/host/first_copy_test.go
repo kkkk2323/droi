@@ -1,11 +1,16 @@
 package host
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
 // write puts a file, creating its folder.
@@ -251,4 +256,113 @@ func TestALaunchersUserDirectoryWins(t *testing.T) {
 	if env := withUserDir(nil, "/x"); len(env) < 2 {
 		t.Fatalf("a launcher without an environment left the Kernel with only %v", env)
 	}
+}
+
+// Import again names what both folders have and differ in, keeping Droi's; replacing takes droid's and moves Droi's
+// aside, where the user can take it back. What is the same is no difference.
+func TestImportAgainNamesWhatDiffersAndReplacingKeepsDroisAside(t *testing.T) {
+	factory := t.TempDir()
+	user := t.TempDir()
+	write(t, filepath.Join(factory, "skills", "gofmt", "SKILL.md"), "gofmt\n")
+	write(t, filepath.Join(factory, "skills", "same", "SKILL.md"), "same\n")
+	write(t, filepath.Join(factory, "AGENTS.md"), "droid's\n")
+	write(t, filepath.Join(factory, "mcp.json"), "{}")
+	if _, err := CopyFactoryHome(factory, user); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(user, "skills", "gofmt", "SKILL.md"), "Droi's edit\n")
+	write(t, filepath.Join(user, "AGENTS.md"), "Droi's\n")
+	write(t, filepath.Join(factory, "skills", "gofmt", "extra.md"), "more\n")
+
+	copied, err := ImportFactoryHome(factory, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join("skills", "gofmt"), "AGENTS.md"}
+	if !slices.Equal(copied.Differs, want) || !copied.Empty() {
+		t.Fatalf("import again: %+v, want differs %v and nothing copied", copied, want)
+	}
+	if got, _ := os.ReadFile(filepath.Join(user, "AGENTS.md")); string(got) != "Droi's\n" {
+		t.Fatalf("import again replaced AGENTS.md with %q", got)
+	}
+
+	at := time.Date(2026, 11, 8, 9, 30, 0, 0, time.UTC)
+	backup, err := ReplaceFromFactoryHome(factory, user, copied.Differs, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backup != filepath.Join(user, ".replaced", "2026-11-08T09-30-00") {
+		t.Fatalf("backup in %s", backup)
+	}
+	for _, f := range []struct{ path, body string }{
+		{filepath.Join(user, "AGENTS.md"), "droid's\n"},
+		{filepath.Join(user, "skills", "gofmt", "extra.md"), "more\n"},
+		{filepath.Join(backup, "AGENTS.md"), "Droi's\n"},
+		{filepath.Join(backup, "skills", "gofmt", "SKILL.md"), "Droi's edit\n"},
+	} {
+		if got, err := os.ReadFile(f.path); err != nil || string(got) != f.body {
+			t.Fatalf("%s = %q, %v; want %q", f.path, got, err, f.body)
+		}
+	}
+	if copied, _ := ImportFactoryHome(factory, user); len(copied.Differs) != 0 {
+		t.Fatalf("after replacing, import again still finds %v", copied.Differs)
+	}
+}
+
+// Replacing takes only what the import brings over: never a path out of the two folders.
+func TestReplacingRefusesWhatTheImportDoesNotBring(t *testing.T) {
+	factory := t.TempDir()
+	user := t.TempDir()
+	for _, name := range []string{"../x", "skills", filepath.Join("skills", ".."), filepath.Join("skills", "a", "b"), "settings.json", filepath.Join("skills", ".hidden")} {
+		if _, err := ReplaceFromFactoryHome(factory, user, []string{name}, time.Now()); err == nil {
+			t.Errorf("replacing %q was not refused", name)
+		}
+	}
+}
+
+// The Host copies ~/.factory into the brand's folder before its Kernel starts, and tells the Kernel that folder:
+// the Kernel's first skills list already has what droid had.
+func TestTheHostsKernelStartsWithWhatDroidHad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the Kernel")
+	}
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".factory", "skills", "gofmt", "SKILL.md"), "---\nname: gofmt\ndescription: Format Go\n---\nRun gofmt.\n")
+	env := map[string]string{KernelEnv: "1", KernelBinEnv: kernelBinaryForTest(t)}
+	h := New(Config{UserData: t.TempDir(), Home: home, Env: func(k string) string { return env[k] }})
+	t.Cleanup(h.KeyPool().Stop)
+	clients := make(chan *kernel.Client, 4)
+	link := NewKernelLink(KernelLinkOptions{
+		Client:   "window",
+		Token:    h.KernelToken,
+		OnClient: func(c *kernel.Client, _ int) { clients <- c },
+		Log:      func(s string) { t.Log("link:", s) },
+	})
+	unhear := h.OnKernelState(link.Use)
+	h.startKernel()
+	t.Cleanup(func() {
+		unhear()
+		link.Close()
+		h.stopKernel()
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	var c *kernel.Client
+	select {
+	case c = <-clients:
+	case <-ctx.Done():
+		t.Fatal("no Kernel connection")
+	}
+	skills, err := c.Skills(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, s := range skills.Skills {
+		names = append(names, s.Name+"@"+s.Path)
+		if s.Name == "gofmt" && strings.HasPrefix(s.Path, filepath.Join(home, ".droi")) {
+			return
+		}
+	}
+	t.Fatalf("the Kernel's skills are %v, want gofmt from %s", names, filepath.Join(home, ".droi"))
 }
