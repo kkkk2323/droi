@@ -271,8 +271,8 @@ type kernelModel struct {
 	Thinking      []string `json:"thinking"`
 }
 
-// kernelProviders are Factory's models on the proxy at base, one provider per wire, as JSON. Gemini's models wait for
-// their request shape (M4 4B/4C), and a model droid's registry gives no limits stays out: the Kernel needs them.
+// kernelProviders are Factory's models on the proxy at base, one provider per wire, as JSON. A model droid's registry
+// gives no limits stays out: the Kernel needs them.
 func kernelProviders(base string) string {
 	base = strings.TrimRight(base, "/")
 	wires := []struct {
@@ -282,6 +282,8 @@ func kernelProviders(base string) string {
 		{factory.WireAnthropic, kernelProvider{ID: "factory-anthropic", Name: "Factory", BaseURL: base + "/api/llm/a", API: "anthropic-messages"}},
 		{factory.WireResponses, kernelProvider{ID: "factory-openai", Name: "Factory", BaseURL: base + "/api/llm/o/v1", API: "openai-responses"}},
 		{factory.WireChat, kernelProvider{ID: "factory-chat", Name: "Factory", BaseURL: base + "/api/llm/o/v1", API: "openai-completions"}},
+		// Google's client sends to <base>/models/<model>:streamGenerateContent; the proxy moves it to /generate.
+		{factory.WireGemini, kernelProvider{ID: "factory-google", Name: "Factory", BaseURL: base + "/api/llm/g/v1", API: "google-generative-ai"}},
 	}
 	out := []kernelProvider{}
 	for _, w := range wires {

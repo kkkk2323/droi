@@ -95,10 +95,14 @@ func startKernelProxy(t *testing.T, upstream string, f *fakeFactory, sw *switche
 func postKernel(t *testing.T, base, path, body, conversation string) (int, string) {
 	t.Helper()
 	req, _ := http.NewRequest("POST", base+path, strings.NewReader(body))
-	// As the Kernel's clients send their key: Anthropic's in X-Api-Key, the others' as a bearer token.
-	if strings.Contains(path, "/llm/a/") {
+	// As the Kernel's clients send their key: Anthropic's in X-Api-Key, Google's in X-Goog-Api-Key, the others' as a
+	// bearer token.
+	switch {
+	case strings.Contains(path, "/llm/a/"):
 		req.Header.Set("X-Api-Key", kernelToken)
-	} else {
+	case strings.Contains(path, "/llm/g/"):
+		req.Header.Set("X-Goog-Api-Key", kernelToken)
+	default:
 		req.Header.Set("Authorization", "Bearer "+kernelToken)
 	}
 	req.Header.Set("Content-Type", "application/json")

@@ -35,14 +35,15 @@ func TestTheKernelsProvidersAreFactorysModelsOnTheProxy(t *testing.T) {
 		"factory-anthropic": {"anthropic-messages", "http://127.0.0.1:4000/api/llm/a"},
 		"factory-openai":    {"openai-responses", "http://127.0.0.1:4000/api/llm/o/v1"},
 		"factory-chat":      {"openai-completions", "http://127.0.0.1:4000/api/llm/o/v1"},
+		"factory-google":    {"google-generative-ai", "http://127.0.0.1:4000/api/llm/g/v1"},
 	} {
 		p, ok := byID[id]
 		if !ok || p.API != want[0] || p.BaseURL != want[1] || len(p.Models) == 0 {
 			t.Fatalf("%s: %+v", id, p)
 		}
 	}
-	if len(providers) != 3 {
-		t.Fatalf("%d providers: Gemini's wait for their request shape", len(providers))
+	if len(providers) != 4 {
+		t.Fatalf("%d providers, want one per wire", len(providers))
 	}
 	find := func(provider, id string) (kernelModel, bool) {
 		for _, m := range byID[provider].Models {
@@ -57,6 +58,9 @@ func TestTheKernelsProvidersAreFactorysModelsOnTheProxy(t *testing.T) {
 	}
 	if m, ok := find("factory-anthropic", "minimax-m2.7"); !ok || m.ContextWindow != 196600 {
 		t.Fatalf("MiniMax M2.7 goes on Anthropic's wire: %+v", m)
+	}
+	if g, ok := find("factory-google", "gemini-3.5-flash"); !ok || strings.Join(g.Thinking, ",") != "minimal,low,medium,high" || g.ContextWindow != 1000000 {
+		t.Fatalf("gemini-3.5-flash: %+v", g)
 	}
 	m, ok := find("factory-chat", "kimi-k3")
 	if !ok || !m.Reasoning || strings.Join(m.Thinking, ",") != "off,low,high,max" || strings.Join(m.Input, ",") != "text,image" {
