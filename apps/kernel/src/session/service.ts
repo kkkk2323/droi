@@ -2127,6 +2127,35 @@ function parseImportedEntries(value: unknown): ImportedEntry[] {
   return parsed
 }
 
+/** Pi's usage with nothing spent: what an imported answer that names none is stored with. */
+const NO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+}
+
+/**
+ * An imported entry as it is stored: each answer with a usage. Pi reads the usage of every answer in the context
+ * to measure it before a turn, and one without a usage faulted that turn; an answer whose usage is zero is
+ * measured by its content instead, which is what an import without counts wants. Only the stored entry changes:
+ * the request's fingerprint is the draft as sent, so a key written before stays a replay.
+ */
+function withUsage(draft: EntryDraft): EntryDraft {
+  const model = draft.model as unknown as Record<string, unknown>[] | undefined
+  if (model === undefined) return draft
+  return {
+    ...draft,
+    model: model.map((message) =>
+      message['role'] === 'assistant' && message['usage'] === undefined
+        ? { ...message, usage: NO_USAGE }
+        : message,
+    ),
+  } as unknown as EntryDraft
+}
+
 /**
  * What is wrong with one Pi message, or undefined when nothing is.
  *
@@ -2290,7 +2319,7 @@ async function appendImported(
 ): Promise<number[]> {
   const ids: number[] = []
   for (const entry of entries) {
-    const record = await tx.appendEntry(id, entry.draft)
+    const record = await tx.appendEntry(id, withUsage(entry.draft))
     ids.push(record.id as unknown as number)
     if (entry.usage.length === 0) continue
     const state = await tx.doc(UsageDoc, id)

@@ -731,7 +731,8 @@ a non-empty string; `model` must be Pi's messages with a numeric `timestamp`; `e
 `"self"` or a **safe** entry ID (at most 2^53−1 — a value outside it reaches SQLite's INTEGER column and poisons
 the Session) that the conversation actually holds. One batch cannot point at itself: on a create there are no
 entries yet, so only `"self"` is a valid head there. Every refusal is `-32602` with the field's path, and nothing
-is stored.
+is stored. An assistant message without `usage` is stored with Pi's zero usage, so the next turn measures it by its
+content instead of faulting on it.
 
 **Activity follows messages only.** A batch with no message time (a `droi.note`, an empty append) leaves
 `lastActivityAt` where it was, and a history imported without `createdAt` takes its clock from its first message,

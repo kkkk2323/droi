@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { join } from 'node:path'
 import { fauxAssistantMessage } from '@earendil-works/pi-ai'
+import { fingerprintOf } from '../src/session/service.ts'
 import { Client, fauxCatalog, start, tempData } from './helpers.ts'
 
 /**
@@ -873,6 +874,74 @@ describe('conversation.import, round 2', () => {
       await client.call('conversation.import', withProto(1))
       const changed = (await client.fails('conversation.import', withProto(2))) as { code: number }
       expect(changed.code).toBe(-32013)
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+})
+
+describe('conversation.import, a history without usage', () => {
+  test('an imported answer without usage does not stop the next turn', async () => {
+    const data = tempData()
+    const faux = fauxCatalog()
+    faux.faux.setResponses([fauxAssistantMessage('the next answer')])
+    const kernel = await start({ dir: data.dir, faux })
+    const client = new Client(kernel.port)
+    try {
+      const created = (await client.call('conversation.import', {
+        entries: [user('an old question', 1000), assistant('an old answer', 2000)],
+      })) as Imported
+      await client.call('conversation.configure', {
+        id: created.conversationId,
+        change: { model: faux.model },
+      })
+      await client.call('conversation.submit', { id: created.conversationId, input: 'go on' })
+      await until(
+        'the answer',
+        async () => {
+          const page = (await client.call('conversation.entries', {
+            id: created.conversationId,
+            query: { order: 'ascending' },
+            limit: 100,
+          })) as { items: { kind: string; model?: unknown }[] }
+          return page.items.some(
+            (entry) =>
+              entry.kind === 'pi.assistant' &&
+              JSON.stringify(entry.model).includes('the next answer'),
+          )
+        },
+        20_000,
+      )
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+
+  test('the fingerprint is the entries as sent, so a key written before the zero usage still replays', async () => {
+    const { kernel, client, data } = await kernelForTest()
+    try {
+      const created = (await client.call('conversation.import', {
+        entries: [user('first', 1000)],
+      })) as Imported
+      const answer = assistant('an answer without usage', 2000)
+      await client.call('conversation.import', {
+        id: created.conversationId,
+        key: 'droid-import:usage:1',
+        entries: [answer],
+      })
+      const page = (await client.call('conversation.entries', {
+        id: created.conversationId,
+        query: { order: 'ascending' },
+        limit: 100,
+      })) as { items: { kind: string; data?: { key?: string; fingerprint?: string } }[] }
+      const memo = page.items.find(
+        (entry) => entry.kind === 'droi.import' && entry.data?.key === 'droid-import:usage:1',
+      )
+      expect(memo?.data?.fingerprint).toBe(fingerprintOf({ entries: [answer] }))
     } finally {
       client.close()
       await kernel.stop()
