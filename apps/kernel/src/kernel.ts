@@ -140,6 +140,7 @@ export async function startKernel(
         : memoryExtension({
             dir: config.memoryDir,
             onRead: (file, at) => server?.broadcast('memory.read', { file, at: at.toISOString() }),
+            history: () => indexer,
           })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
