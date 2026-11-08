@@ -295,6 +295,8 @@ type SubmissionGet struct {
 	Entry        *ID    `json:"entry,omitempty"`
 	Answer       *ID    `json:"answer,omitempty"`
 	Reason       string `json:"reason,omitempty"`
+	// Detail is why an unanswered submission ended, when Pi kept it as text (a model's error).
+	Detail string `json:"detail,omitempty"`
 }
 
 // ConfigureParams is conversation.configure's params.

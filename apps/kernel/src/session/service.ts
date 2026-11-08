@@ -1126,6 +1126,9 @@ export class Kernel implements Dispatcher {
       ...(entry === undefined ? {} : { entry }),
       ...(record.status === 'done' ? { answer: record.answer } : {}),
       ...(record.status === 'unanswered' ? { reason: record.reason } : {}),
+      // Why a turn ended unanswered, in the model's or the harness's words: a Host that ran the turn unattended
+      // has nowhere else to read it.
+      ...(record.status === 'unanswered' && typeof record.detail === 'string' ? { detail: record.detail } : {}),
     }
   }
   async #abortSubmission(params: Record<string, unknown>): Promise<unknown> {

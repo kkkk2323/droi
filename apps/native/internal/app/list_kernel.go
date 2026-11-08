@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"slices"
+	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
@@ -105,11 +106,26 @@ func (a *App) kernelSummary(s kernel.Summary) sessions.Summary {
 	if s.ViewedAt != nil {
 		sum.ViewedAt = *s.ViewedAt
 	}
-	if s.Kind == "scratch" {
+	switch s.Kind {
+	case "scratch":
 		sum.Tags = []sessions.Tag{{Name: sessions.ScratchTag}}
+	case kernelAutomationKind:
+		// A run of the Host's Automations (M4 4L): the Automations page and the sidebar's running runs know it by
+		// the tag a Daemon run has. The Automation is named by the run's title; its id is the run's own, since
+		// what the page reads of a running Automation is the Host's.
+		sum.Tags = []sessions.Tag{{Name: sessions.DroiAutomationTag, Metadata: map[string]string{
+			"automationId":   "run:" + sum.SessionID,
+			"automationName": strings.TrimPrefix(s.Title, automationTitlePrefix),
+		}}}
 	}
 	return sum
 }
+
+// kernelAutomationKind is the kind of an Automation run's conversation, and automationTitlePrefix starts its title.
+const (
+	kernelAutomationKind  = "automation"
+	automationTitlePrefix = "[Automation] "
+)
 
 // indexEvent is an index.changed the window applied while a read of the list was out: the read's rows are from
 // before it, so it is applied to them again when they land.

@@ -413,10 +413,11 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `conversation.unwatch` | `{id}`                                                                        | `{}`                                                                      | `conversations` | yes |
 | `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                          | `conversations` | yes |
 | `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                                      | `conversations` | yes |
-| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?}`                        | `conversations` | no  |
+| `submission.get`       | `{id, submissionId}`                                                          | `{submissionId, status, entry?, answer?, reason?, detail?}`               | `conversations` | no  |
 
 The Kernel reports only what Pi keeps: `status`, `entry` and `answer`, plus `reason` for one that ended without
-an answer. It does not report where such a turn stopped, because it cannot: Pi 1.5.0 stores no link from a
+an answer and, when Pi kept it, `detail`: why, in the model's or the harness's words, for a client that ran the
+turn unattended and has nowhere else to read it. It does not report where such a turn stopped, because it cannot: Pi 1.5.0 stores no link from a
 submission to the run task that carried it, and a turn's entries carry a task rather than a submission, so any
 end the Kernel derived would belong to a different turn after one skipped round (shared/design §7). **A client
 bounds a turn by the status**: `[entry, answer]` for `done`, `[entry, the conversation's head]` while `placed`
