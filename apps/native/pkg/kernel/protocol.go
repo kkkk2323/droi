@@ -270,9 +270,11 @@ type Entry struct {
 	Kind           string          `json:"kind"`
 	Model          json.RawMessage `json:"model,omitempty"`
 	Data           json.RawMessage `json:"data,omitempty"`
-	Head           *bool           `json:"head,omitempty"`
-	Edits          json.RawMessage `json:"edits,omitempty"`
-	ByTaskID       *ID             `json:"byTaskId,omitempty"`
+	// Head is set on an entry that starts a new context (a compaction, a reset): the first entry the context
+	// keeps, which is the entry itself for a reset.
+	Head     *ID             `json:"head,omitempty"`
+	Edits    json.RawMessage `json:"edits,omitempty"`
+	ByTaskID *ID             `json:"byTaskId,omitempty"`
 }
 
 // Conversation is what a view says about the conversation itself.

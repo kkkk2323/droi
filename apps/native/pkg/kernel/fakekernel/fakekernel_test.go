@@ -1,6 +1,7 @@
 package fakekernel_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -722,5 +723,39 @@ func TestFakeKernelEntrylessContinueHasNoRange(t *testing.T) {
 	run := mustFailChild(t, child, "an entryless continue named a range:")
 	if !strings.Contains(string(run), "has no entry of its own") {
 		t.Fatalf("the failure does not say the continue has no lower bound:\n%s", run)
+	}
+}
+
+// TestFakeKernelAContextStartIsReadBack: an entry that starts a new context carries the ID of the first entry it
+// keeps, which the client read as a bool, so every conversation that had compacted failed to open or page.
+func TestFakeKernelAContextStartIsReadBack(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{})
+	c := k.Dial(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	user := func(text string) kernel.ImportEntry {
+		return kernel.ImportEntry{Kind: kernel.EntryUser, Model: []byte(fmt.Sprintf(`[{"role":"user","content":%q,"timestamp":1700000000000}]`, text))}
+	}
+	summary := user("the summary")
+	summary.Kind, summary.Head = kernel.EntryCompaction, []byte(`"self"`)
+	res, err := c.Import(ctx, kernel.ImportParams{Entries: []kernel.ImportEntry{user("before"), summary, user("after")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := c.Entries(ctx, kernel.EntriesParams{ID: res.ConversationID})
+	if err != nil {
+		t.Fatalf("the entries: %v", err)
+	}
+	var head *kernel.ID
+	for _, e := range page.Items {
+		if e.Kind == kernel.EntryCompaction {
+			head = e.Head
+		}
+	}
+	if head == nil || *head != res.EntryIDs[1] {
+		t.Fatalf("the compaction's head is %v, want its own entry %d", head, res.EntryIDs[1])
+	}
+	if _, err := c.Open(ctx, kernel.OpenParams{ID: res.ConversationID}); err != nil {
+		t.Fatalf("the conversation does not open: %v", err)
 	}
 }
