@@ -253,6 +253,9 @@ func (v *View) redraw() { v.env.Update(func() {}) }
 func (v *View) Open() {
 	if id, ok := v.kernelID(); ok {
 		if st := v.kernelState(); st != nil && st.Opened() {
+			// Going back to an open conversation is a use: the store keeps the ones used last, and asks Kernel
+			// nothing for one it holds. Without this the page just returned to was the next one dropped.
+			v.env.Sessions.Use(v.env.Ctx, v.env.Kernel, id)
 			return
 		}
 		v.mu.Lock()
@@ -656,13 +659,22 @@ func (v *View) Frame() *Snapshot {
 	return daemonSnapshot(s)
 }
 
-// kernelFrame is Frame for a conversation Kernel drives. Its state is nil until Open put one in the store, and
-// again once the store dropped it for the conversations used since: one the page showed is opened again.
+// kernelFrame is Frame for a conversation Kernel drives. Its state is nil until Open put one in the store, again
+// once the store dropped it for the conversations used since, and when an open this View joined failed: whenever
+// nothing is loading and no open failed here, the page opens it again. A failure stops that until the next Open.
 func (v *View) kernelFrame() *Snapshot {
 	state := v.kernelState()
 	if state == nil {
-		if v.hasLoaded && !v.loadFailed() {
+		v.mu.Lock()
+		idle := !v.loading && v.loadErr == ""
+		v.mu.Unlock()
+		if idle {
 			v.Open()
+		}
+		if len(v.entries) > 0 {
+			// The rows built before the store dropped the state stay on the page while it opens again, or after
+			// it could not: an empty snapshot draws them without claiming the conversation is loaded.
+			return &Snapshot{}
 		}
 		return nil
 	}
@@ -688,10 +700,15 @@ func (v *View) Transcript(c *ui.Context, s *Snapshot, listed []sessions.Summary)
 	v.mu.Lock()
 	loadErr, loading := v.loadErr, v.loading
 	v.mu.Unlock()
-	if s != nil && s.LoadErr != "" && len(v.entries) == 0 {
-		// A conversation Kernel could not read again keeps the rows it showed; the sentence stands in for rows only
-		// when there are none.
-		loadErr = s.LoadErr
+	if _, kernelPath := v.kernelID(); kernelPath {
+		// A conversation Kernel could not read or open again keeps the rows it showed; the sentence stands in for
+		// rows only when there are none.
+		if s != nil && s.LoadErr != "" {
+			loadErr = s.LoadErr
+		}
+		if len(v.entries) > 0 {
+			loadErr = ""
+		}
 	}
 	loaded := s != nil && s.Loaded
 	ui.Box(c).Grow(1).MinHeight(0).Children(func() {

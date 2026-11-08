@@ -3,6 +3,7 @@ package sessionview
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -416,69 +417,167 @@ func pageUp(t *testing.T, st *Store, c *kernel.Client, id kernel.ID, entries int
 	}
 }
 
+// kernelPage draws the View of conversation id in a Tester, as the window does: Update queues work that runs before
+// the next frame. until draws frames until ok holds.
+type kernelPage struct {
+	t     *testing.T
+	v     *View
+	tt    *ui.Tester
+	mu    sync.Mutex
+	queue []func()
+}
+
+func drawKernelPage(t *testing.T, f *fakeKernel, st *Store, id string) *kernelPage {
+	t.Helper()
+	theme.RegisterFonts()
+	k := kit.New(theme.Parse("light"), theme.FontChoice(""), theme.TextSize(""), 1)
+	p := &kernelPage{t: t}
+	p.v = New(id, Env{Kernel: f, Sessions: st, Kit: func() *kit.Kit { return k }, Update: p.update, Revisions: &Revisions{}})
+	p.v.Open()
+	p.tt = ui.NewTester(func(c *ui.Context) {
+		c.SetTheme(k.UITheme(c.Theme()))
+		p.v.Build(c, nil)
+	}, 900, 640)
+	return p
+}
+
+func (p *kernelPage) update(fn func()) {
+	p.mu.Lock()
+	p.queue = append(p.queue, fn)
+	p.mu.Unlock()
+}
+
+func (p *kernelPage) until(what string, ok func() bool) {
+	p.t.Helper()
+	deadline := time.Now().Add(8 * time.Second)
+	for {
+		p.mu.Lock()
+		q := p.queue
+		p.queue = nil
+		p.mu.Unlock()
+		for _, fn := range q {
+			fn()
+		}
+		keepTime(p.tt)
+		p.tt.Frame()
+		if ok() {
+			return
+		}
+		if time.Now().After(deadline) {
+			p.t.Fatalf("never: %s; texts %q", what, p.tt.Texts())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (p *kernelPage) shows(sub string) bool {
+	for _, s := range p.tt.Texts() {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // TestAKernelConversationThatCannotBeReadKeepsItsRows: Kernel says when it could not read a conversation again, and
 // the state keeps the entries it had. The page must keep drawing them — a passing read failure that blanked the
 // transcript would hide everything the user was reading — and stands the sentence in only when there is nothing
 // else to draw.
 func TestAKernelConversationThatCannotBeReadKeepsItsRows(t *testing.T) {
-	theme.RegisterFonts()
 	f := &fakeKernel{views: map[kernel.ID]kernel.View{7: windowOf(t, 0, span(1, 2)...), 8: {Conversation: kernel.Conversation{ID: 8}}}}
 	st := NewStore(3)
-	k := kit.New(theme.Parse("light"), theme.FontChoice(""), theme.TextSize(""), 1)
-	var mu sync.Mutex
-	var queue []func()
-	update := func(fn func()) { mu.Lock(); queue = append(queue, fn); mu.Unlock() }
-	draw := func(id string) (*View, *ui.Tester, func(string, func() bool)) {
-		v := New(id, Env{Kernel: f, Sessions: st, Kit: func() *kit.Kit { return k }, Update: update, Revisions: &Revisions{}})
-		v.Open()
-		tt := ui.NewTester(func(c *ui.Context) {
-			c.SetTheme(k.UITheme(c.Theme()))
-			v.Build(c, nil)
-		}, 900, 640)
-		until := func(what string, ok func() bool) {
-			t.Helper()
-			deadline := time.Now().Add(8 * time.Second)
-			for {
-				mu.Lock()
-				q := queue
-				queue = nil
-				mu.Unlock()
-				for _, fn := range q {
-					fn()
-				}
-				keepTime(tt)
-				tt.Frame()
-				if ok() {
-					return
-				}
-				if time.Now().After(deadline) {
-					t.Fatalf("never: %s; texts %q", what, tt.Texts())
-				}
-				time.Sleep(10 * time.Millisecond)
-			}
-		}
-		return v, tt, until
-	}
-	shows := func(tt *ui.Tester, sub string) bool {
-		for _, s := range tt.Texts() {
-			if strings.Contains(s, sub) {
-				return true
-			}
-		}
-		return false
-	}
 	failed := func(id kernel.ID) kernel.ViewNotification {
 		return kernel.ViewNotification{ID: id, Kind: kernel.ViewKindFailed, Error: json.RawMessage(`{"message":"the database is locked"}`)}
 	}
 
-	_, tt, until := draw("7")
-	until("the rows", func() bool { return shows(tt, "m1") && shows(tt, "m2") })
+	p := drawKernelPage(t, f, st, "7")
+	p.until("the rows", func() bool { return p.shows("m1") && p.shows("m2") })
 	st.ApplyView(0, failed(7))
-	until("a frame after the failure", func() bool { return st.State(7).LoadErr() != "" })
-	until("the rows still drawn", func() bool { return shows(tt, "m1") && shows(tt, "m2") })
+	p.until("a frame after the failure", func() bool { return st.State(7).LoadErr() != "" })
+	p.until("the rows still drawn", func() bool { return p.shows("m1") && p.shows("m2") })
 
-	_, empty, untilEmpty := draw("8")
-	untilEmpty("the empty conversation opened", func() bool { return st.State(8) != nil && st.State(8).Opened() })
+	empty := drawKernelPage(t, f, st, "8")
+	empty.until("the empty conversation opened", func() bool { return st.State(8) != nil && st.State(8).Opened() })
 	st.ApplyView(0, failed(8))
-	untilEmpty("the sentence", func() bool { return shows(empty, "the database is locked") })
+	empty.until("the sentence", func() bool { return empty.shows("the database is locked") })
+}
+
+// TestAPageWhoseConversationCannotBeOpenedAgainKeepsItsRows: the store drops a conversation for the ones used
+// since, the page opens it again, and Kernel refuses. The rows the page showed stay; they are not swapped for a
+// spinner or for the sentence.
+func TestAPageWhoseConversationCannotBeOpenedAgainKeepsItsRows(t *testing.T) {
+	f := &fakeKernel{views: map[kernel.ID]kernel.View{7: windowOf(t, 0, span(1, 2)...)}}
+	st := NewStore(3)
+	p := drawKernelPage(t, f, st, "7")
+	p.until("the rows", func() bool { return p.shows("m1") && p.shows("m2") })
+
+	f.mu.Lock()
+	f.openErr = errors.New("the kernel went away")
+	f.mu.Unlock()
+	st.Close(context.Background(), f, 7)
+	p.until("the open to fail", func() bool { return p.v.loadFailed() })
+	p.until("the rows still drawn", func() bool { return p.shows("m1") && p.shows("m2") })
+	if p.shows("the kernel went away") || p.shows("Loading session") {
+		t.Errorf("the page swapped its rows for %q", p.tt.Texts())
+	}
+}
+
+// TestGoingBackToAViewKeepsItsConversation: going back to a page is the commonest thing a window does, and it is a
+// use of that conversation. With room for two, A, B, back to A, then C must drop B — not the page just returned to,
+// whose older pages would be lost and whose rows would load again.
+func TestGoingBackToAViewKeepsItsConversation(t *testing.T) {
+	f := &fakeKernel{views: map[kernel.ID]kernel.View{1: windowOf(t, 0, 1), 2: windowOf(t, 0, 1), 3: windowOf(t, 0, 1)}}
+	st := NewStore(2)
+	env := Env{Kernel: f, Sessions: st, Revisions: &Revisions{}}
+	open := func(v *View, id kernel.ID) {
+		t.Helper()
+		v.Open()
+		await(t, fmt.Sprintf("conversation %d to open", id), func() bool { return st.State(id) != nil && st.State(id).Opened() })
+	}
+	a, b, c := New("1", env), New("2", env), New("3", env)
+	open(a, 1)
+	open(b, 2)
+	a.Open()
+	open(c, 3)
+	if st.State(1) == nil {
+		t.Error("the conversation just gone back to was dropped")
+	}
+	if st.State(2) != nil {
+		t.Error("the conversation used least recently was kept")
+	}
+}
+
+// TestAViewWhoseJoinedOpenFailedOpensAgain: a View that opens a conversation another open is already bringing joins
+// it, and hears nothing of how it ends. When that open fails, the page must not spin for ever: it opens the
+// conversation itself.
+func TestAViewWhoseJoinedOpenFailedOpensAgain(t *testing.T) {
+	entered, release := make(chan kernel.ID, 1), make(chan struct{})
+	f := &fakeKernel{views: map[kernel.ID]kernel.View{7: windowOf(t, 0, span(1, 2)...)},
+		entered: entered, release: release, answerErr: errors.New("the old connection closed")}
+	st := NewStore(3)
+	first := make(chan error, 1)
+	go func() { first <- st.Open(context.Background(), f, 7, kernelWindow) }()
+	<-entered
+
+	v := New("7", Env{Kernel: f, Sessions: st, Revisions: &Revisions{}})
+	v.Open()
+	// The page's open has joined the one in flight, and answered, before that one fails: otherwise it could start
+	// after the failure and make its own call, which is not the case under test.
+	await(t, "the page to join the open in flight", func() bool {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		return !v.loading
+	})
+	close(release)
+	if err := <-first; err == nil {
+		t.Fatal("the first open did not fail")
+	}
+	f.mu.Lock()
+	f.answerErr, f.entered, f.release = nil, nil, nil
+	f.mu.Unlock()
+
+	await(t, "the page to open the conversation itself", func() bool {
+		s := v.Frame()
+		return s != nil && s.Loaded
+	})
 }

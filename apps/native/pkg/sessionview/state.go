@@ -616,6 +616,25 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	return nil
 }
 
+// Use records that conversation id was used again, as Open does for one the store holds, and reports whether the
+// store holds it. It does not wait for the unwatches of the conversations that leaves out: their order among the
+// other calls of each conversation is settled here, under the lock.
+func (st *Store) Use(ctx context.Context, k Kernel, id kernel.ID) bool {
+	st.mu.Lock()
+	st.ready()
+	if _, held := st.states[id]; !held {
+		st.mu.Unlock()
+		return false
+	}
+	st.touchLocked(id)
+	evicted := st.unwatchesLocked(st.trimLocked(id))
+	st.mu.Unlock()
+	if len(evicted) > 0 {
+		go st.unwatch(ctx, k, evicted)
+	}
+	return true
+}
+
 // Close stops this connection's subscription and drops the state.
 func (st *Store) Close(ctx context.Context, k Kernel, id kernel.ID) {
 	st.mu.Lock()
