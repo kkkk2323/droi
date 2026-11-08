@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -23,6 +24,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/slash"
 	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
 	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
@@ -52,11 +54,18 @@ type composerState struct {
 	mu      sync.Mutex
 	budget  *protocol.GetContextBreakdownResult
 	budgetM string // the model the budget is for
-	slash   []slash.Item
-	slashAt time.Time
-	skills  []protocol.SkillInfo
-	servers []protocol.MCPServerStatusInfo
-	toolsAt time.Time
+	// usageRead, usageFor and usageDoc: conversation.usage was asked for, about the conversation as they say.
+	usageRead bool
+	usageFor  usageFor
+	usageDoc  json.RawMessage
+	// usageCtx is the context the meter drew last, and usageUsed and usageLimit its figures.
+	usageCtx              json.RawMessage
+	usageUsed, usageLimit float64
+	slash                 []slash.Item
+	slashAt               time.Time
+	skills                []protocol.SkillInfo
+	servers               []protocol.MCPServerStatusInfo
+	toolsAt               time.Time
 }
 
 // composerArea is everything under the transcript: the shelf, the
@@ -729,7 +738,10 @@ func (v *sessionView) footer(c *ui.Context, s *sessionview.Snapshot, workspace s
 // Daemon cleaned up loads it again.
 func (v *sessionView) contextMeter(c *ui.Context, s *sessionview.Snapshot, loaded bool) {
 	a := v.a
-	k, t := a.kit, a.kit.T
+	if conv, ok := a.kernelID(v.id); ok && a.onKernel() {
+		v.kernelContextMeter(c, conv, s.Settings().ModelID)
+		return
+	}
 	cs := &v.composer
 	model := s.Settings().ModelID
 	cs.mu.Lock()
@@ -759,11 +771,80 @@ func (v *sessionView) contextMeter(c *ui.Context, s *sessionview.Snapshot, loade
 	if last := s.Usage().LastCall; last != nil {
 		used = last.InputTokens + last.CacheReadTokens
 	}
-	ratio := 0.0
-	if budget.ContextBudget > 0 {
-		ratio = math.Min(1, used/budget.ContextBudget)
+	v.drawContextMeter(c, used, budget.ContextBudget)
+}
+
+// usageFor is what a conversation.usage answer depends on, besides pi.usage: the model, whose window is the limit;
+// the connection, since a reconnect may have missed what changed; and, while the conversation rests, its newest
+// entry, so a compaction or an entry written without a model call is counted.
+type usageFor struct {
+	model   string
+	gen     int64
+	settled kernel.ID
+}
+
+// kernelContextMeter is the meter of a Kernel conversation: conversation.usage's context, how much of model's
+// window the conversation fills now, compactions included. Kernel computes it from the conversation's current model
+// and messages, so it is read again when either moves: after each model call, which pi.usage counts, on another
+// model, on a new connection, and on what the conversation holds once it rests.
+func (v *sessionView) kernelContextMeter(c *ui.Context, conv kernel.ID, model string) {
+	a := v.a
+	state := a.sessions.State(conv)
+	if state == nil {
+		return
 	}
-	percent := int(math.Round(ratio * 100))
+	key := usageFor{model: model, gen: a.sessions.Generation()}
+	if !state.Busy() {
+		if entries := state.Entries(); len(entries) > 0 {
+			key.settled = entries[len(entries)-1].ID
+		}
+	}
+	doc := state.UsageDocument()
+	cs := &v.composer
+	cs.mu.Lock()
+	if !cs.usageRead || cs.usageFor != key || !bytes.Equal(cs.usageDoc, doc) {
+		cs.usageRead, cs.usageFor, cs.usageDoc = true, key, doc
+		go func() {
+			u, err := a.kernel.Usage(a.ctx, conv)
+			if err == nil && a.sessions.ApplyUsage(key.gen, conv, u) {
+				a.redraw()
+			}
+		}()
+	}
+	if window := state.UsageContext(); cs.usageCtx == nil || !bytes.Equal(cs.usageCtx, window) {
+		var figures struct {
+			Used  float64 `json:"used"`
+			Limit float64 `json:"limit"`
+		}
+		if json.Unmarshal(window, &figures) != nil {
+			figures.Used, figures.Limit = 0, 0
+		}
+		cs.usageCtx, cs.usageUsed, cs.usageLimit = window, figures.Used, figures.Limit
+	}
+	used, limit := cs.usageUsed, cs.usageLimit
+	cs.mu.Unlock()
+	if limit <= 0 {
+		return
+	}
+	v.drawContextMeter(c, used, limit)
+}
+
+// contextLabel is the meter's figures: used of budget tokens, and how full that is.
+func contextLabel(used, budget float64) string {
+	ratio := 0.0
+	if budget > 0 {
+		ratio = math.Min(1, used/budget)
+	}
+	return formatTokens(used) + " / " + formatTokens(budget) + " · " + strconv.Itoa(int(math.Round(ratio*100))) + "%"
+}
+
+// drawContextMeter is the meter: used of budget tokens, as a ring and figures.
+func (v *sessionView) drawContextMeter(c *ui.Context, used, budget float64) {
+	k, t := v.a.kit, v.a.kit.T
+	ratio := 0.0
+	if budget > 0 {
+		ratio = math.Min(1, used/budget)
+	}
 	color := t.Foreground.Alpha(0.6)
 	switch {
 	case ratio > 0.9:
@@ -771,8 +852,8 @@ func (v *sessionView) contextMeter(c *ui.Context, s *sessionview.Snapshot, loade
 	case ratio > 0.7:
 		color = t.Attention
 	}
-	label := formatTokens(used) + " / " + formatTokens(budget.ContextBudget) + " · " + strconv.Itoa(percent) + "%"
-	ui.Row(c).Role(ui.RoleMeter).Label(L("Context used")).Tooltip(L("%s / %s tokens", groupDigits(used), groupDigits(budget.ContextBudget))).
+	label := contextLabel(used, budget)
+	ui.Row(c).Role(ui.RoleMeter).Label(L("Context used")).Tooltip(L("%s / %s tokens", groupDigits(used), groupDigits(budget))).
 		Gap(k.Px(6)).Shrink(0).Children(func() {
 		ring := ui.Box(c).Size(k.Px(14), k.Px(14))
 		ring.Draw(func(p *ui.Painter, r ui.Rect) {
