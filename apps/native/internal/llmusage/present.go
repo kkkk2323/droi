@@ -393,6 +393,8 @@ func eventName(kind string) string {
 		return l10n.L("Tried another key")
 	case "llm_no_key":
 		return l10n.L("No key could serve the request")
+	case "request_shrunk":
+		return l10n.L("Sent again without older images")
 	case "key_opened":
 		return l10n.L("Started a key")
 	case "key_open_failed":

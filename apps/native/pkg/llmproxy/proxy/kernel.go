@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
@@ -126,6 +127,8 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 
 	tried := map[string]struct{}{}
 	refreshed := false
+	// A 413 is asked again once, with the older images and files left out (left of them).
+	shrunk, left := false, 0
 	presented := p.kernelKey(session)
 	for attempt := 1; ; attempt++ {
 		key, pool := p.rotator.SelectKeyForModel(presented, model, tried)
@@ -189,10 +192,48 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 			respBody = io.MultiReader(bytes.NewReader(refusal), upstreamBody)
 		}
 
+		// A body over Factory's byte limit, and a conversation its usage policy check refuses, are no fault of the key:
+		// the Kernel gets them in words a person can act on.
+		if plainBody && resp.StatusCode == http.StatusRequestEntityTooLarge {
+			resp.Body.Close()
+			if decoder != nil {
+				decoder.Close()
+			}
+			if !shrunk {
+				shrunk = true
+				if less, n := factory.LeaveOutAttachments(path, plain); n > 0 {
+					if wire, err := encodeWireBody(encoding, less); err == nil {
+						p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, false, "", errorDetail)
+						p.event(diag.Event{Kind: "request_shrunk", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: fmt.Sprintf("kernel: %d older images or files left out", n)})
+						raw, plain, left = wire, less, n
+						presented = key
+						continue
+					}
+				}
+			}
+			p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, attempt > 1, "", errorDetail)
+			kind := "invalid_request_error"
+			if strings.Contains(path, "/llm/a/") {
+				kind = "request_too_large"
+			}
+			writeKernelError(w, path, http.StatusRequestEntityTooLarge, kind, factory.TooLarge(refusal, left), "", "")
+			return
+		}
+		if plainBody && factory.ContentRefused(resp.StatusCode, resp.Header, refusal) {
+			resp.Body.Close()
+			if decoder != nil {
+				decoder.Close()
+			}
+			p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, attempt > 1, "", errorDetail)
+			// A 400 with Factory's code, as OpenAI words a content refusal: a 403 reads to clients as a failed sign-in.
+			id, said := factory.UpstreamIDs(resp.Header, refusal)
+			msg := factory.VendorError(refusal, statusLine(resp.StatusCode)) + said + ". " + factory.ContentPolicyHint
+			writeKernelError(w, path, http.StatusBadRequest, "invalid_request_error", msg, id, "content_policy_rejected")
+			return
+		}
+
 		why := ""
 		switch status := resp.StatusCode; {
-		case (status == http.StatusUnauthorized || status == http.StatusForbidden) && plainBody && factory.ContentRefused(status, resp.Header, refusal):
-			// What the conversation says, under any key: the answer goes back as it came, and no key is blamed.
 		case status == http.StatusForbidden && plainBody && factory.OrgRefused(status, refusal) && !refreshed:
 			// The organization whoami named is stale: ask again, and send once more with the same key.
 			refreshed = true
@@ -235,6 +276,18 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		}
 		return
 	}
+}
+
+// writeKernelError answers the Kernel with an error in the words of the API of path (factory.ErrorBody).
+func writeKernelError(w http.ResponseWriter, path string, status int, kind, message, requestID, code string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(factory.ErrorBody(path, kind, message, requestID, code))
+}
+
+// statusLine is a status as Go's HTTP client names it, "403 Forbidden".
+func statusLine(status int) string {
+	return strings.TrimSpace(fmt.Sprintf("%d %s", status, http.StatusText(status)))
 }
 
 func writeNoKernelKey(w http.ResponseWriter, model string) {

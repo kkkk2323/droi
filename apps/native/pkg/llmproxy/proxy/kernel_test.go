@@ -20,10 +20,13 @@ const kernelToken = "droi-kernel-test-token"
 // fakeFactory is Factory as the Kernel path meets it: whoami for each key, and a model route that answers what reply
 // says for the key a request carries.
 type fakeFactory struct {
-	mu       sync.Mutex
-	seen     []*http.Request
-	whoami   string
-	reply    func(key string) (int, string)
+	mu     sync.Mutex
+	seen   []*http.Request
+	whoami string
+	reply  func(key string) (int, string)
+	// replyTo, when set, answers in reply's place, from the body too; header is added to every answer.
+	replyTo  func(key string, body []byte) (int, string)
+	header   http.Header
 	upstream *httptest.Server
 }
 
@@ -43,7 +46,16 @@ func newFakeFactory(t *testing.T) *fakeFactory {
 		f.mu.Lock()
 		f.seen = append(f.seen, r2)
 		f.mu.Unlock()
-		status, body := f.reply(keys.NormalizeBearerToken(r.Header.Get("Authorization")))
+		key := keys.NormalizeBearerToken(r.Header.Get("Authorization"))
+		status, body := 0, ""
+		if f.replyTo != nil {
+			status, body = f.replyTo(key, sent)
+		} else {
+			status, body = f.reply(key)
+		}
+		for k, v := range f.header {
+			w.Header()[k] = v
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		io.WriteString(w, body)
@@ -230,16 +242,16 @@ func TestAKernelRequestMovesToAnotherKeyWhenOneIsSpent(t *testing.T) {
 	}
 }
 
-// Factory's usage policy refusing what a conversation says is no fault of the key: the refusal goes back as it came,
-// once, and the next request still goes out with the same key.
+// Factory's usage policy refusing what a conversation says is no fault of the key: the refusal goes back once, said
+// for what it is, and the next request still goes out with the same key.
 func TestAContentRefusalIsNotBlamedOnTheKey(t *testing.T) {
 	f := newFakeFactory(t)
 	refused := `{"error":{"code":"content_policy_rejected","message":"refused"}}`
 	f.reply = func(string) (int, string) { return http.StatusForbidden, refused }
 	px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0), poolUsage("fk-b", 10, 0))
 	status, body := postKernel(t, px.BaseURL(), "/api/llm/o/v1/chat/completions", `{"model":"glm-5.3","messages":[]}`, "1")
-	if status != http.StatusForbidden || body != refused {
-		t.Fatalf("got %d %s, want Factory's refusal as it came", status, body)
+	if status != http.StatusBadRequest || !strings.Contains(body, "content_policy_rejected") {
+		t.Fatalf("got %d %s, want Factory's refusal as a 400 with its code", status, body)
 	}
 	f.reply = func(string) (int, string) { return 200, `{}` }
 	postKernel(t, px.BaseURL(), "/api/llm/o/v1/chat/completions", `{"model":"glm-5.3","messages":[]}`, "1")
@@ -419,4 +431,163 @@ func TestAKernelFastModeRequestIsServedFast(t *testing.T) {
 	if h := seen[0].Header; h.Get("Anthropic-Beta") != factory.FastModeBeta || h.Get("X-Api-Provider") != "anthropic" {
 		t.Fatalf("headers %v", h)
 	}
+}
+
+// size.test.mjs: Factory refuses a body over its byte limit with 413, as its edge does, in plain text.
+func tooLargeOver(limit int) func(string, []byte) (int, string) {
+	return func(_ string, body []byte) (int, string) {
+		if len(body) > limit {
+			return http.StatusRequestEntityTooLarge, "Request Entity Too Large"
+		}
+		return 200, `{}`
+	}
+}
+
+var pngPart = `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + strings.Repeat("A", 3000) + `"}}`
+
+// A conversation with a screenshot pasted and two from a tool, as the Kernel sends it on Messages.
+var imageSession = `{"model":"claude-opus-5-5","max_tokens":1024,"stream":true,"messages":[` +
+	`{"role":"user","content":[{"type":"text","text":"look"},` + pngPart + `]},` +
+	`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"view_image","input":{"path":"/a.png"}}]},` +
+	`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[` + pngPart + `]}]},` +
+	`{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"view_image","input":{"path":"/b.png"}}]},` +
+	`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":[{"type":"text","text":"b.png"},` + pngPart + `]}]}]}`
+
+func TestAKernelRequestTooLarge(t *testing.T) {
+	t.Run("a 413 is asked once more with the older images left out, tool results kept beside their calls", func(t *testing.T) {
+		f := newFakeFactory(t)
+		// the session with all three images is over the limit; with the newest alone it is well under
+		f.replyTo = tooLargeOver(len(imageSession) - 3000)
+		px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0), poolUsage("fk-b", 10, 0))
+		status, out := postKernel(t, px.BaseURL(), "/api/llm/a/v1/messages", imageSession, "1")
+		if status != 200 {
+			t.Fatalf("%d %s", status, out)
+		}
+		seen := f.requests()
+		if len(seen) != 2 {
+			t.Fatalf("Factory saw %d requests", len(seen))
+		}
+		if a, b := seen[0].Header.Get("Authorization"), seen[1].Header.Get("Authorization"); a != b {
+			t.Fatal("a 413 was blamed on the key")
+		}
+		raw, _ := io.ReadAll(seen[1].Body)
+		if seen[1].ContentLength != int64(len(raw)) {
+			t.Fatalf("Content-Length %d for %d bytes", seen[1].ContentLength, len(raw))
+		}
+		var got struct {
+			Messages []struct {
+				Content []map[string]any `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Messages[0].Content[1]["text"] != factory.LeftOut {
+			t.Fatalf("the pasted image: %v", got.Messages[0].Content[1])
+		}
+		inner, _ := got.Messages[2].Content[0]["content"].([]any)
+		if len(inner) != 1 || inner[0].(map[string]any)["text"] != factory.LeftOut || got.Messages[2].Content[0]["tool_use_id"] != "t1" {
+			t.Fatalf("the first tool result: %v", got.Messages[2].Content[0])
+		}
+		newest, _ := got.Messages[4].Content[0]["content"].([]any)
+		if len(newest) != 2 || newest[1].(map[string]any)["type"] != "image" {
+			t.Fatalf("the newest image went: %v", got.Messages[4].Content[0])
+		}
+	})
+
+	t.Run("a 413 still there says it is Factory's byte limit, and what to do", func(t *testing.T) {
+		f := newFakeFactory(t)
+		f.replyTo = tooLargeOver(100)
+		px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+		status, out := postKernel(t, px.BaseURL(), "/api/llm/a/v1/messages", imageSession, "1")
+		if len(f.requests()) != 2 || status != http.StatusRequestEntityTooLarge {
+			t.Fatalf("%d requests, %d %s", len(f.requests()), status, out)
+		}
+		var e struct {
+			Type  string `json:"type"`
+			Error struct{ Type, Message string }
+		}
+		if err := json.Unmarshal([]byte(out), &e); err != nil {
+			t.Fatal(err)
+		}
+		if e.Type != "error" || e.Error.Type != "request_too_large" {
+			t.Fatalf("%s", out)
+		}
+		for _, want := range []string{"(413: Request Entity Too Large)", "limits the size of a request's body in bytes", "2 older images or files left out", factory.TooLargeHint} {
+			if !strings.Contains(e.Error.Message, want) {
+				t.Errorf("%q lacks %q", e.Error.Message, want)
+			}
+		}
+	})
+
+	t.Run("a 413 with no older image to leave out is not asked again", func(t *testing.T) {
+		f := newFakeFactory(t)
+		f.replyTo = tooLargeOver(10)
+		px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+		status, out := postKernel(t, px.BaseURL(), "/api/llm/o/v1/responses", `{"model":"gpt-6-sol","input":[{"role":"user","content":[{"type":"input_text","text":"hi"},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]}]}`, "1")
+		if len(f.requests()) != 1 || status != http.StatusRequestEntityTooLarge {
+			t.Fatalf("%d requests, %d %s", len(f.requests()), status, out)
+		}
+		var e struct {
+			Error struct{ Type, Message string }
+		}
+		_ = json.Unmarshal([]byte(out), &e)
+		if e.Error.Type != "invalid_request_error" || strings.Contains(e.Error.Message, "left out") || !strings.Contains(e.Error.Message, factory.TooLargeHint) {
+			t.Fatalf("%s", out)
+		}
+	})
+}
+
+// content-policy.test.mjs: a refusal of what the conversation says is said for what it is, and not sent again.
+func TestAKernelContentRefusalIsSaidForWhatItIs(t *testing.T) {
+	policy := map[string]string{
+		"top":   `{"code":"content_policy_rejected","detail":"This request was blocked by Factory's usage policy check."}`,
+		"error": `{"error":{"code":"content_policy_rejected","message":"This request was blocked by Factory's usage policy check."}}`,
+	}
+	for _, tc := range []struct{ name, where, path, body string }{
+		{"top", "top", "/api/llm/a/v1/messages", `{"model":"claude-opus-5-5","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}`},
+		{"error", "error", "/api/llm/a/v1/messages", `{"model":"claude-opus-5-5","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}`},
+		{"on the OpenAI route", "top", "/api/llm/o/v1/chat/completions", `{"model":"glm-5.3","messages":[{"role":"user","content":"hi"}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeFactory(t)
+			f.reply = func(string) (int, string) { return http.StatusForbidden, policy[tc.where] }
+			f.header = http.Header{"X-Request-Id": {"req_7"}}
+			px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0), poolUsage("fk-b", 10, 0))
+			status, out := postKernel(t, px.BaseURL(), tc.path, tc.body, "1")
+			// a refusal of the request, not of the account: 400 with Factory's code, never the 403 a client reads as
+			// a failed sign-in
+			if status != http.StatusBadRequest {
+				t.Fatalf("%d %s", status, out)
+			}
+			var e struct {
+				Error struct{ Type, Code, Message string }
+			}
+			if err := json.Unmarshal([]byte(out), &e); err != nil {
+				t.Fatal(err)
+			}
+			if e.Error.Type != "invalid_request_error" || e.Error.Code != "content_policy_rejected" {
+				t.Fatalf("%s", out)
+			}
+			for _, want := range []string{"blocked by Factory's usage policy check", "request id req_7", "reads the whole conversation"} {
+				if !strings.Contains(e.Error.Message, want) {
+					t.Errorf("%q lacks %q", e.Error.Message, want)
+				}
+			}
+			if len(f.requests()) != 1 {
+				t.Fatalf("Factory saw %d requests", len(f.requests()))
+			}
+		})
+	}
+
+	t.Run("the code under an upstream error header is a refusal of the key", func(t *testing.T) {
+		f := newFakeFactory(t)
+		f.reply = func(string) (int, string) { return http.StatusForbidden, policy["top"] }
+		f.header = http.Header{"X-Factory-Upstream-Error": {"1"}}
+		px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+		status, out := postKernel(t, px.BaseURL(), "/api/llm/a/v1/messages", `{"model":"claude-opus-5-5","messages":[]}`, "1")
+		if status != http.StatusServiceUnavailable || strings.Contains(out, "reads the whole conversation") {
+			t.Fatalf("%d %s", status, out)
+		}
+	})
 }
