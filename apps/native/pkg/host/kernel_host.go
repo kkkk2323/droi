@@ -162,6 +162,10 @@ func (h *Host) stopKernel() {
 	if sup == nil {
 		return
 	}
+	// A change under way ends with the link closed under it; its fallback restart then sees runs moved on. Waiting
+	// for it keeps a restart that already began from launching after the Stop below.
+	k.configuring.Lock()
+	k.configuring.Unlock()
 	sup.Stop()
 	sup.Close()
 	if !h.usesDroiDroid() {
@@ -261,7 +265,7 @@ func (h *Host) kernelPoolChanged() {
 		log.Println("droi: kernel: the Kernel did not take its new models:", err)
 	}
 	log.Println("droi: kernel: the Key Pool's proxy changed; starting the Kernel again")
-	sup.Restart()
+	h.restartKernel(sup, runs)
 }
 
 // kernelProvidersNow starts the Key Pool's proxy again for the running Kernel, whose model requests keep the token
@@ -308,6 +312,7 @@ func (h *Host) kernelMemoryChanged() {
 		return
 	}
 	k.memoryOn = on
+	runs := k.runs
 	k.mu.Unlock()
 	dir := kernel.None[string]()
 	if on {
@@ -319,7 +324,20 @@ func (h *Host) kernelMemoryChanged() {
 		return
 	}
 	log.Println("droi: kernel: Memory was turned on or off; starting the Kernel again:", err)
-	sup.Restart()
+	h.restartKernel(sup, runs)
+}
+
+// restartKernel starts sup's Kernel again, unless it was stopped, or started anew, since run runs: a change whose
+// call failed because the Kernel was stopping must not launch a Kernel nobody owns. The caller holds configuring,
+// which stopKernel waits for, so the check and the restart are one step to it.
+func (h *Host) restartKernel(sup *KernelSupervisor, runs int) {
+	k := &h.kernel
+	k.mu.Lock()
+	current := k.sup == sup && k.runs == runs
+	k.mu.Unlock()
+	if current {
+		sup.Restart()
+	}
 }
 
 // kernelConfigureTimeout bounds harness.configure, which changes what the Kernel holds and touches no run.

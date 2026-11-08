@@ -487,6 +487,41 @@ describe("a conversation's Memory", () => {
     )
   })
 
+  test('every Memory tool, history_search too, answers that Memory is off once it was turned off', async () => {
+    const searched: unknown[] = []
+    const extension = memoryExtension({
+      dir: () => undefined,
+      onRead: () => {},
+      history: () =>
+        ({
+          history: async (query: unknown) => (searched.push(query), { hits: [], leftOut: 0 }),
+        }) as never,
+    })
+    const args: Record<string, Record<string, unknown>> = {
+      memory_search: { query: 'pnpm' },
+      memory_read: { path: 'memory_summary.md' },
+      memory_list: {},
+      memory_note: { text: 'a note' },
+      history_search: { query: 'pnpm' },
+    }
+    for (const tool of (extension.tools ?? []) as ToolRegistration[]) {
+      const result = (await tool.execute(
+        args[tool.name] as never,
+        { conversationId: 's1' } as never,
+        {} as never,
+      )) as {
+        output: { text: string }[]
+        isError?: boolean
+      }
+      expect([tool.name, result.output[0]!.text, result.isError]).toEqual([
+        tool.name,
+        'Memory is turned off.',
+        true,
+      ])
+    }
+    expect(searched).toEqual([])
+  })
+
   test('with Memory off a conversation has no Memory and no Memory tools', async () => {
     const { seen, create, ask } = await boot(undefined)
     await ask(await create(), 'hi')

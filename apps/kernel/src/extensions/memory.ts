@@ -164,6 +164,7 @@ export function memoryExtension(options: MemoryOptions): Extension {
     replay: 'safe',
     callers: ['model'],
     async execute(args, api) {
+      if (folder() === undefined) return off()
       const index = options.history?.()
       if (index === undefined) return answer('Earlier conversations cannot be searched yet.', true)
       if (args.query.trim() === '') return answer('history_search needs a query.', true)

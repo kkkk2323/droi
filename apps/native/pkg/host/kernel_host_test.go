@@ -509,6 +509,26 @@ func TestADaemonStartingWithoutTheKeyPoolLeavesTheKernelsModels(t *testing.T) {
 	answer(t, ctx, c, chat)
 }
 
+// A change whose call failed because the Kernel was being stopped does not start it again: once the Host stopped its
+// Kernel, the fallback restart of a change that began before leaves it stopped.
+func TestAChangeThatFailedAsTheKernelStoppedLeavesItStopped(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	hk.next(t, ctx)
+	k := &hk.h.kernel
+	k.mu.Lock()
+	sup, runs := k.sup, k.runs
+	k.mu.Unlock()
+	hk.h.stopKernel()
+	hk.h.restartKernel(sup, runs)
+	time.Sleep(300 * time.Millisecond)
+	if st := sup.State(); st.Status != KernelStopped {
+		t.Fatalf("the stopped Kernel is %s", st.Status)
+	}
+}
+
 // A Key Pool proxy that stopped, or moved to another address, under the Kernel gives the running Kernel its models on
 // the one that runs now.
 func TestTheHostsKernelFollowsTheKeyPoolsProxy(t *testing.T) {
