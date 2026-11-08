@@ -261,7 +261,8 @@ func waitNotAlive(pid int, within time.Duration) bool {
 func TestHostPrintsThePairingLinkServesMetaAndTakesAClient(t *testing.T) {
 	b := newBox(t, "0.240.0")
 	r := b.start(func(o *Options) { o.Terminal = true })
-	r.waitForOutput("Pairing link: ")
+	// The QR code is written after the link line, so wait for the line after it.
+	r.waitForOutput("Press Ctrl-C to stop.")
 	token := b.token()
 
 	out := r.out.String()
