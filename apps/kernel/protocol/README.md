@@ -853,9 +853,15 @@ restart starts again from where it was. `conversation.configure {id, change: {ex
 Each call the script makes is a tool call of its own: the approval policy judges it as it would the model's
 (an `ask` level asks for the script, then for each call it makes), and `pi.live.nestedTools` shows it while it
 runs. The result keeps them as `details.calls[]`, in the order the script made them: Pi's
-`{id, name, args, status, durationMs?, error?}` (`status` is `ok`, `error`, `cancelled` or `running`), and two
-fields the kernel adds — `output`, the call's answer as text, at most 4 KiB of it, and `truncated: true` when
-it was cut. An image is `[image]`. A call that failed answers its error there.
+`{id, name, args, status, durationMs?, error?}` (`status` is `ok`, `error`, `cancelled` or `running`; `args` is
+the arguments' JSON cut to 200 characters, so not always JSON), and three fields the kernel adds —
+`arguments`, the object the call ran with, each string in it cut to 4 KiB; `output`, the call's answer as text,
+at most 4 KiB of it; and `truncated: true` when the output was cut. An image is `[image]`. A call that failed
+answers its error there. A script the user stops keeps the calls it made: those that ended as they ended, the
+others `cancelled`.
+
+A script runs until it ends, the user stops it, or its `// @options: {"timeout_ms": …}` line's time is up; with
+no such line, for 30 minutes.
 
 A call a restart cut off is not run twice when its tool is not safe to repeat (`bash`): it ends as `error`, and
 the script goes on with that answer.

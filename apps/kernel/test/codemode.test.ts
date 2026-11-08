@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
@@ -7,6 +7,12 @@ import type { KernelConfig } from '../src/config.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 import { context } from '../src/session/service.ts'
 import { NESTED_OUTPUT_BYTES } from '../src/extensions/codemode.ts'
+import { DEFAULT_SCRIPT_TIMEOUT_MS, codemodeSandbox } from '../src/codemode/sandbox.ts'
+import {
+  CodemodeSandbox,
+  type CodemodeRun,
+  type CodemodeRunOptions,
+} from '@earendil-works/pi-codemode'
 
 /** Codemode (design/m3-kernel.md §6): on by default, scripts call the conversation's tools, and the card's calls. */
 
@@ -48,6 +54,8 @@ async function conversation(b: Booted): Promise<number> {
 type Call = {
   id: number
   name: string
+  args: string
+  arguments?: unknown
   status: string
   output?: string
   truncated?: boolean
@@ -225,4 +233,54 @@ describe('codemode', () => {
     expect(call).toMatchObject({ name: 'fake___echo', status: 'ok' })
     expect(call?.output).toContain('echo: hi')
   }, 60_000)
+  test("a call's card has the whole arguments it ran with, not Pi's 200-character preview", async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    const command = `echo ${'z'.repeat(300)}`
+    script(b, `await tools.bash({ command: ${JSON.stringify(command)} }); return 1`)
+    await b.client.call('conversation.submit', { id, input: 'a long command in a script' })
+    const [call] = callsOf(await result(b.client, id))
+    expect(call?.args.endsWith('...')).toBe(true)
+    expect(call?.arguments).toEqual({ command })
+  }, 60_000)
+
+  test('a script the user stops keeps the calls it made', async () => {
+    const b = await boot()
+    writeFileSync(join(b.dir, 'a.txt'), 'first')
+    const marker = join(b.dir, 'started')
+    const id = await conversation(b)
+    script(
+      b,
+      `await tools.read({ path: "a.txt" }); await tools.bash({ command: "touch ${marker}; sleep 30" }); return 1`,
+    )
+    await b.client.call('conversation.submit', { id, input: 'read, then wait' })
+    await until(async () => (existsSync(marker) ? true : undefined))
+    await b.client.call('conversation.abort', { id })
+    const calls = callsOf(await result(b.client, id))
+    expect(calls.map((call) => [call.name, call.status])).toEqual([
+      ['read', 'ok'],
+      ['bash', 'cancelled'],
+    ])
+    expect(calls[0]?.output).toContain('first')
+    expect(calls[0]?.arguments).toEqual({ path: 'a.txt' })
+  }, 60_000)
+
+  test('a script that names no timeout gets one', () => {
+    const seen: (number | undefined)[] = []
+    const original = Object.getOwnPropertyDescriptor(CodemodeSandbox.prototype, 'start')
+    CodemodeSandbox.prototype.start = function (_code: string, options: CodemodeRunOptions) {
+      seen.push(options.timeoutMs)
+      return {} as CodemodeRun
+    }
+    try {
+      const sandbox = codemodeSandbox()
+      const options = { startedAt: 0, seed: 1, tools: [], globals: [], onCall: () => {} }
+      sandbox.start('return 1', options)
+      sandbox.start('return 1', { ...options, timeoutMs: 5 })
+    } finally {
+      if (original === undefined) delete (CodemodeSandbox.prototype as { start?: unknown }).start
+      else Object.defineProperty(CodemodeSandbox.prototype, 'start', original)
+    }
+    expect(seen).toEqual([DEFAULT_SCRIPT_TIMEOUT_MS, 5])
+  })
 })

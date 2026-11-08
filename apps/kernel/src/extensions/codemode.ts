@@ -1,8 +1,9 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { NestedCallDoc, ToolTask, hook } from '@earendil-works/pi-durable'
+import { LiveDoc, NestedCallDoc, ToolTask, hook } from '@earendil-works/pi-durable'
 import type {
   Extension,
   HookApi,
+  NestedToolSlot,
   NestedToolExecutionResult,
   ToolExecutionResult,
   ToolHookCall,
@@ -19,8 +20,21 @@ import type { CodemodeSandboxBase } from '@earendil-works/pi-codemode'
 /** The most of one nested call's output a script's card carries. */
 export const NESTED_OUTPUT_BYTES = 4096
 
-/** A nested call as the card reads it: Pi's row, with what the call answered. */
-export type NestedCallWithOutput = CodemodeNestedCall & { output?: string; truncated?: true }
+/**
+ * A nested call as the card reads it: Pi's row, the arguments it ran with (Pi's row keeps only the first 200
+ * characters of them), and what the call answered.
+ */
+export type NestedCallWithOutput = CodemodeNestedCall & {
+  arguments?: JsonValue
+  output?: string
+  truncated?: true
+}
+
+/** Pi's row keeps this much of a call's arguments as JSON (pi-durable codemode's ARGS_PREVIEW_CHARS). */
+const ARGS_PREVIEW_CHARS = 200
+
+/** Pi's prefix of the tools behind `models.*` (pi-durable codemode's CODEMODE_INTERNAL_PREFIX). */
+const INTERNAL_PREFIX = 'pi.codemode.'
 
 /**
  * Codemode (design/m3-kernel.md §6): the `codemode` tool, which runs a model-written script that calls the
@@ -32,7 +46,9 @@ export type NestedCallWithOutput = CodemodeNestedCall & { output?: string; trunc
  *
  * Pi's result lists each call the script made with its status, but not what it answered; the card shows both. So
  * before the result is committed, each call's answer is read from its `NestedCallDoc`, which lives until the
- * codemode call settles, and its first {@link NESTED_OUTPUT_BYTES} bytes go into `details.calls[i].output`.
+ * codemode call settles, and its first {@link NESTED_OUTPUT_BYTES} bytes go into `details.calls[i].output`; the
+ * arguments each call ran with go into `details.calls[i].arguments`. A script the user stops ends with a result the
+ * Harness writes, which lists no calls: its rows are rebuilt from the calls' `pi.live` slots, so the card keeps them.
  */
 export function codemodeExtension(options: {
   sandbox: CodemodeSandboxBase
@@ -57,23 +73,76 @@ async function withNestedOutput(
 ): Promise<ToolExecutionResult | undefined> {
   if (call.name !== CODEMODE_TOOL_NAME || call.parent !== undefined) return undefined
   const details = result.details as CodemodeToolDetails | undefined
-  if (details === undefined || !Array.isArray(details.calls) || details.calls.length === 0) {
-    return undefined
+  // The script's slots are still in `pi.live` here: they go when the call settles, after this hook.
+  const slots = new Map<number, NestedToolSlot>()
+  const live = await api.snapshot(LiveDoc, api.conversationId, context)
+  const prefix = `${call.id}/c`
+  for (const slot of live?.nestedTools ?? []) {
+    if (slot.parentCallId !== call.id || !slot.callId.startsWith(prefix)) continue
+    const id = Number(slot.callId.slice(prefix.length))
+    if (Number.isSafeInteger(id)) slots.set(id, slot)
   }
+  // A stopped script's result is the Harness's own and lists no calls; the slots still say what it made.
+  const stopped = !Array.isArray(details?.calls)
+  const rows: CodemodeNestedCall[] = stopped
+    ? [...slots.entries()].sort(([a], [b]) => a - b).map(([id, slot]) => rowOf(id, slot))
+    : details.calls
+  if (rows.length === 0) return undefined
   const calls = await Promise.all(
-    details.calls.map(async (row): Promise<NestedCallWithOutput> => {
+    rows.map(async (row): Promise<NestedCallWithOutput> => {
+      const slot = slots.get(row.id)
+      let withArguments: NestedCallWithOutput =
+        slot === undefined ? row : { ...row, arguments: cutStrings(slot.arguments) }
       const nested = await api.snapshot(NestedCallDoc, api.taskId, `c${row.id}`, context)
       const answer = nested?.result as NestedToolExecutionResult | undefined
-      if (answer === undefined) return row
+      if (answer === undefined) return withArguments
+      // The stop reached the call too, which ended with its own error: it was cut off, as Pi calls a script's call
+      // still running when the script ends.
+      if (stopped && answer.diagnostics.some((diagnostic) => diagnostic.code === 'aborted')) {
+        const { error: _error, ...rest } = withArguments
+        withArguments = { ...rest, status: 'cancelled' }
+      }
       const text = outputText(answer)
-      if (text === '') return row
+      if (text === '') return withArguments
       const cut = cutBytes(text, NESTED_OUTPUT_BYTES)
-      return { ...row, output: cut, ...(cut.length < text.length ? { truncated: true } : {}) }
+      return {
+        ...withArguments,
+        output: cut,
+        ...(cut.length < text.length ? { truncated: true } : {}),
+      }
     }),
   )
   return { ...result, details: { ...details, calls } as unknown as JsonValue }
 }
 
+/** Pi's row for a call, from its slot, as Pi writes it for a script that ends: one still running was cancelled. */
+function rowOf(id: number, slot: NestedToolSlot): CodemodeNestedCall {
+  const args = JSON.stringify(slot.arguments)
+  const summary = slot.summary
+  const status = slot.status !== 'done' ? 'cancelled' : summary?.isError === true ? 'error' : 'ok'
+  return {
+    id,
+    name: slot.name.startsWith(INTERNAL_PREFIX)
+      ? slot.name.slice(INTERNAL_PREFIX.length)
+      : slot.name,
+    args: args.length > ARGS_PREVIEW_CHARS ? `${args.slice(0, ARGS_PREVIEW_CHARS - 3)}...` : args,
+    status,
+    ...(summary?.durationMs === undefined ? {} : { durationMs: summary.durationMs }),
+    ...(status === 'error' && summary?.error ? { error: summary.error } : {}),
+  } as CodemodeNestedCall
+}
+
+/** `value` with each string in it cut to {@link NESTED_OUTPUT_BYTES}: a file a call wrote is not the card's to keep. */
+function cutStrings(value: JsonValue): JsonValue {
+  if (typeof value === 'string') return cutBytes(value, NESTED_OUTPUT_BYTES)
+  if (Array.isArray(value)) return value.map(cutStrings)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, cutStrings(item as JsonValue)]),
+    )
+  }
+  return value
+}
 /** What a nested call answered, as text: its output for programs, or, when it has none, why it failed. */
 function outputText(result: NestedToolExecutionResult): string {
   const value = result.structuredOutput

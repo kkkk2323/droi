@@ -2,6 +2,7 @@ package transcript_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
@@ -92,5 +93,37 @@ func TestARunningCodemodeShowsTheCallsItIsMaking(t *testing.T) {
 	v.Docs = nil
 	if call := transcript.BuildView(v)[1].Blocks[0].Calls[0]; call.Nested == nil {
 		t.Error("a script with no calls yet is not a script card")
+	}
+}
+
+func TestAScriptCallShowsTheWholeArgumentsNotPisPreview(t *testing.T) {
+	long := "echo " + strings.Repeat("z", 300)
+	preview := `{"command":"echo ` + strings.Repeat("z", 180) + `...`
+	result := []map[string]any{{
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Script completed")},
+		"details": map[string]any{"calls": []map[string]any{
+			{"id": 1, "name": "bash", "args": preview, "arguments": map[string]any{"command": long}, "status": "ok"},
+			{"id": 2, "name": "bash", "args": preview, "status": "cancelled"},
+		}},
+	}}
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		codemodeCall(t),
+		entry(t, 3, kernel.EntryToolResult, result, nil),
+	)
+	call := transcript.BuildView(v)[1].Blocks[0].Calls[0]
+	if len(call.Nested) != 2 {
+		t.Fatalf("%d nested", len(call.Nested))
+	}
+	if got := call.Nested[0].Input["command"]; got != long {
+		t.Errorf("the call's command is %q", got)
+	}
+	// A result without Kernel's arguments: Pi's preview is no JSON, and shows as the text it is.
+	if raw := string(call.Nested[1].RawInput); !strings.Contains(raw, "zzz...") {
+		t.Errorf("the preview shows as %q", raw)
+	}
+	if r := transcript.ReadResult(call.Nested[1]); !r.Interrupted {
+		t.Errorf("the cancelled call reads %+v", r)
 	}
 }

@@ -1,5 +1,20 @@
-import { CodemodeSandbox, loadQuickJSWasm } from '@earendil-works/pi-codemode'
+import {
+  CodemodeSandbox,
+  loadQuickJSWasm,
+  type CodemodeRun,
+  type CodemodeRunOptions,
+} from '@earendil-works/pi-codemode'
 import wasmPath from '../vendor/quickjs.wasm' with { type: 'file' }
+
+/**
+ * How long a script may run when its `// @options:` line names no `timeout_ms`. Pi's durable start has no limit of
+ * its own, so a script that never ends would hold its worker thread until the user stops the turn, and an
+ * Automation has no user to. Long enough for a script that waits on a full build or test run.
+ *
+ * Unlike a `timeout_ms` the script names, this one is not stored with the run: a script resumed after a restart gets
+ * it afresh.
+ */
+export const DEFAULT_SCRIPT_TIMEOUT_MS = 30 * 60_000
 
 /**
  * The sandbox codemode scripts run in: QuickJS (`vendor/quickjs.wasm`, MIT, see `vendor/NOTICE.md`) in a worker
@@ -19,7 +34,16 @@ export function codemodeSandbox(): CodemodeSandbox {
     then: (resolve: (module: object) => unknown, reject: (cause: unknown) => unknown) =>
       loadQuickJSWasm(wasmPath).then(resolve, reject),
   } as unknown as Promise<object>
-  return new CodemodeSandbox({ wasm, workerUrl: workerUrl() })
+  return new TimedSandbox({ wasm, workerUrl: workerUrl() })
+}
+
+class TimedSandbox extends CodemodeSandbox {
+  override start(code: string, options: CodemodeRunOptions): CodemodeRun {
+    return super.start(code, {
+      ...options,
+      timeoutMs: options.timeoutMs ?? DEFAULT_SCRIPT_TIMEOUT_MS,
+    })
+  }
 }
 
 function workerUrl(): string | URL {

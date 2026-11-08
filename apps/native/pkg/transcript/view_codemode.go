@@ -15,17 +15,18 @@ import (
 const CodemodeTool = "codemode"
 
 // codemodeNested are the calls a finished script made, from its result's details: Pi's row for each call, and the
-// answer Kernel adds (protocol README, "codemode"). parent is the codemode call's ID.
+// arguments and answer Kernel adds (protocol README, "codemode"). parent is the codemode call's ID.
 func codemodeNested(parent string, details json.RawMessage) []*ToolCall {
 	var d struct {
 		Calls []struct {
-			ID        int64  `json:"id"`
-			Name      string `json:"name"`
-			Args      string `json:"args"`
-			Status    string `json:"status"`
-			Error     string `json:"error"`
-			Output    string `json:"output"`
-			Truncated bool   `json:"truncated"`
+			ID        int64           `json:"id"`
+			Name      string          `json:"name"`
+			Args      string          `json:"args"`
+			Arguments json.RawMessage `json:"arguments"`
+			Status    string          `json:"status"`
+			Error     string          `json:"error"`
+			Output    string          `json:"output"`
+			Truncated bool            `json:"truncated"`
 		} `json:"calls"`
 	}
 	nested := []*ToolCall{}
@@ -49,7 +50,7 @@ func codemodeNested(parent string, details json.RawMessage) []*ToolCall {
 		if c.Truncated {
 			result.Notes = l10n.L("The output is cut here; the script read all of it.")
 		}
-		nested = append(nested, nestedCall(fmt.Sprintf("%s/c%d", parent, c.ID), c.Name, json.RawMessage(c.Args), result))
+		nested = append(nested, nestedCall(fmt.Sprintf("%s/c%d", parent, c.ID), c.Name, rowArguments(c.Arguments, c.Args), result))
 	}
 	return nested
 }
@@ -90,6 +91,19 @@ func liveNested(view kernel.View) map[string][]*ToolCall {
 		out[n.ParentCallID] = append(out[n.ParentCallID], nestedCall(n.CallID, n.Name, n.Arguments, result))
 	}
 	return out
+}
+
+// rowArguments are a call's arguments as the card shows them: Kernel's whole object, or else Pi's row's JSON, which
+// Pi cuts to 200 characters; a cut one is no object, and shows as the text it is.
+func rowArguments(arguments json.RawMessage, preview string) json.RawMessage {
+	if len(arguments) > 0 && arguments[0] == '{' {
+		return arguments
+	}
+	if json.Valid([]byte(preview)) {
+		return json.RawMessage(preview)
+	}
+	text, _ := json.Marshal(preview)
+	return text
 }
 
 func nestedCall(id, name string, args json.RawMessage, result *ToolResultView) *ToolCall {
