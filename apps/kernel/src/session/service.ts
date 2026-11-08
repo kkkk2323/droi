@@ -2115,7 +2115,7 @@ function parseImportedEntries(value: unknown): ImportedEntry[] {
     parsed.push({
       draft: {
         kind,
-        ...(model === undefined ? {} : { model }),
+        ...(model === undefined ? {} : { model: withUsage(model as Record<string, unknown>[]) }),
         ...(entry['data'] === undefined ? {} : { data: entry['data'] }),
         ...(entry['edits'] === undefined ? {} : { edits: entry['edits'] }),
         ...(entry['head'] === undefined ? {} : { head: entry['head'] }),
@@ -2125,6 +2125,29 @@ function parseImportedEntries(value: unknown): ImportedEntry[] {
   }
   if (issues.length > 0) throw invalidParams(issues)
   return parsed
+}
+
+/** Pi's usage with nothing spent: what an imported answer that names none is stored with. */
+const NO_USAGE = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+}
+
+/**
+ * An imported entry's messages, each answer with a usage. Pi reads the usage of every answer in the context to
+ * measure it before a turn, and one without a usage faulted that turn; an answer whose usage is zero is measured
+ * by its content instead, which is what an import without counts wants.
+ */
+function withUsage(messages: Record<string, unknown>[]): Record<string, unknown>[] {
+  return messages.map((message) =>
+    message['role'] === 'assistant' && message['usage'] === undefined
+      ? { ...message, usage: NO_USAGE }
+      : message,
+  )
 }
 
 /**

@@ -880,3 +880,43 @@ describe('conversation.import, round 2', () => {
     }
   }, 60_000)
 })
+
+describe('conversation.import, a history without usage', () => {
+  test('an imported answer without usage does not stop the next turn', async () => {
+    const data = tempData()
+    const faux = fauxCatalog()
+    faux.faux.setResponses([fauxAssistantMessage('the next answer')])
+    const kernel = await start({ dir: data.dir, faux })
+    const client = new Client(kernel.port)
+    try {
+      const created = (await client.call('conversation.import', {
+        entries: [user('an old question', 1000), assistant('an old answer', 2000)],
+      })) as Imported
+      await client.call('conversation.configure', {
+        id: created.conversationId,
+        change: { model: faux.model },
+      })
+      await client.call('conversation.submit', { id: created.conversationId, input: 'go on' })
+      await until(
+        'the answer',
+        async () => {
+          const page = (await client.call('conversation.entries', {
+            id: created.conversationId,
+            query: { order: 'ascending' },
+            limit: 100,
+          })) as { items: { kind: string; model?: unknown }[] }
+          return page.items.some(
+            (entry) =>
+              entry.kind === 'pi.assistant' &&
+              JSON.stringify(entry.model).includes('the next answer'),
+          )
+        },
+        20_000,
+      )
+    } finally {
+      client.close()
+      await kernel.stop()
+      data.cleanup()
+    }
+  }, 60_000)
+})
