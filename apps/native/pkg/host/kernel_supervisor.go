@@ -100,6 +100,9 @@ type KernelSupervisor struct {
 	// DROI_USER_DIR. "" is the brand's, ~/.droi, which is also what a Kernel
 	// started by hand falls back to.
 	UserDir string
+	// Env, optional, is what a launch adds to the sidecar's environment: the providers it may use and the token
+	// their requests carry. It is asked on every launch, so a restarted Kernel gets what holds then.
+	Env func() []string
 	// Spawn replaces the launch, for a test: it answers the sidecar's command
 	// with token in its environment, and its stdout.
 	Spawn func(port int, token string) (*exec.Cmd, io.ReadCloser, error)
@@ -619,6 +622,12 @@ func (s *KernelSupervisor) launch(gen int) {
 	// remember. An empty value leaves Kernel at its own default.
 	if dir := s.userDir(); dir != "" {
 		cmd.Env = withUserDir(cmd.Env, dir)
+	}
+	if s.Env != nil {
+		if cmd.Env == nil {
+			cmd.Env = os.Environ()
+		}
+		cmd.Env = append(cmd.Env, s.Env()...)
 	}
 	out := newTailBuffer(4096)
 	if cmd.Stderr != nil {

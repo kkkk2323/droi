@@ -107,6 +107,8 @@ type Host struct {
 	indexRev uint64
 
 	droiDroid droiDroidState
+
+	kernel kernelHost
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -164,6 +166,9 @@ func New(cfg Config) *Host {
 // Start launches the Daemon, and the first time dates the Sessions by the
 // messages sent before the Session Times were kept.
 func (h *Host) Start() {
+	if h.KernelEnabled() {
+		h.startKernel()
+	}
 	h.Daemon.Start()
 	h.watchDroiDroid()
 	go func() { _ = h.Times.Backfill(filepath.Join(h.SharedFactoryHome(), "sessions")) }()
@@ -171,6 +176,7 @@ func (h *Host) Start() {
 
 // Stop ends the Daemon and writes what the Session Times still hold.
 func (h *Host) Stop() {
+	h.stopKernel()
 	h.stopWatchingDroiDroid()
 	h.Daemon.Stop()
 	h.Times.Flush()
