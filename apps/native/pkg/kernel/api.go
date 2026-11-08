@@ -158,6 +158,14 @@ func (c *Client) Skills(ctx context.Context) (Skills, error) {
 	return call[Skills](c, ctx, MethodSkillsList, nil)
 }
 
+// SkillsOf is the skills conversation id may use: the user's own and its
+// workspace's.
+func (c *Client) SkillsOf(ctx context.Context, id ID) (Skills, error) {
+	return call[Skills](c, ctx, MethodSkillsList, struct {
+		ID ID `json:"id"`
+	}{id})
+}
+
 // SetSkillDisabled turns one skill off or on and answers the list.
 func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams) (Skills, error) {
 	return call[Skills](c, ctx, MethodSkillsSetDisabled, p)

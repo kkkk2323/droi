@@ -451,17 +451,16 @@ Three qualifications a client that reads a range needs:
 | `approval.respond` | `{requestId, outcome, scope?}` | `{status}` | `approvals` | no |
 | `ask.respond` | `{requestId, answers?, cancelled?}` | `{status}` | `asks` | no |
 | `mcp.list` | `{repoRoot?}` | `{servers[]}` | `mcp` | no |
-| `mcp.set` | `{name, server?, enabled?, remove?, repoRoot?, trust?}` | `{servers[]}` | `mcp` | no |
-| `mcp.authorize` | `{name}` | `{authorizationUrl}` | `mcp` | no |
-| `mcp.authorize.cancel` | `{name}` | `{}` | `mcp` | no |
+| `mcp.set` | `{name, server?, enabled?, remove?, repoRoot?, trust?, fingerprint?}` | `{servers[]}` | `mcp` | no |
+| `mcp.authorize` | `{name, repoRoot?}` | `{authorizationUrl}` or `{authorized: true}` | `mcp` | no |
+| `mcp.authorize.cancel` | `{name, repoRoot?}` | `{}` | `mcp` | no |
 | `skills.list` | — | `{skills[]}` | `skills` | no |
 | `skills.setDisabled` | `{name, disabled, id?}` | `{skills[]}` | `skills` | no |
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
-The M3 methods not built yet still answer their M1 shape: `mcp.list` returns an empty list, and `policy.set`, the write methods and the two `*.respond` methods are
-`-32009` until their capability is true. `skills.list`, `skills.setDisabled` and `resources.list` are built
-(`skills` and `resources` are true). `model.complete` is built: it reports
+Every M3 method is built (`processes`, `mcp`, `skills` and `resources` are true). `-32009` stays the
+answer for a method a build leaves out, with the capability that would bring it. `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
 
@@ -852,15 +851,19 @@ change, so a client never has to ask twice.
 
 Two files feed the list, the global `<userDir>/mcp.json` and the repository's `<cwd>/.factory/mcp.json`, in
 the `{"mcpServers": {…}}` shape every MCP client uses. A repository entry overrides the global one of the
-same name, and may carry only `enabled` to switch a global server off in that repository.
+same name field by field (an entry with its own `command` or `url` replaces the global one's connection
+whole), and may carry only `enabled` to switch a global server off in that repository. What results is the
+repository's server, and needs the repository's trust like any other.
 
 **A repository's servers are code the repository chose.** A `command` with `args` is a process on this
 machine, so a server that comes from a repository's own file is not started until the user allows it:
 
 - `mcp.list` reports it `status: "untrusted"` and includes the `command`/`args` or `url` it would run, which
-  is what a client shows in the confirmation.
-- `mcp.set {name, repoRoot, trust: true}` allows it: the kernel records the repository's real path and a
-  SHA-256 of that entry, connects at once, and broadcasts. `trust: false` revokes, and disconnects it.
+  is what a client shows in the confirmation, and the config's `fingerprint` (SHA-256).
+- `mcp.set {name, repoRoot, trust: true, fingerprint}` allows it: `fingerprint` is the one the client showed,
+  and a file that changed since answers `-32602` (list again and ask again) instead of allowing a config
+  nobody saw. The kernel records the repository's real path and that SHA-256, connects at once, and
+  broadcasts. `trust: false` revokes, and disconnects it.
 - The record is kept across restarts and across an index reset: it is a decision, not a cache. Any change to
   the entry's own config changes its hash, so it is `untrusted` again — the same repository asking a
   different question gets asked again.
@@ -868,7 +871,27 @@ machine, so a server that comes from a repository's own file is not started unti
 
 `mcp.list` takes an optional `repoRoot` and answers each repository's servers with their own `repoRoot` and
 `trusted`; without it, every repository this kernel has seen is included. The kernel does not guess which
-repository a client is looking at.
+repository a client is looking at. `repoRoot` must be a repository's root as `conversation.list` reports it;
+anything else is `-32602`. A file that cannot be read is reported, not silently empty: the answer then carries
+`diagnostics: [{path, message}]`.
+
+**Which conversation sees which tools.** Each server is an extension of its own, and its tools are named
+`<server>___<tool>` (other characters become `_`; a name past 64 characters ends in a hash). Before each
+`conversation.submit` the kernel reads the conversation's repository file (the root of its `cwd`) and selects
+the global servers that file does not switch off or replace, and that repository's own: a conversation is
+never offered another repository's tools. The selection is stored as an edit of the default extensions
+(`{add}`); a conversation whose extensions a client set outright is left as it is. A tool its server marks
+`readOnlyHint` is judged as a read by the approval policy, as long as every server that registers that tool
+name says so; every other MCP tool as a command.
+
+**Signing in.** An HTTP server that answers 401 is `failed` with an `error` that starts `authorization
+required`, and is not retried on a timer. `mcp.authorize {name, repoRoot?}` answers the page to open as
+`authorizationUrl`: for the global server of that name, or with `repoRoot` for that repository's, which must
+be trusted first (`-32602` otherwise; signing in already talks to its URL). The page asks for the scope the
+server's challenge named. The kernel listens on `127.0.0.1` for the redirect for five minutes, then connects
+the server and broadcasts `mcp.changed`. A grant that needed no page answers `{authorized: true}`.
+`mcp.authorize.cancel {name, repoRoot?}` stops listening. The tokens are kept in `<data>/mcp-auth.json`,
+readable by its owner only, per server name and URL, and refreshed when they expire.
 
 ### The approval policy
 

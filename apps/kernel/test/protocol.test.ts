@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { Client, fauxCatalog, start, tempData, TOKEN, type Faux } from './helpers.ts'
-import type { KernelHandle } from '../src/kernel.ts'
+import { CAPABILITIES, type KernelHandle } from '../src/kernel.ts'
 
 let data: ReturnType<typeof tempData>
 let faux: Faux
@@ -53,10 +53,25 @@ describe('the handshake and the connection', () => {
     expect(error.data).toEqual({ method: 'conversation.rename' })
   })
 
-  test('a method this build gates is -32009 with its capability', async () => {
-    const error = await client.fails('mcp.authorize', { name: 'anlan' })
-    expect(error.code).toBe(-32009)
-    expect(error.data).toEqual({ capability: 'mcp' })
+  test('every capability of the contract is built, and a gated method still names its capability', async () => {
+    const capabilities = (await client.call('harness.info'))['capabilities'] as Record<
+      string,
+      boolean
+    >
+    // codemode is the one not built yet, and no method waits on it.
+    expect(
+      Object.entries(capabilities)
+        .filter(([, on]) => !on)
+        .map(([name]) => name),
+    ).toEqual(['codemode'])
+    expect(kernel.kernel.gated('mcp.authorize')).toBeUndefined()
+    const saved = CAPABILITIES['mcp']
+    CAPABILITIES['mcp'] = false
+    try {
+      expect(kernel.kernel.gated('mcp.authorize')).toBe('mcp')
+    } finally {
+      CAPABILITIES['mcp'] = saved!
+    }
   })
 
   test('bad params are -32602 with a path', async () => {
@@ -134,15 +149,20 @@ describe('the handshake and the connection', () => {
     }
   })
 
-  test('a gated fixture method answers -32009 with the capability the contract names', async () => {
+  test('the -32009 fixture names a method and the capability that gates it', async () => {
     const root = new URL('../protocol/fixtures/', import.meta.url).pathname
     const fixture = (await Bun.file(`${root}errors/unsupported.json`).json()) as {
       request: { method: string; params: Record<string, unknown> }
       response: { error: { code: number; data: { capability: string } } }
     }
-    const error = await client.fails(fixture.request.method, fixture.request.params)
-    expect(error.code).toBe(fixture.response.error.code)
-    expect(error.data).toEqual(fixture.response.error.data)
+    const capability = fixture.response.error.data.capability
+    const saved = CAPABILITIES[capability]
+    CAPABILITIES[capability] = false
+    try {
+      expect(kernel.kernel.gated(fixture.request.method)).toBe(capability)
+    } finally {
+      CAPABILITIES[capability] = saved!
+    }
   })
 })
 

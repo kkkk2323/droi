@@ -38,8 +38,27 @@ const COMMAND_TOOLS = new Set(['bash', 'powershell', 'bash_background'])
 /** The tools whose `path` argument is the one file they touch. */
 const FILE_TOOLS = new Set(['read', 'edit', 'write'])
 
+/**
+ * Classes of tools that arrive at run time, by name and by who registered them: an MCP tool its server marks
+ * read-only. Two repositories' servers can register one name; the policy sees only the name, so the name is a
+ * read only while every registration of it is one.
+ */
+const added = new Map<string, Map<string, ToolClass>>()
+
+/** Record what `owner`'s tool of this name can do; `undefined` withdraws `owner`'s registration. */
+export function setToolClass(name: string, owner: string, kind: ToolClass | undefined): void {
+  const owners = added.get(name) ?? new Map<string, ToolClass>()
+  if (kind === undefined) owners.delete(owner)
+  else owners.set(owner, kind)
+  if (owners.size === 0) added.delete(name)
+  else added.set(name, owners)
+}
+
 export function toolClass(name: string): ToolClass {
-  return CLASSES[name] ?? 'exec'
+  const builtIn = CLASSES[name]
+  if (builtIn !== undefined) return builtIn
+  const kinds = new Set(added.get(name)?.values())
+  return kinds.size === 1 ? [...kinds][0]! : 'exec'
 }
 
 export type Call = { name: string; arguments?: Record<string, unknown> }

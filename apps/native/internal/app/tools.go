@@ -10,6 +10,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/internal/mcp"
 	"github.com/kkkk2323/droi/apps/native/internal/skills"
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	droid "github.com/kkkk2323/droid-sdk-go"
@@ -44,6 +45,11 @@ type toolsState struct {
 	registryState    int // 0 not asked, 1 loading, 2 loaded, 3 failed
 	busy             string
 	actErr           string
+	// onKernel says the lists are Kernel's (tools_kernel.go); kservers are Kernel's own records of the servers,
+	// and signIn the page of each sign-in a person started, until the server connects.
+	onKernel bool
+	kservers []kernel.MCPServer
+	signIn   map[string]string
 }
 
 // toolsStale makes the next frame list the skills and servers again, as an
@@ -70,13 +76,18 @@ func skillsShown(list []protocol.SkillInfo) []protocol.SkillInfo {
 
 func (v *sessionView) loadTools() {
 	ts := &v.tools
+	conv, kc, onKernel := v.kernelTools()
 	ts.mu.Lock()
-	if v.a.ctl == nil || time.Since(ts.loadedAt) < 30*time.Second {
+	if v.a.ctl == nil && !onKernel || time.Since(ts.loadedAt) < 30*time.Second {
 		ts.mu.Unlock()
 		return
 	}
 	ts.loadedAt = time.Now()
 	ts.mu.Unlock()
+	if onKernel {
+		v.loadKernelTools(conv, kc)
+		return
+	}
 	go func() {
 		defer v.a.redraw()
 		cl, err := v.a.ctl.Client()
@@ -144,6 +155,7 @@ var mcpDot = map[string]func(k *kit.Kit) ui.Color{
 	"failed":       func(k *kit.Kit) ui.Color { return k.T.DestructiveForeground },
 	"disconnected": func(k *kit.Kit) ui.Color { return k.T.MutedForeground.Alpha(0.4) },
 	"disabled":     func(k *kit.Kit) ui.Color { return k.T.MutedForeground.Alpha(0.4) },
+	"untrusted":    func(k *kit.Kit) ui.Color { return k.T.Attention },
 }
 
 // toolsButton is the footer's count of skills and MCP servers, which opens
@@ -354,6 +366,11 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 	k, t := a.kit, a.kit.T
 	off := s.Enabled != nil && !*s.Enabled
 	sw, can := skills.SkillSwitch(s, project)
+	onKernel := v.tools.kernel()
+	if onKernel {
+		// Kernel turns any skill off, for every conversation.
+		can = true
+	}
 	row := ui.Row(c.Key(string(s.Location)+":"+s.Name)).Role(ui.RoleListItem).Label(s.Name).AlignItems(ui.Start).Gap(k.Px(12)).
 		Padding(k.Px(6), k.Px(8)).Radius(k.Px(10))
 	if off {
@@ -377,11 +394,15 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 				k.Text(c, s.Description, 13, 20).TextColor(t.MutedForeground).MaxLines(2).Margin(k.Px(2), 0, 0, 0)
 			}
 		})
-		if string(s.Location) == "personal" {
+		if string(s.Location) == "personal" && !onKernel {
 			return
 		}
 		if a.toggle(c, L("%s enabled", s.Name), !off, !can || saving) && can {
 			name, level := s.Name, sw.Level
+			if onKernel {
+				v.setKernelSkill(name, !off)
+				return
+			}
 			v.toolsAct(name, func() error {
 				cl, err := a.ctl.Client()
 				if err != nil {
@@ -455,6 +476,12 @@ func (v *sessionView) loadRegistry() {
 		ts.mu.Unlock()
 		return
 	}
+	if v.a.ctl == nil {
+		// Factory's catalogue comes through the Daemon; without one there is none to show.
+		ts.registryState = 3
+		ts.mu.Unlock()
+		return
+	}
 	ts.registryState = 1
 	ts.mu.Unlock()
 	go func() {
@@ -492,7 +519,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 	k, t := a.kit, a.kit.T
 	ts := &v.tools
 	ts.mu.Lock()
-	busy := ts.busy == s.Name
+	busy, onKernel := ts.busy == s.Name, ts.onKernel
 	var tools []protocol.MCPToolInfo
 	for _, tool := range ts.mcpTools {
 		if tool.ServerName == s.Name {
@@ -503,6 +530,11 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 	status := string(s.Status)
 	label := l10n.T(trimOr(mcp.StatusLabels[status], status))
 	readOnly, droi, on := mcp.IsReadOnly(s), mcp.IsDroiMemory(s), status != "disabled"
+	project := string(s.Source) == "project"
+	if onKernel {
+		// A repository's server is switched in its own file; Kernel turns only global ones on and off.
+		readOnly, droi, on = project, false, on && status != "untrusted"
+	}
 	toolCount := len(tools)
 	if s.ToolCount != nil {
 		toolCount = int(*s.ToolCount)
@@ -549,6 +581,11 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 				if s.PendingAuthURL != "" {
 					v.signInNotice(c, s)
 				}
+				if onKernel && status == "untrusted" {
+					if ks, ok := v.kernelServer(s.Name, true); ok {
+						v.trustNotice(c, ks, busy)
+					}
+				}
 				open := v.Flag("mcp-tools:"+s.Name, false)
 				ui.Row(c).Wrap().Gap(k.Px(4)).Margin(k.Px(4), 0, 0, 0).Children(func() {
 					if on && toolCount > 0 {
@@ -574,7 +611,10 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 						b.Children(func() { k.Text(c, label, 12, 16).FontWeight(500).TextColor(color) })
 						return b.Clicked()
 					}
-					if !readOnly && on && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, L("Sign in")) {
+					if onKernel && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, L("Sign in")) {
+						v.signInKernel(name, v.kernelRoot(name, project))
+					}
+					if !onKernel && !readOnly && on && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, L("Sign in")) {
 						v.mcpCall(name, func(cl mcpClient) error {
 							_, err := cl.AuthenticateMCPServer(a.ctx, protocol.AuthenticateMCPServerParams{SessionID: v.id, ServerName: name})
 							return err
@@ -590,6 +630,10 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 						if ts.remove == s.Name {
 							if small(kit.Destructive, L("Remove %s", s.Name)) {
 								ts.remove = ""
+								if onKernel {
+									v.removeKernelServer(name)
+									return
+								}
 								v.mcpCall(name, func(cl mcpClient) error {
 									_, err := cl.RemoveMCPServer(a.ctx, protocol.RemoveMCPServerParams{SessionID: v.id, ServerName: name, SettingsLevel: "user"})
 									return err
@@ -604,7 +648,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 					}
 				})
 				if on && toolCount > 0 && *open {
-					v.toolList(c, s, tools, readOnly)
+					v.toolList(c, s, tools, readOnly || onKernel)
 				}
 			})
 			if droi {
@@ -612,6 +656,10 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 			}
 			if a.toggle(c, L("%s enabled", s.Name), on, readOnly || busy) && !readOnly {
 				enabled := !on
+				if onKernel {
+					v.setKernelServer(name, enabled)
+					return
+				}
 				v.mcpCall(name, func(cl mcpClient) error {
 					_, err := cl.ToggleMCPServer(a.ctx, protocol.ToggleMCPServerParams{SessionID: v.id, ServerName: name, Enabled: enabled, SettingsLevel: "user"})
 					return err
@@ -666,6 +714,10 @@ func (v *sessionView) signInNotice(c *ui.Context, s protocol.MCPServerStatusInfo
 		}
 		b := k.Button(c, kit.Ghost, 24, false, L("Cancel")).PaddingX(k.Px(8))
 		b.Children(func() { k.Text(c, L("Cancel"), 12, 16).FontWeight(500) })
+		if b.Clicked() && v.tools.kernel() {
+			v.cancelKernelSignIn(name, v.kernelRoot(name, string(s.Source) == "project"))
+			return
+		}
 		if b.Clicked() {
 			v.mcpCall(name, func(cl mcpClient) error {
 				_, err := cl.CancelMCPAuth(a.ctx, protocol.CancelMCPAuthParams{SessionID: v.id, ServerName: name})
@@ -686,6 +738,10 @@ func (v *sessionView) subHeader(c *ui.Context, title string, back func()) {
 }
 
 func (v *sessionView) addServer(params protocol.AddMCPServerParams) {
+	if v.tools.kernel() {
+		v.addKernelServer(params)
+		return
+	}
 	a := v.a
 	params.SessionID = v.id
 	v.mcpCall(params.Name, func(cl mcpClient) error {
