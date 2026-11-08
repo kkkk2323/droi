@@ -489,6 +489,17 @@ func (h *Host) OnKernelState(fn func(KernelState)) (unsubscribe func()) {
 	}
 }
 
+// KernelURL is the running Kernel's /rpc address, "" while none runs.
+func (h *Host) KernelURL() string {
+	k := &h.kernel
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.sup == nil {
+		return ""
+	}
+	return k.last.RPCURL()
+}
+
 // KernelToken is the running Kernel's connection token, which a KernelLink dials with; "" when none runs.
 func (h *Host) KernelToken() string {
 	k := &h.kernel

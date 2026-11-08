@@ -6,8 +6,6 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -18,6 +16,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
@@ -26,9 +25,6 @@ import (
 func (a *App) worktreesHere() bool {
 	return a.onKernel() && !a.following()
 }
-
-// worktreeBranchPrefix starts the branch of every worktree the Host makes.
-const worktreeBranchPrefix = "droi/"
 
 // worktreeRoot is the folder the Host makes worktrees in: Settings → Worktrees' directory, else the worktrees
 // folder of the Factory folder, as the droid CLI makes them.
@@ -51,68 +47,15 @@ func (a *App) worktreeRoot() (string, error) {
 	return filepath.Join(base, "worktrees"), nil
 }
 
-// worktreeSlug is a branch and folder name from a session's first message: its first words, in lower case.
-func worktreeSlug(prompt string) string {
-	var b strings.Builder
-	dash := false
-	for _, r := range strings.ToLower(prompt) {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			b.WriteRune(r)
-			dash = false
-		case !dash && b.Len() > 0:
-			b.WriteByte('-')
-			dash = true
-		}
-		if b.Len() >= 40 {
-			break
-		}
-	}
-	slug := strings.Trim(b.String(), "-")
-	if slug == "" {
-		return "session"
-	}
-	return slug
-}
-
 // addWorktree makes a worktree of workspace's repository on a new branch from base ("" for HEAD), and answers the
-// folder the session works in: the worktree, or the same subfolder of it when workspace is one of the repository.
+// folder the session works in (host.AddWorktree).
 func (a *App) addWorktree(ctx context.Context, workspace, base, prompt string) (string, error) {
-	top, err := gitutil.TopLevel(ctx, workspace)
-	if err != nil {
-		return "", errors.New(L("%s is not in a git repository.", workspace))
-	}
 	root, err := a.worktreeRoot()
 	if err != nil {
 		return "", err
 	}
-	slug := worktreeSlug(prompt)
-	for range 5 {
-		suffix := make([]byte, 2)
-		_, _ = rand.Read(suffix)
-		name := slug + "-" + hex.EncodeToString(suffix)
-		dir := filepath.Join(root, filepath.Base(top), name)
-		if _, err := os.Stat(dir); err == nil {
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-			return "", errors.New(L("Could not make the worktree: %s", err))
-		}
-		err := gitutil.AddWorktree(ctx, gitutil.AddOptions{Repo: top, Path: dir, Branch: worktreeBranchPrefix + name, Base: base})
-		if errors.Is(err, gitutil.ErrBranchExists) {
-			continue
-		}
-		if err != nil {
-			return "", errors.New(L("Could not make the worktree: %s", err))
-		}
-		if rel, err := filepath.Rel(realPath(top), realPath(workspace)); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-			if info, err := os.Stat(filepath.Join(dir, rel)); err == nil && info.IsDir() {
-				return filepath.Join(dir, rel), nil
-			}
-		}
-		return dir, nil
-	}
-	return "", errors.New(L("Could not make the worktree: %s", L("every name tried is taken")))
+	made, err := host.AddWorktree(ctx, root, workspace, base, prompt)
+	return made.Path, err
 }
 
 // discardWorktree takes away a worktree addWorktree just made, with its branch, when the conversation it was made

@@ -3,7 +3,9 @@
 // Token at the WebSocket upgrade, supplies the Factory credential where the
 // Client left its placeholder, adds the System Prompt Addition and the tools
 // the Host hides to `daemon.initialize_session`, and otherwise forwards
-// frames verbatim. Beside the Daemon socket it answers Droi's own Scratch
+// frames verbatim. A Host that runs a Kernel is reached on KernelPath too,
+// whose frames cross untouched with the Kernel's token added at the dial.
+// Beside the Daemon socket it answers Droi's own Scratch
 // Workspace requests (ADR 0008), tells a Client where a Session's transcript
 // is, and describes the computer on /meta. It serves no web Client.
 package gateway
@@ -23,6 +25,8 @@ import (
 
 	"github.com/coder/websocket"
 	droid "github.com/kkkk2323/droid-sdk-go"
+
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
 // The Gateway contract the Clients share (packages/daemon-layer/src/gateway.ts).
@@ -31,6 +35,9 @@ const (
 	// request on it answers 204 or 401, so a Client can tell a bad Pairing
 	// Token from an unreachable Daemon.
 	DaemonPath = "/daemon"
+	// KernelPath is the WebSocket path whose frames go to the Kernel's /rpc, unchanged both ways (ADR 0038). A
+	// plain request on it answers as DaemonPath's does.
+	KernelPath = "/kernel"
 	// TokenQuery is the query parameter carrying the token.
 	TokenQuery = "token"
 	// MetaPath describes the computer; never anything secret.
@@ -88,6 +95,13 @@ type Options struct {
 	RemoteAccess bool
 	// DaemonURL is the Daemon's WebSocket URL, "" while it is not running.
 	DaemonURL func() string
+	// KernelURL, set when the Host runs a Kernel, is its /rpc address, "" while it is not running. KernelToken is
+	// the token it takes: the bridge sends it as the Bearer, and no Client ever sees it.
+	KernelURL   func() string
+	KernelToken func() string
+	// Workspaces, optional, answers a Client's questions about this computer's folders and makes worktrees; nil
+	// answers 404.
+	Workspaces Workspaces
 	// PairingToken is the token Remote Clients present.
 	PairingToken func() string
 	// LocalToken, optional, is a second token that Revoke(TokenPairing)
@@ -150,6 +164,8 @@ type Meta struct {
 	// Relay is where a phone reaches this Gateway through the Relay, "" without
 	// one; a paired phone follows it (ADR 0034).
 	Relay string `json:"relay"`
+	// Kernel says the computer's conversations are its Kernel's, reached on KernelPath.
+	Kernel bool `json:"kernel"`
 }
 
 // Gateway keeps one listener on loopback and, only while Remote Access is
@@ -481,7 +497,7 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	switch path {
-	case DaemonPath:
+	case DaemonPath, KernelPath:
 		status := http.StatusUnauthorized
 		if g.classify(q.Get(TokenQuery)) != "" {
 			status = http.StatusNoContent
@@ -509,6 +525,9 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 	case ScriptModelsPath:
 		status, body := g.answerScriptModels(r, q)
 		reply(w, status, body)
+	case WorkspacePath, GitChangesPath, WorktreePath:
+		status, body := g.answerWorkspaces(r, path, q)
+		reply(w, status, body)
 	case MetaPath:
 		app := g.opts.App
 		if app == "" {
@@ -521,6 +540,7 @@ func (g *Gateway) handle(w http.ResponseWriter, r *http.Request) {
 			Name:         g.opts.ComputerName,
 			ComputerID:   g.opts.ComputerID,
 			Relay:        g.RelayAddress(),
+			Kernel:       g.opts.KernelURL != nil,
 		})
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -622,7 +642,7 @@ func isUpgrade(r *http.Request) bool {
 }
 
 func (g *Gateway) upgrade(w http.ResponseWriter, r *http.Request, path string) {
-	if path != DaemonPath {
+	if path != DaemonPath && path != KernelPath {
 		rejectUpgrade(w, http.StatusNotFound, "Not Found")
 		return
 	}
@@ -631,13 +651,29 @@ func (g *Gateway) upgrade(w http.ResponseWriter, r *http.Request, path string) {
 		rejectUpgrade(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	daemonURL := ""
-	if g.opts.DaemonURL != nil {
-		daemonURL = g.opts.DaemonURL()
-	}
-	if daemonURL == "" {
-		rejectUpgrade(w, http.StatusServiceUnavailable, "Daemon Unavailable")
-		return
+	up := upstream{}
+	if path == KernelPath {
+		if g.opts.KernelURL != nil && g.opts.KernelToken != nil {
+			up.url = g.opts.KernelURL()
+			if token := g.opts.KernelToken(); token != "" && up.url != "" {
+				up.header = http.Header{"Authorization": {"Bearer " + token}, kernel.ClientHeader: {kernel.ClientPhone}}
+			} else {
+				up.url = ""
+			}
+		}
+		up.verbatim = true
+		if up.url == "" {
+			rejectUpgrade(w, http.StatusServiceUnavailable, "Kernel Unavailable")
+			return
+		}
+	} else {
+		if g.opts.DaemonURL != nil {
+			up.url = g.opts.DaemonURL()
+		}
+		if up.url == "" {
+			rejectUpgrade(w, http.StatusServiceUnavailable, "Daemon Unavailable")
+			return
+		}
 	}
 	// No origin check: the token is the lock, and the Phone App and a Client
 	// served from another origin connect from elsewhere.
@@ -645,7 +681,15 @@ func (g *Gateway) upgrade(w http.ResponseWriter, r *http.Request, path string) {
 	if err != nil {
 		return
 	}
-	g.runBridge(client, daemonURL, kind)
+	g.runBridge(client, up, kind)
+}
+
+// upstream is where a bridge's frames go. verbatim forwards them unchanged both ways: the Kernel needs no credential
+// from a Client and no Session start rewritten, and the Session Times come from its own notifications.
+type upstream struct {
+	url      string
+	header   http.Header
+	verbatim bool
 }
 
 func rejectUpgrade(w http.ResponseWriter, status int, reason string) {
@@ -670,7 +714,7 @@ type bridge struct {
 	done     bool
 }
 
-func (g *Gateway) runBridge(client *websocket.Conn, daemonURL string, kind TokenKind) {
+func (g *Gateway) runBridge(client *websocket.Conn, up upstream, kind TokenKind) {
 	client.SetReadLimit(maxMessage)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -690,7 +734,7 @@ func (g *Gateway) runBridge(client *websocket.Conn, daemonURL string, kind Token
 	}()
 
 	// Frames the Client sends meanwhile wait in the socket, in order.
-	upstream, _, err := websocket.Dial(ctx, daemonURL, nil)
+	upstream, _, err := websocket.Dial(ctx, up.url, &websocket.DialOptions{HTTPHeader: up.header})
 	if err != nil {
 		b.closeBoth()
 		return
@@ -705,9 +749,13 @@ func (g *Gateway) runBridge(client *websocket.Conn, daemonURL string, kind Token
 	b.upstream = upstream
 	b.mu.Unlock()
 
+	opts := g.opts
+	if up.verbatim {
+		opts = Options{}
+	}
 	var wg sync.WaitGroup
-	wg.Go(func() { b.toClient(ctx, upstream, g.opts) })
-	b.toDaemon(ctx, upstream, g.opts)
+	wg.Go(func() { b.toClient(ctx, upstream, opts) })
+	b.toDaemon(ctx, upstream, opts)
 	wg.Wait()
 }
 
