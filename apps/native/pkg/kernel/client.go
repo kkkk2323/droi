@@ -45,9 +45,10 @@ type Options struct {
 	// approval.resolved.by. "" sends no header, and Kernel calls that
 	// "unknown".
 	Client string
-	// RequestTimeout bounds one call; 0 is 30 s. Every method answers at once
-	// — none waits on a task — so a call that outlasts this is a Kernel that
-	// stopped answering.
+	// RequestTimeout bounds one call; 0 is 30 s. Every method but
+	// model.complete answers at once — none waits on a task — so a call that
+	// outlasts this is a Kernel that stopped answering. model.complete waits
+	// for a model, and is bounded by its own timeoutMs instead.
 	RequestTimeout time.Duration
 	// MaxMessage bounds one incoming frame; 0 is 64 MiB.
 	MaxMessage int64
@@ -388,6 +389,11 @@ func Is(err error, code int) bool {
 // Call runs one method. params may be nil; a JSON-RPC error comes back as
 // *RPCError.
 func (c *Client) Call(ctx context.Context, method string, params, result any) error {
+	return c.callWithin(ctx, c.opts.timeout(), method, params, result)
+}
+
+// callWithin is Call with its own bound on the wait for the answer.
+func (c *Client) callWithin(ctx context.Context, timeout time.Duration, method string, params, result any) error {
 	select {
 	case <-c.done:
 		return c.terminalErr()
@@ -419,7 +425,7 @@ func (c *Client) Call(ctx context.Context, method string, params, result any) er
 	if err := c.write(ctx, method, b); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, c.opts.timeout())
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	select {
 	case res := <-waiting:
