@@ -1,5 +1,6 @@
 import { $ } from 'bun'
-import { chmodSync, cpSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { thirdPartyNotices } from './notices.ts'
+import { chmodSync, cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
 /**
@@ -81,13 +82,15 @@ export async function build(
 }
 
 /**
- * Put built executables where `mygo build` takes them, with the notices beside them in `kernel-licenses/`. The
- * staged folders are not committed (.gitignore); a release stages the platforms it builds right before it.
+ * Put built executables where `mygo build` takes them, with the notices beside them in `kernel-licenses/`: the
+ * WebAssembly's, and THIRD-PARTY-NOTICES.md for Bun and every package in the bundle (notices.ts). The staged
+ * folders are not committed (.gitignore); a release stages the platforms it builds right before it.
  */
-export function stage(
+export async function stage(
   built: { platform: string; path: string }[],
   into: string = resourcesRoot,
-): string[] {
+): Promise<string[]> {
+  const thirdParty = await thirdPartyNotices()
   const staged: string[] = []
   for (const artifact of built) {
     const entryTarget = targets.find((each) => each.platform === artifact.platform)
@@ -101,6 +104,7 @@ export function stage(
     for (const notice of notices) {
       cpSync(join(root, 'src', 'vendor', notice), join(dir, 'kernel-licenses', notice))
     }
+    writeFileSync(join(dir, 'kernel-licenses', 'THIRD-PARTY-NOTICES.md'), thirdParty)
     staged.push(executable)
   }
   return staged
@@ -130,7 +134,7 @@ if (import.meta.main) {
     )
   }
   if (staging) {
-    for (const path of stage(built)) process.stdout.write(`staged  ${path}\n`)
+    for (const path of await stage(built)) process.stdout.write(`staged  ${path}\n`)
   }
 }
 

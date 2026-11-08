@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { stage } from '../build.ts'
 
 describe('stage', () => {
-  test('puts each executable in its Go platform folder with the notices beside it', () => {
+  test('puts each executable in its Go platform folder with the notices beside it', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'kernel-stage-'))
     try {
       const built = [
@@ -17,7 +17,7 @@ describe('stage', () => {
         writeFileSync(path, platform)
         return { platform, path, name: file }
       })
-      const staged = stage(
+      const staged = await stage(
         built.map(({ platform, path }) => ({ platform, path })),
         join(dir, 'resources'),
       )
@@ -34,10 +34,11 @@ describe('stage', () => {
           'LICENSE-photon.txt',
           'LICENSE-quickjs-wasi.txt',
           'NOTICE.md',
+          'THIRD-PARTY-NOTICES.md',
         ])
       }
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, 60_000)
 })

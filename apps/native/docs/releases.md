@@ -17,8 +17,10 @@ Release: apps read the manifest from `releases/latest/download/`.
 
 Each build job runs `bun run build.ts --stage <platforms>` in `apps/kernel` before `mygo build`: it
 compiles the Kernel for the job's platforms and puts each in `apps/native/resources/<GOOS>-<GOARCH>/`
-(not committed), with the notices of the WebAssembly it embeds (Photon, Apache-2.0; QuickJS, MIT) in
-`kernel-licenses/`. MyGo ships that folder with that platform's app only: in the macOS bundle's
+(not committed), with its notices in `kernel-licenses/`: those of the WebAssembly it embeds (Photon,
+Apache-2.0; QuickJS, MIT) and `THIRD-PARTY-NOTICES.md`, the licenses of Bun and of every npm package in
+the bundle, which `apps/kernel/notices.ts` reads from the bundle's source map. A package that ships no
+license text and has no upstream text in `apps/kernel/src/vendor/licenses/` stops the build. MyGo ships that folder with that platform's app only: in the macOS bundle's
 `Contents/Resources` (darwin-arm64 and darwin-amd64 joined into one universal file), next to `Droi.exe`
 on Windows and next to `droi` on Linux, which is where the Host looks for it.
 
