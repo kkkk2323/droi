@@ -388,6 +388,31 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 	}
 }
 
+// A Kernel started with Memory on is told the Memory folder; with it off, nothing, and its conversations have no
+// Memory (ADR 0042).
+func TestTheKernelIsToldTheMemoryFolderOnlyWithMemoryOn(t *testing.T) {
+	h := testHost(t)
+	t.Cleanup(h.KeyPool().Stop)
+	memoryEnv := func() []string {
+		var out []string
+		for _, kv := range h.kernelEnv() {
+			if strings.HasPrefix(kv, kernel.MemoryDirEnv+"=") {
+				out = append(out, kv)
+			}
+		}
+		return out
+	}
+	if got := memoryEnv(); len(got) != 0 {
+		t.Fatalf("Memory is off, and the Kernel got %v", got)
+	}
+	if err := h.Settings.Update(func(s *Settings) { s.MemoryEnabled = true }); err != nil {
+		t.Fatal(err)
+	}
+	if got := memoryEnv(); len(got) != 1 || got[0] != kernel.MemoryDirEnv+"="+h.MemoryDir() {
+		t.Fatalf("Memory is on, and the Kernel got %v", got)
+	}
+}
+
 // A Daemon whose droid does not send through the Key Pool stops its proxy when it starts, but not while the Kernel's
 // models point at it.
 func TestADaemonStartingWithoutTheKeyPoolLeavesTheKernelsModels(t *testing.T) {

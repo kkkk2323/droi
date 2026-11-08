@@ -98,7 +98,13 @@ const (
 	NotifyWarning           = "warning"
 	// NotifyPolicyChanged is the approval policy, which a client renders and a Host stores.
 	NotifyPolicyChanged = "policy.changed"
+	// NotifyMemoryRead is a Session Summary the model read, which the Host counts (ADR 0042).
+	NotifyMemoryRead = "memory.read"
 )
+
+// MemoryDirEnv names the Memory folder a Kernel is started with when Memory is on; without it a conversation has no
+// Memory tools and no Memory in its prompt (ADR 0042).
+const MemoryDirEnv = "DROI_MEMORY_DIR"
 
 // The error codes of the contract's table. Clients branch on Code, never on
 // Message.

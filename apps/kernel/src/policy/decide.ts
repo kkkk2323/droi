@@ -30,6 +30,11 @@ const CLASSES: Readonly<Record<string, ToolClass>> = {
   codemode: 'exec',
   ask_user: 'meta',
   submit_plan: 'meta',
+  // Memory's tools read the Memory folder and write only a Memory Note the user asked for (ADR 0042).
+  memory_search: 'meta',
+  memory_read: 'meta',
+  memory_list: 'meta',
+  memory_note: 'meta',
 }
 
 /** The tools whose `command` argument is a command line. */

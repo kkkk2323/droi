@@ -47,6 +47,7 @@ connection is part of the contract:
 | `index.changed`                            | Every connection                                                           |
 | `mcp.changed`                              | Every connection                                                           |
 | `process.changed`                          | Every connection                                                           |
+| `memory.read`                              | Every connection                                                           |
 | `warning`                                  | Every connection                                                           |
 
 Views are per connection because a view is a window over a transcript, and each
@@ -841,6 +842,17 @@ it. Each answer is `{questionId, selected?, text?}`: option ids the question off
   the same commit as the `answered` record. Such a question outlives the run and the process: it is kept until
   it is answered, and `conversation.open` lists it after a restart.
 
+### Memory
+
+With Memory on (`DROI_MEMORY_DIR` names the Memory folder, ADR 0042), every conversation has four tools and its
+Memory in the prompt; with it off, neither. `memory_search`, `memory_read` and `memory_list` read the Memory
+Summary, the Session Summaries and the Memory Notes, and `memory_note` writes a Memory Note under `notes/`, the only
+place the kernel writes; all four run without asking. The `memory` section is the read policy, the Memory Summary
+and the notes it has not taken in yet. It is a snapshot: a conversation keeps the text it was first shown, so a note
+or a new summary changes no prompt the provider has cached, and a conversation sees Memory as it is now only after a
+compaction. Each read of a Session Summary sends every connection `memory.read {file, at}`; the Host counts it, so
+the summary does not age out.
+
 ### `codemode`: scripts that call the conversation's tools
 
 Every conversation is offered the `codemode` tool unless its extensions say otherwise: its argument is
@@ -1047,6 +1059,7 @@ the `<skill>` block the model is sent.
 | `process.changed`    | `{id, processId, status, exitCode?, tail?}` — `status` is `running`, `exited`, `stopped` or `failed`; a `droi.process` entry says `done` where a notice says `exited`                                                |
 | `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?, viewedAt}` — `viewedAt` is `null` while a client has asked for the dot                                                                                       |
 | `policy.changed`     | `{id, policy}` — the whole snapshot of that scope; `id` is `null` for the default policy                                                                                                                             |
+| `memory.read`        | `{file, at}` — a Session Summary the model read with `memory_read`, as its path in the Memory folder, and when                                                                                                       |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only

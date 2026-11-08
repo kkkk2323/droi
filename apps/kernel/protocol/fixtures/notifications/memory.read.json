@@ -1,0 +1,12 @@
+{
+  "kind": "notification",
+  "method": "memory.read",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "memory.read",
+    "params": {
+      "file": "session_summaries/2026-10-20T10-00-00-aaaaaaaa-login.md",
+      "at": "2026-11-08T12:00:00.000Z"
+    }
+  }
+}

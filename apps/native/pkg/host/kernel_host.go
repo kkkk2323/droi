@@ -158,6 +158,9 @@ func (h *Host) kernelEnv() []string {
 		return nil
 	}
 	env := []string{kernelLLMTokenEnv + "=" + token}
+	if h.Settings.Get().MemoryEnabled {
+		env = append(env, kernel.MemoryDirEnv+"="+h.MemoryDir())
+	}
 	pool := h.KeyPool()
 	if conflict := h.baseURLConflict(); conflict != "" {
 		log.Println("droi: kernel: no Factory models:", conflict)

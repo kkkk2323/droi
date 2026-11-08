@@ -3,11 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"log"
 	"strconv"
 	"sync"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
@@ -304,6 +306,14 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				var changed kernel.PolicyChanged
 				if n.Decode(&changed) == nil {
 					a.policyChanged(changed)
+				}
+			case kernel.NotifyMemoryRead:
+				var read kernel.MemoryRead
+				if n.Decode(&read) == nil && a.cfg.Host != nil {
+					// The Host is the read log's one writer: the Kernel writes nothing in Memory but notes/.
+					if err := memory.RecordRead(a.cfg.Host.MemoryDir(), read.File); err != nil {
+						log.Printf("droi: memory: read log failed: %v", err)
+					}
 				}
 			}
 		}
