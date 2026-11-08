@@ -110,6 +110,10 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 	model := extractModel(plain)
 	requestedPool := keys.ModelBillingPool(model)
 	session := factory.SessionID(k.seed, req.Header.Get(conversationHeader))
+	// Google's clients may put their key in the query; here that is the Kernel's token, which never leaves.
+	q := req.URL.Query()
+	q.Del("key")
+	query := q.Encode()
 
 	tried := map[string]struct{}{}
 	refreshed := false
@@ -119,7 +123,7 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		presented = ""
 		if key == "" {
 			p.event(diag.Event{Kind: "llm_no_key", Model: model, Detail: "kernel"})
-			writeLLMError(w, http.StatusServiceUnavailable, "api_error", "No key of Droi's Key Pool can serve "+model+" now. Add a key or check the keys on Droi's Usage tab.")
+			writeNoKernelKey(w, model)
 			return
 		}
 		p.noteKernelKey(session, key)
@@ -130,19 +134,21 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		factory.Headers(header, id, path, model, session)
 		base := factory.LLMBase(p.upstreamBaseURL, id)
 		upstreamName := ""
-		if base != p.upstreamBaseURL {
-			upstreamName = base
+		switch {
+		case base == p.upstreamBaseURL:
+		case base == factory.APIEU:
+			upstreamName = "eu"
+		default:
+			upstreamName = "prem"
 		}
 		url := base + path
-		if req.URL.RawQuery != "" {
-			url += "?" + req.URL.RawQuery
+		if query != "" {
+			url += "?" + query
 		}
-		// The record, the live list, the key opener and the cache warmer read the request as it went upstream.
+		// The record, the live list and the key opener read the request as it went upstream.
 		sent := req.Clone(req.Context())
 		sent.Header = header
-		if attempt == 1 {
-			p.cacheWarmer().RealRequestStarted(header)
-		}
+		sent.URL.RawQuery = query
 
 		upstreamReq, err := http.NewRequestWithContext(req.Context(), req.Method, url, bytes.NewReader(raw))
 		if err != nil {
@@ -155,7 +161,7 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		resp, err := client.Do(upstreamReq)
 		headersAt := time.Now()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			writeLLMError(w, http.StatusBadGateway, "api_error", "Droi could not reach Factory: "+err.Error())
 			p.event(diag.Event{Kind: "upstream_error", Model: model, Key: keys.MaskKey(key), Pool: pool, Detail: err.Error()})
 			p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, http.StatusBadGateway, start, headersAt, raw, 0, nil, nil, attempt > 1, "upstream_error", "")
 			return
@@ -192,14 +198,20 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 			tried[key] = struct{}{}
 			why = fmt.Sprintf("HTTP %d", status)
 		}
-		if why != "" && attempt < kernelAttempts {
+		if why != "" {
 			resp.Body.Close()
 			if decoder != nil {
 				decoder.Close()
 			}
-			p.event(diag.Event{Kind: "key_retried", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "kernel: " + why})
 			p.recordRequest(sent, path, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, 0, nil, nil, true, "", errorDetail)
-			continue
+			if attempt < kernelAttempts {
+				p.event(diag.Event{Kind: "key_retried", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "kernel: " + why})
+				continue
+			}
+			// What Factory said stays in the record; the Kernel gets the one answer it gets when no key is left.
+			p.event(diag.Event{Kind: "llm_no_key", Key: keys.MaskKey(key), Pool: pool, Model: model, Status: resp.StatusCode, Detail: "kernel: " + why + " on the last key tried"})
+			writeNoKernelKey(w, model)
+			return
 		}
 
 		p.relay(w, sent, resp, respBody, relayed{
@@ -213,4 +225,8 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		}
 		return
 	}
+}
+
+func writeNoKernelKey(w http.ResponseWriter, model string) {
+	writeLLMError(w, http.StatusServiceUnavailable, "api_error", "No key of Droi's Key Pool can serve "+model+" now. Add a key or check the keys on Droi's Usage tab.")
 }

@@ -457,7 +457,7 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	p.relay(w, req, resp, respBody, relayed{
 		llm: llm, plainBody: plainBody, upstreamEncoding: upstreamEncoding, upstreamURL: upstreamURL, upstreamBase: upstreamBase,
 		upstreamPath: upstreamPath, upstreamName: upstreamName, header: outHeaders, model: model, requestedPool: requestedPool,
-		pool: pool, key: key, start: start, headersAt: headersAt, raw: raw, errorDetail: errorDetail,
+		pool: pool, key: key, start: start, headersAt: headersAt, raw: raw, errorDetail: errorDetail, warm: true,
 	})
 }
 
@@ -480,6 +480,8 @@ type relayed struct {
 	headersAt     time.Time
 	raw           []byte
 	errorDetail   string
+	// warm lets the cache warmer keep the request for refreshes. It can refresh only a Daemon's Session.
+	warm bool
 }
 
 // relay copies the upstream's answer to the client as it arrives and, for a model request, records it and shows it
@@ -547,7 +549,7 @@ func (p *Proxy) relay(w http.ResponseWriter, req *http.Request, resp *http.Respo
 	if resp.StatusCode == http.StatusOK && logErr == "" {
 		p.keyOpener.observe(r.upstreamURL, r.header, req.Header.Get("Content-Encoding"), r.raw, r.model, providerForRequest(req, r.upstreamPath))
 	}
-	if warmer := p.cacheWarmer(); warmer != nil && resp.StatusCode == http.StatusOK && logErr == "" && usage != nil {
+	if warmer := p.cacheWarmer(); r.warm && warmer != nil && resp.StatusCode == http.StatusOK && logErr == "" && usage != nil {
 		warmer.Observe(warmCapture{
 			sessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),
 			upstream:  r.upstreamBase,

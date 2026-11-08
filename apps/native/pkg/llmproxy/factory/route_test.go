@@ -78,7 +78,11 @@ func TestHeadersAreDroids(t *testing.T) {
 	}
 
 	// A model droid does not offer names its route's vendor.
-	for path, want := range map[string]string{"/api/llm/o/v1/chat/completions": "openai", "/api/llm/a/v1/messages": "anthropic"} {
+	for path, want := range map[string]string{
+		"/api/llm/o/v1/chat/completions":                   "openai",
+		"/api/llm/a/v1/messages":                           "anthropic",
+		"/api/llm/g/v1/models/x-new:streamGenerateContent": "google",
+	} {
 		if got := Upstream(path, "something-new"); got != want {
 			t.Errorf("%s: %q, want %q", path, got, want)
 		}

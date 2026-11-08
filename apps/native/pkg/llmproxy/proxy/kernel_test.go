@@ -271,6 +271,68 @@ func TestAKernelRequestGoesWhereItsOrganizationIsServed(t *testing.T) {
 	}
 }
 
+// Every key the proxy tries turned away: the Kernel gets the Key Pool's one sentence, not the last key's refusal, and
+// no more than kernelAttempts keys are tried.
+func TestAKernelRequestNoKeyCanServeGetsOneAnswer(t *testing.T) {
+	for _, n := range []int{2, 4} {
+		f := newFakeFactory(t)
+		f.reply = func(string) (int, string) { return http.StatusPaymentRequired, `{"error":{"message":"out of tokens"}}` }
+		var usages []*keys.KeyUsage
+		for i := range n {
+			usages = append(usages, poolUsage("fk-"+string(rune('a'+i)), float64(i), 0))
+		}
+		px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, usages...)
+		status, body := postKernel(t, px.BaseURL(), "/api/llm/o/v1/chat/completions", `{"model":"glm-5.3","messages":[]}`, "1")
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "No key of Droi's Key Pool can serve glm-5.3") {
+			t.Fatalf("%d keys: got %d %s", n, status, body)
+		}
+		if got, want := len(f.requests()), min(n, kernelAttempts); got != want {
+			t.Fatalf("%d keys: Factory saw %d requests, want %d", n, got, want)
+		}
+	}
+}
+
+// A key in the query is the Kernel's token, and stays here; the rest of the query goes on.
+func TestAKernelRequestsQueryKeepsNoKey(t *testing.T) {
+	f := newFakeFactory(t)
+	px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+	postKernel(t, px.BaseURL(), "/api/llm/o/v1/chat/completions?alt=sse&key="+kernelToken, `{"model":"glm-5.3","messages":[]}`, "1")
+	seen := f.requests()
+	if len(seen) != 1 || seen[0].URL.RawQuery != "alt=sse" {
+		t.Fatalf("Factory saw %v", seen)
+	}
+}
+
+// The cache warmer refreshes Daemon Sessions only: a Kernel conversation is not kept, so it never takes a Session's
+// place.
+func TestTheCacheWarmerKeepsNoKernelConversation(t *testing.T) {
+	f := newFakeFactory(t)
+	f.reply = func(string) (int, string) {
+		return 200, `{"type":"message","content":[],"usage":{"input_tokens":10,"cache_read_input_tokens":99000,"cache_creation_input_tokens":990,"output_tokens":5}}`
+	}
+	px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+	w, _ := newTestWarmer(CacheWarmingIdle, working())
+	px.SetCacheWarmer(w)
+
+	postKernel(t, px.BaseURL(), "/api/llm/a/v1/messages", agentRequestJSON, "1")
+	if n := len(w.Status().Sessions); n != 0 {
+		t.Fatalf("the warmer kept %d Kernel conversations", n)
+	}
+	req, _ := http.NewRequest(http.MethodPost, px.BaseURL()+"/api/llm/a/v1/messages", strings.NewReader(agentRequestJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer fk-a")
+	req.Header.Set(sessionIDHeader, "s1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if n := len(w.Status().Sessions); n != 1 {
+		t.Fatalf("the warmer kept %d Sessions, want droid's one", n)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

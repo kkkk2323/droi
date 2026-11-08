@@ -57,6 +57,9 @@ func Upstream(path, model string) string {
 	if strings.Contains(path, "/llm/o/") {
 		return "openai"
 	}
+	if strings.Contains(path, "/llm/g/") {
+		return "google"
+	}
 	return "anthropic"
 }
 
