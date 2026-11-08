@@ -106,19 +106,23 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 	plain := raw
 	if dec, err := decodeWireBody(encoding, raw); err == nil {
 		plain = dec
-		if shaped, opened := factory.DroidBody(path, plain); opened {
+		if to, shaped, changed := factory.Request(path, plain); changed {
 			if wire, err := encodeWireBody(encoding, shaped); err == nil {
-				raw, plain = wire, shaped
+				raw, plain, path = wire, shaped, to
 			}
 		}
 	}
 	model := extractModel(plain)
 	requestedPool := keys.ModelBillingPool(model)
 	session := factory.SessionID(k.seed, req.Header.Get(conversationHeader))
-	// Google's clients may put their key in the query; here that is the Kernel's token, which never leaves.
+	// Google's clients may put their key in the query; here that is the Kernel's token, which never leaves. A
+	// request Factory takes on another route (Gemini's /generate) leaves its query behind.
 	q := req.URL.Query()
 	q.Del("key")
 	query := q.Encode()
+	if path != req.URL.Path {
+		query = ""
+	}
 
 	tried := map[string]struct{}{}
 	refreshed := false
@@ -153,6 +157,7 @@ func (p *Proxy) serveKernel(w http.ResponseWriter, req *http.Request, k kernelCl
 		// The record, the live list and the key opener read the request as it went upstream.
 		sent := req.Clone(req.Context())
 		sent.Header = header
+		sent.URL.Path = path
 		sent.URL.RawQuery = query
 
 		upstreamReq, err := http.NewRequestWithContext(req.Context(), req.Method, url, bytes.NewReader(raw))

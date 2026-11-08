@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +38,8 @@ func newFakeFactory(t *testing.T) *fakeFactory {
 			return
 		}
 		r2 := r.Clone(r.Context())
+		sent, _ := io.ReadAll(r.Body)
+		r2.Body = io.NopCloser(bytes.NewReader(sent))
 		f.mu.Lock()
 		f.seen = append(f.seen, r2)
 		f.mu.Unlock()
@@ -245,6 +249,51 @@ func TestAContentRefusalIsNotBlamedOnTheKey(t *testing.T) {
 	}
 	if a, b := seen[0].Header.Get("Authorization"), seen[1].Header.Get("Authorization"); a != b {
 		t.Fatalf("the key changed after a content refusal: %s then %s", a, b)
+	}
+}
+
+// A Kernel Gemini request in Google's shape goes to Factory's own route: the model in the body, droid's line in
+// the system instruction, the query (with the token Google's clients put there) left behind, and Google's headers.
+func TestAKernelGeminiRequestGoesToFactorysRoute(t *testing.T) {
+	f := newFakeFactory(t)
+	px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	body := `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"systemInstruction":{"role":"user","parts":[{"text":"Be brief."}]}}`
+	status, out := postKernel(t, px.BaseURL(), "/api/llm/g/v1/models/gemini-4-argon:streamGenerateContent?alt=sse&key="+kernelToken, body, "9")
+	if status != 200 {
+		t.Fatalf("%d %s", status, out)
+	}
+	seen := f.requests()
+	if len(seen) != 1 {
+		t.Fatalf("Factory saw %d requests", len(seen))
+	}
+	r := seen[0]
+	if r.URL.Path != "/api/llm/g/v1/generate" || r.URL.RawQuery != "" {
+		t.Fatalf("it went to %s?%s", r.URL.Path, r.URL.RawQuery)
+	}
+	var got struct {
+		Model             string `json:"model"`
+		SystemInstruction struct {
+			Role  string `json:"role"`
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"systemInstruction"`
+	}
+	raw, _ := io.ReadAll(r.Body)
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "gemini-4-argon" {
+		t.Fatalf("the model in the body is %q", got.Model)
+	}
+	if got.SystemInstruction.Role != "" || len(got.SystemInstruction.Parts) != 1 ||
+		got.SystemInstruction.Parts[0].Text != factory.DroidLine+"\nBe brief." {
+		t.Fatalf("the system instruction is %+v", got.SystemInstruction)
+	}
+	h := r.Header
+	if h.Get("X-Api-Provider") != "google" || h.Get("X-Goog-Api-Key") != "" || h.Get("X-Api-Key") != "" {
+		t.Fatalf("a Gemini request's headers: %v", h)
 	}
 }
 
