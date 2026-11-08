@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 	"unicode/utf8"
 )
@@ -45,57 +44,62 @@ func escapePhrases(text string, phrases []string) string {
 // sanitizeBody is the last pass before a request leaves: every string value in body gets escapePhrases. A body
 // that needs nothing, or is no JSON object or array, comes back as the very bytes it came as.
 func sanitizeBody(body []byte, phrases []string) ([]byte, bool) {
-	if !mayQuote(body, phrases) {
+	if !mayQuote(body, phrases) || !json.Valid(body) {
 		return body, false
 	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	// Numbers keep their own text: a large integer is not rounded on its way through.
-	dec.UseNumber()
-	var v any
-	if dec.Decode(&v) != nil {
+	return escapeBody(body, phrases)
+}
+
+// escapeBody is sanitizeBody of body, which is valid JSON.
+func escapeBody(body []byte, phrases []string) ([]byte, bool) {
+	i := skipSpace(body, 0)
+	if !mayQuote(body, phrases) || i >= len(body) || (body[i] != '{' && body[i] != '[') {
 		return body, false
 	}
-	if _, err := dec.Token(); err != io.EOF {
-		return body, false
-	}
-	if _, isString := v.(string); isString {
-		return body, false
-	}
-	v, changed := escapeDeep(v, phrases)
+	out, changed := escapeDeep(body[i:], phrases)
 	if !changed {
-		return body, false
-	}
-	out, err := marshalJSON(v)
-	if err != nil {
 		return body, false
 	}
 	return out, true
 }
 
-// escapeDeep is v, a decoded JSON value, with escapePhrases on every string in it; object keys stay.
-func escapeDeep(v any, phrases []string) (any, bool) {
-	switch t := v.(type) {
-	case string:
-		out := escapePhrases(t, phrases)
-		return out, out != t
-	case []any:
-		changed := false
-		for i, item := range t {
-			if out, did := escapeDeep(item, phrases); did {
-				t[i], changed = out, true
-			}
-		}
-		return t, changed
-	case map[string]any:
-		changed := false
-		for key, item := range t {
-			if out, did := escapeDeep(item, phrases); did {
-				t[key], changed = out, true
-			}
-		}
-		return t, changed
+// escapeDeep is raw, a valid JSON value with no space before it, with escapePhrases on every string in it; object
+// keys stay, and so does every value with nothing to escape, byte for byte.
+func escapeDeep(raw json.RawMessage, phrases []string) (json.RawMessage, bool) {
+	if !mayQuote(raw, phrases) {
+		return raw, false
 	}
-	return v, false
+	switch raw[0] {
+	case '"':
+		text := stringOf(raw)
+		if out := escapePhrases(text, phrases); out != text {
+			return jsonStr(out), true
+		}
+	case '{':
+		o, _ := objectOf(raw)
+		changed := false
+		for _, k := range o.keys {
+			if out, did := escapeDeep(o.get(k), phrases); did {
+				o.set(k, out)
+				changed = true
+			}
+		}
+		if changed {
+			return o.raw(), true
+		}
+	case '[':
+		items, _ := arrayOf(raw)
+		changed := false
+		for i, item := range items {
+			if out, did := escapeDeep(item, phrases); did {
+				items[i], changed = out, true
+			}
+		}
+		if changed {
+			return jsonList(items), true
+		}
+	}
+	return raw, false
 }
 
 // mayQuote reports a body that could hold one of phrases: one of them past its first character, or a \u escape,
@@ -128,10 +132,9 @@ func escapeFirst(phrase string) string {
 	return fmt.Sprintf(`\u%04x`, r) + phrase[size:]
 }
 
-// jsString is text as JavaScript's JSON.stringify writes it: <, > and & as they are, not escaped for HTML.
+// jsString is text as JavaScript's JSON.stringify writes it.
 func jsString(text string) string {
-	out, _ := marshalJSON(text)
-	return string(out)
+	return string(jsonStr(text))
 }
 
 // marshalJSON is v as JSON without Go's HTML escapes, which upstream's JSON.stringify does not write.

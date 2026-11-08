@@ -6,12 +6,12 @@
 // another client's fixed phrases, pi's compaction opening among them.
 //
 // Request is the way in. A request droid itself would send comes back byte
-// for byte.
+// for byte; one that changes goes out as upstream's JSON.stringify writes it.
 //
 // Ported from @magpie-community/opencode-factory-auth 0.1.42 (MIT),
-// index.mjs: droidBody 613-651, droidChat 581-611, anthropicBody 1609-1747
-// (pi's half), geminiBody 663-703, GEMINI_CALL 661 and send's Gemini route
-// 2058-2066. See PORTED-FROM.md.
+// index.mjs: droidBody 613-651, droidChat 581-611, anthropicBody 1609-1747,
+// geminiBody 663-703, GEMINI_CALL 661 and send's Gemini route 2058-2066.
+// See PORTED-FROM.md.
 package factory
 
 import (
@@ -41,6 +41,8 @@ var geminiCall = regexp.MustCompile(`(?i)/models/([^/:]+):(?:stream)?generateCon
 // refused phrase still in it is escaped. A body that cannot be read goes as
 // it came.
 func Request(path string, body []byte) (string, []byte, bool) {
+	// A body that is not JSON goes as it came; the rest of the package reads one that is.
+	valid := json.Valid(body)
 	changed := false
 	if loc := geminiCall.FindStringSubmatchIndex(path); loc != nil && strings.Contains(path, "/llm/g/") {
 		model, err := url.PathUnescape(path[loc[2]:loc[3]])
@@ -48,16 +50,24 @@ func Request(path string, body []byte) (string, []byte, bool) {
 			model = path[loc[2]:loc[3]]
 		}
 		path = path[:loc[0]] + "/generate"
-		body, _ = geminiBody(model, body)
+		if valid {
+			body, _ = geminiBody(model, body)
+		}
 		changed = true
-	} else {
+	} else if valid {
 		var sped bool
 		body, sped = fastBody(path, body)
 		body, changed = dialectBody(path, body)
 		changed = changed || sped
 	}
+	if !valid {
+		return path, body, changed
+	}
 	// Last: a phrase escaped earlier must not be escaped again.
-	body, escaped := sanitizeBody(body, anywherePhrases)
+	body, escaped := escapeBody(body, anywherePhrases)
+	if changed || escaped {
+		body = canonical(body)
+	}
 	return path, body, changed || escaped
 }
 
@@ -80,11 +90,11 @@ func dialectBody(path string, body []byte) ([]byte, bool) {
 // chatBody is a chat completions request with its messages adapted
 // (promptOpenings) and its first system message opening with droid's line.
 func chatBody(body []byte) ([]byte, bool) {
-	m, ok := jsonObject(body)
+	m, ok := objectOf(body)
 	if !ok {
 		return body, false
 	}
-	messages, ok := jsonArray(m["messages"])
+	messages, ok := arrayOf(m.get("messages"))
 	if !ok {
 		return body, false
 	}
@@ -93,32 +103,27 @@ func chatBody(body []byte) ([]byte, bool) {
 	if !changed && !adapted {
 		return body, false
 	}
-	if m["messages"], ok = jsonValue(opened); !ok {
-		return body, false
-	}
-	return marshalObject(m, body)
+	m.set("messages", jsonList(opened))
+	return m.raw(), true
 }
 
 // droidChat opens msgs' first system message with droid's line, or puts one
 // before them with the line alone: false when it opens so already.
 func droidChat(msgs []json.RawMessage) ([]json.RawMessage, bool) {
 	if len(msgs) > 0 {
-		first, ok := jsonObject(msgs[0])
-		if ok && rawString(first["role"]) == "system" {
-			switch content, state := openContent(first["content"]); state {
+		first, ok := objectOf(msgs[0])
+		if ok && rawString(first.get("role")) == "system" {
+			switch content, state := openContent(first.get("content")); state {
 			case contentUnchanged:
 				return msgs, false
 			case contentChanged:
-				first["content"] = content
-				if out, ok := jsonValue(first); ok {
-					msgs[0] = out
-					return msgs, true
-				}
-				return msgs, false
+				first.set("content", content)
+				msgs[0] = first.raw()
+				return msgs, true
 			}
 		}
 	}
-	identity, _ := jsonValue(map[string]string{"role": "system", "content": DroidLine})
+	identity := newObject("role", jsonStr("system"), "content", jsonStr(DroidLine)).raw()
 	return append([]json.RawMessage{identity}, msgs...), true
 }
 
@@ -142,10 +147,10 @@ func openContent(raw json.RawMessage) (json.RawMessage, contentState) {
 		if strings.HasPrefix(text, DroidLine) {
 			return raw, contentUnchanged
 		}
-		return mustJSON(lineWith(text)), contentChanged
+		return jsonStr(lineWith(text)), contentChanged
 	}
-	var parts []json.RawMessage
-	if json.Unmarshal(raw, &parts) != nil {
+	parts, isArray := arrayOf(raw)
+	if !isArray {
 		return raw, contentUnsupported
 	}
 	if len(parts) > 0 {
@@ -153,53 +158,47 @@ func openContent(raw json.RawMessage) (json.RawMessage, contentState) {
 			return raw, contentUnchanged
 		}
 	}
-	texts := make([]string, 0, len(parts))
+	texts := make([]string, 0, len(parts)+1)
+	texts = append(texts, DroidLine)
 	for _, part := range parts {
-		block, isObject := jsonObject(part)
-		text, isText := rawStringOK(block["text"])
-		if !isObject || rawString(block["type"]) != "text" || !isText {
-			return mustJSON(append([]json.RawMessage{textPart(DroidLine)}, parts...)), contentChanged
+		text, isText := textOf(part)
+		if !isText {
+			return jsonList(append([]json.RawMessage{textPart(DroidLine)}, parts...)), contentChanged
 		}
 		texts = append(texts, text)
 	}
-	joined := DroidLine
-	if len(texts) > 0 {
-		joined += "\n" + strings.Join(texts, "\n")
-	}
-	return mustJSON(joined), contentChanged
+	return jsonStr(strings.Join(texts, "\n")), contentChanged
 }
 
 // anthropicBody is a Messages request as droid sends it: its system as text
 // blocks, droid's line first and once, pi's opening adapted in them; pi's
 // opening in system messages, pi's summary in user text, and refused phrases
 // quoted in tool results adapted; and, streamed, no context_management, which
-// Factory's streaming route refuses. The billing header and the client context
-// the reference also adapts belong to Claude Code's requests, which Droi does
-// not send.
+// Factory's streaming route refuses.
 func anthropicBody(body []byte) ([]byte, bool) {
-	m, ok := jsonObject(body)
+	m, ok := objectOf(body)
 	if !ok {
 		return body, false
 	}
-	messages, ok := jsonArray(m["messages"])
+	messages, ok := arrayOf(m.get("messages"))
 	if !ok {
 		return body, false
 	}
 	var blocks []json.RawMessage
 	systemChanged := false
-	if raw, has := m["system"]; has && !isJSONNull(raw) {
+	if raw := m.get("system"); raw != nil && !isJSONNull(raw) {
 		if text, isString := rawStringOK(raw); isString {
 			blocks = []json.RawMessage{textPart(text)}
 			systemChanged = !strings.HasPrefix(text, DroidLine)
-		} else if json.Unmarshal(raw, &blocks) != nil {
+		} else if blocks, ok = arrayOf(raw); !ok {
 			return body, false
 		}
 	}
 	// A block of another shape is not something droid sends: leave the body
 	// as it came rather than guess at it.
 	for _, block := range blocks {
-		if b, isObject := jsonObject(block); isObject && rawString(b["type"]) == "text" {
-			if _, isText := rawStringOK(b["text"]); !isText {
+		if b, isObject := objectOf(block); isObject && rawString(b.get("type")) == "text" {
+			if _, isText := rawStringOK(b.get("text")); !isText {
 				return body, false
 			}
 		}
@@ -207,7 +206,7 @@ func anthropicBody(body []byte) ([]byte, bool) {
 	kept := make([]json.RawMessage, 0, len(blocks)+1)
 	for _, block := range blocks {
 		if text, isText := textOf(block); isText {
-			if strings.TrimSpace(text) == "" {
+			if jsTrim(text) == "" {
 				systemChanged = true
 				continue
 			}
@@ -248,25 +247,20 @@ func anthropicBody(body []byte) ([]byte, bool) {
 	// Factory's streaming route refuses context_management ("Extra inputs are
 	// not permitted") while its other route takes it: a streamed request goes
 	// without it, and the client's own compaction still runs.
-	_, managed := m["context_management"]
-	unmanaged := managed && strings.TrimSpace(string(m["stream"])) == "true"
+	unmanaged := m.has("context_management") && strings.TrimSpace(string(m.get("stream"))) == "true"
 	if !systemChanged && !messagesChanged && !unmanaged {
 		return body, false
 	}
 	if systemChanged {
-		if m["system"], ok = jsonValue(deduped); !ok {
-			return body, false
-		}
+		m.set("system", jsonList(deduped))
 	}
 	if messagesChanged {
-		if m["messages"], ok = jsonValue(messages); !ok {
-			return body, false
-		}
+		m.set("messages", jsonList(messages))
 	}
 	if unmanaged {
-		delete(m, "context_management")
+		m.del("context_management")
 	}
-	return marshalObject(m, body)
+	return m.raw(), true
 }
 
 // anthropicMessages adapts a Messages request's messages in place: pi's
@@ -275,19 +269,21 @@ func anthropicBody(body []byte) ([]byte, bool) {
 func anthropicMessages(messages []json.RawMessage) bool {
 	changed := false
 	for i, raw := range messages {
-		msg, ok := jsonObject(raw)
+		msg, ok := objectOf(raw)
 		if !ok {
 			continue
 		}
+		var content json.RawMessage
 		var did bool
-		switch rawString(msg["role"]) {
+		switch rawString(msg.get("role")) {
 		case "system":
-			msg["content"], did = adaptContent(msg["content"], clientOpening, true)
+			content, did = adaptContent(msg.get("content"), clientOpening, true)
 		case "user":
-			msg["content"], did = userContent(msg["content"])
+			content, did = userContent(msg.get("content"))
 		}
 		if did {
-			messages[i], changed = mustJSON(msg), true
+			msg.set("content", content)
+			messages[i], changed = msg.raw(), true
 		}
 	}
 	return changed
@@ -300,45 +296,45 @@ func userContent(raw json.RawMessage) (json.RawMessage, bool) {
 	if _, isString := rawStringOK(raw); isString {
 		return adaptContent(raw, piSummary, false)
 	}
-	blocks, isArray := jsonArray(raw)
+	blocks, isArray := arrayOf(raw)
 	if !isArray {
 		return raw, false
 	}
 	changed := false
 	for i, block := range blocks {
-		b, isObject := jsonObject(block)
+		b, isObject := objectOf(block)
 		if !isObject {
 			continue
 		}
-		var did bool
-		switch rawString(b["type"]) {
+		switch rawString(b.get("type")) {
 		case "tool_result":
-			b["content"], did = adaptContent(b["content"], quotedToolText, true)
+			if content, did := adaptContent(b.get("content"), quotedToolText, true); did {
+				b.set("content", content)
+				blocks[i], changed = b.raw(), true
+			}
 		case "text":
-			if text, isText := rawStringOK(b["text"]); isText {
+			if text, isText := rawStringOK(b.get("text")); isText {
 				if out := piSummary(text); out != text {
-					b["text"], did = mustJSON(out), true
+					b.set("text", jsonStr(out))
+					blocks[i], changed = b.raw(), true
 				}
 			}
-		}
-		if did {
-			blocks[i], changed = mustJSON(b), true
 		}
 	}
 	if !changed {
 		return raw, false
 	}
-	return mustJSON(blocks), true
+	return jsonList(blocks), true
 }
 
 // withText is a text block with text in place of its own; its other fields stay.
 func withText(block json.RawMessage, text string) json.RawMessage {
-	b, ok := jsonObject(block)
+	b, ok := objectOf(block)
 	if !ok {
 		return block
 	}
-	b["text"] = mustJSON(text)
-	return mustJSON(b)
+	b.set("text", jsonStr(text))
+	return b.raw()
 }
 
 // geminiBody is a Gemini generateContent request for model as Factory's
@@ -349,22 +345,22 @@ func withText(block json.RawMessage, text string) json.RawMessage {
 // own, so every refused phrase in it is escaped here. A body that cannot be
 // read goes as it came.
 func geminiBody(model string, body []byte) ([]byte, bool) {
-	m, ok := jsonObject(body)
+	m, ok := objectOf(body)
 	if !ok {
 		return body, false
 	}
-	m["model"] = mustJSON(model)
-	delete(m, "stream")
-	si := map[string]json.RawMessage{}
-	if raw, has := m["systemInstruction"]; has {
+	m.set("model", jsonStr(model))
+	m.del("stream")
+	si := newObject()
+	if raw := m.get("systemInstruction"); raw != nil {
 		if text, isString := rawStringOK(raw); isString {
-			si["parts"] = mustJSON([]json.RawMessage{geminiPart(text)})
-		} else if obj, isObject := jsonObject(raw); isObject {
+			si.set("parts", jsonList([]json.RawMessage{geminiPart(text)}))
+		} else if obj, isObject := objectOf(raw); isObject {
 			si = obj
 		}
 	}
-	delete(si, "role")
-	parts, isArray := jsonArray(si["parts"])
+	si.del("role")
+	parts, isArray := arrayOf(si.get("parts"))
 	if !isArray {
 		parts = []json.RawMessage{}
 	}
@@ -380,13 +376,9 @@ func geminiBody(model string, body []byte) ([]byte, bool) {
 		}
 		parts = append([]json.RawMessage{geminiPart(lineWith(strings.Join(texts, "\n")))}, rest...)
 	}
-	si["parts"] = mustJSON(parts)
-	m["systemInstruction"] = mustJSON(si)
-	out, ok := marshalObject(m, body)
-	if !ok {
-		return body, false
-	}
-	out, _ = sanitizeBody(out, refusedPhrases)
+	si.set("parts", jsonList(parts))
+	m.set("systemInstruction", si.raw())
+	out, _ := escapeBody(m.raw(), refusedPhrases)
 	return out, true
 }
 
@@ -396,76 +388,68 @@ func opensWithDroidLine(parts []json.RawMessage) bool {
 	if len(parts) == 0 {
 		return false
 	}
-	first, isObject := jsonObject(parts[0])
+	first, isObject := objectOf(parts[0])
 	if !isObject {
 		return false
 	}
-	text, isText := rawStringOK(first["text"])
+	text, isText := rawStringOK(first.get("text"))
 	return isText && strings.HasPrefix(text, DroidLine)
 }
 
 // lineWith is text as droid opens a system prompt: the line, then the text,
 // or the line alone when there is nothing else.
 func lineWith(text string) string {
-	if strings.TrimSpace(text) == "" {
+	if jsTrim(text) == "" {
 		return DroidLine
 	}
 	return DroidLine + "\n" + text
 }
 
+// jsTrim is s without the white space and line terminators JavaScript's trim removes at its ends.
+func jsTrim(s string) string {
+	return strings.TrimFunc(s, func(r rune) bool {
+		switch r {
+		case '\t', '\n', '\v', '\f', '\r', ' ', 0xa0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff:
+			return true
+		}
+		return r >= 0x2000 && r <= 0x200a
+	})
+}
+
 // textPart is a Messages text block.
 func textPart(text string) json.RawMessage {
-	return mustJSON(map[string]string{"type": "text", "text": text})
+	return newObject("type", jsonStr("text"), "text", jsonStr(text)).raw()
 }
 
 // geminiPart is a Gemini text part, which carries no type field.
 func geminiPart(text string) json.RawMessage {
-	return mustJSON(map[string]string{"text": text})
+	return newObject("text", jsonStr(text)).raw()
 }
 
 // textOf is a Messages block's text, when the block is a text block.
 func textOf(block json.RawMessage) (string, bool) {
-	b, isObject := jsonObject(block)
-	if !isObject || rawString(b["type"]) != "text" {
+	b, isObject := objectOf(block)
+	if !isObject || rawString(b.get("type")) != "text" {
 		return "", false
 	}
-	return rawStringOK(b["text"])
+	return rawStringOK(b.get("text"))
 }
 
 // pureText is a block that is one text and nothing else, as droid sends a
 // Gemini system instruction's parts.
 func pureText(part json.RawMessage) (string, bool) {
-	b, isObject := jsonObject(part)
-	if !isObject || len(b) != 1 {
+	b, isObject := objectOf(part)
+	if !isObject || b.len() != 1 {
 		return "", false
 	}
-	return rawStringOK(b["text"])
-}
-
-// jsonObject decodes raw as a JSON object: false for anything else.
-func jsonObject(raw json.RawMessage) (map[string]json.RawMessage, bool) {
-	var m map[string]json.RawMessage
-	if json.Unmarshal(raw, &m) != nil || m == nil {
-		return nil, false
-	}
-	return m, true
-}
-
-// jsonArray decodes raw as a JSON array of values: false for anything else,
-// including a JSON null and a missing field.
-func jsonArray(raw json.RawMessage) ([]json.RawMessage, bool) {
-	var a []json.RawMessage
-	if json.Unmarshal(raw, &a) != nil || a == nil {
-		return nil, false
-	}
-	return a, true
+	return rawStringOK(b.get("text"))
 }
 
 // rawStringOK is raw as a JSON string: false for anything else, including a
 // JSON null.
 func rawStringOK(raw json.RawMessage) (string, bool) {
 	var s string
-	if json.Unmarshal(raw, &s) != nil {
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil || isJSONNull(raw) {
 		return "", false
 	}
 	return s, true
@@ -481,31 +465,4 @@ func rawString(raw json.RawMessage) string {
 // isJSONNull reports the JSON null.
 func isJSONNull(raw json.RawMessage) bool {
 	return strings.TrimSpace(string(raw)) == "null"
-}
-
-// jsonValue marshals v into a value a body's field can hold. It is marshalJSON: no HTML escapes, as upstream's
-// JSON.stringify writes none, so adapted text keeps its < and &.
-func jsonValue(v any) (json.RawMessage, bool) {
-	b, err := marshalJSON(v)
-	if err != nil {
-		return nil, false
-	}
-	return b, true
-}
-
-// mustJSON marshals a value the package builds itself, which cannot fail.
-func mustJSON(v any) json.RawMessage {
-	b, _ := jsonValue(v)
-	return b
-}
-
-// marshalObject answers body with m in place of it. An object's keys come out
-// sorted, which the model does not see: only a body that needed a change
-// takes this path.
-func marshalObject(m map[string]json.RawMessage, body []byte) ([]byte, bool) {
-	out, err := marshalJSON(m)
-	if err != nil {
-		return body, false
-	}
-	return out, true
 }

@@ -16,7 +16,14 @@ func bigChat(t testing.TB, size int, opened bool) []byte {
 		system = DroidLine + "\n" + system
 	}
 	messages := []map[string]string{{"role": "system", "content": system}}
-	for n := 0; len(mustJSON(messages)) < size; n++ {
+	marshal := func(v any) []byte {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	for n := 0; len(marshal(messages)) < size; n++ {
 		role := "user"
 		if n%2 == 1 {
 			role = "assistant"
@@ -24,7 +31,7 @@ func bigChat(t testing.TB, size int, opened bool) []byte {
 		// A turn long enough to reach size in a few hundred messages.
 		messages = append(messages, map[string]string{"role": role, "content": strings.Repeat(fmt.Sprintf("turn %d: ", n), 400)})
 	}
-	return mustJSON(map[string]any{"model": "deepseek-v4.1-flash-1017", "messages": messages, "stream": true})
+	return marshal(map[string]any{"model": "deepseek-v4.1-flash-1017", "messages": messages, "stream": true})
 }
 
 // The proxy runs Request on every model request: this is what it costs on a

@@ -1,12 +1,9 @@
 // Ported from @magpie-community/opencode-factory-auth 0.1.42 (MIT),
-// index.mjs: API/API_EU 13-14, base 329, llmBase 333-339, orgRefused 405.
+// index.mjs: API/API_EU 13-14, base 329, llmBase 333-339.
 
 package factory
 
-import (
-	"net/http"
-	"strings"
-)
+import "strings"
 
 const (
 	// API is Factory's API, where an account outside the EU region is served.
@@ -40,10 +37,4 @@ func LLMBase(configured string, id Identity) string {
 		return APIEU
 	}
 	return API
-}
-
-// OrgRefused reports Factory's 403 for an X-Factory-Org-Id the key cannot reach ("Requested active organization is
-// not accessible by this user"): the identity is stale, and whoami is asked again.
-func OrgRefused(status int, body []byte) bool {
-	return status == http.StatusForbidden && strings.Contains(strings.ToLower(string(body)), "active organization is not accessible")
 }

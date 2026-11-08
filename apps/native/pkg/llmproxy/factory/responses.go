@@ -10,12 +10,12 @@ import "strings"
 // without temperature and top_p, which OpenAI's reasoning models answer with a 400 and droid never sends.
 // Instructions of another shape are not something droid sends: such a body goes as it came.
 func responsesBody(body []byte) ([]byte, bool) {
-	m, ok := jsonObject(body)
+	m, ok := objectOf(body)
 	if !ok {
 		return body, false
 	}
 	instructions, has := "", false
-	if raw, present := m["instructions"]; present && !isJSONNull(raw) {
+	if raw := m.get("instructions"); raw != nil && !isJSONNull(raw) {
 		text, ok := rawStringOK(raw)
 		if !ok {
 			return body, false
@@ -23,18 +23,16 @@ func responsesBody(body []byte) ([]byte, bool) {
 		instructions, has = text, true
 	}
 	changed := false
-	if model, ok := ModelByID(rawString(m["model"])); ok && model.Upstream == "openai" {
+	if model, ok := ModelByID(rawString(m.get("model"))); ok && model.Upstream == "openai" {
 		for _, sampling := range []string{"temperature", "top_p"} {
-			if _, present := m[sampling]; present {
-				delete(m, sampling)
+			if m.has(sampling) {
+				m.del(sampling)
 				changed = true
 			}
 		}
 	}
-	if input, isArray := jsonArray(m["input"]); isArray && promptOpenings(input) {
-		if m["input"], ok = jsonValue(input); !ok {
-			return body, false
-		}
+	if input, isArray := arrayOf(m.get("input")); isArray && promptOpenings(input) {
+		m.set("input", jsonList(input))
 		changed = true
 	}
 	opened := clientOpening(instructions)
@@ -44,6 +42,6 @@ func responsesBody(body []byte) ([]byte, bool) {
 	case opened == instructions && has && !changed:
 		return body, false
 	}
-	m["instructions"] = mustJSON(opened)
-	return marshalObject(m, body)
+	m.set("instructions", jsonStr(opened))
+	return m.raw(), true
 }

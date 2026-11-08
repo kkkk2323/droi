@@ -26,11 +26,11 @@ func fastBody(path string, body []byte) ([]byte, bool) {
 	if !bytes.Contains(body, []byte("fast")) && !bytes.Contains(body, []byte("priority")) && !bytes.Contains(body, []byte(`\u`)) {
 		return body, false
 	}
-	m, ok := jsonObject(body)
+	m, ok := objectOf(body)
 	if !ok {
 		return body, false
 	}
-	model, ok := rawStringOK(m["model"])
+	model, ok := rawStringOK(m.get("model"))
 	if !ok {
 		return body, false
 	}
@@ -38,7 +38,7 @@ func fastBody(path string, body []byte) ([]byte, bool) {
 	if anthropic {
 		wire, field, value = WireAnthropic, "speed", "fast"
 	}
-	asked := rawString(m[field]) == value
+	asked := rawString(m.get(field)) == value
 	target := model
 	if _, has := ModelByID(model + "-fast"); asked && has {
 		target = model + "-fast"
@@ -49,9 +49,9 @@ func fastBody(path string, body []byte) ([]byte, bool) {
 	if target == model && asked {
 		return body, false
 	}
-	m["model"] = mustJSON(target)
-	m[field] = mustJSON(value)
-	return marshalObject(m, body)
+	m.set("model", jsonStr(target))
+	m.set(field, jsonStr(value))
+	return m.raw(), true
 }
 
 // FastBeta adds FastModeBeta to h's anthropic-beta for a request on path whose body names model, when droid would
