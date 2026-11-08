@@ -1334,6 +1334,8 @@ var zh = map[string]string{
 	"Switched keys":                                         "已切换 key",
 	"Key ran out":                                           "key 额度用完",
 	"Key paused":                                            "key 暂停使用",
+	"Tried another key":                                     "已换一把 key 重试",
+	"No key could serve the request":                        "没有 key 能处理这个请求",
 	"Started a key":                                         "已启用 key",
 	"Could not start a key":                                 "启用 key 失败",
 	"Waiting keys":                                          "等待启用的 key",

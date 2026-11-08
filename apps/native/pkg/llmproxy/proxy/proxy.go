@@ -1,10 +1,12 @@
 // Package proxy is Droi's LLM proxy (ADR 0027, 0033): the Daemon's Factory
 // traffic goes through it so Droi can record every LLM request, keep the
 // prompt caches of idle Sessions warm and move Droi's droid to another key
-// of the Key Pool. It never changes a request's Authorization: which key an
+// of the Key Pool. It never changes droid's Authorization: which key droid's
 // LLM request carries is decided inside droid, by the key file the hook
 // reads. It refuses an LLM request that carries no key of the pool, which
-// would bill the signed-in account. It opens a model request's system prompt
+// would bill the signed-in account. The Kernel holds no key: its requests
+// carry the Host's token, and the proxy picks the key for them (kernel.go).
+// It opens a model request's system prompt
 // as droid opens it (package factory), so that a client other than droid can
 // talk to Factory through it. Ported from droid-proxy, which rotates keys
 // itself.
@@ -127,10 +129,13 @@ type Proxy struct {
 	factoryScript     []string
 	factoryScriptSeen bool
 	keyOpener         *keyOpener
-	recorder          *diag.Recorder
-	startedAt         time.Time
-	mu                sync.Mutex
-	live              map[*liveCall]struct{}
+	// kernel and kernelKeys: see SetKernelToken and kernelKey.
+	kernel     kernelClient
+	kernelKeys map[string]string
+	recorder   *diag.Recorder
+	startedAt  time.Time
+	mu         sync.Mutex
+	live       map[*liveCall]struct{}
 }
 
 // liveCall is an LLM request whose reply is streaming through the proxy.
@@ -261,6 +266,10 @@ func (p *Proxy) event(ev diag.Event) {
 
 func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	start := time.Now()
+	if k, ok := p.fromKernel(req); ok {
+		p.serveKernel(w, req, k, start)
+		return
+	}
 	upstreamPath := req.URL.Path
 	upstreamBase := p.upstreamBaseURL
 	upstreamName := ""
@@ -445,13 +454,46 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	p.relay(w, req, resp, respBody, relayed{
+		llm: llm, plainBody: plainBody, upstreamEncoding: upstreamEncoding, upstreamURL: upstreamURL, upstreamBase: upstreamBase,
+		upstreamPath: upstreamPath, upstreamName: upstreamName, header: outHeaders, model: model, requestedPool: requestedPool,
+		pool: pool, key: key, start: start, headersAt: headersAt, raw: raw, errorDetail: errorDetail, warm: true,
+	})
+}
+
+// relayed is one forwarded request, as relay answers it and records it.
+type relayed struct {
+	llm              bool
+	plainBody        bool
+	upstreamEncoding string
+	upstreamURL      string
+	upstreamBase     string
+	upstreamPath     string
+	upstreamName     string
+	// header is what went upstream.
+	header        http.Header
+	model         string
+	requestedPool string
+	pool          string
+	key           string
+	start         time.Time
+	headersAt     time.Time
+	raw           []byte
+	errorDetail   string
+	// warm lets the cache warmer keep the request for refreshes. It can refresh only a Daemon's Session.
+	warm bool
+}
+
+// relay copies the upstream's answer to the client as it arrives and, for a model request, records it and shows it
+// to the key opener and the cache warmer.
+func (p *Proxy) relay(w http.ResponseWriter, req *http.Request, resp *http.Response, respBody io.Reader, r relayed) {
 	for name, vals := range copyResponseHeaders(resp.Header) {
 		for _, v := range vals {
 			w.Header().Add(name, v)
 		}
 	}
-	if !plainBody && upstreamEncoding != "" {
-		w.Header().Set("Content-Encoding", upstreamEncoding)
+	if !r.plainBody && r.upstreamEncoding != "" {
+		w.Header().Set("Content-Encoding", r.upstreamEncoding)
 	}
 	w.WriteHeader(resp.StatusCode)
 
@@ -462,65 +504,65 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 	}
 	var observer *diag.UsageObserver
 	var dst io.Writer = &flushWriter{w: w, flush: flush}
-	if llm {
+	if r.llm {
 		observer = diag.NewUsageObserver(resp.Header.Get("Content-Type"))
 		dst = io.MultiWriter(dst, observer)
 		defer p.startLive(&liveCall{observer: observer, call: diag.LiveCall{
 			SessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),
 			CallType:  strings.TrimSpace(req.Header.Get(messageCallTypeHeader)),
-			Model:     model,
-			Key:       keys.MaskKey(key),
-			Start:     start,
+			Model:     r.model,
+			Key:       keys.MaskKey(r.key),
+			Start:     r.start,
 		}})()
 	}
 	var written int64
 	var copyErr error
-	if !llm && plainBody {
+	if !r.llm && r.plainBody {
 		written, copyErr = p.copyRewritingPremHosts(dst, respBody, flush)
 	} else {
 		written, copyErr = io.Copy(dst, respBody)
 	}
 	flush()
-	if !llm {
+	if !r.llm {
 		return
 	}
 	logErr := ""
 	if copyErr != nil && !endedByClient(req.Context(), copyErr) {
 		logErr = "response_copy_error"
-		if errorDetail == "" {
-			errorDetail = snippetForLog([]byte(copyErr.Error()))
+		if r.errorDetail == "" {
+			r.errorDetail = snippetForLog([]byte(copyErr.Error()))
 		}
 	}
 	if detail, failed := observer.Failure(); failed {
 		if logErr == "" {
 			logErr = "stream_failed"
 		}
-		if errorDetail == "" {
-			errorDetail = snippetForLog([]byte(detail))
+		if r.errorDetail == "" {
+			r.errorDetail = snippetForLog([]byte(detail))
 		}
 	}
 	var usage *diag.TokenUsage
 	if u, ok := observer.Usage(); ok {
 		usage = &u
 	}
-	p.recordRequest(req, upstreamPath, upstreamName, model, requestedPool, pool, key, resp.StatusCode, start, headersAt, raw, written, usage, observer, false, logErr, errorDetail)
+	p.recordRequest(req, r.upstreamPath, r.upstreamName, r.model, r.requestedPool, r.pool, r.key, resp.StatusCode, r.start, r.headersAt, r.raw, written, usage, observer, false, logErr, r.errorDetail)
 	if resp.StatusCode == http.StatusOK && logErr == "" {
-		p.keyOpener.observe(upstreamURL, outHeaders, req.Header.Get("Content-Encoding"), raw, model, providerForRequest(req, upstreamPath))
+		p.keyOpener.observe(r.upstreamURL, r.header, req.Header.Get("Content-Encoding"), r.raw, r.model, providerForRequest(req, r.upstreamPath))
 	}
-	if warmer := p.cacheWarmer(); warmer != nil && resp.StatusCode == http.StatusOK && logErr == "" && usage != nil {
+	if warmer := p.cacheWarmer(); r.warm && warmer != nil && resp.StatusCode == http.StatusOK && logErr == "" && usage != nil {
 		warmer.Observe(warmCapture{
 			sessionID: strings.TrimSpace(req.Header.Get(sessionIDHeader)),
-			upstream:  upstreamBase,
-			path:      upstreamPath,
+			upstream:  r.upstreamBase,
+			path:      r.upstreamPath,
 			rawQuery:  req.URL.RawQuery,
-			header:    outHeaders,
+			header:    r.header,
 			encoding:  req.Header.Get("Content-Encoding"),
-			wire:      raw,
-			model:     model,
-			provider:  providerForRequest(req, upstreamPath),
-			key:       key,
+			wire:      r.raw,
+			model:     r.model,
+			provider:  providerForRequest(req, r.upstreamPath),
+			key:       r.key,
 			usage:     *usage,
-			sentAt:    start,
+			sentAt:    r.start,
 		})
 	}
 }
