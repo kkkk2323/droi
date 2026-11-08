@@ -19,9 +19,11 @@ import { info, warn } from '../log.ts'
 import {
   enabledOf,
   fingerprint,
+  mergeEntry,
   onlySwitches,
   parseEntry,
   readConfig,
+  type ConfigFile,
   type ParsedEntry,
   type RawEntry,
   type ServerConfig,
@@ -39,6 +41,8 @@ export type WireServer = {
   error: string | null
   repoRoot?: string
   trusted?: boolean
+  /** A repository server's config as `mcp.set {trust}` must name it: what the person was shown. */
+  fingerprint?: string
   command?: string
   args?: string[]
   url?: string
@@ -54,6 +58,8 @@ type Server = {
   status: ServerStatus
   error: string | null
   tools: Tool[]
+  /** The tool names this server gave the approval policy a class for. */
+  classified: string[]
   client?: McpClient
   /** Bumped by every connect and every close: an older attempt that finishes late does nothing. */
   generation: number
@@ -83,6 +89,14 @@ export type McpServersOptions = {
   context: Context
 }
 
+/** What `trustServer` found: the server, none of that name, or one whose config is not the one the person saw. */
+export type TrustOutcome = 'ok' | 'missing' | 'changed'
+
+/** The HTTP server a sign-in is for, or why there is none to sign in to. */
+export type Authorizable =
+  | { ok: true; key: string; url: string }
+  | { ok: false; reason: 'missing' | 'not-http' | 'untrusted' }
+
 /**
  * The MCP servers (design/m3-kernel.md §4): the global file's, and those each repository's
  * `.factory/mcp.json` brings, which run only once the user trusts that exact config.
@@ -90,15 +104,24 @@ export type McpServersOptions = {
  * Every server is an extension of its own, named `mcp-…`. A conversation selects the global ones and its own
  * repository's (`prepare`), so it is never offered another repository's tools. An extension is installed while
  * its server is connected; a conversation that names one that is not is simply offered none of its tools.
+ *
+ * Every change to the table runs in one queue (`#serial`): a refresh awaits the database and old connections
+ * between its steps, and two of them interleaved could check the trust of one config and start another, or put
+ * back a server a later read had removed. A connection itself is not queued, only started: what it runs is
+ * read when it starts, inside the step that decided it may.
  */
 export class McpServers {
   readonly #options: McpServersOptions
   readonly #servers = new Map<string, Server>()
-  /** Each repository's file as last read, and the servers it switched on or off by name. */
-  readonly #repos = new Map<string, { file: unknown; switches: Map<string, boolean> }>()
-  #globalFile: unknown
+  /** Each repository's file and the global file as last read, and the servers it switched on or off by name. */
+  readonly #repos = new Map<
+    string,
+    { file: unknown; global: unknown; switches: Map<string, boolean> }
+  >()
+  #globalFile: ConfigFile | undefined
   #diagnostics: { path: string; message: string }[] = []
   #closed = false
+  #queue: Promise<unknown> = Promise.resolve()
 
   constructor(options: McpServersOptions) {
     this.#options = options
@@ -106,6 +129,12 @@ export class McpServers {
 
   get #globalPath(): string {
     return join(this.#options.userDir, 'mcp.json')
+  }
+
+  #serial<T>(step: () => Promise<T>): Promise<T> {
+    const run = this.#queue.then(step, step)
+    this.#queue = run.catch(() => undefined)
+    return run
   }
 
   async open(): Promise<void> {
@@ -120,7 +149,16 @@ export class McpServers {
   }
 
   /** Read the global file again if it changed, and bring the servers in line with it. */
-  async refreshGlobal(): Promise<void> {
+  refreshGlobal(): Promise<void> {
+    return this.#serial(() => this.#refreshGlobal())
+  }
+
+  /** Read a repository's file again if it changed: its servers, and the global ones it switches. */
+  refreshRepo(repoRoot: string): Promise<void> {
+    return this.#serial(() => this.#refreshRepo(repoRoot))
+  }
+
+  async #refreshGlobal(): Promise<void> {
     if (this.#closed) return
     const file = readConfig(this.#globalPath)
     if (file === this.#globalFile) return
@@ -128,25 +166,27 @@ export class McpServers {
     this.#setDiagnostic(this.#globalPath, file.error)
     const seen = new Set<string>()
     for (const [name, raw] of Object.entries(file.entries)) {
-      const key = `g:${name}`
+      const key = serverKey(name)
       seen.add(key)
       await this.#upsert(key, name, undefined, raw)
     }
     for (const server of [...this.#servers.values()]) {
       if (server.repoRoot === undefined && !seen.has(server.key)) await this.#remove(server)
     }
+    // A repository's entry can take fields from the global one of its name.
+    for (const root of [...this.#repos.keys()]) await this.#refreshRepo(root)
     this.#changed()
   }
 
-  /** Read a repository's file again if it changed: its servers, and the global ones it switches. */
-  async refreshRepo(repoRoot: string): Promise<void> {
+  async #refreshRepo(repoRoot: string): Promise<void> {
     if (this.#closed) return
     const path = join(repoRoot, '.factory', 'mcp.json')
     const file = readConfig(path)
+    const global = this.#globalFile ?? readConfig(this.#globalPath)
     const known = this.#repos.get(repoRoot)
-    if (known?.file === file) return
+    if (known?.file === file && known.global === global) return
     const switches = new Map<string, boolean>()
-    this.#repos.set(repoRoot, { file, switches })
+    this.#repos.set(repoRoot, { file, global, switches })
     this.#setDiagnostic(path, file.error)
     const seen = new Set<string>()
     for (const [name, raw] of Object.entries(file.entries)) {
@@ -154,9 +194,9 @@ export class McpServers {
         switches.set(name, enabledOf(raw))
         continue
       }
-      const key = `r:${repoRoot}:${name}`
+      const key = serverKey(name, repoRoot)
       seen.add(key)
-      await this.#upsert(key, name, repoRoot, raw)
+      await this.#upsert(key, name, repoRoot, mergeEntry(global.entries[name], raw))
     }
     for (const server of [...this.#servers.values()]) {
       if (server.repoRoot === repoRoot && !seen.has(server.key)) await this.#remove(server)
@@ -199,55 +239,81 @@ export class McpServers {
     }
   }
 
-  /** A server by name: a repository's when `repoRoot` is given, else the global one. */
-  find(name: string, repoRoot?: string): Server | undefined {
-    return this.#servers.get(repoRoot === undefined ? `g:${name}` : `r:${repoRoot}:${name}`)
+  #find(name: string, repoRoot?: string): Server | undefined {
+    return this.#servers.get(serverKey(name, repoRoot))
   }
 
-  /** The HTTP server a sign-in is for: the global one by that name, else a repository's. */
-  httpServer(name: string): { server: Server; url: string } | undefined {
-    const candidates = [
-      this.find(name),
-      ...[...this.#servers.values()].filter((s) => s.repoRoot !== undefined && s.name === name),
-    ]
-    for (const server of candidates) {
+  /**
+   * Trust, or stop trusting, a repository's server. Trust is for the config the person was shown: `shown` is the
+   * fingerprint `mcp.list` gave with it, and a file that changed since is a new question, not a yes.
+   */
+  trustServer(
+    name: string,
+    repoRoot: string,
+    trusted: boolean,
+    shown: string | undefined,
+  ): Promise<TrustOutcome> {
+    return this.#serial(async () => {
+      await this.#refreshRepo(repoRoot)
+      const server = this.#find(name, repoRoot)
       const config = server?.parsed.config
-      if (server !== undefined && config?.transport === 'http') return { server, url: config.url }
-    }
-    return undefined
+      if (server === undefined || config === undefined) return 'missing'
+      const current = fingerprint(config)
+      if (trusted) {
+        if (shown !== current) return 'changed'
+        await this.#options.db.run(
+          'INSERT OR REPLACE INTO droi_mcp_trust (repo_root, name, fingerprint, at) VALUES (?, ?, ?, ?)',
+          repoRoot,
+          name,
+          current,
+          Date.now(),
+        )
+      } else {
+        await this.#options.db.run(
+          'DELETE FROM droi_mcp_trust WHERE repo_root = ? AND name = ?',
+          repoRoot,
+          name,
+        )
+      }
+      await this.#reconcile(server)
+      this.#changed()
+      return 'ok'
+    })
   }
 
-  /** Trust, or stop trusting, a repository's server: its exact config, as it is now. */
-  async trust(server: Server, trusted: boolean): Promise<void> {
-    if (server.repoRoot === undefined || server.parsed.config === undefined) return
-    if (trusted) {
-      await this.#options.db.run(
-        'INSERT OR REPLACE INTO droi_mcp_trust (repo_root, name, fingerprint, at) VALUES (?, ?, ?, ?)',
-        server.repoRoot,
-        server.name,
-        fingerprint(server.parsed.config),
-        Date.now(),
-      )
-    } else {
-      await this.#options.db.run(
-        'DELETE FROM droi_mcp_trust WHERE repo_root = ? AND name = ?',
-        server.repoRoot,
-        server.name,
-      )
-    }
-    await this.#reconcile(server)
-    this.#changed()
+  /**
+   * The HTTP server a sign-in is for: the global one by that name, or, with `repoRoot`, that repository's own,
+   * and only once it is trusted, since signing in already talks to its URL.
+   */
+  authorizable(name: string, repoRoot?: string): Promise<Authorizable> {
+    return this.#serial(async () => {
+      if (repoRoot === undefined) await this.#refreshGlobal()
+      else await this.#refreshRepo(repoRoot)
+      const server = this.#find(name, repoRoot)
+      const config = server?.parsed.config
+      if (server === undefined || config === undefined) return { ok: false, reason: 'missing' }
+      if (config.transport !== 'http') return { ok: false, reason: 'not-http' }
+      if (server.repoRoot !== undefined && !(await this.#trusted(server, config))) {
+        return { ok: false, reason: 'untrusted' }
+      }
+      return { ok: true, key: server.key, url: config.url }
+    })
   }
 
-  /** Connect a server again now, as after an authorization. */
-  async reconnect(server: Server): Promise<void> {
-    this.#disconnect(server)
-    await this.#reconcile(server)
-    this.#changed()
+  /** Connect a server again now, as after an authorization; by the key `authorizable` gave. */
+  reconnect(key: string): Promise<void> {
+    return this.#serial(async () => {
+      const server = this.#servers.get(key)
+      if (server === undefined || this.#closed) return
+      await this.#disconnect(server)
+      await this.#reconcile(server)
+      this.#changed()
+    })
   }
 
   async close(): Promise<void> {
     this.#closed = true
+    await this.#queue
     await Promise.all([...this.#servers.values()].map((server) => this.#disconnect(server)))
   }
 
@@ -269,6 +335,7 @@ export class McpServers {
       status: 'connecting',
       error: null,
       tools: [],
+      classified: [],
       generation: 0,
       retryDelay: RETRY_FIRST_MS,
       extension: extensionName(name, repoRoot),
@@ -285,7 +352,7 @@ export class McpServers {
     this.#servers.delete(server.key)
   }
 
-  /** Bring one server to what its config, its switch and its trust say. */
+  /** Bring one server to what its config, its switch and its trust say. Runs inside the queue. */
   async #reconcile(server: Server): Promise<void> {
     const parsed = server.parsed
     if (parsed.config === undefined) {
@@ -297,10 +364,13 @@ export class McpServers {
       return
     }
     if (server.repoRoot !== undefined && !(await this.#trusted(server, parsed.config))) {
-      this.#disconnect(server)
+      await this.#disconnect(server)
       this.#set(server, 'untrusted', null)
       return
     }
+    // The config the trust was checked against is the one that runs: nothing else changes the table while
+    // this step holds the queue, and the connection reads it before its first await.
+    if (server.parsed !== parsed || this.#servers.get(server.key) !== server) return
     if (
       server.status === 'connected' ||
       (server.status === 'connecting' && server.client !== undefined)
@@ -375,7 +445,12 @@ export class McpServers {
     const generation = server.generation
     server.retry = setTimeout(() => {
       server.retry = undefined
-      if (generation === server.generation) void this.#connect(server)
+      // Through the queue, and only for the server and the config it failed with: a retry never outlives a
+      // change that came in meanwhile.
+      void this.#serial(async () => {
+        if (generation !== server.generation || this.#servers.get(server.key) !== server) return
+        await this.#reconcile(server)
+      })
     }, delay)
     server.retry.unref?.()
   }
@@ -415,10 +490,17 @@ export class McpServers {
   #install(server: Server, client: McpClient): void {
     const used = new Set<string>()
     const tools: ToolRegistration[] = []
+    for (const name of server.classified) setToolClass(name, server.extension, undefined)
+    server.classified = []
     for (const tool of server.tools) {
       const name = toolName(server.name, tool.name, used)
       used.add(name)
-      setToolClass(name, tool.annotations?.readOnlyHint === true ? 'read' : undefined)
+      setToolClass(
+        name,
+        server.extension,
+        tool.annotations?.readOnlyHint === true ? 'read' : 'exec',
+      )
+      server.classified.push(name)
       tools.push(
         defineTool({
           name,
@@ -460,6 +542,8 @@ export class McpServers {
     if (this.#options.registry.snapshot().extension(server.extension) !== undefined) {
       this.#options.registry.uninstall({ name: server.extension } as Extension)
     }
+    for (const name of server.classified) setToolClass(name, server.extension, undefined)
+    server.classified = []
   }
 
   #set(server: Server, status: ServerStatus, error: string | null): void {
@@ -494,6 +578,7 @@ export class McpServers {
         : {
             repoRoot: server.repoRoot,
             trusted: server.status !== 'untrusted' && config !== undefined,
+            ...(config === undefined ? {} : { fingerprint: fingerprint(config) }),
           }),
       ...(config?.transport === 'stdio' ? { command: config.command, args: config.args } : {}),
       ...(config?.transport === 'http' ? { url: config.url } : {}),
@@ -523,6 +608,11 @@ export function toolName(
     name = `${name.slice(0, MAX_TOOL_NAME - 9)}_${hash}`
   }
   return name
+}
+
+/** A server's own key: the global one by its name, a repository's by its root and its name. */
+export function serverKey(name: string, repoRoot?: string): string {
+  return repoRoot === undefined ? `g:${name}` : `r:${repoRoot}:${name}`
 }
 
 /** The extension of one server: a repository's carries its root's hash, so two repositories never share one. */

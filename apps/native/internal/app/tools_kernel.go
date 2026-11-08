@@ -191,11 +191,12 @@ func (v *sessionView) addKernelServer(p protocol.AddMCPServerParams) {
 	})
 }
 
-// signInKernel starts a server's sign-in; the page to open shows on its row until the server connects.
-func (v *sessionView) signInKernel(name string) {
+// signInKernel starts a server's sign-in; the page to open shows on its row until the server connects. root names
+// a repository's server, "" the global one.
+func (v *sessionView) signInKernel(name, root string) {
 	ts := &v.tools
 	v.kernelCall(name, func(ctx context.Context, c *kernel.Client) error {
-		res, err := c.AuthorizeMCP(ctx, kernel.MCPAuthorizeParams{Name: name})
+		res, err := c.AuthorizeMCP(ctx, kernel.MCPAuthorizeParams{Name: name, RepoRoot: root})
 		if err != nil {
 			return err
 		}
@@ -211,14 +212,30 @@ func (v *sessionView) signInKernel(name string) {
 	}, nil)
 }
 
-func (v *sessionView) cancelKernelSignIn(name string) {
+func (v *sessionView) cancelKernelSignIn(name, root string) {
 	ts := &v.tools
 	ts.mu.Lock()
 	delete(ts.signIn, name)
 	ts.mu.Unlock()
 	v.kernelCall(name, func(ctx context.Context, c *kernel.Client) error {
-		return c.CancelMCPAuthorize(ctx, kernel.MCPAuthorizeParams{Name: name})
+		return c.CancelMCPAuthorize(ctx, kernel.MCPAuthorizeParams{Name: name, RepoRoot: root})
 	}, nil)
+}
+
+// kernelRoot is the repository a row's server comes from, "" for a global one.
+func (v *sessionView) kernelRoot(name string, project bool) string {
+	if !project {
+		return ""
+	}
+	ks, _ := v.kernelServer(name, true)
+	return ks.RepoRoot
+}
+
+// kernel says the dialog's lists are Kernel's.
+func (ts *toolsState) kernel() bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.onKernel
 }
 
 // trustNotice is a repository's server waiting for the person's OK: what it would run, and the two answers.
@@ -237,10 +254,10 @@ func (v *sessionView) trustNotice(c *ui.Context, s kernel.MCPServer, busy bool) 
 			b := k.Button(c, kit.Outline, 24, false, L("Allow %s", s.Name)).PaddingX(k.Px(8)).Disabled(busy)
 			b.Children(func() { k.Text(c, L("Allow"), 12, 16).FontWeight(500) })
 			if b.Clicked() {
-				name, root := s.Name, s.RepoRoot
+				name, root, shown := s.Name, s.RepoRoot, s.Fingerprint
 				yes := true
 				v.kernelCall(name, func(ctx context.Context, c *kernel.Client) error {
-					_, err := c.SetMCP(ctx, kernel.MCPSetParams{Name: name, RepoRoot: root, Trust: &yes})
+					_, err := c.SetMCP(ctx, kernel.MCPSetParams{Name: name, RepoRoot: root, Trust: &yes, Fingerprint: shown})
 					return err
 				}, nil)
 			}

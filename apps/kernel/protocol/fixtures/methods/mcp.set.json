@@ -8,7 +8,8 @@
     "params": {
       "name": "repo-tools",
       "repoRoot": "/Users/clive/dev/droi",
-      "trust": true
+      "trust": true,
+      "fingerprint": "d2f0c6a5b1e4f3a7c9b8e1d0f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5"
     }
   },
   "response": {
@@ -33,6 +34,7 @@
           "error": null,
           "repoRoot": "/Users/clive/dev/droi",
           "trusted": true,
+          "fingerprint": "d2f0c6a5b1e4f3a7c9b8e1d0f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5",
           "command": "node",
           "args": ["tools/mcp-server.mjs"]
         }

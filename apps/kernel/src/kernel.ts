@@ -253,10 +253,7 @@ export async function startKernel(
       context,
     })
     const servers = mcp
-    const mcpAuth = new McpAuth(config.dataDir, async (name) => {
-      const found = servers.httpServer(name)
-      if (found !== undefined) await servers.reconnect(found.server)
-    })
+    const mcpAuth = new McpAuth(config.dataDir, (key) => servers.reconnect(key))
     // A viewer starts no servers; the process that drives the data does.
     if (!config.readOnly) await mcp.open()
 

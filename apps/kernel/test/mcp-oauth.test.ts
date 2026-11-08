@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client, fauxCatalog, start, tempData } from './helpers.ts'
 import type { KernelHandle } from '../src/kernel.ts'
@@ -15,12 +25,18 @@ afterEach(async () => {
 const TOKEN = 'good-token'
 
 /** Discovery, dynamic registration, an authorize page that redirects at once, a token endpoint, and /mcp. */
-function oauthServer(): { base: string; tokenRequests: () => number } {
+function oauthServer(options: { scope?: string } = {}): {
+  base: string
+  tokenRequests: () => number
+  requests: () => number
+} {
   let tokens = 0
+  let all = 0
   const server: ReturnType<typeof Bun.serve> = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
     async fetch(request: Request): Promise<Response> {
+      all++
       const url = new URL(request.url)
       const base: string = `http://127.0.0.1:${server.port}`
       const json = (value: unknown, status = 200) =>
@@ -71,7 +87,7 @@ function oauthServer(): { base: string; tokenRequests: () => number } {
             return new Response('unauthorized', {
               status: 401,
               headers: {
-                'www-authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"`,
+                'www-authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"${options.scope === undefined ? '' : `, scope="${options.scope}"`}`,
               },
             })
           }
@@ -101,7 +117,11 @@ function oauthServer(): { base: string; tokenRequests: () => number } {
     },
   })
   cleanups.push(() => server.stop(true))
-  return { base: `http://127.0.0.1:${server.port}`, tokenRequests: () => tokens }
+  return {
+    base: `http://127.0.0.1:${server.port}`,
+    tokenRequests: () => tokens,
+    requests: () => all,
+  }
 }
 
 type Server = { name: string; status: string; tools: string[]; error: string | null }
@@ -186,5 +206,52 @@ describe('a server that asks for OAuth', () => {
     await Bun.sleep(100)
     await expect(fetch(`${callback}?code=x&state=y`)).rejects.toThrow()
     expect((await b.client.fails('mcp.authorize', { name: 'nope' })).code).toBe(-32602)
+  }, 60_000)
+})
+
+describe('signing in, and whose server it is', () => {
+  test('the sign-in asks for the scope the server challenged with', async () => {
+    const made = tempData()
+    cleanups.push(() => made.cleanup())
+    const { base } = oauthServer({ scope: 'required.read' })
+    mkdirSync(join(made.dir, 'user'), { recursive: true })
+    writeFileSync(
+      join(made.dir, 'user', 'mcp.json'),
+      JSON.stringify({ mcpServers: { secure: { type: 'http', url: `${base}/mcp` } } }),
+    )
+    const b = await boot(made.dir)
+    await status(b.client, 'secure', 'failed')
+    const page = new URL(
+      String((await b.client.call('mcp.authorize', { name: 'secure' }))['authorizationUrl']),
+    )
+    expect(page.searchParams.get('scope')).toBe('required.read')
+    expect((await fetch(page)).status).toBe(200)
+    await status(b.client, 'secure', 'connected')
+  }, 60_000)
+
+  test("a repository's server is signed in to only once it is trusted, and by its own repository", async () => {
+    const made = tempData()
+    cleanups.push(() => made.cleanup())
+    const { base, requests } = oauthServer()
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'mcp-oauth-repo-')))
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }))
+    execFileSync('git', ['init', '-q'], { cwd: root })
+    mkdirSync(join(root, '.factory'), { recursive: true })
+    writeFileSync(
+      join(root, '.factory', 'mcp.json'),
+      JSON.stringify({ mcpServers: { secure: { type: 'http', url: `${base}/mcp` } } }),
+    )
+    const b = await boot(made.dir)
+    const listed = (await b.client.call('mcp.list', { repoRoot: root }))['servers'] as {
+      name: string
+      status: string
+      fingerprint?: string
+    }[]
+    expect(listed[0]?.status).toBe('untrusted')
+    const refused = await b.client.fails('mcp.authorize', { name: 'secure', repoRoot: root })
+    expect(refused.code).toBe(-32602)
+    // Without a repository it is the global server of that name, and there is none.
+    expect((await b.client.fails('mcp.authorize', { name: 'secure' })).code).toBe(-32602)
+    expect(requests()).toBe(0)
   }, 60_000)
 })

@@ -20,6 +20,9 @@ type Stored = { state?: McpOAuthState; redirectUrl?: string }
 
 type Pending = { callback: OAuthCallbackServer }
 
+/** What the authorization a server asked for while connecting needs, kept for the sign-in that follows. */
+type Challenge = { scope?: string }
+
 /**
  * OAuth for HTTP MCP servers (design/m3-kernel.md §4.5). `mcp.authorize` answers the page to open; the Kernel
  * listens for the redirect on 127.0.0.1 and keeps the tokens in `<dataDir>/mcp-auth.json`, readable by its owner
@@ -27,10 +30,13 @@ type Pending = { callback: OAuthCallbackServer }
  */
 export class McpAuth {
   readonly #path: string
-  readonly #authorized: (name: string) => Promise<void>
+  readonly #authorized: (key: string) => Promise<void>
+  /** Sign-ins waiting for their redirect, by the server's key (`serverKey`). */
   readonly #pending = new Map<string, Pending>()
+  /** By server name and URL, as the tokens are. */
+  readonly #challenges = new Map<string, Challenge>()
 
-  constructor(dataDir: string, authorized: (name: string) => Promise<void>) {
+  constructor(dataDir: string, authorized: (key: string) => Promise<void>) {
     this.#path = join(dataDir, 'mcp-auth.json')
     this.#authorized = authorized
   }
@@ -38,8 +44,12 @@ export class McpAuth {
   /** The transport's provider: refreshes a stored grant, and says when a person has to sign in again. */
   authProvider(name: string, url: string): AuthProvider {
     return adaptOAuthProvider(
-      // A connection never opens a browser: it fails, and waits for mcp.authorize.
-      this.#provider(name, url, undefined, () => {
+      // A connection never opens a browser: it fails, and waits for mcp.authorize. The page it would have
+      // opened carries the scope the server's challenge asked for (and, after an insufficient_scope, the scope
+      // granted so far as well); the sign-in asks for the same.
+      this.#provider(name, url, undefined, (page) => {
+        const scope = page.searchParams.get('scope')
+        this.#challenges.set(key(name, url), scope === null ? {} : { scope })
         throw new McpOAuthAuthorizationRequiredError()
       }),
     )
@@ -47,17 +57,19 @@ export class McpAuth {
 
   /** Start signing in: answers the page the person opens, and connects the server once the redirect comes. */
   async authorize(
+    serverKey: string,
     name: string,
     url: string,
   ): Promise<{ authorizationUrl?: string; authorized?: true }> {
-    this.cancel(name)
+    this.cancel(serverKey)
     const callback = await OAuthCallbackServer.listen({
       host: '127.0.0.1',
       redirectHost: '127.0.0.1',
       timeoutMs: AUTHORIZE_TIMEOUT_MS,
     })
     const pending: Pending = { callback }
-    this.#pending.set(name, pending)
+    this.#pending.set(serverKey, pending)
+    const scope = this.#challenges.get(key(name, url))?.scope
     let page: URL | undefined
     try {
       const stored = this.#read()[key(name, url)]
@@ -69,34 +81,40 @@ export class McpAuth {
         await provider.invalidateCredentials('client')
       }
       this.#update(name, url, (entry) => ({ ...entry, redirectUrl: callback.redirectUrl }))
-      const result = await authorizeMcp(provider, { serverUrl: url, skipRefresh: true })
+      const result = await authorizeMcp(provider, {
+        serverUrl: url,
+        skipRefresh: true,
+        ...(scope === undefined ? {} : { scope }),
+      })
       if (result === 'AUTHORIZED' || page === undefined) {
-        this.#finish(name, pending)
-        await this.#authorized(name)
+        this.#finish(serverKey, pending)
+        await this.#authorized(serverKey)
         return { authorized: true }
       }
       const state = page.searchParams.get('state') ?? ''
-      void this.#await(name, url, pending, provider, state)
+      void this.#await(serverKey, name, url, scope, pending, provider, state)
       return { authorizationUrl: page.toString() }
     } catch (failure) {
-      this.#finish(name, pending)
+      this.#finish(serverKey, pending)
       throw failure
     }
   }
 
   /** `mcp.authorize.cancel`: stop listening; the page the person may still have open then fails. */
-  cancel(name: string): void {
-    const pending = this.#pending.get(name)
-    if (pending !== undefined) this.#finish(name, pending)
+  cancel(serverKey: string): void {
+    const pending = this.#pending.get(serverKey)
+    if (pending !== undefined) this.#finish(serverKey, pending)
   }
 
   close(): void {
-    for (const [name, pending] of [...this.#pending]) this.#finish(name, pending)
+    for (const [serverKey, pending] of [...this.#pending]) this.#finish(serverKey, pending)
   }
 
   async #await(
+    serverKey: string,
     name: string,
     url: string,
+    scope: string | undefined,
     pending: Pending,
     provider: McpOAuthProvider,
     state: string,
@@ -107,20 +125,22 @@ export class McpAuth {
         serverUrl: url,
         authorizationCode: answer.code,
         ...(answer.iss === undefined ? {} : { iss: answer.iss }),
+        ...(scope === undefined ? {} : { scope }),
       })
       info('mcp server authorized', { name })
-      this.#finish(name, pending)
-      await this.#authorized(name)
+      this.#challenges.delete(key(name, url))
+      this.#finish(serverKey, pending)
+      await this.#authorized(serverKey)
     } catch (failure) {
-      if (this.#pending.get(name) === pending) {
+      if (this.#pending.get(serverKey) === pending) {
         warn('mcp authorization did not finish', { name, error: String(failure) })
       }
-      this.#finish(name, pending)
+      this.#finish(serverKey, pending)
     }
   }
 
-  #finish(name: string, pending: Pending): void {
-    if (this.#pending.get(name) === pending) this.#pending.delete(name)
+  #finish(serverKey: string, pending: Pending): void {
+    if (this.#pending.get(serverKey) === pending) this.#pending.delete(serverKey)
     void pending.callback.close().catch(() => undefined)
   }
 

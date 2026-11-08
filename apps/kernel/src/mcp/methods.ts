@@ -4,8 +4,8 @@ import { AgentDoc } from '@earendil-works/pi-durable'
 import type { Conversation, Extension, Harness } from '@earendil-works/pi-durable'
 import { invalidParams, optionalBoolean, optionalObject, optionalString } from '../protocol/rpc.ts'
 import { repoRootOf } from '../workspace.ts'
-import { readConfig, writeEntry, type RawEntry } from './config.ts'
-import type { McpServers } from './servers.ts'
+import { readConfig, withoutConnection, writeEntry, type RawEntry } from './config.ts'
+import { serverKey, type McpServers } from './servers.ts'
 import type { McpAuth } from './oauth.ts'
 
 /** `mcp.list {repoRoot?}`. */
@@ -40,14 +40,23 @@ export async function mcpSet(
         { path: 'repoRoot', message: 'trust is about a repository: name its root' },
       ])
     }
-    await servers.refreshRepo(root)
-    const server = servers.find(name, root)
-    if (server === undefined) {
+    const shown = optionalString(params, 'fingerprint')
+    if (trust && (shown === undefined || shown === '')) {
+      throw invalidParams([
+        { path: 'fingerprint', message: 'trust names the config it was shown: its fingerprint' },
+      ])
+    }
+    const outcome = await servers.trustServer(name, root, trust, shown)
+    if (outcome === 'missing') {
       throw invalidParams([
         { path: 'name', message: `${root}/.factory/mcp.json has no server ${name}` },
       ])
     }
-    await servers.trust(server, trust)
+    if (outcome === 'changed') {
+      throw invalidParams([
+        { path: 'fingerprint', message: `${name} changed since it was shown: list it again` },
+      ])
+    }
     return servers.list(root)
   }
 
@@ -80,29 +89,45 @@ export async function mcpSet(
   return servers.list(root)
 }
 
-/** `mcp.authorize {name}`: the page that signs the person in to an HTTP server. */
+/**
+ * `mcp.authorize {name, repoRoot?}`: the page that signs the person in to an HTTP server: the global one, or with
+ * `repoRoot` that repository's, which has to be trusted first.
+ */
 export async function mcpAuthorize(
   servers: McpServers,
   auth: McpAuth,
   params: Record<string, unknown>,
 ): Promise<unknown> {
+  const name = requiredName(params)
+  const root = await rootParam(params)
+  const found = await servers.authorizable(name, root)
+  if (!found.ok) {
+    const message = {
+      missing: `no server ${name}`,
+      'not-http': `${name} is not an HTTP server`,
+      untrusted: `${name} runs only once it is allowed`,
+    }[found.reason]
+    throw invalidParams([{ path: 'name', message }])
+  }
+  return auth.authorize(found.key, name, found.url)
+}
+
+/** `mcp.authorize.cancel {name, repoRoot?}`: stop waiting for that server's sign-in. */
+export async function mcpAuthorizeCancel(
+  auth: McpAuth,
+  params: Record<string, unknown>,
+): Promise<unknown> {
+  const name = requiredName(params)
+  const root = await rootParam(params)
+  auth.cancel(serverKey(name, root))
+  return {}
+}
+
+function requiredName(params: Record<string, unknown>): string {
   const name = optionalString(params, 'name')
   if (name === undefined || name === '')
     throw invalidParams([{ path: 'name', message: 'a server name is required' }])
-  await servers.refreshGlobal()
-  const found = servers.httpServer(name)
-  if (found === undefined)
-    throw invalidParams([{ path: 'name', message: `no HTTP server ${name}` }])
-  return auth.authorize(name, found.url)
-}
-
-/** The fields of an entry that say what to run: replaced together, so an old url never outlives a new command. */
-const CONNECTION = ['type', 'transport', 'command', 'args', 'env', 'cwd', 'url', 'headers']
-
-function withoutConnection(entry: RawEntry): RawEntry {
-  const out: RawEntry = {}
-  for (const [key, value] of Object.entries(entry)) if (!CONNECTION.includes(key)) out[key] = value
-  return out
+  return name
 }
 
 function connectionOf(config: Record<string, unknown>): RawEntry {

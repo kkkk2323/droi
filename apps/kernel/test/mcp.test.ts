@@ -15,7 +15,7 @@ import { fauxAssistantMessage, fauxToolCall } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 import { context } from '../src/session/service.ts'
-import { toolClass } from '../src/policy/decide.ts'
+import { setToolClass, toolClass } from '../src/policy/decide.ts'
 
 /** MCP servers (design/m3-kernel.md §4): the global file's, a repository's after trust, and their tools. */
 
@@ -80,6 +80,7 @@ type Server = {
   tools: string[]
   repoRoot?: string
   trusted?: boolean
+  fingerprint?: string
   command?: string
   args?: string[]
   error: string | null
@@ -89,6 +90,14 @@ async function servers(client: Client, repoRoot?: string): Promise<Server[]> {
   return (await client.call('mcp.list', repoRoot === undefined ? {} : { repoRoot }))[
     'servers'
   ] as Server[]
+}
+
+/** What the Allow button does: trust the config as `mcp.list` showed it. */
+async function trust(client: Client, name: string, repoRoot: string): Promise<void> {
+  const shown = (await servers(client, repoRoot)).find(
+    (s) => s.name === name && s.repoRoot === repoRoot,
+  )
+  await client.call('mcp.set', { name, repoRoot, trust: true, fingerprint: shown?.fingerprint })
 }
 
 async function until<T>(read: () => Promise<T | undefined>, timeoutMs = 20_000): Promise<T> {
@@ -247,7 +256,7 @@ describe("a repository's server", () => {
     await Bun.sleep(300)
     expect(pids(marker)).toEqual([])
 
-    await b.client.call('mcp.set', { name: 'repo', repoRoot: root, trust: true })
+    await trust(b.client, 'repo', root)
     await status(b.client, 'repo', 'connected', root)
     expect(pids(marker).length).toBe(1)
     expect(await offered(b, inRepo)).toContain('repo___echo')
@@ -263,7 +272,7 @@ describe("a repository's server", () => {
     const root = repository({ repo: fakeServer(marker) })
     const first = await boot(dir)
     await servers(first.client, root)
-    await first.client.call('mcp.set', { name: 'repo', repoRoot: root, trust: true })
+    await trust(first.client, 'repo', root)
     await status(first.client, 'repo', 'connected', root)
     const [pid] = pids(marker)
     first.client.close()
@@ -279,7 +288,7 @@ describe("a repository's server", () => {
     await until(async () => (alive(next!) ? undefined : true), 10_000)
     expect(alive(pid!)).toBe(false)
 
-    await second.client.call('mcp.set', { name: 'repo', repoRoot: root, trust: true })
+    await trust(second.client, 'repo', root)
     await status(second.client, 'repo', 'connected', root)
     writeFileSync(
       join(root, '.factory', 'mcp.json'),
@@ -301,7 +310,14 @@ describe("a repository's server", () => {
         .code,
     ).toBe(-32602)
     expect(
-      (await b.client.fails('mcp.set', { name: 'nope', repoRoot: root, trust: true })).code,
+      (
+        await b.client.fails('mcp.set', {
+          name: 'nope',
+          repoRoot: root,
+          trust: true,
+          fingerprint: 'x',
+        })
+      ).code,
     ).toBe(-32602)
   }, 60_000)
 
@@ -320,4 +336,87 @@ describe("a repository's server", () => {
     expect(await offered(b, elsewhere)).toContain('fake___echo')
     expect(await offered(b, inRepo)).not.toContain('fake___echo')
   }, 60_000)
+})
+
+describe('trust and change', () => {
+  test('an Allow names the config it was shown: a file changed since is asked again, and nothing runs', async () => {
+    const dir = data()
+    const shownMarker = join(dir, 'shown')
+    const newMarker = join(dir, 'new')
+    const root = repository({ repo: fakeServer(shownMarker) })
+    const b = await boot(dir)
+    const shown = await status(b.client, 'repo', 'untrusted', root)
+    expect(shown.fingerprint).toMatch(/^[0-9a-f]{64}$/)
+    writeFileSync(
+      join(root, '.factory', 'mcp.json'),
+      JSON.stringify({ mcpServers: { repo: fakeServer(newMarker) } }),
+    )
+    const refused = await b.client.fails('mcp.set', {
+      name: 'repo',
+      repoRoot: root,
+      trust: true,
+      fingerprint: shown.fingerprint,
+    })
+    expect(refused.code).toBe(-32602)
+    expect(
+      (await b.client.fails('mcp.set', { name: 'repo', repoRoot: root, trust: true })).code,
+    ).toBe(-32602)
+    await Bun.sleep(300)
+    expect(pids(shownMarker)).toEqual([])
+    expect(pids(newMarker)).toEqual([])
+    expect((await status(b.client, 'repo', 'untrusted', root)).fingerprint).not.toBe(
+      shown.fingerprint,
+    )
+  }, 60_000)
+
+  test('two refreshes while the file changes never start a config nobody trusted', async () => {
+    const dir = data()
+    const trustedMarker = join(dir, 'trusted')
+    const otherMarker = join(dir, 'other')
+    const root = repository({ repo: { ...fakeServer(trustedMarker), disabled: true } })
+    const b = await boot(dir)
+    await trust(b.client, 'repo', root)
+    const file = join(root, '.factory', 'mcp.json')
+    writeFileSync(file, JSON.stringify({ mcpServers: { repo: fakeServer(trustedMarker) } }))
+    const first = servers(b.client, root)
+    writeFileSync(file, JSON.stringify({ mcpServers: { repo: fakeServer(otherMarker) } }))
+    const second = servers(b.client, root)
+    await Promise.all([first, second])
+    await status(b.client, 'repo', 'untrusted', root)
+    await Bun.sleep(300)
+    expect(pids(otherMarker)).toEqual([])
+  }, 60_000)
+
+  test("a repository's entry takes the fields it does not set from the global one, and is asked about", async () => {
+    const dir = data()
+    const marker = join(dir, 'marker')
+    writeGlobal(dir, { fake: fakeServer(marker) })
+    const root = repository({ fake: { args: ['run', serverPath, '--repo'] } })
+    const b = await boot(dir)
+    await status(b.client, 'fake', 'connected')
+    const asked = (await servers(b.client, root)).find((s) => s.repoRoot === root)!
+    expect(asked).toMatchObject({
+      status: 'untrusted',
+      command: process.execPath,
+      args: ['run', serverPath, '--repo'],
+    })
+    await trust(b.client, 'fake', root)
+    await until(async () =>
+      (await servers(b.client, root)).find((s) => s.repoRoot === root)?.status === 'connected'
+        ? true
+        : undefined,
+    )
+    expect(pids(marker).length).toBe(2)
+  }, 60_000)
+})
+
+test('a tool name two servers register is a read only while both say it is', () => {
+  setToolClass('same___tool', 'mcp-aaaa-same', 'read')
+  expect(toolClass('same___tool')).toBe('read')
+  setToolClass('same___tool', 'mcp-bbbb-same', 'exec')
+  expect(toolClass('same___tool')).toBe('exec')
+  setToolClass('same___tool', 'mcp-bbbb-same', undefined)
+  expect(toolClass('same___tool')).toBe('read')
+  setToolClass('same___tool', 'mcp-aaaa-same', undefined)
+  expect(toolClass('same___tool')).toBe('exec')
 })

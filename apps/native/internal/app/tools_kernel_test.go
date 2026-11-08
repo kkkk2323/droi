@@ -145,15 +145,20 @@ func TestAKernelRepositoryServerRunsOnlyOnceAllowed(t *testing.T) {
 	}
 
 	h.click("Allow repo")
-	h.until("the repository's server connected", func() bool { return !h.hasText("Waiting for your OK") && startedPids(repoMarker) == 1 })
-	listed, err := h.testConn().MCP(ctx, kernel.MCPListParams{RepoRoot: repo})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range listed.Servers {
-		if s.Status != "connected" {
-			t.Errorf("%s is %s, not connected: %+v", s.Name, s.Status, s)
+	h.until("the repository's server connected", func() bool {
+		listed, err := h.testConn().MCP(ctx, kernel.MCPListParams{RepoRoot: repo})
+		if err != nil {
+			t.Fatal(err)
 		}
+		for _, s := range listed.Servers {
+			if s.Status != "connected" {
+				return false
+			}
+		}
+		return len(listed.Servers) == 2 && !h.hasText("Waiting for your OK")
+	})
+	if n := startedPids(repoMarker); n != 1 {
+		t.Fatalf("the repository's server ran %d times", n)
 	}
 
 	h.click("mine enabled")

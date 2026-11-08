@@ -512,11 +512,14 @@ type MCPServer struct {
 	// RepoRoot and Trusted say which repository brought the server and whether
 	// the user allowed it; Command/Args/URL are what the user is being asked to
 	// allow.
-	RepoRoot string   `json:"repoRoot,omitempty"`
-	Trusted  *bool    `json:"trusted,omitempty"`
-	Command  string   `json:"command,omitempty"`
-	Args     []string `json:"args,omitempty"`
-	URL      string   `json:"url,omitempty"`
+	RepoRoot string `json:"repoRoot,omitempty"`
+	Trusted  *bool  `json:"trusted,omitempty"`
+	// Fingerprint names the exact config of a repository's server: allowing it
+	// sends this back, so a file changed since it was shown is asked again.
+	Fingerprint string   `json:"fingerprint,omitempty"`
+	Command     string   `json:"command,omitempty"`
+	Args        []string `json:"args,omitempty"`
+	URL         string   `json:"url,omitempty"`
 }
 
 // MCPServers is the MCP server list.
@@ -546,11 +549,17 @@ type MCPSetParams struct {
 	// started until one of these says so.
 	RepoRoot string `json:"repoRoot,omitempty"`
 	Trust    *bool  `json:"trust,omitempty"`
+	// Fingerprint is the config the user was shown (MCPServer.Fingerprint);
+	// Trust true needs it.
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 // MCPAuthorizeParams is mcp.authorize's and mcp.authorize.cancel's params.
 type MCPAuthorizeParams struct {
 	Name string `json:"name"`
+	// RepoRoot names a repository's server rather than the global one of that
+	// name; it is signed in to only once the user allowed it.
+	RepoRoot string `json:"repoRoot,omitempty"`
 }
 
 // MCPAuthorizeResult is the page the user opens to authorize a server.

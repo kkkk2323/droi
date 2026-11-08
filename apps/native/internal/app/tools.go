@@ -366,7 +366,7 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 	k, t := a.kit, a.kit.T
 	off := s.Enabled != nil && !*s.Enabled
 	sw, can := skills.SkillSwitch(s, project)
-	onKernel := v.tools.onKernel
+	onKernel := v.tools.kernel()
 	if onKernel {
 		// Kernel turns any skill off, for every conversation.
 		can = true
@@ -519,7 +519,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 	k, t := a.kit, a.kit.T
 	ts := &v.tools
 	ts.mu.Lock()
-	busy := ts.busy == s.Name
+	busy, onKernel := ts.busy == s.Name, ts.onKernel
 	var tools []protocol.MCPToolInfo
 	for _, tool := range ts.mcpTools {
 		if tool.ServerName == s.Name {
@@ -530,7 +530,6 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 	status := string(s.Status)
 	label := l10n.T(trimOr(mcp.StatusLabels[status], status))
 	readOnly, droi, on := mcp.IsReadOnly(s), mcp.IsDroiMemory(s), status != "disabled"
-	onKernel := ts.onKernel
 	project := string(s.Source) == "project"
 	if onKernel {
 		// A repository's server is switched in its own file; Kernel turns only global ones on and off.
@@ -613,7 +612,7 @@ func (v *sessionView) serverRow(c *ui.Context, s protocol.MCPServerStatusInfo) {
 						return b.Clicked()
 					}
 					if onKernel && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, L("Sign in")) {
-						v.signInKernel(name)
+						v.signInKernel(name, v.kernelRoot(name, project))
 					}
 					if !onKernel && !readOnly && on && mcp.NeedsSignIn(s) && s.PendingAuthURL == "" && small(kit.Outline, L("Sign in")) {
 						v.mcpCall(name, func(cl mcpClient) error {
@@ -715,8 +714,8 @@ func (v *sessionView) signInNotice(c *ui.Context, s protocol.MCPServerStatusInfo
 		}
 		b := k.Button(c, kit.Ghost, 24, false, L("Cancel")).PaddingX(k.Px(8))
 		b.Children(func() { k.Text(c, L("Cancel"), 12, 16).FontWeight(500) })
-		if b.Clicked() && v.tools.onKernel {
-			v.cancelKernelSignIn(name)
+		if b.Clicked() && v.tools.kernel() {
+			v.cancelKernelSignIn(name, v.kernelRoot(name, string(s.Source) == "project"))
 			return
 		}
 		if b.Clicked() {
@@ -739,7 +738,7 @@ func (v *sessionView) subHeader(c *ui.Context, title string, back func()) {
 }
 
 func (v *sessionView) addServer(params protocol.AddMCPServerParams) {
-	if v.tools.onKernel {
+	if v.tools.kernel() {
 		v.addKernelServer(params)
 		return
 	}

@@ -74,6 +74,26 @@ function parseFile(path: string): ConfigFile {
   return { entries }
 }
 
+/** The fields of an entry that say what to run: replaced together, so an old url never outlives a new command. */
+export const CONNECTION = ['type', 'transport', 'command', 'args', 'env', 'cwd', 'url', 'headers']
+
+export function withoutConnection(entry: RawEntry): RawEntry {
+  const out: RawEntry = {}
+  for (const [key, value] of Object.entries(entry)) if (!CONNECTION.includes(key)) out[key] = value
+  return out
+}
+
+/**
+ * A repository's entry over the global one of the same name (design/m3-kernel.md §4.1): field by field, so a
+ * repository can change only the arguments of a command the user set up. An entry that names its own command or
+ * url replaces the global one's connection whole.
+ */
+export function mergeEntry(global: RawEntry | undefined, repo: RawEntry): RawEntry {
+  if (global === undefined) return repo
+  const ownConnection = typeof repo['command'] === 'string' || typeof repo['url'] === 'string'
+  return { ...(ownConnection ? withoutConnection(global) : global), ...repo }
+}
+
 /** Whether an entry only switches a server of the same name on or off, adding nothing that runs. */
 export function onlySwitches(entry: RawEntry): boolean {
   return Object.keys(entry).every((key) => key === 'enabled' || key === 'disabled')

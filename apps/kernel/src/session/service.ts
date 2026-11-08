@@ -51,7 +51,7 @@ import { expandSlash } from '../resources/expand.ts'
 import type { Asks } from '../ask/asks.ts'
 import type { Background } from '../processes/background.ts'
 import type { McpServers } from '../mcp/servers.ts'
-import { mcpAuthorize, mcpList, mcpSet, selectServers } from '../mcp/methods.ts'
+import { mcpAuthorize, mcpAuthorizeCancel, mcpList, mcpSet, selectServers } from '../mcp/methods.ts'
 import type { McpAuth } from '../mcp/oauth.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
@@ -190,12 +190,7 @@ export class Kernel implements Dispatcher {
     })
     add('mcp.authorize.cancel', (p) => {
       this.#writable()
-      const name = optionalString(p, 'name')
-      if (name === undefined || name === '') {
-        throw invalidParams([{ path: 'name', message: 'a server name is required' }])
-      }
-      this.#options.mcpAuth.cancel(name)
-      return {}
+      return mcpAuthorizeCancel(this.#options.mcpAuth, p)
     })
     add('skills.list', (p) => this.#skillsList(p))
     add('skills.setDisabled', (p) => this.#skillsSetDisabled(p))
