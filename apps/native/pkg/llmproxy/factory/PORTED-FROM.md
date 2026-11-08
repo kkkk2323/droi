@@ -64,6 +64,8 @@ says or for its size, rather than for the key.
 | ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | `price.go`: `Price` | `PROMOTIONS` 173-179, `rateOf` 186-190    | every promotion of droid 0.241.1's registry, ended ones too, so the price agrees with droid's at any instant |
 
+Upstream's `PROMOTIONS` lists five promotions; droid's registry (`testdata/droid-0.241.1-costs.txt`) has more, `M` on the GPT and Grok models among them. `price.go` follows droid's registry: do not drop those to match upstream's list.
+
 `route_test.go` checks every model id against the excerpts of droid's registry
 upstream keeps in `testdata/` (copied byte for byte; `client-phrases.json` is
 copied the same way for `TestThePhrasesAreUpstreams`).

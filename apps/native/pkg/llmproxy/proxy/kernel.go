@@ -49,8 +49,8 @@ func (p *Proxy) SetKernelToken(token string) {
 	p.mu.Unlock()
 }
 
-// fromKernel reports whether req carries the Kernel's token: as a bearer token, or in X-Api-Key, where Anthropic's
-// clients send their key.
+// fromKernel reports whether req carries the Kernel's token: as a bearer token, in X-Api-Key, where Anthropic's
+// clients send their key, or in X-Goog-Api-Key, where Google's do.
 func (p *Proxy) fromKernel(req *http.Request) (kernelClient, bool) {
 	p.mu.Lock()
 	k := p.kernel
@@ -58,7 +58,7 @@ func (p *Proxy) fromKernel(req *http.Request) (kernelClient, bool) {
 	if k.token == "" {
 		return k, false
 	}
-	for _, got := range []string{keys.NormalizeBearerToken(req.Header.Get("Authorization")), req.Header.Get("X-Api-Key")} {
+	for _, got := range []string{keys.NormalizeBearerToken(req.Header.Get("Authorization")), req.Header.Get("X-Api-Key"), req.Header.Get("X-Goog-Api-Key")} {
 		if subtle.ConstantTimeCompare([]byte(got), []byte(k.token)) == 1 {
 			return k, true
 		}
