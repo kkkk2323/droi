@@ -46,6 +46,7 @@ func Headers(h http.Header, id Identity, path, model, sessionID string) {
 	if strings.Contains(path, "/llm/a/") {
 		h.Set("X-Api-Key", "placeholder")
 	}
+	FastBeta(h, path, model)
 }
 
 // Upstream is the vendor a request names in x-api-provider: its model's, or for a model droid does not offer, the

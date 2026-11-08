@@ -35,9 +35,11 @@ var geminiCall = regexp.MustCompile(`(?i)/models/([^/:]+):(?:stream)?generateCon
 // it goes to, its body, and whether either changed. A Gemini request in
 // Google's shape goes to Factory's own route, /api/llm/g/v1/generate, the
 // model in its body; when the path changes, the request's query goes too.
-// Then the body takes droid's shape for its route (chat completions,
-// Responses, Messages, Gemini), and last, every refused phrase still in it is
-// escaped. A body that cannot be read goes as it came.
+// A Fast Mode request names its Fast Mode model and asks for its speed
+// (fastBody; FastBeta is its header). Then the body takes droid's shape for
+// its route (chat completions, Responses, Messages, Gemini), and last, every
+// refused phrase still in it is escaped. A body that cannot be read goes as
+// it came.
 func Request(path string, body []byte) (string, []byte, bool) {
 	changed := false
 	if loc := geminiCall.FindStringSubmatchIndex(path); loc != nil && strings.Contains(path, "/llm/g/") {
@@ -49,7 +51,10 @@ func Request(path string, body []byte) (string, []byte, bool) {
 		body, _ = geminiBody(model, body)
 		changed = true
 	} else {
+		var sped bool
+		body, sped = fastBody(path, body)
 		body, changed = dialectBody(path, body)
+		changed = changed || sped
 	}
 	// Last: a phrase escaped earlier must not be escaped again.
 	body, escaped := sanitizeBody(body, anywherePhrases)

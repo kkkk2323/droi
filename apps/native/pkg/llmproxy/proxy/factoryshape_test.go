@@ -238,3 +238,23 @@ func decodeJSON(t *testing.T, body []byte) map[string]any {
 	}
 	return m
 }
+
+// A request that asks a model for fast reaches its Fast Mode model with the fast-mode beta, as droid sends one.
+func TestProxy_SendsAFastRequestToItsFastModeModel(t *testing.T) {
+	up := newRecorded()
+	upstream := httptest.NewServer(http.HandlerFunc(up.handler))
+	defer upstream.Close()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+	body := `{"model":"claude-opus-5-5","speed":"fast","system":[{"type":"text","text":"` + factory.DroidLine + `"}],"messages":[{"role":"user","content":"hi"}]}`
+	resp, _ := postFactory(t, px.BaseURL(), "/api/llm/a/v1/messages", strings.NewReader(body), nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	_, sent, head, _ := up.last(t)
+	if got := decodeJSON(t, sent); got["model"] != "claude-opus-5-5-fast" || got["speed"] != "fast" {
+		t.Fatalf("sent %s", sent)
+	}
+	if head.Get("Anthropic-Beta") != factory.FastModeBeta {
+		t.Fatalf("anthropic-beta %q", head.Get("Anthropic-Beta"))
+	}
+}

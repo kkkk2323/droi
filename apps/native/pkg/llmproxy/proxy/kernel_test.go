@@ -390,3 +390,33 @@ func TestTheCacheWarmerKeepsNoKernelConversation(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A Kernel conversation on a Fast Mode model is served fast: speed "fast" in the body, the fast-mode beta beside it.
+func TestAKernelFastModeRequestIsServedFast(t *testing.T) {
+	f := newFakeFactory(t)
+	px := startKernelProxy(t, f.upstream.URL, f, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	body := `{"model":"claude-opus-5-5-fast","max_tokens":8,"stream":true,"system":[{"type":"text","text":"Be brief."}],"messages":[{"role":"user","content":"hi"}]}`
+	status, out := postKernel(t, px.BaseURL(), "/api/llm/a/v1/messages", body, "9")
+	if status != 200 {
+		t.Fatalf("%d %s", status, out)
+	}
+	seen := f.requests()
+	if len(seen) != 1 {
+		t.Fatalf("Factory saw %d requests", len(seen))
+	}
+	var got struct {
+		Model string `json:"model"`
+		Speed string `json:"speed"`
+	}
+	raw, _ := io.ReadAll(seen[0].Body)
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "claude-opus-5-5-fast" || got.Speed != "fast" {
+		t.Fatalf("sent %s", raw)
+	}
+	if h := seen[0].Header; h.Get("Anthropic-Beta") != factory.FastModeBeta || h.Get("X-Api-Provider") != "anthropic" {
+		t.Fatalf("headers %v", h)
+	}
+}
