@@ -17,21 +17,26 @@ than as a JavaScript OpenCode plugin. The design is
 
 ## What is here now
 
-`droidbody.go` opens a request's system prompt with droid's line. Factory's
-usage policy check refuses a request that says it is something else with 403
-`content_policy_rejected`, which is what the Kernel's own prompt got before
-this layer existed (M1 acceptance, 2026-11-08).
+`factory.Request(path, body)` is the way in. A Gemini request in Google's own
+shape moves to Factory's `/generate` route with the model in its body; the body
+takes droid's shape for its route; last, every refused phrase still in it is
+escaped (`sanitizeBody`). Factory's usage policy check refuses, with 403
+`content_policy_rejected`, a request whose system prompt does not open with
+droid's line (M1 acceptance, 2026-11-08) and one that holds another client's
+fixed phrases, pi's compaction opening among them (yetone/magpie#952, #1316).
 
-| Go                                     | upstream (`index.mjs`)                     | notes                                                                                                                 |
-| -------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `DroidBody`, the route switch          | `droidBody` 613-651                        | only the identity half: no `promptOpenings`, no `temperature`/`top_p` removal for OpenAI models                       |
-| `chatBody`, `droidChat`, `openContent` | `droidChat` 581-611                        | a chat completions first system message, string or parts                                                              |
-| `responsesBody`                        | `droidBody`'s `/responses` branch, 630-644 | string `instructions` only; the input is left as it came                                                              |
-| `anthropicBody`                        | `anthropicBody` 1609-1674                  | system blocks only: empty blocks go, the line is first, duplicate lines go; no billing header, no Claude Code context |
-| `geminiBody`                           | `geminiBody` 663-698                       | the system instruction only, its role removed; the model in the body and the `/generate` path are not here            |
-| `DroidLine`                            | `DROID_LINE` 470                           | the same sentence, byte for byte                                                                                      |
-
-4A adds what a request needs around its body when the client holds no key (the
+| Go                                                  | upstream (`index.mjs`, first line)                                                                         | notes                                                                                                         |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `Request`, the route switch                         | `GEMINI_CALL` 661, `droidBody` 617, `send`'s Gemini path 2059                                              | `fastBody` is 4C, the Anthropic tool schema wrapping 4E                                                       |
+| `chatBody`, `droidChat`, `openContent`              | `droidChat` 583                                                                                            | a chat completions first system message, string or parts                                                      |
+| `responsesBody`                                     | `droidBody`'s `/responses` branch, 630                                                                     | instructions; an OpenAI model's `temperature` and `top_p` go (633); the input gets `promptOpenings`           |
+| `anthropicBody`                                     | `anthropicBody` 1609                                                                                       | pi's half: system blocks, pi's opening and summaries; `context_management` off a streamed request (1738)      |
+| `geminiBody`                                        | `geminiBody` 669                                                                                           | the model in the body, no `stream`, no role on the system instruction; refused phrases escaped (699)          |
+| `openings.go`                                       | `PI_OPENING`/`PI_COMPAT`/`clientOpening` 478, `PI_SUMMARIES`/`piSummary` 494, `promptOpenings` 554         | pi's half only (see Deliberate differences)                                                                   |
+| `escape.go`                                         | `QUOTED_TOOL_PREFIX` 1447, `quotedToolText` 1459, `escapePhrases` 1474, `escapeDeep` 1490, `sanitizeBody` 1518 | tool output quoted as a JSON string, a `\u` escape for the first character elsewhere                     |
+| `phrases.go`                                        | `client-phrases.json`, `FALLBACK_PHRASES` 515, `REFUSED_PHRASES` 1449, `ESCAPE_IN_TOOL` 1457               | the strings are written with `\u` escapes, so reading this source cannot trip the check                       |
+| `DroidLine`                                         | `DROID_LINE` 470                                                                                           | the same sentence, byte for byte                                                                              |
+4A added what a request needs around its body when the client holds no key (the
 Kernel, decision Q15): the proxy picks a Key Pool key and sends the request as
 droid would.
 
@@ -45,20 +50,31 @@ droid would.
 | `explain.go`: `ContentRefused` | `contentRefused` 412-422                             | only to keep a content refusal from being blamed on the key; the explanation itself is 4D                              |
 
 `route_test.go` checks every model id against the excerpts of droid's registry
-upstream keeps in `testdata/` (copied byte for byte).
+upstream keeps in `testdata/` (copied byte for byte; `client-phrases.json` is
+copied the same way for `TestThePhrasesAreUpstreams`).
 
-The golden cases in `droidbody_test.go` come from the upstream tests
-`droid.test.mjs` (the cases that cover the routes Droi sends), which are
-themselves the built-in's `TestFactoryOpensAsDroid`.
+## Golden cases
+
+The subtests keep the upstream names, so a diff of upstream's tests finds them.
+
+| Go                      | upstream                                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `openings_test.go`      | `pi.test.mjs`, all 12                                                                                     |
+| `gemini_test.go`        | `gemini.test.mjs`, 4 of 5 (the EU route is the proxy's `LLMBase` test)                                     |
+| `escape_test.go`        | `request.test.mjs`'s three tool output cases (422, 450, 485); the phrase list against `client-phrases.json` |
+| `shape_request_test.go` | `droid.test.mjs`'s `temperature`/`top_p` (198) and 1017 (83) cases; `request.test.mjs` 168 and 204         |
+| `droidbody_test.go`     | `droid.test.mjs`'s opening cases, which are the built-in's `TestFactoryOpensAsDroid`                       |
+
+`shape_request_test.go`'s `context_management` case has no upstream test; it
+holds `anthropicBody`'s lines 1738-1743. The `compactContext` cases are not
+ported: that adapter rewrites Claude Code's compaction, which Droi does not send.
 
 ## What comes later
 
-4B and 4C of the M4 plan (`shared/design/phased-plan.md` §6) add the rest of
-the upstream layer to this package: pi's opening and compaction sentences,
-`escapeDeep` and the refusal phrase list, `fastBody`, the OpenAI `temperature`
-rule, the whole four-dialect body shaping, the 413 attachment drop and the 403
-explanations. Model display names, limits and prices come with 4F. Those functions and their golden tests are listed in
-`shared/design/gap-analysis.md` §6.
+4C-4E and 4H of the M4 plan (`shared/design/phased-plan.md` §6): `fastBody`
+and the Fast Mode pairs, the 413 attachment drop, the 403 explanations, the
+Anthropic tool schema wrapping, and the rest of the golden cases. Model display
+names, limits and prices come with 4F, the usage windows with 4G.
 
 ## Deliberate differences
 
@@ -67,6 +83,19 @@ explanations. Model display names, limits and prices come with 4F. Those functio
   body whose instructions already open with the line; here the original bytes
   are returned, so droid's own requests keep their exact bytes (and prompt
   cache).
+- **Only pi's half of the prompt adapters.** Upstream's `promptText`,
+  `systemMessageText`, `userText`, `userBlockText` and `compactContext` mostly
+  adapt Claude Code's and ZCode's fixed shapes. Droi's Kernel sends none of
+  them; what it does send is pi's opening and pi's two summary openings, and
+  those are here. The phrases of the other clients are still escaped.
+- **Numbers keep their spelling.** `sanitizeBody` decodes with `UseNumber`, so
+  an integer past 2^53 is not rounded on its way through.
+- **No HTML escaping.** Adapted text keeps `<`, `>` and `&` as they are, as
+  `JSON.stringify` writes them.
+- **A message that cannot change is not decoded.** `promptOpenings` checks for
+  pi's sentence, `/summary` (an escaped `</summary>` is `\u003c/summary\u003e`)
+  or tool output with `bytes.Contains` first, so a long conversation's other
+  messages cost no parse.
 - **A content array whose first part already opens with the line is left
   alone.** The reference prepends the line to any array that holds a part that
   is not text, so a request with an image first would collect one line per
@@ -74,7 +103,6 @@ explanations. Model display names, limits and prices come with 4F. Those functio
 - **A system prompt of a shape droid does not send is left as it came**,
   rather than guessed at: a non-string `instructions`, a `system` block whose
   `text` is not a string, a Gemini `parts` that is not an array.
-
 ## Keeping up
 
 `shared/design/architecture-draft.md` §5.8 describes the weekly Automation that

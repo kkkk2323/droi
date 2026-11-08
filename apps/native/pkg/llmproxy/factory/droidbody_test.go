@@ -171,42 +171,45 @@ var cases = []struct {
 		want: `{"model":"claude-opus-5-5","system":[{"type":"text","text":"«line»"},{"type":"text","text":"You are Claude Code."}],"messages":[{"role":"user","content":"hi"}]}`,
 	},
 	{
-		name: "gemini: the system instruction opens with the line, its role goes",
+		name: "gemini: the system instruction opens with the line, its role goes, the model is in the body",
 		path: gemini,
 		in:   `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"systemInstruction":{"role":"system","parts":[{"text":"You are a coding agent."}]}}`,
-		want: `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"systemInstruction":{"parts":[{"text":"«line»\nYou are a coding agent."}]}}`,
+		want: `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"model":"gemini-3-pro","systemInstruction":{"parts":[{"text":"«line»\nYou are a coding agent."}]}}`,
 	},
 	{
 		name: "gemini: no system instruction is the line alone",
 		path: gemini,
-		in:   `{"contents":[]}`,
-		want: `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»"}]}}`,
+		in:   `{"contents":[],"stream":true}`,
+		want: `{"contents":[],"model":"gemini-3-pro","systemInstruction":{"parts":[{"text":"«line»"}]}}`,
 	},
 	{
 		name: "gemini: a string system instruction becomes one text part",
 		path: gemini,
 		in:   `{"contents":[],"systemInstruction":"You are a coding agent."}`,
-		want: `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»\nYou are a coding agent."}]}}`,
+		want: `{"contents":[],"model":"gemini-3-pro","systemInstruction":{"parts":[{"text":"«line»\nYou are a coding agent."}]}}`,
 	},
 	{
-		name: "gemini: an instruction that opens with the line goes as it came",
+		name: "gemini: an instruction that opens with the line keeps its parts",
 		path: gemini,
 		in:   `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»"},{"text":"Be brief."}]}}`,
+		want: `{"contents":[],"model":"gemini-3-pro","systemInstruction":{"parts":[{"text":"«line»"},{"text":"Be brief."}]}}`,
 	},
 	{
 		name: "gemini: the role goes even when the line is already first",
 		path: gemini,
 		in:   `{"contents":[],"systemInstruction":{"role":"system","parts":[{"text":"«line»"}]}}`,
-		want: `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»"}]}}`,
+		want: `{"contents":[],"model":"gemini-3-pro","systemInstruction":{"parts":[{"text":"«line»"}]}}`,
 	},
 	{
-		name: "gemini: a system instruction of another shape goes as it came",
+		name: "gemini: parts of another shape are none",
 		path: gemini,
 		in:   `{"contents":[],"systemInstruction":{"parts":"hi"}}`,
-	}, {
-		name: "gemini: droid's own request goes as it came",
-		path: gemini,
-		in:   `{"contents":[],"systemInstruction":{"parts":[{"text":"«line»\nYou work here."}]}}`,
+		want: `{"contents":[],"model":"gemini-3-pro","systemInstruction":{"parts":[{"text":"«line»"}]}}`,
+	},
+	{
+		name: "gemini: droid's own request, on Factory's route, goes as it came",
+		path: "/api/llm/g/v1/generate",
+		in:   `{"model":"gemini-3-pro","contents":[],"systemInstruction":{"parts":[{"text":"«line»\nYou work here."}]}}`,
 	},
 	{
 		name: "a route with no shape goes as it came",
@@ -225,11 +228,11 @@ var cases = []struct {
 	},
 }
 
-func TestDroidBody(t *testing.T) {
+func TestRequestBody(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			in := strings.ReplaceAll(tc.in, "«line»", DroidLine)
-			got, changed := DroidBody(tc.path, []byte(in))
+			_, got, changed := Request(tc.path, []byte(in))
 			if tc.want == "" {
 				if changed || string(got) != in {
 					t.Fatalf("changed a body that should go as it came:\n got %s\nwant %s", got, in)
@@ -247,12 +250,46 @@ func TestDroidBody(t *testing.T) {
 }
 
 // A body that needs no change comes back as the very bytes it came with, so
-// droid's own requests reach Factory byte for byte.
-func TestDroidBodyReturnsTheSameSlice(t *testing.T) {
-	body := []byte(`{"model":"glm-5.3","messages":[{"role":"system","content":"` + DroidLine + `"}]}`)
-	got, changed := DroidBody(chat, body)
-	if changed || &got[0] != &body[0] {
-		t.Fatalf("changed=%v, same slice=%v", changed, &got[0] == &body[0])
+// droid's own requests reach Factory byte for byte, a large integer, a
+// float's own spelling and an escape included.
+func TestRequestReturnsTheSameSlice(t *testing.T) {
+	for _, body := range [][]byte{
+		[]byte(`{"model":"glm-5.3","messages":[{"role":"system","content":"` + DroidLine + `"}]}`),
+		[]byte(`{"model":"claude-opus-5-5","system":[{"type":"text","text":"` + DroidLine + `"}],"messages":[{"role":"user","content":"\u003cb\u003e"}],"max_tokens":9007199254740993,"temperature":1.0}`),
+	} {
+		_, got, changed := Request(messagesOrChat(body), body)
+		if changed || &got[0] != &body[0] {
+			t.Fatalf("changed=%v, same slice=%v: %s", changed, &got[0] == &body[0], body)
+		}
+	}
+}
+
+func messagesOrChat(body []byte) string {
+	if strings.Contains(string(body), "claude") {
+		return messages
+	}
+	return chat
+}
+
+// Request on a Gemini request in Google's shape: Factory's route, the query
+// the caller drops, the model in the body as Google's clients escape it.
+func TestAGeminiRequestGoesToFactorysRoute(t *testing.T) {
+	for _, tc := range []struct{ in, path, model string }{
+		{"/api/llm/g/v1/models/gemini-4-argon:streamGenerateContent", "/api/llm/g/v1/generate", "gemini-4-argon"},
+		{"/api/llm/g/v1/models/gemini-3.5-flash:generateContent", "/api/llm/g/v1/generate", "gemini-3.5-flash"},
+		{"/api/llm/g/v1/models/gemini%2D3:StreamGenerateContent", "/api/llm/g/v1/generate", "gemini-3"},
+	} {
+		path, body, changed := Request(tc.in, []byte(`{"contents":[]}`))
+		if !changed || path != tc.path {
+			t.Fatalf("%s: went to %s, changed %v", tc.in, path, changed)
+		}
+		if got := decodeBody(t, string(body)).(map[string]any)["model"]; got != tc.model {
+			t.Fatalf("%s: the model in the body is %v", tc.in, got)
+		}
+	}
+	// Only Gemini's route: a path elsewhere that ends so is left alone.
+	if path, _, _ := Request("/api/llm/o/v1/models/x:generateContent", []byte(`{}`)); path != "/api/llm/o/v1/models/x:generateContent" {
+		t.Fatalf("an OpenAI path went to %s", path)
 	}
 }
 

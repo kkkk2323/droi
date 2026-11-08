@@ -27,10 +27,10 @@ func bigChat(t testing.TB, size int, opened bool) []byte {
 	return mustJSON(map[string]any{"model": "deepseek-v4.1-flash-1017", "messages": messages, "stream": true})
 }
 
-// The proxy runs DroidBody on every model request: this is what it costs on a
+// The proxy runs Request on every model request: this is what it costs on a
 // long Session, once for a request that needs opening and once for one that
 // does not (the Daemon's own, and every later turn of an opened one).
-func BenchmarkDroidBody(b *testing.B) {
+func BenchmarkRequest(b *testing.B) {
 	for _, size := range []int{4 << 10, 256 << 10, 1 << 20} {
 		for _, opened := range []bool{false, true} {
 			body := bigChat(b, size, opened)
@@ -38,7 +38,7 @@ func BenchmarkDroidBody(b *testing.B) {
 			b.Run(name, func(b *testing.B) {
 				b.SetBytes(int64(len(body)))
 				for b.Loop() {
-					_, _ = DroidBody("/api/llm/o/v1/chat/completions", body)
+					_, _, _ = Request("/api/llm/o/v1/chat/completions", body)
 				}
 			})
 		}

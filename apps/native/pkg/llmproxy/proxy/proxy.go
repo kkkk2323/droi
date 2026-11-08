@@ -318,13 +318,15 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, req *http.Request) {
 		plain := raw
 		if dec, err := decodeWireBody(req.Header.Get("Content-Encoding"), raw); err == nil {
 			plain = dec
-			// Factory's usage policy check refuses a request whose system
-			// prompt does not open with droid's line (403
-			// content_policy_rejected); the Daemon's own requests already do,
-			// and come back as they came.
-			if shaped, opened := factory.DroidBody(upstreamPath, plain); opened {
+			// Factory's usage policy check refuses a request that does not
+			// look like droid's (403 content_policy_rejected); the Daemon's
+			// own requests already do, and come back as they came.
+			if to, shaped, changed := factory.Request(upstreamPath, plain); changed {
 				if wire, err := encodeWireBody(req.Header.Get("Content-Encoding"), shaped); err == nil {
 					raw, plain = wire, shaped
+					if to != upstreamPath {
+						upstreamPath, upstreamURL = to, upstreamBase+to
+					}
 				}
 			}
 		}

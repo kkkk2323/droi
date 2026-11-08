@@ -59,7 +59,10 @@ const kernelChat = `{"model":"deepseek-v4.1-flash-1017","messages":[{"role":"sys
 func TestProxy_OpensAFactoryRequestAsDroidDoes(t *testing.T) {
 	for _, tc := range []struct {
 		name, path, body string
-		want             func(t *testing.T, got map[string]any)
+		// The path the upstream gets, when the request moves routes (Gemini's
+		// Google path becomes Factory's /generate).
+		wantPath string
+		want     func(t *testing.T, got map[string]any)
 	}{
 		{
 			name: "chat completions", path: "/api/llm/o/v1/chat/completions", body: kernelChat,
@@ -103,13 +106,17 @@ func TestProxy_OpensAFactoryRequestAsDroidDoes(t *testing.T) {
 		},
 		{
 			name: "gemini", path: "/api/llm/g/v1/models/gemini-3-pro:streamGenerateContent",
-			body: `{"contents":[],"systemInstruction":{"parts":[{"text":"You are a coding agent."}]}}`,
+			wantPath: "/api/llm/g/v1/generate",
+			body:     `{"contents":[],"systemInstruction":{"parts":[{"text":"You are a coding agent."}]}}`,
 			want: func(t *testing.T, got map[string]any) {
 				si, _ := got["systemInstruction"].(map[string]any)
 				parts, _ := si["parts"].([]any)
 				first, _ := parts[0].(map[string]any)
 				if want := factory.DroidLine + "\nYou are a coding agent."; first["text"] != want {
 					t.Fatalf("systemInstruction %v", si)
+				}
+				if got["model"] != "gemini-3-pro" {
+					t.Fatalf("the model in the body is %v", got["model"])
 				}
 			},
 		},
@@ -125,8 +132,12 @@ func TestProxy_OpensAFactoryRequestAsDroidDoes(t *testing.T) {
 				t.Fatalf("status %d", resp.StatusCode)
 			}
 			path, body, _, length := up.last(t)
-			if path != tc.path {
-				t.Fatalf("upstream path %q", path)
+			wantPath := tc.wantPath
+			if wantPath == "" {
+				wantPath = tc.path
+			}
+			if path != wantPath {
+				t.Fatalf("upstream path %q, want %q", path, wantPath)
 			}
 			tc.want(t, decodeJSON(t, body))
 			if length != int64(len(body)) {
