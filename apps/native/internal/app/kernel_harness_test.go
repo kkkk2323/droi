@@ -185,29 +185,55 @@ func (ks *kernelSessions) add(t *testing.T, session string, m fakedaemon.Message
 // seen is when Kernel says a person last saw Session session, and its last activity, in Unix ms.
 func (ks *kernelSessions) seen(t *testing.T, session string) (viewed, activity int64) {
 	t.Helper()
+	s := ks.row(t, session)
+	if s.ViewedAt != nil {
+		viewed = *s.ViewedAt
+	}
+	return viewed, s.LastActivityAt
+}
+
+// row is Kernel's row of Session session's conversation, live or archived.
+func (ks *kernelSessions) row(t *testing.T, session string) kernel.Summary {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	params := kernel.ListParams{Limit: 200}
-	for range 100 {
-		res, err := ks.client(t).List(ctx, params)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, s := range res.Items {
-			if s.ID == ks.convs[session] {
-				if s.ViewedAt != nil {
-					viewed = *s.ViewedAt
-				}
-				return viewed, s.LastActivityAt
+	for _, archived := range []bool{false, true} {
+		params := kernel.ListParams{Limit: 200, Archived: &archived}
+		for range 100 {
+			res, err := ks.client(t).List(ctx, params)
+			if err != nil {
+				t.Fatal(err)
 			}
+			for _, s := range res.Items {
+				if s.ID == ks.convs[session] {
+					return s
+				}
+			}
+			if len(res.Cursor) == 0 || len(res.Items) == 0 || bytes.Equal(res.Cursor, params.Cursor) {
+				break
+			}
+			params.Cursor = res.Cursor
 		}
-		if len(res.Cursor) == 0 || len(res.Items) == 0 || bytes.Equal(res.Cursor, params.Cursor) {
-			break
-		}
-		params.Cursor = res.Cursor
 	}
 	t.Fatalf("Kernel does not list %s", session)
-	return 0, 0
+	return kernel.Summary{}
+}
+
+// archivedOnBackend waits until the backend that holds Session id was asked to archive it, or to unarchive it: the
+// Daemon's daemon.archive_session, or Kernel's row.
+func (h *harness) archivedOnBackend(id string, archived bool) {
+	h.t.Helper()
+	if h.kernel == nil {
+		method := "daemon.archive_session"
+		if !archived {
+			method = "daemon.unarchive_session"
+		}
+		if _, err := h.d.WaitForRequest(method, 1); err != nil {
+			h.t.Fatal(err)
+		}
+		return
+	}
+	h.until("Kernel's row", func() bool { return h.kernel.row(h.t, id).Archived == archived })
 }
 
 // id is Config.KernelID for the window: the conversation that holds a Session the scenario described.

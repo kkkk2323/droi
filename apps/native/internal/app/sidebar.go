@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/archive"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
@@ -971,6 +972,13 @@ func (a *App) renameField(c *ui.Context, s sessions.Summary, flat bool) {
 }
 
 func (a *App) renameSession(id, title string) {
+	if c, err := a.kernel.client(); err == nil {
+		// A title a person gives is a chosen one, which no generated name replaces. index.changed moves the row.
+		if conv, ok := a.kernelID(id); ok {
+			_ = c.UpdateIndex(a.ctx, kernel.IndexUpdateParams{ID: conv, Title: kernel.TitleText(title)})
+		}
+		return
+	}
 	cl, err := a.ctl.Client()
 	if err != nil {
 		return
@@ -985,10 +993,13 @@ func (a *App) toggleArchive(s sessions.Summary) { _ = a.archive(s) }
 // archive archives the Session, or unarchives an archived one. A Scratch
 // Session's conversation goes with its folder, through the Gateway.
 func (a *App) archive(s sessions.Summary) error {
-	cl, err := a.ctl.Client()
-	if err != nil {
+	var cl archive.Controller
+	if c, err := a.kernel.client(); err == nil {
+		cl = kernelArchive{a: a, c: c}
+	} else if cl, err = a.ctl.Client(); err != nil {
 		return err
 	}
+	var err error
 	a.mu.Lock()
 	listed := append([]sessions.Summary(nil), a.listed...)
 	a.mu.Unlock()
@@ -1011,6 +1022,28 @@ func (a *App) archive(s sessions.Summary) error {
 	}
 	a.reloadList()
 	return err
+}
+
+// kernelArchive archives on Kernel: a conversation's index row says it is archived.
+type kernelArchive struct {
+	a *App
+	c *kernel.Client
+}
+
+func (k kernelArchive) set(ctx context.Context, id string, archived bool) error {
+	conv, ok := k.a.kernelID(id)
+	if !ok {
+		return fmt.Errorf("no Kernel conversation holds %s", id)
+	}
+	return k.c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: conv, Archived: &archived})
+}
+
+func (k kernelArchive) ArchiveSession(ctx context.Context, p protocol.ArchiveSessionParams) (*protocol.ArchiveSessionResult, error) {
+	return &protocol.ArchiveSessionResult{}, k.set(ctx, p.SessionID, true)
+}
+
+func (k kernelArchive) UnarchiveSession(ctx context.Context, p protocol.UnarchiveSessionParams) (*protocol.UnarchiveSessionResult, error) {
+	return &protocol.UnarchiveSessionResult{}, k.set(ctx, p.SessionID, false)
 }
 
 // noScratch is a window without a Gateway: it has no folders to move.

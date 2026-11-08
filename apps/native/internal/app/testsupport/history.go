@@ -238,13 +238,20 @@ func ImportSessions(ctx context.Context, k Importer, sc fakedaemon.Scenario, ids
 			return nil, fmt.Errorf("session %q: %w", s.Title, err)
 		}
 		p := kernel.ImportParams{Title: s.Title, Cwd: s.Cwd, CreatedAt: &created, Agent: agent}
+		if scratchOnly(s.Extra["tags"]) {
+			p.Kind = "scratch"
+		}
+		if at, ok := s.Extra["archivedAt"]; ok && at != nil && at != "" {
+			archived := true
+			p.Archived = &archived
+		}
 		var conv kernel.ID
 		for first := true; first || len(entries) > 0; first = false {
 			batch := entries[:min(importBatch, len(entries))]
 			entries = entries[len(batch):]
 			p.Entries, p.ID = batch, conv
 			if conv != 0 {
-				p.Title, p.Cwd, p.CreatedAt, p.Agent = "", "", nil, nil
+				p.Title, p.Cwd, p.CreatedAt, p.Agent, p.Kind, p.Archived = "", "", nil, nil, "", nil
 			}
 			if p.Entries == nil {
 				// A Session with no messages yet: Kernel takes an empty batch, not a missing one.
