@@ -44,6 +44,11 @@ export type ToolProcesses = {
   env: (target: { cwd?: string }) => NodeExecutionEnv
   /** Stop every tool this Kernel started, including a background process it left behind. */
   stop: (context: Context) => Promise<void>
+  /**
+   * A group this Kernel started itself (`bash_background`), so a stop ends it like a tool shell's: `exited`
+   * is called when its leader exits.
+   */
+  adopt: (pid: number) => { exited: () => void }
 }
 
 /** One tool shell's group, and when it stopped being a live claim on its number. */
@@ -152,6 +157,10 @@ export function createToolProcesses(options: {
   }
 
   return {
+    adopt: (pid) => {
+      spawned(pid)
+      return { exited: () => exited(pid) }
+    },
     env: (target) => {
       const environment = new NodeExecutionEnv({
         cwd: target.cwd ?? options.cwd ?? process.cwd(),

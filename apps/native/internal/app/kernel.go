@@ -289,6 +289,11 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 					a.sessions.ApplyAskResolved(gen, res)
 					a.awaitApproval(res.ID, res.RequestID, false)
 				}
+			case kernel.NotifyProcessChanged:
+				var changed kernel.ProcessChanged
+				if n.Decode(&changed) == nil {
+					go func() { _ = a.sessions.ReadProcesses(a.ctx, &a.kernel, gen, changed.ID) }()
+				}
 			case kernel.NotifyPolicyChanged:
 				var changed kernel.PolicyChanged
 				if n.Decode(&changed) == nil {

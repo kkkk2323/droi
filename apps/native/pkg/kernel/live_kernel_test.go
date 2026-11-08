@@ -230,17 +230,15 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			return c.UpdateIndex(ctx, IndexUpdateParams{ID: id, Title: TitleText(title)})
 		}, 0},
 		{"process.list", func() error { _, err := c.Processes(ctx, id); return err }, 0},
-		// M1 answers the write methods of a capability it does not have with
-		// -32009, which is what these three report.
-		{"process.stop", func() error { _, err := c.StopProcess(ctx, StopProcessParams{ID: id, ProcessID: "nope"}); return err }, CodeUnsupported},
+		{"process.stop", func() error { _, err := c.StopProcess(ctx, StopProcessParams{ID: id, ProcessID: "nope"}); return err }, CodeProcessGone},
 		{"approval.respond", func() error {
 			_, err := c.RespondApproval(ctx, ApprovalRespondParams{RequestID: "nope", Outcome: ApprovalCancel})
 			return err
-		}, CodeUnsupported},
+		}, CodeRequestGone},
 		{"ask.respond", func() error {
 			_, err := c.RespondAsk(ctx, AskRespondParams{RequestID: "nope", Cancelled: boolPtr(true)})
 			return err
-		}, CodeUnsupported},
+		}, CodeRequestGone},
 		{"mcp.list", func() error { _, err := c.MCP(ctx, MCPListParams{}); return err }, 0},
 		{"mcp.set", func() error {
 			_, err := c.SetMCP(ctx, MCPSetParams{Name: "walk", Server: &MCPServerConfig{Transport: "http", URL: "https://example.invalid/mcp"}})

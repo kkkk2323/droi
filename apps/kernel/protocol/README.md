@@ -459,21 +459,40 @@ Three qualifications a client that reads a range needs:
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
-The M3 methods not built yet still answer their M1 shape: `process.list` returns `{"processes":[]}`,
-`mcp.list` returns an empty list, and `policy.set`, the write methods and the two `*.respond` methods are
+The M3 methods not built yet still answer their M1 shape: `mcp.list` returns an empty list, and `policy.set`, the write methods and the two `*.respond` methods are
 `-32009` until their capability is true. `skills.list`, `skills.setDisabled` and `resources.list` are built
 (`skills` and `resources` are true). `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
 
-### `process.stop`
+### Background processes: `bash_background`, `process.list`, `process.stop`
+
+The `bash_background {command, cwd?}` tool starts a command that keeps running after the call, and answers at
+once with `{processId, pid, logPath}` (also its `structuredOutput`). It runs in the shell `bash` uses
+(PowerShell on a Windows without Git Bash), in the conversation's working directory or `cwd` relative to
+it, with stdout and stderr in `<data>/logs/<conversation>/<processId>.log`. Its start and its end are
+`droi.process` entries (`running`, then `done`, `failed` or `stopped`), each announced by
+`process.changed`; the end carries `exitCode` and the last 4 KiB of the log as `tail`. The approval policy
+judges it as it judges `bash`.
+
+`process.list {id}` answers every process the conversation's transcript names, newest state each:
+`{id, pid, command, logPath, startedAt, status, exitCode?, endedAt?, callId?}` with `status` in the
+`process.changed` words (`exited` for an entry's `done`); `callId` is the `bash_background` call that started
+it, so a client can show the process beside that call.
 
 `process.stop` ends a background process and everything it started, and answers `{status}`: `stopped`, or
-`gone` when there was nothing left to stop. On macOS and Linux the kernel signals the process group (SIGTERM,
-then SIGKILL after 5 s). On Windows there is no group to signal, so it runs `taskkill /T /F` — but only while
-this run of the kernel still holds the child's handle, which keeps the PID from naming another program. A
-process the kernel no longer holds (it was started before a restart) answers `gone`: the Host's Job Object
-already ended it when the old kernel went.
+`gone` when there was nothing left to stop; a `processId` the conversation never had is `-32011`. On macOS
+and Linux the kernel signals the process group (SIGTERM, then SIGKILL after 5 s), and only while the group
+is still the one it started, by the rule a shutdown uses (below): never a bare PID. On Windows there is no
+group to signal, so it runs `taskkill /T /F` — but only while this run of the kernel still holds the child's
+handle, which keeps the PID from naming another program. A process the kernel no longer holds on Windows
+(it was started before a restart) answers `gone`: the Host's Job Object already ended it when the old
+kernel went.
+
+**Background processes end with the kernel**, like every tool process: a kernel that stops ends them and
+records `stopped`. A kernel killed with `SIGKILL` cannot; on macOS and Linux the next start finds the
+processes it left (`droi_processes`, a table of the running ones), keeps listing those whose group still
+holds a member as old as the process, and can still stop them; the rest read `stopped`.
 
 ### The list, and what it leaves out
 
@@ -638,7 +657,7 @@ so a client can build the card before the feature lands:
 | `droi.approval` | `{requestId, tool, args, status, outcome?, scope?, at}`                         | the approval layer | M3     |
 | `droi.ask`      | `{requestId, questions[], context, blocking, status, answers?, cancelled?, at}` | the ask tool       | M3     |
 | `droi.subagent` | `{parentCallId, childConversationId, title, status}`                            | the subagent tool  | M4     |
-| `droi.process`  | `{processId, pid, command, logPath, status, exitCode?, at}`                     | `bash_background`  | M3     |
+| `droi.process`  | `{processId, pid, command, logPath, callId?, status, exitCode?, at}`            | `bash_background`  | M3     |
 
 `status` is the entry's current state, one of `pending` / `allowed` / `denied` / `abandoned` for an
 approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
