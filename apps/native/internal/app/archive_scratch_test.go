@@ -107,9 +107,7 @@ func TestArchivingAScratchSessionMovesItsFolderToTheTrashAndUnarchivingRestoresI
 
 	h.chooseFromMenu("Name the dog", "Unarchive")
 	h.until("the folder back", func() bool { return folderExists(cwd) })
-	if _, err := h.d.WaitForRequest("daemon.unarchive_session", 1); err != nil {
-		t.Fatal(err)
-	}
+	h.archivedOnBackend("chat-1", false)
 }
 
 func TestArchivingAScratchSessionKeepsTheFolderAnotherUnarchivedSessionStillUses(t *testing.T) {
@@ -138,7 +136,7 @@ func TestArchivingASessionInAWorkspaceTouchesNoFolder(t *testing.T) {
 	scratch := newScratchTrash(t)
 	h := startHarnessGateway(t, sessionsScenario(), "", "", scratch.options, nil)
 	h.chooseFromMenu("Fix the login race", "Archive")
-	h.until("the archive", func() bool { return h.count("daemon.archive_session") == 1 })
+	h.archivedOnBackend(h.d.Sessions[2].SessionID, true)
 	h.settle()
 	if moved := scratch.moved(); len(moved) != 0 {
 		t.Fatalf("trashed %v", moved)

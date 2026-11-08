@@ -15,6 +15,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
 // The window's view tests were written against the Fake Daemon's Scenario, and most of them still are: they
@@ -153,6 +154,9 @@ func sessionNeeds(s fakedaemon.SessionSpec) error {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
+		if k == "tags" && scratchOnly(s.Extra[k]) {
+			continue
+		}
 		needs, known := extraNeeds[k]
 		if !known {
 			return &UnsupportedScenarioError{Feature: "SessionSpec.Extra " + k, Needs: "a Kernel counterpart, which no milestone names yet", Detail: s.Title}
@@ -162,6 +166,25 @@ func sessionNeeds(s fakedaemon.SessionSpec) error {
 		}
 	}
 	return nil
+}
+
+// scratchOnly says a Session's tags make it a Scratch Session and nothing more: a conversation of kind scratch.
+func scratchOnly(tags any) bool {
+	var names []string
+	switch v := tags.(type) {
+	case []map[string]any:
+		for _, t := range v {
+			name, _ := t["name"].(string)
+			names = append(names, name)
+		}
+	case []any:
+		for _, t := range v {
+			m, _ := t.(map[string]any)
+			name, _ := m["name"].(string)
+			names = append(names, name)
+		}
+	}
+	return len(names) > 0 && !slices.ContainsFunc(names, func(n string) bool { return n != sessions.ScratchTag })
 }
 
 // windowTurns is how many messages of a window test stream their reply as the Turn says; the rest get its text at
