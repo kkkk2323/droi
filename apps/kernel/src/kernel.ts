@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { Harness, createRegistry } from '@earendil-works/pi-durable'
+import { Harness, createRegistry, defineExtension, section } from '@earendil-works/pi-durable'
 import type { Extension, HarnessSettings, Registry, Storage } from '@earendil-works/pi-durable'
 import { SqliteStorage } from '@earendil-works/pi-durable/storage/sqlite'
 import { createToolProcesses, type ToolProcesses } from './tool-processes.ts'
@@ -35,6 +35,8 @@ import { reconcilePending } from './reconcile.ts'
 
 /** What this build is, for `harness.info` and the handshake. Bumped with a Pi upgrade or our own fix. */
 export const VERSION = 'kernel-1.5.0-1'
+/** The extension that carries the brand's app's section (ADR 0041). */
+export const APP_EXTENSION = 'droi-app'
 export const PI_VERSION = '1.5.0'
 
 /** What M1 implements. The rest is M3/M4; `harness.info` says so instead of failing at the call site. */
@@ -141,8 +143,14 @@ export async function startKernel(
       onRead: (file, at) => server?.broadcast('memory.read', { file, at: at.toISOString() }),
       history: () => indexer,
     })
+    // The brand's app's section (ADR 0041), read at each turn so harness.configure can change it.
+    const appSection = defineExtension({
+      name: APP_EXTENSION,
+      sections: [section(APP_EXTENSION, () => config.app?.section ?? '', { tag: false })],
+    })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
+    registry.install(appSection)
     registry.install(approvalHook)
     registry.install(resources)
     registry.install(askTool)
@@ -165,6 +173,7 @@ export async function startKernel(
         askTool,
         backgroundTool,
         codemode,
+        appSection,
         ...(options.extensions ?? []),
       ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
@@ -242,6 +251,7 @@ export async function startKernel(
     if (caughtUp > 0) info('index caught up', { entries: caughtUp, watermark: indexer.watermark })
 
     const policy = new PolicyStore({
+      ...(config.app === undefined ? {} : { appAllows: config.app.alwaysAllow }),
       ...(config.policy === undefined ? {} : { initial: config.policy }),
       ...(config.policyWaitMs === undefined ? {} : { waitMs: config.policyWaitMs }),
       onChanged: (id, snapshot) => server?.broadcast('policy.changed', { id, policy: snapshot }),
@@ -269,6 +279,9 @@ export async function startKernel(
       namespaces,
       version: VERSION,
       context,
+      ...(config.app === undefined
+        ? {}
+        : { app: { servers: config.app.mcpServers, blockOnLoad: config.app.blockOnLoad } }),
     })
     const servers = mcp
     const mcpAuth = new McpAuth(config.dataDir, (key) => servers.reconnect(key))

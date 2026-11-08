@@ -56,6 +56,19 @@ function handle(message: {
   if (message.id === undefined || message.method === undefined) return
   switch (message.method) {
     case 'initialize':
+      // DELAY holds the answer back, as a server that is slow to start does.
+      if (process.env['DELAY'] !== undefined) {
+        const id = message.id
+        const params = message.params
+        setTimeout(() => {
+          answer(id, {
+            protocolVersion: params?.['protocolVersion'] ?? '2025-06-18',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'fake', version: '1.0.0' },
+          })
+        }, Number(process.env['DELAY']))
+        return
+      }
       answer(message.id, {
         protocolVersion: message.params?.['protocolVersion'] ?? '2025-06-18',
         capabilities: { tools: {} },

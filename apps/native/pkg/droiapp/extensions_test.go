@@ -83,3 +83,36 @@ func TestExtensionsRegister(t *testing.T) {
 		t.Errorf("words %q", got)
 	}
 }
+
+// The extensions' Agents join into what the Kernel is given: servers by name, the first's kept; every tool that runs
+// without asking, once; sections in order, a blank line between them.
+func TestExtensionsAgentsJoin(t *testing.T) {
+	a := extension.Extension{Agent: func(*host.Host) extension.Agent {
+		return extension.Agent{
+			MCPServers:  []extension.AgentMCPServer{{Name: "db", Command: "/bin/db", Args: []string{"serve"}, BlockOnLoad: true}},
+			AlwaysAllow: []string{"db___query"},
+			Section:     " Use db for data. ",
+		}
+	}}
+	b := extension.Extension{Agent: func(*host.Host) extension.Agent {
+		return extension.Agent{
+			MCPServers:  []extension.AgentMCPServer{{Name: "db", URL: "https://other"}, {Name: "wiki", URL: "https://wiki", Headers: map[string]string{"X": "1"}}, {}},
+			AlwaysAllow: []string{"db___query", "wiki___read", ""},
+		}
+	}}
+	c := extension.Extension{Agent: func(*host.Host) extension.Agent { return extension.Agent{Section: "Wiki has the runbooks."} }}
+	got := newExtensions([]extension.Extension{a, {}, b, c}).agent(nil)
+	if len(got.MCPServers) != 2 || got.MCPServers["db"].Command != "/bin/db" || !got.MCPServers["db"].BlockOnLoad ||
+		got.MCPServers["wiki"].URL != "https://wiki" || got.MCPServers["wiki"].Headers["X"] != "1" {
+		t.Errorf("servers %+v", got.MCPServers)
+	}
+	if len(got.AlwaysAllow) != 2 || got.AlwaysAllow[0] != "db___query" || got.AlwaysAllow[1] != "wiki___read" {
+		t.Errorf("always allow %v", got.AlwaysAllow)
+	}
+	if got.Section != "Use db for data.\n\nWiki has the runbooks." {
+		t.Errorf("section %q", got.Section)
+	}
+	if !newExtensions(nil).agent(nil).Empty() {
+		t.Error("an agent without an extension")
+	}
+}

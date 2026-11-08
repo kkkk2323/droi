@@ -71,3 +71,11 @@ It is the measuring stick, so it is written out here; the plan for it is in `pha
 - **How the Kernel names an MCP tool**, which `AlwaysAllow` and `ToolViews` both depend on (M3).
 - **Whether an `Agent` may name a Kernel extension's path.** The field arrives with the first app that needs one; neither does today.
 - **When Anlan Droi is upgraded**, and what its 0.15.0 contains beyond the port itself (its own repository and release).
+
+## Where it stands (M4 4Q, 2026-11-08)
+
+- `extension.Agent` exists beside `Overlay` and `SystemPrompt`, which keep reaching the Daemon until it is removed (M5); `droiapp` joins every extension's `Agent` and the Host passes it to each Kernel launch in `DROI_KERNEL_AGENT`. An app that gives no `Section` has its `SystemPrompt` in the Kernel's prompt instead, so it runs on the Kernel before it is ported.
+- The Kernel names an MCP tool `<server>___<tool>` (`apps/kernel/src/mcp/servers.ts`), the name `ToolViews` already used, so their keys do not change.
+- The app's servers replace a user's or a repository's of the same name. `AlwaysAllow` is judged after the user's rules and never stored as theirs. Kernel rules only allow, so "a user who denies a tool still wins" has nothing to deny with yet, and revoking an app's allowance in Settings → Autonomy comes with the Kernel's Autonomy page in M5.
+- `Env.Kernel` gives a page the window's Kernel connection; `Env.Controller` stays until M5. `OwnFactoryHome`, `DroidDownloads` and `Presets.ToolMode` go with the Daemon in M5.
+- Hooks are not mapped (the `Agent` Godoc says so).

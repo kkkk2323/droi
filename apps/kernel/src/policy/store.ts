@@ -21,15 +21,20 @@ export class PolicyStore {
   #markReady!: () => void
   #isReady = false
   readonly #onChanged: (id: number | null, policy: Policy) => void
+  /** The brand's app's tools that run without asking (ADR 0041): judged after the user's rules, never stored. */
+  readonly #appRules: Rule[]
 
   constructor(options: {
     onChanged: (id: number | null, policy: Policy) => void
+    /** Tool names the brand's app lets run without asking. */
+    appAllows?: readonly string[]
     /** A policy known at start (a test, a config file): ready at once. */
     initial?: Policy
     /** How long to wait for the Host's first push before settling at `ask`. */
     waitMs?: number
   }) {
     this.#onChanged = options.onChanged
+    this.#appRules = (options.appAllows ?? []).map((tool) => ({ kind: 'tool', tool }))
     this.#ready = new Promise((resolve) => {
       this.#markReady = () => {
         this.#isReady = true
@@ -56,12 +61,16 @@ export class PolicyStore {
     return this.#defaultSet ? clone(this.#default) : undefined
   }
 
-  /** What a conversation's calls are judged by: its own level, else the default's, and both sets of rules. */
+  /**
+   * What a conversation's calls are judged by: its own level, else the default's, both sets of rules, and the
+   * app's last. The app's are not in any snapshot: the Host stores what `policy.changed` says, and they are not
+   * the user's to keep.
+   */
   effective(id: number): Policy {
     const own = this.#own.get(id)
     return {
       autonomy: own?.autonomy ?? this.#default.autonomy,
-      rules: [...this.#default.rules, ...(own?.rules ?? [])],
+      rules: [...this.#default.rules, ...(own?.rules ?? []), ...this.#appRules],
     }
   }
 

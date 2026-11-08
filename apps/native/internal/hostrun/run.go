@@ -17,6 +17,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 )
 
 // ErrHostRunning is returned when a Droi Host already answers on this
@@ -39,6 +40,8 @@ type Options struct {
 	// host.Config's fields of the same names, Overlay given the Host.
 	Overlay            func(h *host.Host) host.OverlayOptions
 	AppendSystemPrompt func() string
+	// KernelAgent is the app's part of every Kernel conversation: host.Config's field of the same name.
+	KernelAgent func(h *host.Host) kernel.AppAgent
 	// Start, optional, is called once the Host has started, with Run's ctx;
 	// it returns at once and leaves its work to goroutines of its own.
 	Start func(ctx context.Context, h *host.Host)
@@ -79,6 +82,7 @@ func Run(ctx context.Context, o Options) error {
 		Executable: o.Executable,
 
 		AppendSystemPrompt: o.AppendSystemPrompt,
+		KernelAgent:        o.KernelAgent,
 	}
 	if o.OwnFactoryHome {
 		cfg.FactoryRoot = filepath.Join(cfg.UserData, "factory")

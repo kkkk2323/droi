@@ -126,6 +126,7 @@ func Run(o Options) {
 				Version:            version,
 				Executable:         executable(),
 				Overlay:            exts.overlay,
+				KernelAgent:        exts.agent,
 				Start:              exts.start,
 				AppendSystemPrompt: exts.systemPrompt,
 				OwnFactoryHome:     o.OwnFactoryHome,
@@ -173,6 +174,7 @@ func Run(o Options) {
 		// Read when the Daemon starts, which is after StartServices.
 		Overlay:            func() host.OverlayOptions { return svc.Overlay(exts.overlay(h)) },
 		AppendSystemPrompt: exts.systemPrompt,
+		KernelAgent:        exts.agent,
 		ClientHiddenTools:  func() []string { return svc.ClientHiddenTools() },
 	})
 	svc = hostrun.StartServices(h)

@@ -15,6 +15,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
 )
@@ -57,6 +58,9 @@ type Config struct {
 	// AppendSystemPrompt, optional, follows the System Prompt Addition of
 	// Settings, read at every Session start.
 	AppendSystemPrompt func() string
+	// KernelAgent, optional, is the app's part of every Kernel conversation (ADR 0041), read at each Kernel launch:
+	// MCP servers, tools that run without asking, a prompt section.
+	KernelAgent func(h *Host) kernel.AppAgent
 	// ClientHiddenTools, optional, are the tools the Gateway leaves out of
 	// every Client's Session (disabledToolIds), read at every Session start:
 	// Factory's tools that Droi does its own way, and the Host's tools only
@@ -220,7 +224,10 @@ func (h *Host) changed() {
 // Changed tells listeners the settings changed.
 func (h *Host) Changed() {
 	// Off the caller's goroutine, often the window's: the Kernel may take a moment to answer.
-	go h.kernelMemoryChanged()
+	go func() {
+		h.kernelMemoryChanged()
+		h.kernelSectionChanged()
+	}()
 	h.changed()
 }
 

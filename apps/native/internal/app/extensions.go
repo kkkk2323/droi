@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 )
 
@@ -19,6 +20,10 @@ func (a *App) extensionEnv() extension.Env {
 		Ctx:         a.ctx,
 		Update:      a.cfg.Update,
 		OpenSession: a.OpenSession,
+		Kernel: func() *kernel.Client {
+			c, _ := a.kernel.client()
+			return c
+		},
 	}
 }
 

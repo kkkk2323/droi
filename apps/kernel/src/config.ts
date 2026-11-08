@@ -73,6 +73,57 @@ export type KernelConfig = {
   approvalTimeoutMs?: number
   /** Pushes a second a connection gets per conversation; the contract says at most 5. */
   viewPushesPerSecond?: number
+  /** What the brand's app gives every conversation (`DROI_KERNEL_AGENT`, ADR 0041). */
+  app?: AppAgent
+}
+
+/**
+ * The brand's app's part of every conversation (ADR 0041), as the Host gives it at launch: MCP servers beside the
+ * user's, the tools it lets run without asking, and a prompt section. `harness.configure` changes the section.
+ */
+export type AppAgent = {
+  /** By name, in `mcp.json`'s entry shape. They are not the user's: `mcp.set` neither lists them as editable nor writes them. */
+  mcpServers: Record<string, Record<string, unknown>>
+  /** The servers a turn waits for, up to their first connection's end, before it starts. */
+  blockOnLoad: string[]
+  /** Kernel tool names (`<server>___<tool>`) the approval policy lets run, after the user's own rules. */
+  alwaysAllow: string[]
+  section?: string
+}
+
+/** `DROI_KERNEL_AGENT`: `{mcpServers: {name: {…, blockOnLoad?}}, alwaysAllow: [], section}`, every field optional. */
+export function appAgentFromEnv(env: NodeJS.ProcessEnv = process.env): AppAgent | undefined {
+  const raw = env['DROI_KERNEL_AGENT']
+  if (raw === undefined || raw.trim() === '') return undefined
+  const parsed: unknown = JSON.parse(raw)
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('DROI_KERNEL_AGENT must hold a JSON object')
+  }
+  const value = parsed as Record<string, unknown>
+  const app: AppAgent = { mcpServers: {}, blockOnLoad: [], alwaysAllow: [] }
+  const servers = value['mcpServers'] ?? {}
+  if (typeof servers !== 'object' || servers === null || Array.isArray(servers)) {
+    throw new Error('DROI_KERNEL_AGENT.mcpServers must be an object')
+  }
+  for (const [name, entry] of Object.entries(servers as Record<string, unknown>)) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      throw new Error(`DROI_KERNEL_AGENT.mcpServers.${name} must be an object`)
+    }
+    const { blockOnLoad, ...rest } = entry as Record<string, unknown>
+    app.mcpServers[name] = rest
+    if (blockOnLoad === true) app.blockOnLoad.push(name)
+  }
+  const allow = value['alwaysAllow'] ?? []
+  if (!Array.isArray(allow) || allow.some((tool) => typeof tool !== 'string' || tool === '')) {
+    throw new Error('DROI_KERNEL_AGENT.alwaysAllow must be a list of tool names')
+  }
+  app.alwaysAllow = allow as string[]
+  const section = value['section']
+  if (section !== undefined && section !== null) {
+    if (typeof section !== 'string') throw new Error('DROI_KERNEL_AGENT.section must be a string')
+    if (section.trim() !== '') app.section = section
+  }
+  return app
 }
 
 /** The config file's `agent`: the defaults a new conversation inherits. */
@@ -244,6 +295,7 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
   }
   const fromEnv = providersFromEnv(env)
   const memoryDir = memoryDirFromEnv(env)
+  const app = appAgentFromEnv(env)
   return {
     port: args.port,
     host: args.host,
@@ -256,5 +308,6 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     agent: parseAgentDefaults(file.agent),
     progress: file.progress,
     viewPushesPerSecond: file.viewPushesPerSecond ?? 5,
+    ...(app === undefined ? {} : { app }),
   }
 }
