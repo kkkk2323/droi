@@ -48,7 +48,15 @@ droid would.
 | `headers.go`: `ClientVersion`  | `VERSION` 23                                         | the same release, a constant: there is no droid to ask any more                                                        |
 | `identity.go`: `LLMBase`       | `base` 329, `llmBase` 333-339                        | a base that is not Factory's own API (a test server, a proxy in front) is kept                                         |
 | `identity.go`: `OrgRefused`    | `orgRefused` 405                                     | the proxy asks whoami again and sends once more with the same key                                                      |
-| `explain.go`: `ContentRefused` | `contentRefused` 412-422                             | only to keep a content refusal from being blamed on the key; the explanation itself is 4D                              |
+| `explain.go`: `ContentRefused` | `contentRefused` 412-422                             | keeps a content refusal from being blamed on the key                                                                   |
+
+4D added what the Kernel is told when Factory turns a request away for what it
+says or for its size, rather than for the key.
+
+| Go                                                      | upstream (`index.mjs`)                                                                       | notes                                                                                                   |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `attachments.go`: `LeaveOutAttachments`, `TooLarge`     | `KEEP_ATTACHMENTS`/`LEFT_OUT`/`TOO_LARGE_HINT` 717-722, `DIALECTS` 734, `leaveOutAttachments` 744, `tooLarge` 782 | the proxy asks once more on a 413 (`proxy/kernel.go`), as upstream's `smaller` 2119 does |
+| `explain.go`: `ContentPolicyHint`, `VendorError`, `UpstreamIDs`, `ErrorBody` | `explain` 428 (its content refusal), `vendorError` 952, `upstreamIds` 436, `errorReply` 792 | a content refusal goes back as a 400 with its code, as upstream's 2145-2153 |
 
 `route_test.go` checks every model id against the excerpts of droid's registry
 upstream keeps in `testdata/` (copied byte for byte; `client-phrases.json` is
@@ -66,6 +74,11 @@ The subtests keep the upstream names, so a diff of upstream's tests finds them.
 | `shape_request_test.go` | `droid.test.mjs`'s `temperature`/`top_p` (198) and 1017 (83) cases; `request.test.mjs` 168 and 204         |
 | `droidbody_test.go`     | `droid.test.mjs`'s opening cases, which are the built-in's `TestFactoryOpensAsDroid`                       |
 | `fast_test.go`          | `fast.test.mjs`, 3 of 4 whole; the fourth's order check (its first-24 check is magpie's picker)            |
+| `attachments_test.go`   | `size.test.mjs`'s fourth case; `content-policy.test.mjs`'s last (`contentRefused`)                         |
+| `proxy/kernel_test.go`  | `size.test.mjs`'s first three; `content-policy.test.mjs`'s first three and the upstream-error-header case |
+
+`content-policy.test.mjs`'s whoami case is not ported: the Key Pool tries
+another key for a 403 that is not a content refusal instead.
 
 `shape_request_test.go`'s `context_management` case has no upstream test; it
 holds `anthropicBody`'s lines 1738-1743. The `compactContext` cases are not
@@ -73,8 +86,8 @@ ported: that adapter rewrites Claude Code's compaction, which Droi does not send
 
 ## What comes later
 
-4D, 4E and 4H of the M4 plan (`shared/design/phased-plan.md` §6): the 413 attachment drop, the 403 explanations, the
-Anthropic tool schema wrapping, and the rest of the golden cases. Model display
+4E and 4H of the M4 plan (`shared/design/phased-plan.md` §6): the Anthropic
+tool schema wrapping, and the rest of the golden cases. Model display
 names, limits and prices come with 4F, the usage windows with 4G.
 
 ## Deliberate differences
@@ -101,6 +114,12 @@ names, limits and prices come with 4F, the usage windows with 4G.
   alone.** The reference prepends the line to any array that holds a part that
   is not text, so a request with an image first would collect one line per
   turn.
+- **Only the content refusal is explained to the Kernel.** Another 401 or
+  403 makes the Key Pool try another key; when none is left the Kernel gets
+  the Key Pool's one sentence, and Factory's own answer stays in the proxy's
+  record. Upstream has one account and explains each 403 instead.
+- **The 413 hint names no client's command.** Upstream's says `/compact in
+  Codex or Claude Code`, for magpie's agents.
 - **A system prompt of a shape droid does not send is left as it came**,
   rather than guessed at: a non-string `instructions`, a `system` block whose
   `text` is not a string, a Gemini `parts` that is not an array.

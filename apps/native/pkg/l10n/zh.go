@@ -1344,6 +1344,7 @@ var zh = map[string]string{
 	"Key paused":                                            "key 暂停使用",
 	"Tried another key":                                     "已换一把 key 重试",
 	"No key could serve the request":                        "没有 key 能处理这个请求",
+	"Sent again without older images":                       "已去掉较早的图片后重发",
 	"Started a key":                                         "已启用 key",
 	"Could not start a key":                                 "启用 key 失败",
 	"Waiting keys":                                          "等待启用的 key",
