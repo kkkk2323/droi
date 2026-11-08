@@ -676,6 +676,9 @@ export class Kernel implements Dispatcher {
       const repoRoot = fixed.cwd === undefined ? undefined : await repoRootOf(fixed.cwd)
       await this.#options.indexer.touch(id, activityAt ?? fixed.createdAt, {
         createdAt: fixed.createdAt,
+        // Imported history is the past: the person read it where it was written. The row's activity is the
+        // later of the two, and so is what was seen.
+        viewedAt: Math.max(activityAt ?? fixed.createdAt, fixed.createdAt),
         ...(fixed.kind === undefined ? {} : { kind: fixed.kind }),
         ...(fixed.cwd === undefined ? {} : { workspace: fixed.cwd }),
         ...(repoRoot === undefined ? {} : { repoRoot }),
@@ -855,7 +858,11 @@ export class Kernel implements Dispatcher {
     const watch = await conversation.watch(context, window)
     const view = watch.value
     // A viewer writes nothing, not even "seen": its data directory is another process's.
-    if (!this.#options.config.readOnly) await this.#options.indexer.markViewed(id)
+    if (!this.#options.config.readOnly) {
+      await this.#options.indexer.markViewed(id)
+      // Seen here is seen everywhere: the other clients take the dot off too.
+      await this.#indexChanged(id)
+    }
     // The connection may have gone while this call was reading. Registering then would leave a
     // subscription no close will ever release, and a watch on a conversation nobody sees.
     if (this.#closing || !connection.open) {
@@ -1304,6 +1311,15 @@ export class Kernel implements Dispatcher {
     })
     // The unread dot: a time says "a person has seen everything up to here", `null` asks for it back.
     if (viewedAt !== undefined) await this.#options.indexer.setViewed(id, viewedAt)
+    await this.#indexChanged(id)
+    return {}
+  }
+
+  /**
+   * Tell every client what a conversation's row now says: its title, archive, last activity and when a person
+   * last saw it. `viewedAt` is `null` while nobody has, which is what an unread dot reads.
+   */
+  async #indexChanged(id: number): Promise<void> {
     const row = await this.#options.indexer.conversation(id)
     this.#notifier?.broadcast('index.changed', {
       id,
@@ -1313,8 +1329,8 @@ export class Kernel implements Dispatcher {
         : { titleSource: row.title_source }),
       ...(row?.archived_at === undefined ? {} : { archived: row.archived_at !== null }),
       lastActivityAt: row?.last_activity_at ?? Date.now(),
+      viewedAt: row?.viewed_at ?? null,
     })
-    return {}
   }
 
   /**

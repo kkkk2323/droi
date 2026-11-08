@@ -49,10 +49,16 @@ type Summary struct {
 	Preview string `json:",omitempty"`
 	// ViewedAt is when a person last saw a Kernel conversation, in Unix milliseconds; 0 for not yet.
 	ViewedAt int64 `json:",omitempty"`
+	// ActivityAt is a Kernel conversation's last activity, in Unix milliseconds.
+	ActivityAt int64 `json:",omitempty"`
 	// TitleSource is where a Kernel conversation's title came from: "auto" (its first line, or a generated
 	// name) or "chosen" (somebody named it); "" while it has none.
 	TitleSource string `json:",omitempty"`
 }
+
+// Unread reports whether a Kernel conversation moved after a person last saw it, or was never seen. A Daemon
+// Session is never: the Session Times say whether it is.
+func (s Summary) Unread() bool { return s.ActivityAt > s.ViewedAt }
 
 // Worktree is a Session's worktree: a checkout of RepoRoot at Path, on Branch.
 type Worktree struct {

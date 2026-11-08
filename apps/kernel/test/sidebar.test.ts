@@ -216,8 +216,10 @@ describe('index.update viewedAt', () => {
       if (row === undefined) throw new Error('the conversation is not in the list')
       return row
     }
-    // A create writes no "seen" time; opening the conversation does.
-    expect((await read()).viewedAt).toBeNull()
+    // A create is seen up to itself; opening the conversation writes the time it was opened.
+    const fresh = await read()
+    expect(fresh.viewedAt).toBe(fresh.lastActivityAt)
+    await client.call('index.update', { id, viewedAt: null })
     await client.call('conversation.open', { id })
     expect((await read()).viewedAt).not.toBeNull()
 

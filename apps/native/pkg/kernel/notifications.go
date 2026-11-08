@@ -180,6 +180,9 @@ type IndexChanged struct {
 	TitleSource    string `json:"titleSource,omitempty"`
 	Archived       *bool  `json:"archived,omitempty"`
 	LastActivityAt int64  `json:"lastActivityAt,omitempty"`
+	// ViewedAt is when a person last saw the conversation, nil while nobody has: unread while LastActivityAt is
+	// later.
+	ViewedAt *int64 `json:"viewedAt"`
 }
 
 // Warning is Kernel's own report: Pi onReport's kinds, such as storage_failed,

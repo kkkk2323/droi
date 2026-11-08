@@ -126,6 +126,15 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
       "UPDATE droi_conversations SET title_source = 'auto' WHERE title IS NOT NULL AND title <> ''",
     )
   }
+  // Rows written before a new row started out seen have no `viewed_at`, which reads as unread: every
+  // conversation nobody had opened yet would carry a dot. Once, they are seen up to their last activity; a
+  // `null` a client writes later is a dot it asked for, and stays.
+  if ((await readMeta(db, 'index.viewedSeeded')) === undefined) {
+    await db.run(
+      'UPDATE droi_conversations SET viewed_at = last_activity_at WHERE viewed_at IS NULL',
+    )
+    await writeMeta(db, 'index.viewedSeeded', '1')
+  }
   const version = await readMeta(db, 'index.version')
   const tokenizer = await readMeta(db, 'index.tokenizer')
   if (version === INDEX_VERSION && tokenizer === TOKENIZER) return

@@ -232,6 +232,10 @@ type listMemo struct {
 	timesGen  uint64
 	unread    map[string]bool
 	unreadGen uint64
+	// kernelUnread and kernelUnreadRev are the rows of the list of that revision a person has not seen, on
+	// Kernel.
+	kernelUnread    map[string]bool
+	kernelUnreadRev uint64
 	// firstSeen is decoded from firstSeenRaw, the stored sessionsFirstSeen,
 	// which holds every Session ever listed: decoding it takes about a
 	// millisecond with thousands of them.
@@ -392,7 +396,7 @@ func (a *App) sortOrder(listed []sessions.Summary, busy map[string]activity.Acti
 	o.Manual = a.manualWorkspaces().Get(a.prefs)
 	o.FirstSeen = seen
 	o.Times, _, _ = a.sessionTimes()
-	o.Unread = a.unreadSessions()
+	o.Unread = a.unreadSessions(listed, busy)
 	if len(busy) > 0 {
 		o.Busy = make(map[string]bool, len(busy))
 		for id, doing := range busy {

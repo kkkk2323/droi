@@ -173,6 +173,7 @@ export async function startKernel(
                 ...(row.title_source === null ? {} : { titleSource: row.title_source }),
                 archived: row.archived_at !== null,
                 lastActivityAt: row.last_activity_at,
+                viewedAt: row.viewed_at,
               })
             })
             .catch(() => undefined)
