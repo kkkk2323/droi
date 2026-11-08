@@ -22,9 +22,12 @@ type ID int64
 // String is the ID as text, for logs and map keys.
 func (id ID) String() string { return strconv.FormatInt(int64(id), 10) }
 
-// The protocol's 28 methods.
+// The protocol's methods.
 const (
-	MethodHarnessInfo         = "harness.info"
+	MethodHarnessInfo = "harness.info"
+	// MethodHarnessConfigure is what the Host's settings changed, for a running Kernel: its providers and models, and
+	// Memory on or off. Every connection then hears NotifyHarnessChanged.
+	MethodHarnessConfigure    = "harness.configure"
 	MethodConversationCreate  = "conversation.create"
 	MethodConversationList    = "conversation.list"
 	MethodConversationOpen    = "conversation.open"
@@ -73,7 +76,7 @@ const (
 
 // Methods is every method, in the contract's order.
 var Methods = []string{
-	MethodHarnessInfo, MethodConversationCreate, MethodConversationList,
+	MethodHarnessInfo, MethodHarnessConfigure, MethodConversationCreate, MethodConversationList,
 	MethodConversationOpen, MethodConversationUnwatch, MethodConversationSubmit,
 	MethodConversationAbort, MethodSubmissionAbort, MethodSubmissionGet, MethodConversationConfig,
 	MethodConversationCompact, MethodConversationFork, MethodConversationImport, MethodConversationEntries,
@@ -100,6 +103,8 @@ const (
 	NotifyPolicyChanged = "policy.changed"
 	// NotifyMemoryRead is a Session Summary the model read, which the Host counts (ADR 0042).
 	NotifyMemoryRead = "memory.read"
+	// NotifyHarnessChanged says harness.configure changed what harness.info answers: read it again.
+	NotifyHarnessChanged = "harness.changed"
 )
 
 // MemoryDirEnv names the Memory folder a Kernel is started with when Memory is on; without it a conversation has no

@@ -13,6 +13,11 @@ func (c *Client) Harness(ctx context.Context) (HarnessInfo, error) {
 	return call[HarnessInfo](c, ctx, MethodHarnessInfo, nil)
 }
 
+// HarnessConfigure gives a running Kernel what the Host's settings changed, without a restart.
+func (c *Client) HarnessConfigure(ctx context.Context, p HarnessConfigureParams) error {
+	return c.Call(ctx, MethodHarnessConfigure, p, nil)
+}
+
 // Create makes a conversation, or answers the one an earlier call with the
 // same RequestID made.
 func (c *Client) Create(ctx context.Context, p CreateParams) (CreateResult, error) {

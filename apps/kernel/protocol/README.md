@@ -48,6 +48,7 @@ connection is part of the contract:
 | `mcp.changed`                              | Every connection                                                           |
 | `process.changed`                          | Every connection                                                           |
 | `memory.read`                              | Every connection                                                           |
+| `harness.changed`                          | Every connection                                                           |
 | `warning`                                  | Every connection                                                           |
 
 Views are per connection because a view is a window over a transcript, and each
@@ -401,12 +402,13 @@ page shorter than `limit` is the last.
 
 ## Methods
 
-31 methods. "Capability" names the `harness.info.capabilities` flag that says
+32 methods. "Capability" names the `harness.info.capabilities` flag that says
 whether this build implements the method; `false` means `-32009 unsupported`.
 
 | Method                 | Params                                                                        | Result                                                                    | Capability      | M1  |
 | ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------- | --- |
 | `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?}` | —               | yes |
+| `harness.configure`    | `{providers?, memoryDir?}`                                                    | `{}`                                                                      | —               | no  |
 | `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                  | `conversations` | yes |
 | `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                      | `conversations` | yes |
 | `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                             | `conversations` | yes |
@@ -854,6 +856,17 @@ or a new summary changes no prompt the provider has cached, and a conversation s
 compaction. Each read of a Session Summary sends every connection `memory.read {file, at}`; the Host counts it, so
 the summary does not age out.
 
+### Settings that change while the kernel runs
+
+`harness.configure {providers?, memoryDir?}` is how the Host's settings reach a running kernel, so none of them
+restarts it or stops a run (ADR 0038). `providers` (the shape of `DROI_KERNEL_PROVIDERS`) takes the place of the
+catalog at once: each conversation's next request resolves its model in the new one, and a conversation whose model
+is gone ends its next run without an answer. `memoryDir`, an absolute path or `null`, turns Memory on or off: the `memory`
+extension is installed always and selected per conversation before each turn, as the MCP servers are, so the change
+reaches every conversation at its next turn; a turn under way keeps what it had. Keys never cross the wire: a
+provider names the environment variable its key is read from. Every connection hears `harness.changed {}`. A
+read-only kernel refuses it.
+
 ### `codemode`: scripts that call the conversation's tools
 
 Every conversation is offered the `codemode` tool unless its extensions say otherwise: its argument is
@@ -1061,6 +1074,7 @@ the `<skill>` block the model is sent.
 | `index.changed`      | `{id, title?, titleSource?, archived?, lastActivityAt?, viewedAt}` — `viewedAt` is `null` while a client has asked for the dot                                                                                       |
 | `policy.changed`     | `{id, policy}` — the whole snapshot of that scope; `id` is `null` for the default policy                                                                                                                             |
 | `memory.read`        | `{file, at}` — a Session Summary the model read with `memory_read`, as its path in the Memory folder, and when                                                                                                       |
+| `harness.changed`    | `{}` — `harness.configure` changed the providers, the models or Memory: read `harness.info` again                                                                                                                    |
 | `warning`            | `{kind, message}` — Pi `onReport` kinds: `storage_failed`, `task_faulted`, `task_interrupted`, `migration_failed`, `task_outdated`, `task_error`, `extension_error`, `host_error`, `listener_error`                  |
 
 Who receives each one is in _Connections and subscriptions_ above: only

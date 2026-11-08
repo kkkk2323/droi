@@ -37,55 +37,73 @@ export function supportedApi(api: string): api is SupportedApi {
  */
 export function buildModels(providers: readonly ProviderConfig[]): MutableModels {
   const models = createModels()
-  for (const config of providers) {
-    if (!supportedApi(config.api)) {
-      throw new Error(`provider ${config.id} names an api the kernel does not ship: ${config.api}`)
-    }
-    const api = config.api
-    const list: Model<Api>[] = config.models.map((model) => ({
-      id: model.id,
-      name: model.name ?? model.id,
-      api,
-      provider: config.id,
-      baseUrl: config.baseUrl ?? '',
-      input: model.input ?? ['text'],
-      reasoning: model.reasoning ?? false,
-      contextWindow: model.contextWindow,
-      maxTokens: model.maxTokens,
-      cost: {
-        input: model.cost?.input ?? 0,
-        output: model.cost?.output ?? 0,
-        cacheRead: model.cost?.cacheRead ?? 0,
-        cacheWrite: model.cost?.cacheWrite ?? 0,
-      },
-      headers: config.headers,
-      ...(model.thinkingLevelMap === undefined
-        ? {}
-        : { thinkingLevelMap: model.thinkingLevelMap as Model<Api>['thinkingLevelMap'] }),
-      ...(model.compat === undefined ? {} : { compat: model.compat as Model<Api>['compat'] }),
-    }))
-    models.setProvider(
-      createProvider({
-        id: config.id,
-        name: config.name ?? config.id,
-        baseUrl: config.baseUrl,
-        headers: config.headers,
-        auth: {
-          apiKey: {
-            name: `${config.name ?? config.id} API key`,
-            resolve: async ({ ctx }) => {
-              if (config.apiKeyEnv === undefined) return undefined
-              const key = await ctx.env(config.apiKeyEnv)
-              return key === undefined || key === ''
-                ? undefined
-                : { auth: { apiKey: key }, source: config.apiKeyEnv }
-            },
-          },
-        },
-        models: list,
-        api: apis[config.api](),
-      }),
-    )
-  }
+  for (const config of providers) models.setProvider(providerOf(config))
   return models
+}
+
+/**
+ * Put `next` in place of `before` in a running catalog (`harness.configure`): a provider `before` had and `next`
+ * does not is taken out, every one of `next` is set again. Providers the catalog had from elsewhere (a test's) stay.
+ * A conversation's next request resolves its model in the catalog as it is then.
+ */
+export function replaceProviders(
+  models: MutableModels,
+  before: readonly ProviderConfig[],
+  next: readonly ProviderConfig[],
+): void {
+  const built = next.map(providerOf)
+  for (const old of before) {
+    if (!next.some((provider) => provider.id === old.id)) models.deleteProvider(old.id)
+  }
+  for (const provider of built) models.setProvider(provider)
+}
+
+/** One provider the Host configured, as pi-ai's. */
+function providerOf(config: ProviderConfig) {
+  if (!supportedApi(config.api)) {
+    throw new Error(`provider ${config.id} names an api the kernel does not ship: ${config.api}`)
+  }
+  const api = config.api
+  const list: Model<Api>[] = config.models.map((model) => ({
+    id: model.id,
+    name: model.name ?? model.id,
+    api,
+    provider: config.id,
+    baseUrl: config.baseUrl ?? '',
+    input: model.input ?? ['text'],
+    reasoning: model.reasoning ?? false,
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    cost: {
+      input: model.cost?.input ?? 0,
+      output: model.cost?.output ?? 0,
+      cacheRead: model.cost?.cacheRead ?? 0,
+      cacheWrite: model.cost?.cacheWrite ?? 0,
+    },
+    headers: config.headers,
+    ...(model.thinkingLevelMap === undefined
+      ? {}
+      : { thinkingLevelMap: model.thinkingLevelMap as Model<Api>['thinkingLevelMap'] }),
+    ...(model.compat === undefined ? {} : { compat: model.compat as Model<Api>['compat'] }),
+  }))
+  return createProvider({
+    id: config.id,
+    name: config.name ?? config.id,
+    baseUrl: config.baseUrl,
+    headers: config.headers,
+    auth: {
+      apiKey: {
+        name: `${config.name ?? config.id} API key`,
+        resolve: async ({ ctx }) => {
+          if (config.apiKeyEnv === undefined) return undefined
+          const key = await ctx.env(config.apiKeyEnv)
+          return key === undefined || key === ''
+            ? undefined
+            : { auth: { apiKey: key }, source: config.apiKeyEnv }
+        },
+      },
+    },
+    models: list,
+    api: apis[config.api](),
+  })
 }

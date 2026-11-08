@@ -134,14 +134,13 @@ export async function startKernel(
     /** The MCP servers as codemode groups their tools: `McpServers` keeps the list current. */
     const namespaces: CodemodeNamespace[] = []
     const codemode = codemodeExtension({ sandbox: codemodeSandbox(), namespaces })
-    const memory =
-      config.memoryDir === undefined
-        ? undefined
-        : memoryExtension({
-            dir: config.memoryDir,
-            onRead: (file, at) => server?.broadcast('memory.read', { file, at: at.toISOString() }),
-            history: () => indexer,
-          })
+    // Always installed, and selected per conversation before each turn while Memory is on (selectMemory), so
+    // harness.configure can turn it on or off without a restart. The folder is read as config holds it then.
+    const memory = memoryExtension({
+      dir: () => config.memoryDir,
+      onRead: (file, at) => server?.broadcast('memory.read', { file, at: at.toISOString() }),
+      history: () => indexer,
+    })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
     registry.install(approvalHook)
@@ -149,7 +148,7 @@ export async function startKernel(
     registry.install(askTool)
     registry.install(backgroundTool)
     registry.install(codemode)
-    if (memory !== undefined) registry.install(memory)
+    registry.install(memory)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -166,7 +165,6 @@ export async function startKernel(
         askTool,
         backgroundTool,
         codemode,
-        ...(memory === undefined ? [] : [memory]),
         ...(options.extensions ?? []),
       ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its

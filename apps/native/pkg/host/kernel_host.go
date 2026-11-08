@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
@@ -45,10 +47,16 @@ type kernelHost struct {
 	base          string
 	waitingForKey bool
 	// memoryOn is whether the latest launch was given the Memory folder.
-	memoryOn  bool
-	last      KernelState
-	listeners map[int]func(KernelState)
-	next      int
+	memoryOn bool
+	// link is the Host's own connection to the Kernel, over which a change of its settings reaches it
+	// (configureKernel); unhearLink stops it hearing the Supervisor.
+	link *KernelLink
+	// configuring is held from reading a setting to the Kernel having it, so two changes reach it in their order.
+	configuring sync.Mutex
+	unhearLink  func()
+	last        KernelState
+	listeners   map[int]func(KernelState)
+	next        int
 }
 
 // KernelEnabled reports whether this Host runs a Kernel: a person asked for it, and there is one to run.
@@ -103,7 +111,35 @@ func (h *Host) startKernel() {
 	}
 	sup := k.sup
 	k.mu.Unlock()
+	h.linkKernel()
 	sup.Start()
+}
+
+// linkKernel gives the Host a connection of its own to the Kernel, for configureKernel. Every notification reaches
+// every connection; this one reads them and lets them go, so its queue never fills and closes it.
+func (h *Host) linkKernel() {
+	link := NewKernelLink(KernelLinkOptions{
+		Client: kernel.ClientHost,
+		Token:  h.KernelToken,
+		Log:    func(s string) { log.Println("droi: kernel: host link:", s) },
+		OnClient: func(c *kernel.Client, _ int) {
+			go func() {
+				for range c.Notifications() {
+				}
+			}()
+		},
+	})
+	unhear := h.OnKernelState(link.Use)
+	k := &h.kernel
+	k.mu.Lock()
+	if k.link != nil || k.sup == nil {
+		k.mu.Unlock()
+		unhear()
+		link.Close()
+		return
+	}
+	k.link, k.unhearLink = link, unhear
+	k.mu.Unlock()
 }
 
 // stopKernel stops the Kernel and lets go of the token it was known by, and of the Key Pool's proxy when droid does
@@ -116,7 +152,13 @@ func (h *Host) stopKernel() {
 	k.runs++
 	k.llmToken, k.base, k.waitingForKey = "", "", false
 	h.KeyPool().SetKernelToken("")
+	link, unhear := k.link, k.unhearLink
+	k.link, k.unhearLink = nil, nil
 	k.mu.Unlock()
+	if link != nil {
+		unhear()
+		link.Close()
+	}
 	if sup == nil {
 		return
 	}
@@ -190,12 +232,15 @@ func (h *Host) kernelEnv() []string {
 	return append(env, kernelProvidersEnv+"="+kernelProviders(base))
 }
 
-// kernelPoolChanged starts the Kernel again when the Key Pool moved from under it: the proxy its models point at
-// stopped or moved, or the first key arrived after it started with none.
+// kernelPoolChanged gives the running Kernel new models when the Key Pool moved from under it: the proxy its models
+// point at stopped or moved, or the first key arrived after it started with none. The Kernel keeps running, and so do
+// its runs; only a Kernel that cannot take the change is started again.
 func (h *Host) kernelPoolChanged() {
+	k := &h.kernel
+	k.configuring.Lock()
+	defer k.configuring.Unlock()
 	pool := h.KeyPool()
 	running, keys := pool.BaseURL(), pool.Len()
-	k := &h.kernel
 	k.mu.Lock()
 	sup := k.sup
 	moved := k.base != "" && running != k.base
@@ -205,17 +250,57 @@ func (h *Host) kernelPoolChanged() {
 		return
 	}
 	k.base, k.waitingForKey = "", false
+	token, runs := k.llmToken, k.runs
 	k.mu.Unlock()
+	if providers, ok := h.kernelProvidersNow(token, runs); ok {
+		err := h.configureKernel(kernel.HarnessConfigureParams{Providers: providers})
+		if err == nil {
+			log.Println("droi: kernel: the Key Pool's proxy changed; the Kernel has its models on it")
+			return
+		}
+		log.Println("droi: kernel: the Kernel did not take its new models:", err)
+	}
 	log.Println("droi: kernel: the Key Pool's proxy changed; starting the Kernel again")
 	sup.Restart()
 }
 
-// kernelMemoryChanged starts the Kernel again when Memory was turned on or off since it started: the Memory folder
-// reaches it only at a launch, and a Kernel left as it was would keep its Memory tools, and write Memory Notes nothing
-// folds in, after Memory was turned off. Settings → Memory asks before it restarts.
-func (h *Host) kernelMemoryChanged() {
-	on := h.Settings.Get().MemoryEnabled
+// kernelProvidersNow starts the Key Pool's proxy again for the running Kernel, whose model requests keep the token
+// it was launched with, and answers its models on it: none while the pool has no key. ok is false when the proxy
+// cannot serve it, or the Kernel stopped or was started again meanwhile.
+func (h *Host) kernelProvidersNow(token string, runs int) (providers json.RawMessage, ok bool) {
+	if token == "" || h.baseURLConflict() != "" {
+		return nil, false
+	}
+	pool := h.KeyPool()
+	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
+	base, err := pool.Start()
 	k := &h.kernel
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.sup == nil || k.runs != runs || k.llmToken != token {
+		return nil, false
+	}
+	if errors.Is(err, keypool.ErrNoKeys) {
+		k.waitingForKey = true
+		return json.RawMessage("[]"), true
+	}
+	if err != nil {
+		return nil, false
+	}
+	k.base = base
+	pool.SetKernelToken(token)
+	return json.RawMessage(kernelProviders(base)), true
+}
+
+// kernelMemoryChanged turns Memory on or off in the running Kernel when it was turned on or off since: each
+// conversation has the Memory tools and its Memory, or not, from its next turn. A Kernel that cannot take the change
+// is started again, as a launch is what gives one the Memory folder; a Kernel left as it was would keep its Memory
+// tools, and write Memory Notes nothing folds in, after Memory was turned off.
+func (h *Host) kernelMemoryChanged() {
+	k := &h.kernel
+	k.configuring.Lock()
+	defer k.configuring.Unlock()
+	on := h.Settings.Get().MemoryEnabled
 	k.mu.Lock()
 	sup := k.sup
 	if sup == nil || k.memoryOn == on {
@@ -224,8 +309,38 @@ func (h *Host) kernelMemoryChanged() {
 	}
 	k.memoryOn = on
 	k.mu.Unlock()
-	log.Println("droi: kernel: Memory was turned on or off; starting the Kernel again")
+	dir := kernel.None[string]()
+	if on {
+		dir = kernel.Some(h.MemoryDir())
+	}
+	err := h.configureKernel(kernel.HarnessConfigureParams{MemoryDir: dir})
+	if err == nil {
+		log.Println("droi: kernel: Memory was turned on or off in the running Kernel")
+		return
+	}
+	log.Println("droi: kernel: Memory was turned on or off; starting the Kernel again:", err)
 	sup.Restart()
+}
+
+// kernelConfigureTimeout bounds harness.configure, which changes what the Kernel holds and touches no run.
+const kernelConfigureTimeout = 10 * time.Second
+
+// configureKernel gives the running Kernel a change of the Host's settings, over the Host's own connection.
+func (h *Host) configureKernel(p kernel.HarnessConfigureParams) error {
+	k := &h.kernel
+	k.mu.Lock()
+	link := k.link
+	k.mu.Unlock()
+	if link == nil {
+		return errors.New("no Kernel runs")
+	}
+	c, _ := link.Current()
+	if c == nil {
+		return errors.New("the Host is not connected to the Kernel yet")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), kernelConfigureTimeout)
+	defer cancel()
+	return c.HarnessConfigure(ctx, p)
 }
 
 // kernelChanged hears the Supervisor's state and tells whoever listens.

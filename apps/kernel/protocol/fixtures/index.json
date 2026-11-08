@@ -16,6 +16,7 @@
     "methods/conversation.submit.json",
     "methods/conversation.unwatch.json",
     "methods/conversation.usage.json",
+    "methods/harness.configure.json",
     "methods/harness.info.json",
     "methods/index.update.json",
     "methods/kernel.shutdown.json",
@@ -53,6 +54,7 @@
     "notifications/policy.changed.json",
     "notifications/policy.changed.default.json",
     "notifications/memory.read.json",
+    "notifications/harness.changed.json",
     "notifications/warning.json"
   ],
   "errors": [

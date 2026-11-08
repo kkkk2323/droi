@@ -15,8 +15,11 @@ import {
 } from '../memory/folder.ts'
 
 export type MemoryOptions = {
-  /** The Memory folder. */
-  dir: string
+  /**
+   * The Memory folder, or a function that answers it as it is now: undefined once Memory was turned off while the
+   * Kernel runs (`harness.configure`), until the conversation's next turn leaves the extension out.
+   */
+  dir: string | (() => string | undefined)
   /** A Session Summary was read: the Host counts it, so the summary does not age out. */
   onRead: (path: string, at: Date) => void
   /** The index `history_search` reads; undefined until the Kernel has opened it. */
@@ -47,6 +50,9 @@ const bounded = (value: number | undefined, fallback: number, max: number): numb
  */
 export function memoryExtension(options: MemoryOptions): Extension {
   const now = options.now ?? (() => new Date())
+  const folder = (): string | undefined =>
+    typeof options.dir === 'function' ? options.dir() : options.dir
+  const off = () => answer('Memory is turned off.', true)
   const memorySearch = defineTool({
     name: 'memory_search',
     description:
@@ -61,8 +67,10 @@ export function memoryExtension(options: MemoryOptions): Extension {
     replay: 'safe',
     callers: ['model'],
     async execute(args) {
+      const dir = folder()
+      if (dir === undefined) return off()
       if (args.query.trim() === '') return answer('memory_search needs a query.', true)
-      return answer(search(options.dir, args.query, bounded(args.limit, 20, 100)))
+      return answer(search(dir, args.query, bounded(args.limit, 20, 100)))
     },
   })
   const memoryRead = defineTool({
@@ -80,7 +88,9 @@ export function memoryExtension(options: MemoryOptions): Extension {
     replay: 'safe',
     callers: ['model'],
     async execute(args) {
-      const found = resolveFile(options.dir, args.path)
+      const dir = folder()
+      if (dir === undefined) return off()
+      const found = resolveFile(dir, args.path)
       if ('error' in found) return answer(found.error, true)
       const text = readFileSync(found.file, 'utf8')
       if (found.path.startsWith(`${SESSION_SUMMARIES_DIR}/`)) options.onRead(found.path, now())
@@ -107,7 +117,9 @@ export function memoryExtension(options: MemoryOptions): Extension {
     replay: 'safe',
     callers: ['model'],
     async execute(args) {
-      return answer(list(options.dir, args.workspace ?? '', bounded(args.limit, 50, 300)))
+      const dir = folder()
+      if (dir === undefined) return off()
+      return answer(list(dir, args.workspace ?? '', bounded(args.limit, 50, 300)))
     },
   })
   const memoryNote = defineTool({
@@ -124,7 +136,9 @@ export function memoryExtension(options: MemoryOptions): Extension {
     replay: 'unsafe',
     callers: ['model'],
     async execute(args, api) {
-      const saved = writeNote(options.dir, args.text, String(api.conversationId), now())
+      const dir = folder()
+      if (dir === undefined) return off()
+      const saved = writeNote(dir, args.text, String(api.conversationId), now())
       if ('error' in saved) return answer(saved.error, true)
       return answer(
         `Saved ${saved.path}. Droi folds it into the Memory Summary within a few minutes, and every new Session sees it until then.`,
@@ -166,9 +180,15 @@ export function memoryExtension(options: MemoryOptions): Extension {
     name: 'memory',
     tools: [memorySearch, memoryRead, memoryList, memoryNote, historySearch] as ToolRegistration[],
     sections: [
-      section(MEMORY_SECTION, ({ shown }) => shown[MEMORY_SECTION] ?? memoryContext(options.dir), {
-        tag: false,
-      }),
+      section(
+        MEMORY_SECTION,
+        ({ shown }) => {
+          if (shown[MEMORY_SECTION] !== undefined) return shown[MEMORY_SECTION]
+          const dir = folder()
+          return dir === undefined ? '' : memoryContext(dir)
+        },
+        { tag: false },
+      ),
     ],
   })
 }
