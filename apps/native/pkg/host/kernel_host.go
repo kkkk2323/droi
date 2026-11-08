@@ -2,6 +2,8 @@ package host
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
 )
 
@@ -29,12 +32,20 @@ const (
 
 // kernelHost is the Host's Kernel: the Supervisor, the token the proxy knows the Kernel by, and who hears its state.
 type kernelHost struct {
-	mu        sync.Mutex
-	sup       *KernelSupervisor
-	llmToken  string
-	last      KernelState
-	listeners map[int]func(KernelState)
-	next      int
+	mu  sync.Mutex
+	sup *KernelSupervisor
+	// runs counts startKernel and stopKernel, so a launch that was preparing its environment while the Kernel was
+	// stopped does not hand the proxy a token again.
+	runs int
+	// llmToken is the token of the latest launch; each launch has its own.
+	llmToken string
+	// base is the proxy the latest launch's models point at, "" when it got none. waitingForKey says it got none
+	// because the Key Pool had no key yet.
+	base          string
+	waitingForKey bool
+	last          KernelState
+	listeners     map[int]func(KernelState)
+	next          int
 }
 
 // KernelEnabled reports whether this Host runs a Kernel: a person asked for it, and there is one to run.
@@ -80,12 +91,7 @@ func (h *Host) startKernel() {
 		k.mu.Unlock()
 		return
 	}
-	token, err := kernel.NewToken()
-	if err != nil {
-		k.mu.Unlock()
-		return
-	}
-	k.llmToken = token
+	k.runs++
 	k.sup = &KernelSupervisor{
 		Binary:  h.kernelBinary(),
 		DataDir: filepath.Join(h.cfg.UserData, "kernel"),
@@ -97,41 +103,101 @@ func (h *Host) startKernel() {
 	sup.Start()
 }
 
-// stopKernel stops the Kernel and lets go of the token it was known by.
+// stopKernel stops the Kernel and lets go of the token it was known by, and of the Key Pool's proxy when droid does
+// not send through it.
 func (h *Host) stopKernel() {
 	k := &h.kernel
 	k.mu.Lock()
 	sup := k.sup
 	k.sup = nil
+	k.runs++
+	k.llmToken, k.base, k.waitingForKey = "", "", false
+	h.KeyPool().SetKernelToken("")
 	k.mu.Unlock()
 	if sup == nil {
 		return
 	}
 	sup.Stop()
 	sup.Close()
-	h.KeyPool().SetKernelToken("")
+	if !h.usesDroiDroid() {
+		h.KeyPool().Stop()
+	}
 }
 
-// kernelEnv is what a Kernel launch gets: Factory's models on the Key Pool's proxy, and the token their requests
-// carry. A pool that cannot start (no key yet) gives the Kernel no models; it starts all the same, and its
-// conversations stay readable.
+// kernelRunning reports whether the Host runs a Kernel now.
+func (h *Host) kernelRunning() bool {
+	k := &h.kernel
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.sup != nil
+}
+
+// releaseKeyPool stops the Key Pool's proxy for a Daemon whose droid does not send through it, unless the Kernel's
+// models do: the Kernel was told the proxy's address at launch, and would reach nothing.
+func (h *Host) releaseKeyPool() {
+	if h.kernelRunning() {
+		return
+	}
+	h.KeyPool().Stop()
+}
+
+// kernelEnv is what a Kernel launch gets: Factory's models on the Key Pool's proxy, and a token of this launch's
+// that their requests carry. A pool that cannot start (no key yet) gives the Kernel no models; it starts all the same,
+// its conversations stay readable, and it is started again once a key is added (kernelPoolChanged).
 func (h *Host) kernelEnv() []string {
 	k := &h.kernel
 	k.mu.Lock()
-	token := k.llmToken
+	runs := k.runs
+	// The proxy may stop and start again below; this launch is not the one it moved from under.
+	k.base, k.waitingForKey = "", false
 	k.mu.Unlock()
+	token, err := kernel.NewToken()
+	if err != nil {
+		log.Println("droi: kernel: no token for its model requests:", err)
+		return nil
+	}
 	env := []string{kernelLLMTokenEnv + "=" + token}
 	pool := h.KeyPool()
-	if h.baseURLConflict() != "" {
+	if conflict := h.baseURLConflict(); conflict != "" {
+		log.Println("droi: kernel: no Factory models:", conflict)
 		return env
 	}
 	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
 	base, err := pool.Start()
-	if err != nil {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	// Stopped, or started again, while this launch was preparing: the proxy must not take its token.
+	if k.sup == nil || k.runs != runs {
 		return env
 	}
+	k.llmToken, k.base, k.waitingForKey = token, "", errors.Is(err, keypool.ErrNoKeys)
+	if err != nil {
+		log.Println("droi: kernel: no Factory models:", err)
+		return env
+	}
+	k.base = base
 	pool.SetKernelToken(token)
 	return append(env, kernelProvidersEnv+"="+kernelProviders(base))
+}
+
+// kernelPoolChanged starts the Kernel again when the Key Pool moved from under it: the proxy its models point at
+// stopped or moved, or the first key arrived after it started with none.
+func (h *Host) kernelPoolChanged() {
+	pool := h.KeyPool()
+	running, keys := pool.BaseURL(), pool.Len()
+	k := &h.kernel
+	k.mu.Lock()
+	sup := k.sup
+	moved := k.base != "" && running != k.base
+	keyed := k.waitingForKey && keys > 0
+	if sup == nil || !moved && !keyed {
+		k.mu.Unlock()
+		return
+	}
+	k.base, k.waitingForKey = "", false
+	k.mu.Unlock()
+	log.Println("droi: kernel: the Key Pool's proxy changed; starting the Kernel again")
+	sup.Restart()
 }
 
 // kernelChanged hears the Supervisor's state and tells whoever listens.
@@ -217,7 +283,7 @@ func kernelProviders(base string) string {
 		{factory.WireResponses, kernelProvider{ID: "factory-openai", Name: "Factory", BaseURL: base + "/api/llm/o/v1", API: "openai-responses"}},
 		{factory.WireChat, kernelProvider{ID: "factory-chat", Name: "Factory", BaseURL: base + "/api/llm/o/v1", API: "openai-completions"}},
 	}
-	var out []kernelProvider
+	out := []kernelProvider{}
 	for _, w := range wires {
 		p := w.p
 		p.APIKeyEnv = kernelLLMTokenEnv
@@ -227,7 +293,10 @@ func kernelProviders(base string) string {
 			}
 			p.Models = append(p.Models, kernelModelOf(m))
 		}
-		out = append(out, p)
+		// The Kernel refuses a provider without models, and would not start.
+		if len(p.Models) > 0 {
+			out = append(out, p)
+		}
 	}
 	b, _ := json.Marshal(out)
 	return string(b)

@@ -424,7 +424,7 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 			return nil, err
 		}
 	} else {
-		h.KeyPool().Stop()
+		h.releaseKeyPool()
 	}
 	// Signed in: the Daemon runs as the account's login. Without one an API
 	// key serves both sides.

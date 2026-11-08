@@ -316,6 +316,16 @@ func (p *Pool) Start() (string, error) {
 	return base, nil
 }
 
+// BaseURL is the running proxy's base URL; "" while it is not running.
+func (p *Pool) BaseURL() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.px == nil {
+		return ""
+	}
+	return p.px.BaseURL()
+}
+
 // SetKernelToken is the token the Kernel's model requests carry in place of a key: the proxy picks a key of the pool
 // for them. It holds for a proxy started later too; "" lets no Kernel in.
 func (p *Pool) SetKernelToken(token string) {

@@ -48,7 +48,8 @@ func (p *Proxy) SetKernelToken(token string) {
 	p.mu.Unlock()
 }
 
-// fromKernel reports whether req carries the Kernel's token.
+// fromKernel reports whether req carries the Kernel's token: as a bearer token, or in X-Api-Key, where Anthropic's
+// clients send their key.
 func (p *Proxy) fromKernel(req *http.Request) (kernelClient, bool) {
 	p.mu.Lock()
 	k := p.kernel
@@ -56,8 +57,12 @@ func (p *Proxy) fromKernel(req *http.Request) (kernelClient, bool) {
 	if k.token == "" {
 		return k, false
 	}
-	got := keys.NormalizeBearerToken(req.Header.Get("Authorization"))
-	return k, subtle.ConstantTimeCompare([]byte(got), []byte(k.token)) == 1
+	for _, got := range []string{keys.NormalizeBearerToken(req.Header.Get("Authorization")), req.Header.Get("X-Api-Key")} {
+		if subtle.ConstantTimeCompare([]byte(got), []byte(k.token)) == 1 {
+			return k, true
+		}
+	}
+	return k, false
 }
 
 // kernelKey is the key conversation session went out with last: the Key Pool keeps a conversation on it, as it keeps

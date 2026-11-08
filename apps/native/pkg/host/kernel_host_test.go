@@ -115,7 +115,8 @@ func kernelBinaryForTest(t *testing.T) string {
 	return bin
 }
 
-// fakeFactory is enough of Factory for the Key Pool and one model: billing, whoami and a streamed chat completion.
+// fakeFactory is enough of Factory for the Key Pool and two models: billing, whoami, a streamed chat completion and a
+// streamed Anthropic message.
 type fakeFactory struct {
 	mu   sync.Mutex
 	seen []http.Header
@@ -125,17 +126,20 @@ type fakeFactory struct {
 func newFakeFactory(t *testing.T) *fakeFactory {
 	f := &fakeFactory{}
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		note := func() {
+			_, _ = io.Copy(io.Discard, r.Body)
+			f.mu.Lock()
+			f.seen = append(f.seen, r.Header.Clone())
+			f.mu.Unlock()
+			w.Header().Set("Content-Type", "text/event-stream")
+		}
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/billing/limits"):
 			io.WriteString(w, `{"usesTokenRateLimitsBilling":true,"limits":{"standard":{"fiveHour":{"usedPercent":10,"windowEnd":"2099-06-19T15:00:00Z"}},"core":{"fiveHour":{"usedPercent":5,"windowEnd":"2099-06-19T15:00:00Z"}}}}`)
 		case r.URL.Path == "/api/cli/whoami":
 			io.WriteString(w, `{"orgId":"org_test"}`)
 		case r.URL.Path == "/api/llm/o/v1/chat/completions":
-			_, _ = io.Copy(io.Discard, r.Body)
-			f.mu.Lock()
-			f.seen = append(f.seen, r.Header.Clone())
-			f.mu.Unlock()
-			w.Header().Set("Content-Type", "text/event-stream")
+			note()
 			for _, chunk := range []string{
 				`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4.1-flash-1017","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello from Factory"},"finish_reason":null}]}`,
 				`{"id":"c1","object":"chat.completion.chunk","created":1,"model":"deepseek-v4.1-flash-1017","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`,
@@ -143,6 +147,18 @@ func newFakeFactory(t *testing.T) *fakeFactory {
 				io.WriteString(w, "data: "+chunk+"\n\n")
 			}
 			io.WriteString(w, "data: [DONE]\n\n")
+		case r.URL.Path == "/api/llm/a/v1/messages":
+			note()
+			for _, ev := range [][2]string{
+				{"message_start", `{"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","model":"claude","content":[],"stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0}}}`},
+				{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
+				{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello from Factory"}}`},
+				{"content_block_stop", `{"type":"content_block_stop","index":0}`},
+				{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}`},
+				{"message_stop", `{"type":"message_stop"}`},
+			} {
+				io.WriteString(w, "event: "+ev[0]+"\ndata: "+ev[1]+"\n\n")
+			}
 		default:
 			io.WriteString(w, `{}`)
 		}
@@ -157,32 +173,39 @@ func (f *fakeFactory) requests() []http.Header {
 	return append([]http.Header(nil), f.seen...)
 }
 
-// The Host's Kernel answers with a Factory model through the Key Pool: the request leaves the proxy with the pool's
-// key and droid's headers, and the token the Kernel holds in place of a key goes nowhere.
-func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
+// poolKey is the Key Pool key the fake Factory serves.
+const poolKey = "fk-test-0000000000"
+
+// hostKernel is a Host whose Kernel runs against f, and the window's connection to each generation of it.
+type hostKernel struct {
+	h       *Host
+	clients chan *kernel.Client
+}
+
+func startHostKernel(t *testing.T, f *fakeFactory, withKey bool) *hostKernel {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("runs the Kernel")
 	}
 	bin := kernelBinaryForTest(t)
-	f := newFakeFactory(t)
 	env := map[string]string{KernelEnv: "1", KernelBinEnv: bin}
 	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(k string) string { return env[k] }, KeyPoolUpstream: f.URL})
 	if !h.KernelEnabled() {
 		t.Fatal("the Kernel is not enabled")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	const key = "fk-test-0000000000"
-	if err := h.KeyPool().Add(ctx, key); err != nil {
-		t.Fatal(err)
+	if withKey {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.KeyPool().Add(ctx, poolKey); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Cleanup(h.KeyPool().Stop)
-
-	clients := make(chan *kernel.Client, 4)
+	hk := &hostKernel{h: h, clients: make(chan *kernel.Client, 8)}
 	link := NewKernelLink(KernelLinkOptions{
 		Client:   "window",
 		Token:    h.KernelToken,
-		OnClient: func(c *kernel.Client, _ int) { clients <- c },
+		OnClient: func(c *kernel.Client, _ int) { hk.clients <- c },
 		Log:      func(s string) { t.Log("link:", s) },
 	})
 	unhear := h.OnKernelState(link.Use)
@@ -192,27 +215,53 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 		link.Close()
 		h.stopKernel()
 	})
-	var c *kernel.Client
-	select {
-	case c = <-clients:
-	case <-ctx.Done():
-		t.Fatalf("no Kernel connection: %+v", h.kernel.last)
-	}
+	return hk
+}
 
+// next is the window's connection to the next generation of the Kernel.
+func (hk *hostKernel) next(t *testing.T, ctx context.Context) *kernel.Client {
+	t.Helper()
+	select {
+	case c := <-hk.clients:
+		return c
+	case <-ctx.Done():
+		k := &hk.h.kernel
+		k.mu.Lock()
+		last := k.last
+		k.mu.Unlock()
+		t.Fatalf("no Kernel connection: %+v", last)
+		return nil
+	}
+}
+
+// offered is the model provider offers on c: model when it is offered, else the first of the provider's.
+func offered(t *testing.T, ctx context.Context, c *kernel.Client, provider, model string) (kernel.ModelRef, bool) {
+	t.Helper()
 	info, err := c.Harness(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	offered := false
+	var first *kernel.ModelRef
 	for _, m := range info.Models {
-		if m.Provider == "factory-chat" && m.ID == "deepseek-v4.1-flash-1017" {
-			offered = true
+		if m.Provider != provider {
+			continue
+		}
+		if m.ID == model || model == "" {
+			return kernel.ModelRef{Provider: m.Provider, ModelID: m.ID}, true
+		}
+		if first == nil {
+			first = &kernel.ModelRef{Provider: m.Provider, ModelID: m.ID}
 		}
 	}
-	if !offered {
-		t.Fatalf("harness.info offers %+v", info.Models)
+	if first != nil && model == "" {
+		return *first, true
 	}
-	model := kernel.ModelRef{Provider: "factory-chat", ModelID: "deepseek-v4.1-flash-1017"}
+	return kernel.ModelRef{}, false
+}
+
+// answer asks model one question on c and waits for Factory's answer.
+func answer(t *testing.T, ctx context.Context, c *kernel.Client, model kernel.ModelRef) {
+	t.Helper()
 	created, err := c.Create(ctx, kernel.CreateParams{Agent: &kernel.AgentChange{Model: kernel.Some(model)}, Cwd: t.TempDir(), Kind: "chat"})
 	if err != nil {
 		t.Fatal(err)
@@ -220,8 +269,7 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 	if _, err := c.Submit(ctx, kernel.SubmitParams{ID: created.ConversationID, Input: "hi"}); err != nil {
 		t.Fatal(err)
 	}
-	answered := false
-	for !answered && ctx.Err() == nil {
+	for ctx.Err() == nil {
 		page, err := c.Entries(ctx, kernel.EntriesParams{ID: created.ConversationID, Limit: 50})
 		if err != nil {
 			t.Fatal(err)
@@ -229,31 +277,128 @@ func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
 		for _, e := range page.Items {
 			if e.Kind == "pi.assistant" {
 				if !strings.Contains(string(e.Model), "Hello from Factory") {
-					t.Fatalf("the answer is %s", e.Model)
+					t.Fatalf("%s answered %s", model.ModelID, e.Model)
 				}
-				answered = true
+				return
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !answered {
-		t.Fatal("no answer")
+	t.Fatalf("%s: no answer", model.ModelID)
+}
+
+// The Host's Kernel answers with Factory's models through the Key Pool, on the chat wire and on Anthropic's: the
+// request leaves the proxy with the pool's key and droid's headers, and the token the Kernel holds in place of a key
+// goes nowhere.
+func TestTheHostsKernelReachesFactoryThroughTheKeyPool(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	c := hk.next(t, ctx)
+	chat, ok := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
+	if !ok {
+		t.Fatal("harness.info does not offer deepseek-v4.1-flash-1017")
 	}
+	claude, ok := offered(t, ctx, c, "factory-anthropic", "")
+	if !ok {
+		t.Fatal("harness.info offers no Anthropic model")
+	}
+	answer(t, ctx, c, chat)
+	answer(t, ctx, c, claude)
 
 	seen := f.requests()
-	if len(seen) != 1 {
-		t.Fatalf("Factory saw %d model requests, want 1", len(seen))
+	if len(seen) != 2 {
+		t.Fatalf("Factory saw %d model requests, want 2", len(seen))
 	}
-	got := seen[0]
-	if got.Get("Authorization") != "Bearer "+key || got.Get("X-Api-Provider") != "fireworks" || got.Get("X-Factory-Org-Id") != "org_test" {
-		t.Fatalf("the request went out as %v", got)
+	if got := seen[0]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Provider") != "fireworks" || got.Get("X-Factory-Org-Id") != "org_test" {
+		t.Fatalf("the chat request went out as %v", got)
 	}
-	h.kernel.mu.Lock()
-	token := h.kernel.llmToken
-	h.kernel.mu.Unlock()
-	for name, vals := range got {
-		if strings.Contains(strings.Join(vals, " "), token) {
-			t.Fatalf("the Kernel's token left in %s", name)
+	if got := seen[1]; got.Get("Authorization") != "Bearer "+poolKey || got.Get("X-Api-Key") != "placeholder" {
+		t.Fatalf("the Anthropic request went out as %v", got)
+	}
+	k := &hk.h.kernel
+	k.mu.Lock()
+	token := k.llmToken
+	k.mu.Unlock()
+	for _, got := range seen {
+		for name, vals := range got {
+			if strings.Contains(strings.Join(vals, " "), token) {
+				t.Fatalf("the Kernel's token left in %s", name)
+			}
 		}
+	}
+}
+
+// A Daemon whose droid does not send through the Key Pool stops its proxy when it starts, but not while the Kernel's
+// models point at it.
+func TestADaemonStartingWithoutTheKeyPoolLeavesTheKernelsModels(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	c := hk.next(t, ctx)
+	chat, _ := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
+	answer(t, ctx, c, chat)
+	hk.h.releaseKeyPool()
+	answer(t, ctx, c, chat)
+}
+
+// A Key Pool proxy that stopped, or moved to another address, under the Kernel starts the Kernel again on the one
+// that runs now.
+func TestTheHostsKernelFollowsTheKeyPoolsProxy(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	c := hk.next(t, ctx)
+	chat, _ := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
+	answer(t, ctx, c, chat)
+	hk.h.KeyPool().Stop()
+	c = hk.next(t, ctx)
+	answer(t, ctx, c, chat)
+}
+
+// A Kernel started before the Key Pool had a key has no models; the first key starts it again with them.
+func TestTheHostsKernelGetsFactorysModelsOnceAKeyIsAdded(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, false)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	c := hk.next(t, ctx)
+	if _, ok := offered(t, ctx, c, "factory-chat", ""); ok {
+		t.Fatal("a Kernel with no key behind it offers Factory's models")
+	}
+	if err := hk.h.KeyPool().Add(ctx, poolKey); err != nil {
+		t.Fatal(err)
+	}
+	c = hk.next(t, ctx)
+	chat, ok := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
+	if !ok {
+		t.Fatal("no Factory models after the first key")
+	}
+	answer(t, ctx, c, chat)
+}
+
+// A launch that was preparing while the Kernel stopped gives the proxy no token: once stopped, the Kernel's token
+// opens nothing.
+func TestALateLaunchAfterTheKernelStoppedLetsNoTokenIn(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernel(t, f, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	hk.next(t, ctx)
+	hk.h.stopKernel()
+	for _, kv := range hk.h.kernelEnv() {
+		if strings.HasPrefix(kv, kernelProvidersEnv+"=") {
+			t.Fatal("a stopped Kernel's launch got Factory's models")
+		}
+	}
+	k := &hk.h.kernel
+	k.mu.Lock()
+	token := k.llmToken
+	k.mu.Unlock()
+	if token != "" {
+		t.Fatal("a stopped Kernel's token is kept")
 	}
 }
