@@ -53,28 +53,30 @@ func (e *Error) ExitCode() int {
 }
 
 var (
-	pathOnce sync.Once
-	gitPath  string
-	pathErr  error
+	pathMu  sync.Mutex
+	gitPath string
 )
 
 // Path is the git executable: the one on PATH, or on Windows one of Git for Windows' usual places when PATH does
-// not have it (an app started from the Start menu may not inherit the PATH a terminal has).
+// not have it (an app started from the Start menu may not inherit the PATH a terminal has). Only a git found is
+// remembered, so one installed while Droi runs is found at the next call.
 func Path() (string, error) {
-	pathOnce.Do(func() {
-		if p, err := exec.LookPath("git"); err == nil {
+	pathMu.Lock()
+	defer pathMu.Unlock()
+	if gitPath != "" {
+		return gitPath, nil
+	}
+	if p, err := exec.LookPath("git"); err == nil {
+		gitPath = p
+		return p, nil
+	}
+	for _, p := range candidates(os.Getenv) {
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
 			gitPath = p
-			return
+			return p, nil
 		}
-		for _, p := range candidates(os.Getenv) {
-			if info, err := os.Stat(p); err == nil && !info.IsDir() {
-				gitPath = p
-				return
-			}
-		}
-		pathErr = ErrNoGit
-	})
-	return gitPath, pathErr
+	}
+	return "", ErrNoGit
 }
 
 // run runs git in dir and answers its standard output, untrimmed.
@@ -145,7 +147,7 @@ func ListBranches(ctx context.Context, dir string) (b Branches, ok bool, err err
 		b.Detached = true
 	}
 	b.Current = current
-	out, err := text(ctx, dir, "for-each-ref", "--format=%(refname:short)", "--sort=-committerdate", "refs/heads")
+	out, err := text(ctx, dir, "for-each-ref", "--format=%(refname:lstrip=2)", "--sort=-committerdate", "refs/heads")
 	if err != nil {
 		return b, true, err
 	}

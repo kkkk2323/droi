@@ -167,9 +167,14 @@ func numstat(ctx context.Context, dir, base string) (map[string]lineCount, error
 // countLines is an untracked file's lines, as git would count them if it were added; a large or binary file is
 // one change with no lines.
 func countLines(path string) (int, bool) {
-	info, err := os.Stat(path)
-	if err != nil || info.Size() > untrackedLimit {
-		return 0, err == nil
+	// Not through a link: one to a pipe or to /dev/zero would never end. git counts a link as one changed line of
+	// its target's name, which is no line of the user's.
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return 0, false
+	}
+	if info.Size() > untrackedLimit {
+		return 0, true
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {

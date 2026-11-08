@@ -7,9 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // repo makes a repository with one commit on main, in a folder of its own.
@@ -150,7 +153,14 @@ func TestAWorktreeIsMadeInspectedAndRemovedOnlyAsAsked(t *testing.T) {
 
 	in, err := Inspect(ctx, wt)
 	must(t, err)
-	eq(t, in, Inspection{Branch: "droi/fix-login", LocalOnlyCommits: 1, HasRemoteBranch: false})
+	// Made from main, it has no commit of its own yet.
+	eq(t, in, Inspection{Branch: "droi/fix-login"})
+	write(t, filepath.Join(wt, "mine.txt"), "m\n")
+	gitIn(t, wt, "add", "mine.txt")
+	gitIn(t, wt, "commit", "-q", "-m", "mine")
+	in, err = Inspect(ctx, wt)
+	must(t, err)
+	eq(t, in.LocalOnlyCommits, 1)
 	write(t, filepath.Join(wt, "a.txt"), "changed\n")
 	write(t, filepath.Join(wt, "new.txt"), "n\n")
 	in, err = Inspect(ctx, wt)
@@ -188,5 +198,150 @@ func TestADeleteOfAnOriginBranchThatFailsIsAWarning(t *testing.T) {
 	must(t, err)
 	if !res.Removed || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "origin branch b was kept") {
 		t.Fatalf("%+v", res)
+	}
+}
+
+func TestAnOriginBranchIsDeletedOnlyWhenItHoldsNothingElse(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	root := filepath.Dir(dir)
+	origin := filepath.Join(root, "origin.git")
+	gitIn(t, root, "clone", "-q", "--bare", dir, origin)
+	gitIn(t, dir, "remote", "add", "origin", origin)
+	gitIn(t, dir, "fetch", "-q", "origin")
+
+	// Someone else's droi/fix-login on origin, with a commit nobody here has.
+	other := filepath.Join(root, "other")
+	gitIn(t, root, "clone", "-q", origin, other)
+	gitIn(t, other, "config", "user.email", "o@example.com")
+	gitIn(t, other, "config", "user.name", "O")
+	gitIn(t, other, "checkout", "-q", "-b", "droi/fix-login")
+	write(t, filepath.Join(other, "theirs.txt"), "theirs\n")
+	gitIn(t, other, "add", ".")
+	gitIn(t, other, "commit", "-q", "-m", "theirs")
+	gitIn(t, other, "push", "-q", "origin", "droi/fix-login")
+
+	wt := filepath.Join(root, "wt")
+	must(t, AddWorktree(ctx, AddOptions{Repo: dir, Path: wt, Branch: "droi/fix-login", Base: "main"}))
+	res, err := RemoveWorktree(ctx, RemoveOptions{Path: wt, DeleteLocalBranch: true, DeleteRemoteBranch: true})
+	must(t, err)
+	if !res.Removed || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "has commits this branch does not") {
+		t.Fatalf("%+v", res)
+	}
+	if out := gitIn(t, root, "--git-dir", origin, "branch", "--list", "droi/fix-login"); out == "" {
+		t.Fatal("origin's branch of another clone was deleted")
+	}
+
+	// A branch this worktree pushed is deleted with it.
+	wt2 := filepath.Join(root, "wt2")
+	must(t, AddWorktree(ctx, AddOptions{Repo: dir, Path: wt2, Branch: "droi/mine", Base: "main"}))
+	gitIn(t, wt2, "push", "-q", "origin", "droi/mine")
+	res, err = RemoveWorktree(ctx, RemoveOptions{Path: wt2, DeleteLocalBranch: true, DeleteRemoteBranch: true})
+	must(t, err)
+	eq(t, res, RemoveResult{Removed: true})
+	if out := gitIn(t, root, "--git-dir", origin, "branch", "--list", "droi/mine"); out != "" {
+		t.Fatalf("origin still has %q", out)
+	}
+}
+
+func TestAWorktreeWhoseFolderIsGoneIsStillRemoved(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	wt := filepath.Join(filepath.Dir(dir), "gone")
+	must(t, AddWorktree(ctx, AddOptions{Repo: dir, Path: wt, Branch: "gone"}))
+	must(t, os.RemoveAll(wt))
+	res, err := RemoveWorktree(ctx, RemoveOptions{Repo: dir, Path: wt, DeleteLocalBranch: true})
+	must(t, err)
+	eq(t, res, RemoveResult{Removed: true})
+	list, err := Worktrees(ctx, dir)
+	must(t, err)
+	eq(t, len(list), 1)
+	eq(t, HasBranch(ctx, dir, "gone"), false)
+}
+
+func TestAWorktreeThatCouldNotBeMadeLeavesNothingBehind(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	wt := filepath.Join(filepath.Dir(dir), "bad")
+	if err := AddWorktree(ctx, AddOptions{Repo: dir, Path: wt, Branch: "bad", Base: "no-such-base"}); err == nil {
+		t.Fatal("a worktree from a base that does not exist")
+	}
+	eq(t, HasBranch(ctx, dir, "bad"), false)
+	list, err := Worktrees(ctx, dir)
+	must(t, err)
+	eq(t, len(list), 1)
+	// And the same call goes through once the base is right.
+	must(t, AddWorktree(ctx, AddOptions{Repo: dir, Path: wt, Branch: "bad", Base: "main"}))
+	for _, name := range []string{"--force", "-b", "a..b", "with space"} {
+		if err := AddWorktree(ctx, AddOptions{Repo: dir, Path: wt + "x", Branch: name}); err == nil || !strings.Contains(err.Error(), "not a branch name") {
+			t.Errorf("branch %q: %v", name, err)
+		}
+	}
+}
+
+func TestALockedWorktreeGoesOnlyWhenForced(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	wt := filepath.Join(filepath.Dir(dir), "locked")
+	must(t, AddWorktree(ctx, AddOptions{Repo: dir, Path: wt, Branch: "locked"}))
+	gitIn(t, dir, "worktree", "lock", "--reason", "in use", wt)
+	res, err := RemoveWorktree(ctx, RemoveOptions{Path: wt})
+	must(t, err)
+	eq(t, res, RemoveResult{KeptForChanges: true})
+	res, err = RemoveWorktree(ctx, RemoveOptions{Path: wt, Force: true})
+	must(t, err)
+	eq(t, res, RemoveResult{Removed: true})
+}
+
+func TestIgnoredFilesAreWhatAWorktreeWouldLoseToo(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	write(t, filepath.Join(dir, ".gitignore"), ".env\nnode_modules/\n")
+	gitIn(t, dir, "add", ".gitignore")
+	gitIn(t, dir, "commit", "-q", "-m", "ignore")
+	wt := filepath.Join(filepath.Dir(dir), "env")
+	must(t, AddWorktree(ctx, AddOptions{Repo: dir, Path: wt, Branch: "env"}))
+	write(t, filepath.Join(wt, ".env"), "SECRET=1\n")
+	write(t, filepath.Join(wt, "node_modules", "a", "index.js"), "x\n")
+	in, err := Inspect(ctx, wt)
+	must(t, err)
+	eq(t, []any{in.ChangedFiles, in.UntrackedFiles, in.IgnoredFiles, in.LocalOnlyCommits, in.Unsaved()}, []any{0, 0, 2, 0, true})
+	res, err := RemoveWorktree(ctx, RemoveOptions{Path: wt})
+	must(t, err)
+	eq(t, res, RemoveResult{KeptForChanges: true})
+	if _, err := os.Stat(filepath.Join(wt, ".env")); err != nil {
+		t.Fatal(".env went with a worktree that was kept")
+	}
+}
+
+func TestABranchListIsBranchNamesEvenBesideATagOfTheSameName(t *testing.T) {
+	ctx := context.Background()
+	dir := repo(t)
+	gitIn(t, dir, "branch", "release")
+	gitIn(t, dir, "tag", "release")
+	b, _, err := ListBranches(ctx, dir)
+	must(t, err)
+	slices.Sort(b.Names)
+	eq(t, b.Names, []string{"main", "release"})
+}
+
+func TestAnUntrackedLinkIsNotFollowed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no /dev/zero")
+	}
+	ctx := context.Background()
+	dir := repo(t)
+	must(t, os.Symlink("/dev/zero", filepath.Join(dir, "zero")))
+	done := make(chan Changes, 1)
+	go func() {
+		c, _, _ := Status(ctx, dir)
+		done <- c
+	}()
+	select {
+	case c := <-done:
+		eq(t, len(c.Files), 1)
+		eq(t, c.Files[0].Additions, 0)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Status read through a link to /dev/zero")
 	}
 }
