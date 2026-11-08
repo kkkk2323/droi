@@ -31,8 +31,8 @@ func TestANamedConversationGetsTheTitleTheModelGave(t *testing.T) {
 	if got != "修复部署脚本" {
 		t.Fatalf("the title is %q, not the model's answer", got)
 	}
-	if row := listRow(t, c, id); row.Title != "修复部署脚本" || row.TitleSource != kernel.TitleSourceAuto {
-		t.Fatalf("the list has %q (%s) as the title, want the model's, written as automatic", row.Title, row.TitleSource)
+	if row := listRow(t, c, id); row.Title != "修复部署脚本" || row.TitleSource != kernel.TitleSourceChosen {
+		t.Fatalf("the list has %q (%s) as the title, want the model's, written as chosen", row.Title, row.TitleSource)
 	}
 
 	calls := k.Completions()
@@ -147,6 +147,36 @@ func TestNamingHappensAtTheEndOfARoundAndOnlyOnce(t *testing.T) {
 	}
 	if calls := k.Completions(); len(calls) != 1 {
 		t.Fatalf("%d model calls after two ends, want one", len(calls))
+	}
+}
+
+// A name is written once, for good: the Droi that starts tomorrow, or another client, remembers nothing of today's
+// naming, and finds the conversation named.
+func TestANamedConversationIsNotNamedAgainAfterARestart(t *testing.T) {
+	k := fakekernel.Start(t, fakekernel.Scenario{
+		Steps:       []fakekernel.Step{{Text: "ok"}, {Text: "done"}},
+		Completions: []fakekernel.Completion{{Text: `{"title":"deploy the fix"}`}, {Text: `{"title":"a second name"}`}},
+	})
+	c := k.Dial(t)
+	id := k.CreateConversation(t, c)
+	k.Ask(t, c, id, "fix the deploy", "ok", 30*time.Second)
+	if got, err := titles.New(titles.Config{Source: c, TitleSource: sourceOf(t, c)}).Name(context.Background(), id); err != nil || got != "deploy the fix" {
+		t.Fatalf("the first naming wrote %q (%v)", got, err)
+	}
+
+	k.Ask(t, c, id, "and the staging one", "done", 30*time.Second)
+	o := k.Observe(c)
+	restarted := titles.New(titles.Config{Source: o, TitleSource: sourceOf(t, c)})
+	restarted.Busy(context.Background(), kernel.BusyNotification{ID: id, Run: []byte("null")})
+	restarted.Wait()
+	if calls := k.Completions(); len(calls) != 1 {
+		t.Fatalf("%d model calls, want the first one only", len(calls))
+	}
+	if updates := o.CallsOf(kernel.MethodIndexUpdate); len(updates) != 0 {
+		t.Fatalf("%d index.update calls after the restart, want none", len(updates))
+	}
+	if title := listTitle(t, c, id); title != "deploy the fix" {
+		t.Fatalf("the title is now %q", title)
 	}
 }
 

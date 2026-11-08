@@ -42,8 +42,8 @@ type Source interface {
 type Config struct {
 	Source Source
 	// Source reports where a conversation's title came from, as the caller knows it: kernel.TitleSourceAuto
-	// (Kernel's first line, or a name this package wrote), kernel.TitleSourceChosen (somebody named it, and it
-	// is never replaced), or "" for no title yet. ok is false for a conversation the caller does not know, or
+	// (Kernel's first line), kernel.TitleSourceChosen (somebody named it, or this package did, and it is never
+	// replaced), or "" for no title yet. ok is false for a conversation the caller does not know, or
 	// not one a person started; it is not named.
 	TitleSource func(ctx context.Context, id kernel.ID) (source string, ok bool)
 	// Logf hears what naming did, and why it did nothing. Optional.
@@ -147,7 +147,9 @@ func (m *Manager) Name(ctx context.Context, id kernel.ID) (string, error) {
 	if !m.mayName(ctx, id) {
 		return "", nil
 	}
-	if err := m.cfg.Source.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: id, Title: kernel.TitleText(title), TitleSource: kernel.TitleSourceAuto}); err != nil {
+	// Written as chosen: what remembers that a conversation is named is the list, not this Manager, which a
+	// restart or another client starts without. An automatic title would be named again by each of them.
+	if err := m.cfg.Source.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: id, Title: kernel.TitleText(title), TitleSource: kernel.TitleSourceChosen}); err != nil {
 		return "", err
 	}
 	m.markNamed(id)
