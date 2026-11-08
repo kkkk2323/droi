@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
 )
 
 // usageTTL is how long an account's usage stands before it is fetched
@@ -200,8 +201,8 @@ func (h *Host) factoryGet(ctx context.Context, id, path string) ([]byte, error) 
 
 func parseUsage(b []byte) (*Usage, error) {
 	type window struct {
-		UsedPercent float64 `json:"usedPercent"`
-		WindowEnd   *string `json:"windowEnd"`
+		UsedPercent float64         `json:"usedPercent"`
+		WindowEnd   json.RawMessage `json:"windowEnd"`
 	}
 	type pool struct {
 		FiveHour, Weekly, Monthly window
@@ -219,9 +220,7 @@ func parseUsage(b []byte) (*Usage, error) {
 	}
 	w := func(x window) UsageWindow {
 		out := UsageWindow{Percent: x.UsedPercent}
-		if x.WindowEnd != nil {
-			out.Ends, _ = time.Parse(time.RFC3339, *x.WindowEnd)
-		}
+		out.Ends, _ = factory.WindowEnd(x.WindowEnd)
 		return out
 	}
 	p := func(x pool) UsagePool { return UsagePool{w(x.FiveHour), w(x.Weekly), w(x.Monthly)} }

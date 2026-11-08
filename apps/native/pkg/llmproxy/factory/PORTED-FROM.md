@@ -66,6 +66,17 @@ says or for its size, rather than for the key.
 
 Upstream's `PROMOTIONS` lists five promotions; droid's registry (`testdata/droid-0.241.1-costs.txt`) has more, `M` on the GPT and Grok models among them. `price.go` follows droid's registry: do not drop those to match upstream's list.
 
+4G added how a usage window's end is read.
+
+| Go                       | upstream (`index.mjs`) | notes                                                                                                   |
+| ------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `usage.go`: `WindowEnd`  | `windowEnd` 971-981    | the Key Pool (`keys.BucketLimit`) and the account's Usage tab (`host.parseUsage`) both read with it |
+
+The windows themselves were already read by the Host for the Usage tab
+(`pkg/host/usage.go`, Standard and Core, the extra usage in cents);
+`limitWindows`' routing shape (`aside`, `models`, `notModels`) is magpie's and is
+not ported.
+
 `route_test.go` checks every model id against the excerpts of droid's registry
 upstream keeps in `testdata/` (copied byte for byte; `client-phrases.json` is
 copied the same way for `TestThePhrasesAreUpstreams`).
@@ -84,6 +95,7 @@ The subtests keep the upstream names, so a diff of upstream's tests finds them.
 | `fast_test.go`          | `fast.test.mjs`, 3 of 4 whole; the fourth's order check (its first-24 check is magpie's picker)            |
 | `attachments_test.go`   | `size.test.mjs`'s fourth case; `content-policy.test.mjs`'s last (`contentRefused`)                         |
 | `rate_test.go`          | `rate.test.mjs`'s first three, and every model at each promotion's start and end (its last two are magpie's provider hook) |
+| `usage_test.go`         | `usage.test.mjs`'s window ends (its first case's three spellings, and the second's "soon"); its account and sign-in cases are the Host's own `usage_test.go` |
 | `proxy/kernel_test.go`  | `size.test.mjs`'s first three; `content-policy.test.mjs`'s first three and the upstream-error-header case |
 
 `content-policy.test.mjs`'s whoami case is not ported: the Key Pool tries
