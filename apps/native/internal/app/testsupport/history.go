@@ -222,12 +222,21 @@ func ImportSessions(ctx context.Context, k Importer, sc fakedaemon.Scenario, ids
 		if err := sessionNeeds(s); err != nil {
 			return nil, err
 		}
-		entries, err := History(s.Messages, clock)
+		from := clock
+		clock = clock.Add(time.Duration(len(s.Messages))*time.Second + time.Minute)
+		created := clock.UnixMilli()
+		// A Session the scenario dates ends then: its last message is its last activity, as the Daemon lists it.
+		if at, ok := updatedAt(s); ok {
+			from = at.Add(-time.Duration(len(s.Messages)) * time.Second)
+			created = from.UnixMilli()
+			if len(s.Messages) == 0 {
+				created = at.UnixMilli()
+			}
+		}
+		entries, err := History(s.Messages, from)
 		if err != nil {
 			return nil, fmt.Errorf("session %q: %w", s.Title, err)
 		}
-		clock = clock.Add(time.Duration(len(s.Messages))*time.Second + time.Minute)
-		created := clock.UnixMilli()
 		p := kernel.ImportParams{Title: s.Title, Cwd: s.Cwd, CreatedAt: &created, Agent: agent}
 		var conv kernel.ID
 		for first := true; first || len(entries) > 0; first = false {
@@ -250,4 +259,17 @@ func ImportSessions(ctx context.Context, k Importer, sc fakedaemon.Scenario, ids
 		out[ids[i]] = conv
 	}
 	return out, nil
+}
+
+// updatedAt is the time a Session's Extra dates it at, in Unix seconds as the Fake Daemon lists it.
+func updatedAt(s fakedaemon.SessionSpec) (time.Time, bool) {
+	switch v := s.Extra["updatedAt"].(type) {
+	case int64:
+		return time.Unix(v, 0), true
+	case int:
+		return time.Unix(int64(v), 0), true
+	case float64:
+		return time.Unix(int64(v), 0), true
+	}
+	return time.Time{}, false
 }

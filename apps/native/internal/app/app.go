@@ -212,6 +212,14 @@ type App struct {
 	// them, a run of an Automation or a subagent, that readUntilListed reads
 	// the list for.
 	unlisted map[string]bool
+	// asked are the Kernel conversations the list was read for because Kernel named one it did not have; each is
+	// read for once until the list is read whole again.
+	asked map[string]bool
+	// reading are the reads of the list still out, by listGen, each with the indexSeq it started at; indexLog are
+	// the index changes applied since the oldest of them began (list_kernel.go).
+	reading  map[uint64]uint64
+	indexSeq uint64
+	indexLog []indexEvent
 
 	sidebar sidebarState
 	views   map[string]*sessionView

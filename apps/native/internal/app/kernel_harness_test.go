@@ -32,12 +32,13 @@ type kernelSessions struct {
 
 // Why a test keeps its Sessions on the Fake Daemon: the plan item each waits for.
 const (
-	untilListMoves  = "unread marks and Session times come from conversation.list once the list moves (M2 S2)"
+	untilUnread     = "unread marks come from the list's viewedAt and lastActivityAt, and Session Times from conversation.busy (M2 S2b)"
 	untilSubagents  = "subagents land as child conversations and droi.subagent entries (M3, 6.3)"
 	untilProcesses  = "background processes land in M3 (3F)"
 	untilCallTiming = "tok/s comes back in M4, when Kernel records each call's duration"
 	goesWithCleanup = "a conversation is never closed or cleaned up while idle (gap-analysis §4.1); the test goes with M2's cleanup"
 	untilPlanMode   = "Spec mode is replaced by plan mode (Q4, M3); the test goes with M2's cleanup"
+	untilCodemode   = "a new Session's tool mode (tool calls or scripts) comes with codemode (M3, 3E)"
 )
 
 // onDaemon holds the tests that keep their Sessions on the Fake Daemon, by name, with why.

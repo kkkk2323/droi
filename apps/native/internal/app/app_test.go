@@ -23,6 +23,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
@@ -165,7 +166,8 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	// ends with it.
 	t.Cleanup(func() { h.a.Close() })
 	h.a.Start()
-	if h.kernel != nil {
+	// A window that follows another computer lists that Host's Sessions, not this Kernel's.
+	if h.kernel != nil && cfg.Computer == nil {
 		h.a.UseKernel(h.kernel.c, 1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -222,8 +224,9 @@ func (h *harness) switchTo(to *computer.Paired) {
 	go ctl.Connect(context.Background())
 	old.Close()
 	oldCtl.Close()
-	// After the old App closed: one connection has one reader of its pushes.
-	if h.kernel != nil {
+	// After the old App closed: one connection has one reader of its pushes. Another computer's Sessions are its
+	// own Host's, not this Kernel's.
+	if h.kernel != nil && to == nil {
 		h.a.UseKernel(h.kernel.c, 1)
 	}
 }
@@ -763,11 +766,11 @@ func TestAnOlderListReadDoesNotOverwriteANewerOne(t *testing.T) {
 	h := newHarness(t, sessionsScenario(), "")
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
 	older, newer := h.a.startList(), h.a.startList()
-	list := func(title string) *protocol.ListAvailableSessionsResult {
-		return &protocol.ListAvailableSessionsResult{Sessions: []protocol.DaemonAvailableSessionInfo{{SessionID: title, Title: title, Cwd: "/Users/dev/acme-web"}}}
+	list := func(title string) []sessions.Summary {
+		return []sessions.Summary{{SessionID: title, Title: title, Cwd: "/Users/dev/acme-web"}}
 	}
-	h.a.setList(newer, list("Newer"), nil)
-	h.a.setList(older, list("Older"), nil)
+	h.a.setList(newer, list("Newer"), 0, false, nil)
+	h.a.setList(older, list("Older"), 0, false, nil)
 	h.a.mu.Lock()
 	defer h.a.mu.Unlock()
 	if len(h.a.listed) != 1 || h.a.listed[0].Title != "Newer" {

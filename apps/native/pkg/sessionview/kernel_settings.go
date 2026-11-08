@@ -24,8 +24,8 @@ func kernelSettings(agent kernel.Agent) session.Settings {
 	return s
 }
 
-// modelMetadata is a model Kernel offers as the picker reads one of the Daemon's.
-func modelMetadata(m kernel.ModelInfo) protocol.ModelMetadata {
+// ModelMetadata is a model Kernel offers as the picker reads one of the Daemon's.
+func ModelMetadata(m kernel.ModelInfo) protocol.ModelMetadata {
 	efforts := make([]protocol.ReasoningEffort, len(m.Thinking))
 	for i, t := range m.Thinking {
 		efforts[i] = protocol.ReasoningEffort(t)
@@ -54,7 +54,7 @@ func (v *View) kernelModels() []protocol.ModelMetadata {
 	list := v.env.Models()
 	out := make([]protocol.ModelMetadata, len(list))
 	for i, m := range list {
-		out[i] = modelMetadata(m)
+		out[i] = ModelMetadata(m)
 	}
 	return out
 }
