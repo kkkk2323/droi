@@ -149,6 +149,10 @@ Codex or Claude Code`, for magpie's agents.
 
 ## Keeping up
 
-`shared/design/architecture-draft.md` §5.8 describes the weekly Automation that
-compares the upstream commit with this file's and filters the diff to the
-functions Droi ports.
+`go run ./apps/native/cmd/factory-upstream` compares this file's commit with
+upstream's HEAD and writes a report: the diff of each top-level declaration
+the tables above name (in their second column) that changed or is gone, the
+diff of `anthropic-tools.mjs` and `client-phrases.json`, the commits and the
+CHANGELOG lines, and a count of the lines that changed elsewhere. A weekly
+Automation runs it and acts on the report; its HEARTBEAT.md is
+`cmd/factory-upstream/HEARTBEAT.md`.
