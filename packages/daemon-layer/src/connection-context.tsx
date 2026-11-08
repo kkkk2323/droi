@@ -1,25 +1,25 @@
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
-import type { ConnectionState, DaemonConnection } from './connection'
+import type { ConnectionState, KernelConnection } from './connection'
 
-const ConnectionContext = createContext<DaemonConnection | null>(null)
+const ConnectionContext = createContext<KernelConnection | null>(null)
 
 export function ConnectionProvider({
   connection,
   children,
 }: {
-  connection: DaemonConnection
+  connection: KernelConnection
   children: ReactNode
 }) {
   return <ConnectionContext.Provider value={connection}>{children}</ConnectionContext.Provider>
 }
 
-export function useDaemonConnection(): DaemonConnection {
+export function useKernelConnection(): KernelConnection {
   const connection = useContext(ConnectionContext)
-  if (!connection) throw new Error('useDaemonConnection needs a ConnectionProvider')
+  if (!connection) throw new Error('useKernelConnection needs a ConnectionProvider')
   return connection
 }
 
 export function useConnectionState(): ConnectionState {
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   return useSyncExternalStore(connection.subscribe, connection.getState, connection.getState)
 }

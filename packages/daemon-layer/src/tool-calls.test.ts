@@ -1,19 +1,32 @@
 import { describe, expect, test } from 'vitest'
 import {
+  approvalDetail,
   clusterLabel,
   createdFileDiff,
-  parseDiffResult,
+  parseEditDiff,
   parseStatusResult,
-  permissionDetail,
-  scriptPermission,
+  readToolResult,
   toolDisplayName,
   toolSummary,
   toolSummaryParts,
 } from './tool-calls'
-import type { ToolCall } from './transcript'
+import type { ToolCall, ToolResult } from './transcript'
 
-const call = (name: string, input: Record<string, unknown>): ToolCall =>
-  ({ use: { type: 'tool_use', id: 'c1', name, input }, result: null }) as unknown as ToolCall
+const call = (name: string, input: Record<string, unknown>): ToolCall => ({
+  use: { id: 'c1', name, input },
+  result: null,
+})
+
+const result = (extra: Partial<ToolResult> = {}): ToolResult => ({
+  text: 'ok',
+  images: [],
+  isError: false,
+  interrupted: false,
+  blocked: false,
+  notes: '',
+  details: undefined,
+  ...extra,
+})
 
 describe('toolDisplayName', () => {
   test('splits an MCP tool into its server and tool', () => {
@@ -27,8 +40,8 @@ describe('toolDisplayName', () => {
     })
   })
 
-  test("leaves the Daemon's own tools whole", () => {
-    expect(toolDisplayName('Execute')).toEqual({ server: null, tool: 'Execute' })
+  test("leaves the Kernel's own tools whole", () => {
+    expect(toolDisplayName('bash')).toEqual({ server: null, tool: 'bash' })
     expect(toolDisplayName('___odd')).toEqual({ server: null, tool: '___odd' })
     expect(toolDisplayName('odd___')).toEqual({ server: null, tool: 'odd___' })
   })
@@ -108,42 +121,48 @@ describe('parseStatusResult', () => {
   })
 })
 
-describe('parseDiffResult', () => {
-  test("reads the Daemon's Edit result into lines with both numbers", () => {
-    const result = parseDiffResult(
-      JSON.stringify({
-        success: true,
-        file_path: '/w/a.ts',
-        diffLines: [
-          { type: 'unchanged', content: 'a', lineNumber: { old: 1, new: 1 } },
-          { type: 'removed', content: 'b', lineNumber: { old: 2 } },
-          { type: 'added', content: 'c', lineNumber: { new: 2 } },
-          { type: 'added', content: 'd', lineNumber: { new: 3 } },
-        ],
-      }),
-    )
-    expect(result).toEqual({
+describe('parseEditDiff', () => {
+  test("reads Pi's edit diff into lines with their numbers", () => {
+    const diff = ['  1 a', '-2 b', '+2 c', '+3 d', '    ...', ' 9 z'].join('\n')
+    expect(parseEditDiff({ diff, patch: '…', firstChangedLine: 2 })).toEqual({
       added: 2,
       removed: 1,
       lines: [
-        { type: 'unchanged', content: 'a', old: 1, new: 1 },
+        { type: 'unchanged', content: 'a', old: 1, new: null },
         { type: 'removed', content: 'b', old: 2, new: null },
         { type: 'added', content: 'c', old: null, new: 2 },
         { type: 'added', content: 'd', old: null, new: 3 },
+        { type: 'unchanged', content: '…', old: null, new: null },
+        { type: 'unchanged', content: 'z', old: 9, new: null },
       ],
     })
   })
 
-  test('other results are left alone', () => {
-    expect(parseDiffResult('[Process exited with code 0]')).toBeNull()
-    expect(parseDiffResult('{"success":true}')).toBeNull()
-    expect(parseDiffResult('{"diffLines": not json')).toBeNull()
+  test('other details are left alone', () => {
+    expect(parseEditDiff(undefined)).toBeNull()
+    expect(parseEditDiff({ truncation: {} })).toBeNull()
+    expect(parseEditDiff({ diff: '' })).toBeNull()
+  })
+
+  test("an edit's row reads its diff; a failed one its error", () => {
+    const edit = {
+      ...call('edit', { path: 'a.ts' }),
+      result: result({ details: { diff: '+1 x' } }),
+    }
+    expect(readToolResult(edit).diff?.added).toBe(1)
+    const failed = {
+      ...edit,
+      result: result({ isError: true, text: 'no match', details: { diff: '+1 x' } }),
+    }
+    expect(readToolResult(failed)).toMatchObject({ isError: true, diff: null, text: 'no match' })
+    const stopped = { ...edit, result: result({ interrupted: true, text: 'Interrupted' }) }
+    expect(readToolResult(stopped)).toMatchObject({ interrupted: true, isError: false, diff: null })
   })
 })
 
 describe('createdFileDiff', () => {
-  test("shows a Create's content as numbered added lines, ignoring the final newline", () => {
-    expect(createdFileDiff(call('Create', { file_path: 'a.ts', content: 'one\ntwo\n' }))).toEqual({
+  test("shows a write's content as numbered added lines, ignoring the final newline", () => {
+    expect(createdFileDiff(call('write', { path: 'a.ts', content: 'one\ntwo\n' }))).toEqual({
       lines: [
         { type: 'added', content: 'one', old: null, new: 1 },
         { type: 'added', content: 'two', old: null, new: 2 },
@@ -153,93 +172,46 @@ describe('createdFileDiff', () => {
     })
   })
 
-  test('is null for other tools and for a Create without content', () => {
-    expect(createdFileDiff(call('Edit', { content: 'x' }))).toBeNull()
-    expect(createdFileDiff(call('Create', { file_path: 'a.ts' }))).toBeNull()
+  test('is null for other tools and for a write without content', () => {
+    expect(createdFileDiff(call('edit', { content: 'x' }))).toBeNull()
+    expect(createdFileDiff(call('write', { path: 'a.ts' }))).toBeNull()
   })
 })
 
-describe('permissionDetail', () => {
-  test('shows the full command the Daemon worked out, before the raw input', () => {
-    expect(permissionDetail({ fullCommand: 'npm test -- --watch' }, { command: 'npm test' })).toBe(
-      '$ npm test -- --watch',
+describe('approvalDetail', () => {
+  test('shows the command, the script, or the file', () => {
+    expect(approvalDetail('bash', { command: 'rm -rf build' })).toBe('$ rm -rf build')
+    expect(approvalDetail('bash_background', { command: 'npm run dev' })).toBe('$ npm run dev')
+    expect(approvalDetail('codemode', { code: 'await tools.read({})' })).toBe(
+      'await tools.read({})',
     )
+    expect(approvalDetail('write', { path: 'a.ts', content: 'x' })).toBe('a.ts')
   })
 
-  test('shows the file an edit touches', () => {
-    expect(permissionDetail({ filePath: '/w/a.ts' }, { file_path: '/w/a.ts' })).toBe('/w/a.ts')
-  })
-
-  test('falls back to the input: its command, else all of it', () => {
-    expect(permissionDetail(undefined, { command: 'ls' })).toBe('$ ls')
-    expect(permissionDetail(null, { url: 'https://x' })).toBe('{"url":"https://x"}')
-  })
-})
-
-describe('scriptPermission', () => {
-  // As the Daemon sent it for a Script with two literal Execute calls.
-  const details = {
-    type: 'script',
-    impactLevel: 'medium',
-    calls: [
-      {
-        toolName: 'Execute',
-        line: 3,
-        column: 26,
-        toolInput: { command: 'sleep 70 && echo slept', riskLevel: 'low' },
-        confirmation: {
-          type: 'exec',
-          fullCommand: 'sleep 70 && echo slept',
-          command: 'sleep, echo',
-          impactLevel: 'low',
-        },
-      },
-      {
-        toolName: 'memory___memory_add',
-        line: 5,
-        column: 1,
-        toolInput: { text: 'x' },
-        confirmation: { type: 'mcp_tool', toolName: 'memory_add' },
-      },
-    ],
-  }
-
-  test('lists each call by line with what its own Prompt would show', () => {
-    expect(scriptPermission(details)).toEqual({
-      impact: 'medium',
-      calls: [
-        { line: 3, tool: 'Execute', detail: '$ sleep 70 && echo slept', impact: 'low' },
-        { line: 5, tool: 'memory_add', detail: '{"text":"x"}', impact: null },
-      ],
-    })
-  })
-
-  test('anything else is not a Script request', () => {
-    expect(scriptPermission({ type: 'exec', fullCommand: 'ls' })).toBeNull()
-    expect(scriptPermission(undefined)).toBeNull()
+  test('falls back to all the arguments', () => {
+    expect(approvalDetail('exa___search', { query: 'x' })).toBe('{\n  "query": "x"\n}')
   })
 })
 
 describe('clusterLabel', () => {
-  const done = (name: string, nested?: ToolCall[]): ToolCall =>
-    ({
-      use: { type: 'tool_use', id: name, name, input: {} },
-      result: { type: 'tool_result', toolUseId: name, content: 'ok' },
-      ...(nested ? { nested } : {}),
-    }) as unknown as ToolCall
+  const done = (name: string, nested?: ToolCall[]): ToolCall => ({
+    use: { id: name, name, input: {} },
+    result: result(),
+    ...(nested ? { nested } : {}),
+  })
 
-  test('a Script counts as the calls it made', () => {
-    expect(clusterLabel([done('Script', [done('Read'), done('Grep')]), done('LS')])).toEqual({
+  test('a script counts as the calls it made', () => {
+    expect(clusterLabel([done('codemode', [done('read'), done('bash')]), done('write')])).toEqual({
       label: 'Used 3 tools',
       pending: false,
     })
-    expect(clusterLabel([done('Script', [done('Read')])]).label).toBe('Used Read')
-    expect(clusterLabel([done('Script', [])]).label).toBe('Used Script')
+    expect(clusterLabel([done('codemode', [done('read')])]).label).toBe('Used read')
+    expect(clusterLabel([done('codemode', [])]).label).toBe('Used codemode')
   })
 
-  test("pending while a Script's call is still running", () => {
-    expect(clusterLabel([done('Script', [call('Execute', {})])])).toEqual({
-      label: 'Running Execute',
+  test("pending while a script's call is still running", () => {
+    expect(clusterLabel([done('codemode', [call('bash', {})])])).toEqual({
+      label: 'Running bash',
       pending: true,
     })
   })

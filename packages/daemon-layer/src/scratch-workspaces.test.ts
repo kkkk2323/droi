@@ -56,12 +56,13 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
     repoRoot: null,
     worktree: null,
     updatedAt: 0,
+    activityAt: 0,
+    viewedAt: 0,
+    kind: 'chat',
     messagesCount: null,
     archivedAt: null,
     tags: [],
     parentId: null,
-    callingSessionId: null,
-    callingToolUseId: null,
     ...overrides,
   }
 }
@@ -69,18 +70,15 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
 describe('archiving a conversation', () => {
   const recorder = () => {
     const calls: string[] = []
+    let refuse = false
     return {
       calls,
+      refuse: () => void (refuse = true),
       connection: {
-        controller: {
-          archiveSession: async (id: string) => {
-            calls.push(`archive ${id}`)
-            return { success: true, archivedAt: 'now' }
-          },
-          unarchiveSession: async (id: string) => {
-            calls.push(`unarchive ${id}`)
-            return { success: true }
-          },
+        call: async <T>(method: string, params?: Record<string, unknown>): Promise<T> => {
+          if (refuse) throw new Error('CONFLICT')
+          calls.push(`${method} ${params?.['id']} ${params?.['archived']}`)
+          return {} as T
         },
         scratch: {
           trash: async (path: string) => void calls.push(`trash ${path}`),
@@ -89,43 +87,33 @@ describe('archiving a conversation', () => {
       },
     }
   }
-  const scratch = [{ name: SCRATCH_TAG }]
   const folder = '/u/.droi/chats/2026-09-26-abcdef'
-  const first = summary({ sessionId: 'first', cwd: folder, tags: scratch })
-  const second = summary({ sessionId: 'second', cwd: folder, tags: scratch, parentId: 'first' })
-  const latest = summary({ sessionId: 'latest', cwd: folder, tags: scratch, parentId: 'second' })
+  const scratch = summary({ sessionId: '7', cwd: folder, tags: [{ name: SCRATCH_TAG }] })
 
   test('a Workspace Session is archived on its own, and its folder is left alone', async () => {
     const { calls, connection } = recorder()
-    const session = summary({ sessionId: 'p', cwd: '/w/app' })
-    await archiveConversation(connection, [session], session)
-    await unarchiveConversation(connection, [session], session)
-    expect(calls).toEqual(['archive p', 'unarchive p'])
+    const session = summary({ sessionId: '3', cwd: '/w/app' })
+    await archiveConversation(connection, session)
+    await unarchiveConversation(connection, session)
+    expect(calls).toEqual(['index.update 3 true', 'index.update 3 false'])
   })
 
-  test('a Scratch Session takes its whole compaction chain along, then its folder goes to the Trash', async () => {
+  test('a Scratch Session’s folder goes to the Trash after it, and comes back before it', async () => {
     const { calls, connection } = recorder()
-    await archiveConversation(connection, [first, second, latest], latest)
-    expect(calls).toEqual(['archive latest', 'archive second', 'archive first', `trash ${folder}`])
-  })
-
-  test('unarchiving recreates the folder before the Sessions come back', async () => {
-    const { calls, connection } = recorder()
-    await unarchiveConversation(connection, [first, second, latest], latest)
+    await archiveConversation(connection, scratch)
+    await unarchiveConversation(connection, scratch)
     expect(calls).toEqual([
+      'index.update 7 true',
+      `trash ${folder}`,
       `restore ${folder}`,
-      'unarchive latest',
-      'unarchive second',
-      'unarchive first',
+      'index.update 7 false',
     ])
   })
 
   test('a refused archive keeps the folder', async () => {
-    const { calls, connection } = recorder()
-    connection.controller.archiveSession = async () => {
-      throw new Error('CONFLICT')
-    }
-    await expect(archiveConversation(connection, [latest], latest)).rejects.toThrow('CONFLICT')
+    const { calls, connection, refuse } = recorder()
+    refuse()
+    await expect(archiveConversation(connection, scratch)).rejects.toThrow('CONFLICT')
     expect(calls).toEqual([])
   })
 })

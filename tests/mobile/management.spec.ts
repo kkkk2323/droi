@@ -1,12 +1,16 @@
 import type { Page } from '@playwright/test'
-import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { userEntry } from './fake-kernel/history'
 import { expect, openSessionList, pairPhone, relaunch, test } from './fixtures'
 
-const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
-const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
-const budget = session('Budget', '/Users/dev/finance', [userMessage('sum')])
-
-test.use({ scenario: { sessions: [deploy, notes, budget] } })
+test.use({
+  scenario: {
+    sessions: [
+      { title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] },
+      { title: 'Notes', cwd: 'acme-web', entries: [userEntry('todo')] },
+      { title: 'Budget', cwd: 'finance', entries: [userEntry('sum')] },
+    ],
+  },
+})
 
 /** A long press opens a row's actions, as on the phone. */
 async function actionsFor(page: Page, name: RegExp | string) {
@@ -17,11 +21,13 @@ async function actionsFor(page: Page, name: RegExp | string) {
   return actions
 }
 
-test('archive, unarchive and rename go to the Daemon', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('archive, unarchive and rename go to the Kernel', async ({ page, fakeKernel, phoneWire }) => {
+  const deploy = fakeKernel.session('Deploy').conversationId
+  const notes = fakeKernel.session('Notes').conversationId
+  await pairPhone(page, fakeKernel)
   let actions = await actionsFor(page, /Deploy/)
   await actions.getByRole('button', { name: 'Archive' }).click()
-  await fakeDaemon.waitForRequest('daemon.archive_session')
+  expect(await phoneWire.waitForCall('index.update')).toEqual({ id: deploy, archived: true })
   let list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Deploy/ })).toHaveCount(0)
 
@@ -33,23 +39,33 @@ test('archive, unarchive and rename go to the Daemon', async ({ page, fakeDaemon
   await expect(archived).toContainText('Archived')
   actions = await actionsFor(page, /Deploy/)
   await actions.getByRole('button', { name: 'Unarchive' }).click()
-  await fakeDaemon.waitForRequest('daemon.unarchive_session')
+  expect(await phoneWire.waitForCall('index.update', 2)).toEqual({ id: deploy, archived: false })
   await expect(archived).not.toContainText('Archived')
 
   actions = await actionsFor(page, /Notes/)
   await actions.getByRole('button', { name: 'Rename' }).click()
   await actions.getByRole('textbox', { name: 'Session title' }).fill('Release notes')
   await actions.getByRole('button', { name: 'Save' }).click()
-  const renamed = await fakeDaemon.waitForRequest('daemon.rename_session')
-  expect(renamed.params).toMatchObject({ sessionId: notes.sessionId, title: 'Release notes' })
+  expect(await phoneWire.waitForCall('index.update', 3)).toEqual({
+    id: notes,
+    title: 'Release notes',
+  })
   list = await openSessionList(page)
   await expect(list.getByRole('button', { name: /Release notes/ })).toBeVisible()
+  // The computer's window hears the new title too.
+  await fakeKernel.kernel.waitFor(
+    (n) => n.method === 'index.changed' && n.params['title'] === 'Release notes',
+  )
 })
 
-// The Fake Daemon's Gateway has no window to take the pins from, so the
-// phone keeps its own; they are laid out as the computer's sidebar.
-test('pins and folds are kept on the phone across a relaunch', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+// A Gateway without a window has no list order to take the pins from, so the phone keeps
+// its own; they are laid out as the computer's sidebar.
+test('pins and folds are kept on the phone across a relaunch', async ({
+  page,
+  fakeKernel,
+  phoneWire,
+}) => {
+  await pairPhone(page, fakeKernel)
   let actions = await actionsFor(page, /Deploy/)
   await actions.getByRole('button', { name: 'Pin', exact: true }).click()
   let list = await openSessionList(page)
@@ -90,22 +106,18 @@ test('pins and folds are kept on the phone across a relaunch', async ({ page, fa
   )
   await list.getByRole('button', { name: 'acme-web', exact: true }).click()
   await expect(list.getByRole('button', { name: /Notes/ })).toBeVisible()
-  expect(fakeDaemon.requests.map((r) => r.method)).not.toContain('daemon.update_session_settings')
+  expect(phoneWire.calls.map((c) => c.method)).not.toContain('index.update')
 })
 
-test('a Session row says how many messages it has and when it changed', async ({
-  page,
-  fakeDaemon,
-}) => {
-  await pairPhone(page, fakeDaemon)
+test('a Session row says when it changed', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   const list = await openSessionList(page)
   const row = list.getByRole('button', { name: /Budget/ })
-  await expect(row).toContainText('1 message')
   await expect(row).toContainText(/now|\d+[mhd]|[A-Z][a-z]{2} \d+/)
 })
 
-test('a Session row is a full-size touch target', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('a Session row is a full-size touch target', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   const list = await openSessionList(page)
   const row = list.getByRole('button', { name: /Deploy/ })
   expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44)

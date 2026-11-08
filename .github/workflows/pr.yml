@@ -201,6 +201,9 @@ jobs:
 
       - run: go test ./apps/native/pkg/host -run 'TestTheDaemonSeesItsAnchorGo|TestTheDaemonAnchorEndsWhenItsInputCloses'
 
+  # The Phone App's web build against a Fake Kernel: the Kernel this pull request builds, behind the
+  # real Gateway (apps/native/internal/phonegateway, which the suite builds with Go), with a scripted
+  # model. The built binary rather than the source, as that is what ships.
   phone-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -214,7 +217,24 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
       - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/native/assets/kernel
+          key: kernel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/kernel/src/**', 'packages/**') }}
+
+      - name: Build the Kernel for the Fake Kernel
+        run: (cd apps/kernel && bun run build.ts linux-x64)
 
       # Chromium is a download of its own, so keep it until Playwright's version
       # changes; on a hit only its system packages are needed. apt stalls on a
@@ -229,7 +249,9 @@ jobs:
           sudo sh -c 'echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/99retries'
           pnpm -C tests exec playwright install --with-deps chromium
 
-      - name: Phone App web build against the Fake Daemon
+      - name: Phone App web build against the Fake Kernel
+        env:
+          DROI_KERNEL_BIN: ${{ github.workspace }}/apps/native/assets/kernel/linux-x64/kernel
         run: pnpm test:e2e:phone
 
       - uses: actions/upload-artifact@v7

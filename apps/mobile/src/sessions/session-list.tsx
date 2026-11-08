@@ -21,7 +21,6 @@ import {
   type TimeGroup,
   type WorkspaceGroup,
 } from '@droi/daemon-layer/sessions'
-import { mainSessions } from '@droi/daemon-layer/subagents'
 import {
   agentsByWorkstream,
   ledWorkstreams,
@@ -73,7 +72,6 @@ interface RowContext {
   order: SortOrder
   unread: ReadonlySet<string>
   activity: ReadonlyMap<string, SessionActivity>
-  subagentsRunning: ReadonlyMap<string, number>
   /** Each orchestrator's agents and what they are doing. */
   workstreams: ReadonlyMap<string, WorkstreamLoad>
   onSelect: (sessionId: string) => void
@@ -83,7 +81,6 @@ interface RowContext {
 
 export function SessionList({
   sessions,
-  subagentsRunning,
   unread,
   onSelect,
   onNewSessionIn,
@@ -91,8 +88,6 @@ export function SessionList({
   onRename,
 }: {
   sessions: ComputerSessions
-  /** How many subagents each row's Session has running. */
-  subagentsRunning: ReadonlyMap<string, number>
   unread: ReadonlySet<string>
   onSelect: (sessionId: string) => void
   /** A new Session in that Workspace, or with None from Recents. */
@@ -116,7 +111,7 @@ export function SessionList({
   const { listed, workstreams } = useMemo(() => {
     const led = ledWorkstreams(sessions.sessions, { includeArchived: showArchived })
     const shown = foldContinued(
-      withoutWorkstreamAgents(withoutAutomationRuns(mainSessions(sessions.sessions)), led),
+      withoutWorkstreamAgents(withoutAutomationRuns(sessions.sessions), led),
     )
     return {
       listed: shown,
@@ -148,7 +143,6 @@ export function SessionList({
     order,
     unread,
     activity,
-    subagentsRunning,
     workstreams,
     onSelect,
     onSessionActions: (session) => {
@@ -634,7 +628,6 @@ function SessionRow({
           <SessionMeta
             session={session}
             activity={rows.activity.get(session.sessionId)}
-            subagents={rows.subagentsRunning.get(session.sessionId) ?? 0}
             workstream={rows.workstreams.get(session.sessionId)}
             place={place}
           />
@@ -655,13 +648,11 @@ function SessionRow({
 function SessionMeta({
   session,
   activity,
-  subagents,
   workstream,
   place,
 }: {
   session: SessionSummary
   activity: SessionActivity | undefined
-  subagents: number
   /** For an orchestrator: its agents, shown whatever the orchestrator is doing. */
   workstream: WorkstreamLoad | undefined
   place: string | undefined
@@ -684,15 +675,9 @@ function SessionMeta({
       ? status('Needs input', colors.attention, false)
       : activity === 'compacting'
         ? status('Compacting', colors.working, true)
-        : subagents > 0
-          ? status(
-              `${subagents} ${subagents === 1 ? 'subagent' : 'subagents'} running`,
-              colors.working,
-              true,
-            )
-          : activity === 'working'
-            ? status('Working', colors.working, true)
-            : null
+        : activity === 'working'
+          ? status('Working', colors.working, true)
+          : null
   const placeMark = place ? (
     <View role="img" aria-label={`In ${place}`} style={styles.mark}>
       <Folder size={12} color={colors.mutedForeground} strokeWidth={2} />

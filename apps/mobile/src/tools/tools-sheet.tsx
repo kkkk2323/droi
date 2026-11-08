@@ -17,7 +17,14 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'mcp', label: 'MCP servers' },
 ]
 
-export function ToolsButton({ sessionId }: { sessionId: string }) {
+export function ToolsButton({
+  sessionId,
+  repoRoot,
+}: {
+  sessionId: string
+  /** The repository the Session works in, whose own MCP servers it sees. */
+  repoRoot: string | null
+}) {
   const colors = useColors()
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('skills')
@@ -66,7 +73,7 @@ export function ToolsButton({ sessionId }: { sessionId: string }) {
             tab === 'skills' ? (
               <SkillsList sessionId={sessionId} />
             ) : (
-              <McpList sessionId={sessionId} />
+              <McpList repoRoot={repoRoot} />
             )
           ) : null}
         </ScrollView>

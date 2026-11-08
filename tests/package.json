@@ -2,20 +2,17 @@
   "name": "@droi/tests",
   "version": "0.0.0",
   "private": true,
-  "description": "Playwright suite: the Phone App's web build against the Fake Daemon",
+  "description": "Playwright suite: the Phone App's web build against the Fake Kernel",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@droi/daemon-layer": "workspace:*",
-    "@droi/fake-daemon": "github:kkkk2323/droid-sdk-go#e0998547b759758782d3e1cad7ff6023567a1f5f&path:/fake-daemon",
-    "@factory/droid-sdk": "0.10.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.2",
     "@types/ws": "^8.18.1",
     "typescript": "~7.0.2",
-    "ws": "^8.21.3",
-    "zod": "^4.6.5"
+    "ws": "^8.21.3"
   }
 }

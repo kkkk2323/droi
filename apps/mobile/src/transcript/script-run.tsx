@@ -1,7 +1,6 @@
-// A Script, or a WaitForScript picking its run up again, as a row like any
-// tool's, with the calls the run made while it watched listed under it, as in
-// the web Client. The row opens to the program, its inputs, and what the
-// model read back.
+// A Script (the Kernel's codemode tool) as a row like any tool's, with the
+// calls the run made listed under it. The row opens to the program and what
+// the model read back.
 import {
   readScriptRun,
   scriptSource,
@@ -32,7 +31,7 @@ export function ScriptGroup({ call, children }: { call: ToolCall; children: Reac
     <View>
       <Pressable
         role="button"
-        aria-label={`${call.use.name}: ${summary}`}
+        aria-label={`Script: ${summary}`}
         aria-expanded={fold.open}
         onPress={fold.toggle}
         style={({ pressed }) => [styles.row, pressed ? { backgroundColor: colors.muted } : null]}

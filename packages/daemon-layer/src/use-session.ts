@@ -1,173 +1,164 @@
-// Read the open Session's transcript and working state from the SDK state
-// manager. React subscribes to the SDK's own change events; nothing here
-// copies messages into a second store.
-import type { DroidWorkingState, FactoryDroidMessage } from '@factory/droid-sdk'
+// The open Session as the Kernel shows it: its transcript, how far it is loaded, and what
+// it is doing. Mounting it opens the conversation on the Kernel (kernel-conversations.ts),
+// and the Kernel's pushes keep it current; nothing here copies entries into a store of its own.
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
-import { useConnectionState, useDaemonConnection } from './connection-context'
-import { LOAD_STATE, SESSION_EVENT, type LoadState } from './sdk-enums'
+import { useKernelConnection } from './connection-context'
+import { conversationStore, type ConversationSnapshot } from './kernel-conversations'
+import { kernelStore, type KernelSnapshot } from './kernel-state'
+import { conversationIdOf, type ConversationId, type LiveDoc } from './kernel-wire'
+import { LOAD_STATE, type LoadState } from './sdk-enums'
 import { buildTranscript, reuseUnchanged, type TranscriptEntry } from './transcript'
 
 export interface SessionView {
-  messages: FactoryDroidMessage[]
   /** What the transcript shows; an unchanged entry keeps its object from one snapshot to the next. */
   transcript: readonly TranscriptEntry[]
+  /** How many entries are held, every kind. */
+  entryCount: number
   loadState: LoadState
-  /**
-   * The Session has loaded at least once, so it can take a message even when
-   * not loaded now: the Daemon lets an idle Session go, and the SDK loads it
-   * again before the next request.
-   */
+  /** The Session was loaded once, so it can take a message while it opens again. */
   hasLoaded: boolean
-  workingState: DroidWorkingState
+  /** idle, thinking, streaming_assistant_message, executing_tool, waiting_for_tool_confirmation or compacting_conversation. */
+  workingState: string
   hasOlderMessages: boolean
   loadError: string | null
+  /** The folder the Session works in, as its agent has it. */
+  cwd: string | null
 }
 
 const EMPTY: SessionView = {
-  messages: [],
   transcript: [],
+  entryCount: 0,
   loadState: LOAD_STATE.notLoaded,
   hasLoaded: false,
-  workingState: 'idle' as DroidWorkingState,
+  workingState: 'idle',
   hasOlderMessages: false,
   loadError: null,
+  cwd: null,
 }
 
 const NO_IDS: readonly string[] = []
 
-const MIN_RENDER_INTERVAL_MS = 32
+/** What a conversation is doing, in the words the activity row and the alerts read. */
+export function workingStateOf(
+  id: ConversationId,
+  docs: Readonly<Record<string, unknown>>,
+  kernel: KernelSnapshot,
+): string {
+  for (const request of kernel.approvals.values())
+    if (request.id === id) return 'waiting_for_tool_confirmation'
+  for (const request of kernel.asks.values()) {
+    if (request.id === id && request.blocking !== false) return 'waiting_for_tool_confirmation'
+  }
+  const live = docs['pi.live'] as LiveDoc | undefined
+  if (live?.compactions?.some((c) => c.blocking)) return 'compacting_conversation'
+  if (!live?.run && !kernel.busy.has(id)) return 'idle'
+  if (live?.tools?.some((t) => t.status !== 'done')) return 'executing_tool'
+  if ((live?.generation as { message?: unknown } | undefined)?.message)
+    return 'streaming_assistant_message'
+  return 'thinking'
+}
 
-const WATCHED_EVENTS = [
-  SESSION_EVENT.loadStateChanged,
-  SESSION_EVENT.messageThreadUpdated,
-  SESSION_EVENT.workingStateChanged,
-  SESSION_EVENT.streamingPlaceholderUpdated,
-  SESSION_EVENT.metadataUpdated,
-]
+const LOAD_STATES: Record<ConversationSnapshot['loadState'], LoadState> = {
+  'not-loaded': LOAD_STATE.notLoaded,
+  loading: LOAD_STATE.loading,
+  loaded: LOAD_STATE.loaded,
+}
 
-/**
- * Loads the Session into the SDK (once per Session per connection) and
- * returns a stable snapshot that changes only when the SDK reports a change.
- */
 export function useSession(sessionId: string | null): SessionView {
   return useSessions(sessionId ? [sessionId] : NO_IDS)[0] ?? EMPTY
 }
 
-/** useSession for several Sessions at once (a compaction chain), in the given order. */
+/** useSession for several Sessions at once, in the given order. */
 export function useSessions(sessionIds: readonly string[]): readonly SessionView[] {
-  const connection = useDaemonConnection()
-  const connected = useConnectionState().status === 'connected'
-  const { controller, sessionState } = connection
+  const connection = useKernelConnection()
+  const store = conversationStore(connection)
+  const kernel = kernelStore(connection)
   // Callers pass a fresh array each render; the ids themselves are the identity.
   const key = sessionIds.join('\n')
   const ids = useMemo(() => (key ? key.split('\n') : NO_IDS), [key])
-  const snapshot = useRef<{ key: string; views: readonly SessionView[] } | null>(null)
-  const loadErrors = useRef(new Map<string, string>())
-  const version = useRef(0)
-  // Lets the load effect wake the useSyncExternalStore subscriber; the SDK
-  // emits nothing when loadSession rejects.
-  const notify = useRef<() => void>(() => {})
 
-  // Runs again after every reconnect: the connection marks Sessions NotLoaded
-  // when the transport drops, and loading again re-subscribes to their
-  // notifications on the new socket.
   useEffect(() => {
-    if (ids.length === 0 || !connected) return
-    let cancelled = false
-    for (const sessionId of ids) {
-      loadErrors.current.delete(sessionId)
-      const manager = sessionState.getSessionManager(sessionId)
-      if ((manager?.getLoadState() as string | undefined) === LOAD_STATE.loaded) continue
-      // StrictMode runs this effect twice on mount; one load is enough.
-      if (controller.isSessionLoadInFlight(sessionId)) continue
-      controller
-        .loadSession({
-          sessionId,
-          sessionOriginHint: undefined,
-          sessionSource: undefined,
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return
-          loadErrors.current.set(sessionId, error instanceof Error ? error.message : String(error))
-          version.current += 1
-          notify.current()
-        })
-    }
+    const releases = ids.flatMap((id) => {
+      const conversation = conversationIdOf(id)
+      return conversation === null ? [] : [store.watch(conversation)]
+    })
     return () => {
-      cancelled = true
+      for (const release of releases) release()
     }
-  }, [controller, sessionState, ids, connected])
+  }, [store, ids])
 
   const subscribe = useCallback(
     (listener: () => void) => {
-      // A streaming turn fires several events per delta, and each render
-      // rebuilds the whole transcript; render at most once per animation frame
-      // and no more than about 30 times a second (a 120 Hz display would
-      // otherwise draw every token).
-      let frame: number | null = null
-      let timer: ReturnType<typeof setTimeout> | null = null
-      let lastRender = 0
-      const render = () => {
-        frame = requestAnimationFrame(() => {
-          frame = null
-          lastRender = Date.now()
-          listener()
-        })
-      }
-      const scheduleRender = () => {
-        version.current += 1
-        if (frame !== null || timer !== null) return
-        const wait = lastRender + MIN_RENDER_INTERVAL_MS - Date.now()
-        if (wait <= 0) return render()
-        timer = setTimeout(() => {
-          timer = null
-          render()
-        }, wait)
-      }
-      notify.current = scheduleRender
-      const bump = (_event: unknown, payload: { sessionId: string }) => {
-        if (ids.includes(payload.sessionId)) scheduleRender()
-      }
-      const unsubscribe = sessionState.subscribeToSessionEvents(WATCHED_EVENTS, bump)
-      const onFailed = (id: string) => {
-        if (!ids.includes(id)) return
-        loadErrors.current.set(id, 'Session not found')
-        scheduleRender()
-      }
-      controller.on('sessionNotFound', onFailed)
+      const offs = ids.flatMap((id) => {
+        const conversation = conversationIdOf(id)
+        return conversation === null ? [] : [store.subscribe(conversation, listener)]
+      })
+      offs.push(kernel.subscribe(listener))
       return () => {
-        notify.current = () => {}
-        unsubscribe()
-        controller.off('sessionNotFound', onFailed)
-        if (frame !== null) cancelAnimationFrame(frame)
-        if (timer !== null) clearTimeout(timer)
+        for (const off of offs) off()
       }
     },
-    [controller, sessionState, ids],
+    [store, kernel, ids],
   )
 
+  const cache = useRef<{ inputs: unknown[]; views: readonly SessionView[] } | null>(null)
   const getSnapshot = useCallback((): readonly SessionView[] => {
-    const snapshotKey = `${key}:${version.current}`
-    if (snapshot.current?.key === snapshotKey) return snapshot.current.views
-    const previous = snapshot.current?.views ?? []
-    const views = ids.map((sessionId, index): SessionView => {
-      const loadError = loadErrors.current.get(sessionId) ?? null
-      const manager = sessionState.getSessionManager(sessionId)
-      if (!manager) return { ...EMPTY, loadError }
-      const messages = manager.getDisplayMessages()
+    const k = kernel.snapshot()
+    const snaps = ids.map((id) => {
+      const conversation = conversationIdOf(id)
+      return conversation === null ? null : store.snapshot(conversation)
+    })
+    const inputs = [k, ...snaps]
+    const previous = cache.current
+    if (
+      previous &&
+      previous.inputs.length === inputs.length &&
+      previous.inputs.every((v, i) => v === inputs[i])
+    ) {
+      return previous.views
+    }
+    const views = ids.map((id, index): SessionView => {
+      const snap = snaps[index]
+      const conversation = conversationIdOf(id)
+      if (!snap || conversation === null) return { ...EMPTY, loadError: 'Session not found' }
+      const live = snap.docs['pi.live'] as LiveDoc | undefined
+      const built = buildTranscript(snap.entries, live)
+      for (const send of snap.sending) {
+        built.push({
+          id: `sending:${send.requestId}`,
+          role: 'user',
+          blocks: [
+            ...(send.text
+              ? [{ kind: 'text' as const, id: `sending:${send.requestId}:t`, text: send.text }]
+              : []),
+            ...send.images.map((image, i) => ({
+              kind: 'image' as const,
+              id: `sending:${send.requestId}:${i}`,
+              src: `data:${image.mediaType};base64,${image.data}`,
+            })),
+          ],
+          createdAt: Date.now(),
+          isError: false,
+        })
+      }
+      const agent = snap.docs['pi.agent'] as { cwd?: unknown } | undefined
       return {
-        messages,
-        transcript: reuseUnchanged(previous[index]?.transcript ?? [], buildTranscript(messages)),
-        loadState: manager.getLoadState() as unknown as LoadState,
-        hasLoaded: manager.getStore().getSessionId() === sessionId,
-        workingState: manager.getDroidWorkingState(),
-        hasOlderMessages: manager.getHasOlderMessages(),
-        loadError,
+        transcript: reuseUnchanged(previous?.views[index]?.transcript ?? [], built),
+        entryCount: snap.entries.length,
+        loadState: LOAD_STATES[snap.loadState],
+        hasLoaded: snap.hasLoaded,
+        workingState:
+          snap.sending.length > 0 && !live?.run
+            ? 'thinking'
+            : workingStateOf(conversation, snap.docs, k),
+        hasOlderMessages: snap.hasOlder,
+        loadError: snap.error,
+        cwd: typeof agent?.cwd === 'string' ? agent.cwd : null,
       }
     })
-    snapshot.current = { key: snapshotKey, views }
+    cache.current = { inputs, views }
     return views
-  }, [sessionState, ids, key])
+  }, [store, kernel, ids])
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }

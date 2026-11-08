@@ -1,28 +1,76 @@
-// Fixtures for the Phone App's web build: a Fake Daemon per test with its
-// Scenario, plus access to the stand-ins for the phone's hardware.
-import { readFileSync } from 'node:fs'
+// Fixtures for the Phone App's web build: a Fake Kernel per test with its Scenario (fake-kernel/), plus
+// access to the stand-ins for the phone's hardware.
 import { test as base, expect, type Locator, type Page } from '@playwright/test'
-import { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
-import type { JsonRpcRequest } from '@droi/fake-daemon/protocol'
-import type { ScenarioInput } from '@droi/fake-daemon/scenario'
-import { streamedReply } from '@droi/fake-daemon/turns'
+import { FakeKernel, type Scenario } from './fake-kernel/fake-kernel'
 
-// /meta answers the release version, as a Gateway of this release would.
-FakeDaemon.appVersion = (
-  JSON.parse(readFileSync(new URL('../../apps/native/mygo.json', import.meta.url), 'utf8')) as {
-    version: string
-  }
-).version
+export type { Scenario }
 
-const test = base.extend<{ fakeDaemon: FakeDaemon; scenario: ScenarioInput }>({
+const test = base.extend<{ fakeKernel: FakeKernel; scenario: Scenario; phoneWire: PhoneWire }>({
   scenario: [{}, { option: true }],
-  fakeDaemon: async ({ scenario }, use) => {
-    const daemon = await FakeDaemon.start(scenario)
-    await use(daemon)
-    await daemon.stop()
+  fakeKernel: async ({ scenario }, use, testInfo) => {
+    const kernel = await FakeKernel.start(scenario)
+    await use(kernel)
+    if (testInfo.status !== testInfo.expectedStatus) {
+      await testInfo.attach('model requests', {
+        body: JSON.stringify(
+          kernel.model.requests.map((r) => r.prompt),
+          null,
+          2,
+        ),
+        contentType: 'application/json',
+      })
+    }
+    await kernel.stop()
+  },
+  phoneWire: async ({ page }, use) => {
+    await use(watchWire(page))
   },
 })
 
+/** What the phone said to its Kernel through the Gateway: its calls, and its sockets. */
+export interface PhoneWire {
+  calls: Array<{ method: string; params: Record<string, unknown> }>
+  /** The phone's Kernel sockets open now. */
+  open(): number
+  /** How many times the phone called this method. */
+  count(method: string): number
+  /** The params of the phone's nth call of this method (1 the first), once it was made. */
+  waitForCall(method: string, nth?: number): Promise<Record<string, unknown>>
+}
+
+/** Watches a page's Kernel sockets from now on. */
+export function watchWire(page: Page): PhoneWire {
+  const calls: PhoneWire['calls'] = []
+  let open = 0
+  page.on('websocket', (ws) => {
+    if (!new URL(ws.url()).pathname.endsWith('/kernel')) return
+    open += 1
+    ws.on('close', () => (open -= 1))
+    ws.on('framesent', (frame) => {
+      try {
+        const sent = JSON.parse(String(frame.payload)) as {
+          method?: string
+          params?: Record<string, unknown>
+        }
+        if (sent.method) calls.push({ method: sent.method, params: sent.params ?? {} })
+      } catch {
+        // Not JSON-RPC.
+      }
+    })
+  })
+  const matching = (method: string) => calls.filter((c) => c.method === method)
+  return {
+    calls,
+    open: () => open,
+    count: (method) => matching(method).length,
+    async waitForCall(method, nth = 1) {
+      await expect
+        .poll(() => matching(method).length, { message: `the phone's ${method} #${nth}` })
+        .toBeGreaterThanOrEqual(nth)
+      return matching(method)[nth - 1]!.params
+    },
+  }
+}
 /** What the Phone App's stand-ins recorded (see apps/mobile/src/platform/stand-ins.ts). */
 export interface StandIns {
   haptics: string[]
@@ -81,15 +129,15 @@ export async function inReadingOrder(elements: Locator): Promise<string[]> {
   return boxes.sort((a, b) => a.y - b.y).map((box) => box.text)
 }
 
-/** The Desktop Shell's pairing link for this Fake Daemon, as Settings shows it. */
-export function pairingLink(daemon: FakeDaemon, token = daemon.token): string {
-  return `${daemon.url}/#pair=${token}`
+/** The computer's pairing link for this Fake Kernel's Gateway, as Settings shows it. */
+export function pairingLink(kernel: FakeKernel, token = kernel.token): string {
+  return `${kernel.url}/#pair=${token}`
 }
 
 /** First launch: paste the pairing link and wait until the app is connected. */
-export async function pairPhone(page: Page, daemon: FakeDaemon): Promise<void> {
+export async function pairPhone(page: Page, kernel: FakeKernel): Promise<void> {
   await page.goto('/')
-  await pasteLink(page, pairingLink(daemon))
+  await pasteLink(page, pairingLink(kernel))
   await expect(sessionList(page)).toBeVisible()
 }
 
@@ -152,20 +200,16 @@ export async function openNewSession(page: Page): Promise<Locator> {
   return form
 }
 
-export { test, expect }
-
-/**
- * Plays a turn in a Session as if a message had been sent from another
- * Client: the user message, then the reply streamed in these chunks.
- */
-export function playTurn(
-  daemon: FakeDaemon,
-  sessionId: string,
-  text: string,
-  deltas: string[],
-  delayMs = 150,
-): void {
-  void streamedReply({ deltas, delayMs })({ sessionId, text }, { daemon, connectionId: 0 }, {
-    id: `turn-${Date.now()}`,
-  } as unknown as JsonRpcRequest)
+/** The open Session's transcript. */
+export function transcriptOf(page: Page): Locator {
+  return page.getByRole('log', { name: 'Transcript' })
 }
+
+/** Sends a message from the open Session's composer. */
+export async function send(page: Page, text: string): Promise<void> {
+  const composer = page.getByRole('textbox', { name: 'Message' })
+  await composer.fill(text)
+  await page.getByRole('button', { name: 'Send' }).click()
+}
+
+export { test, expect }

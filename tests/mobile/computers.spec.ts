@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
-import { FakeDaemon } from '@droi/fake-daemon/fake-daemon'
-import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { FakeKernel } from './fake-kernel/fake-kernel'
+import { userEntry } from './fake-kernel/history'
 import {
   expect,
   openSessionList,
@@ -13,14 +13,16 @@ import {
   test,
 } from './fixtures'
 
-const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
-const budget = session('Budget', '/Users/dev/finance', [userMessage('sum it')])
+test.use({
+  scenario: { sessions: [{ title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] }] },
+})
 
-test.use({ scenario: { sessions: [deploy] } })
-
-async function withOffice(run: (office: FakeDaemon) => Promise<void>) {
-  const office = await FakeDaemon.start({ sessions: [budget] })
-  office.meta = { ...office.meta, name: 'Office Mac' }
+async function withOffice(run: (office: FakeKernel) => Promise<void>) {
+  const office = await FakeKernel.start({
+    name: 'Office Mac',
+    computerId: '0ff1ce00-0000-4000-8000-000000000000',
+    sessions: [{ title: 'Budget', cwd: 'finance', entries: [userEntry('sum it')] }],
+  })
   try {
     await run(office)
   } finally {
@@ -53,7 +55,7 @@ async function openComputers(page: Page) {
   await page.getByRole('button', { name: /Paired computers/ }).click()
 }
 
-test('scanning the pairing QR code pairs like the link', async ({ page, fakeDaemon }) => {
+test('scanning the pairing QR code pairs like the link', async ({ page, fakeKernel }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Scan QR code' }).click()
   await expect(page.getByText('Camera stand-in')).toBeVisible()
@@ -62,7 +64,7 @@ test('scanning the pairing QR code pairs like the link', async ({ page, fakeDaem
       (window as unknown as { droiStandIns: { scan: (t: string) => void } }).droiStandIns.scan(
         link,
       ),
-    pairingLink(fakeDaemon),
+    pairingLink(fakeKernel),
   )
   await expect(sessionList(page)).toBeVisible()
   const list = await openSessionList(page)
@@ -71,11 +73,11 @@ test('scanning the pairing QR code pairs like the link', async ({ page, fakeDaem
 
 test('pairing the same computer again updates it instead of adding one', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
-  const token = fakeDaemon.resetToken()
-  const moved = `${fakeDaemon.url.replace('127.0.0.1', 'localhost')}/#pair=${token}`
+  await pairPhone(page, fakeKernel)
+  // The computer at another address, as after its network changed.
+  const moved = `${fakeKernel.url.replace('127.0.0.1', 'localhost')}/#pair=${fakeKernel.token}`
   await addComputer(page, moved)
   await openSessionList(page)
   await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
@@ -87,10 +89,10 @@ test('pairing the same computer again updates it instead of adding one', async (
 
 test('two computers switch, and the other one shows its last known list first', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
   await withOffice(async (office) => {
-    await pairPhone(page, fakeDaemon)
+    await pairPhone(page, fakeKernel)
     await addComputer(page, pairingLink(office))
     let list = await openSessionList(page)
     await expect(list.getByRole('button', { name: /Budget/ })).toBeVisible()
@@ -100,7 +102,7 @@ test('two computers switch, and the other one shows its last known list first', 
     await expect(list.getByRole('button', { name: /Deploy/ })).toBeVisible()
     await expect(list.getByRole('button', { name: /Budget/ })).toHaveCount(0)
 
-    office.goDown()
+    await office.goDown()
     await switchTo(page, 'Office Mac')
     list = await openSessionList(page)
     await expect(list.getByRole('button', { name: /Budget/ })).toBeVisible()
@@ -108,12 +110,12 @@ test('two computers switch, and the other one shows its last known list first', 
   })
 })
 
-test('a Paired Computer can be renamed, re-addressed and removed', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('a Paired Computer can be renamed, re-addressed and removed', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   await openComputers(page)
   await page.getByRole('button', { name: /Test Mac/ }).click()
   await page.getByRole('textbox', { name: 'Name' }).fill('Desk')
-  const port = new URL(fakeDaemon.url).port
+  const port = new URL(fakeKernel.url).port
   await page.getByRole('textbox', { name: 'Address' }).fill('not a url at all')
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('alert')).toHaveText(/Enter an address/)
@@ -129,9 +131,9 @@ test('a Paired Computer can be renamed, re-addressed and removed', async ({ page
   await expect(page.getByRole('heading', { name: 'Pair with a computer' })).toBeVisible()
 })
 
-test('relaunching reopens the last computer and Session', async ({ page, fakeDaemon }) => {
+test('relaunching reopens the last computer and Session', async ({ page, fakeKernel }) => {
   await withOffice(async (office) => {
-    await pairPhone(page, fakeDaemon)
+    await pairPhone(page, fakeKernel)
     await addComputer(page, pairingLink(office))
     await switchTo(page, 'Test Mac')
     await pickSession(page, /Deploy/)

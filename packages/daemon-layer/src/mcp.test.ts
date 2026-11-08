@@ -2,74 +2,25 @@ import { describe, expect, test } from 'vitest'
 import {
   EMPTY_SERVER_FORM,
   canRemove,
-  filterRegistry,
-  formFromRegistry,
-  isDroiMemory,
   isReadOnly,
-  needsSetup,
   needsSignIn,
+  needsTrust,
   parseServerForm,
+  serverCommand,
   sortServers,
-  type McpRegistryEntry,
+  toolLabel,
   type McpServer,
 } from './mcp'
 
-const catalogueEntry = (overrides: Partial<McpRegistryEntry>): McpRegistryEntry => ({
-  name: 'linear',
-  description: 'Issue tracking',
-  type: 'http',
-  url: 'https://mcp.linear.app/mcp',
+const server = (overrides: Partial<McpServer>): McpServer => ({
+  name: 'files',
+  status: 'connected',
+  enabled: true,
+  tools: [],
+  error: null,
+  transport: 'stdio',
   ...overrides,
 })
-
-describe('the catalogue', () => {
-  test('an entry with an upper-case placeholder in its command needs setting up first', () => {
-    expect(needsSetup(catalogueEntry({}))).toBe(false)
-    expect(
-      needsSetup(
-        catalogueEntry({
-          type: 'stdio',
-          command: 'npx',
-          args: ['-y', 'snyk@latest', 'mcp', '-t', 'stdio'],
-        }),
-      ),
-    ).toBe(false)
-    expect(
-      needsSetup(
-        catalogueEntry({
-          type: 'stdio',
-          command: 'npx',
-          args: ['-y', '@adyen/mcp', '--adyenApiKey=ADYEN_API_KEY', '--env=TEST'],
-        }),
-      ),
-    ).toBe(true)
-    expect(needsSetup(catalogueEntry({ type: 'stdio', command: 'x', args: ['YOUR_TOKEN'] }))).toBe(
-      true,
-    )
-  })
-
-  test('search matches every word in the name or description, and skips what is added', () => {
-    const all = [
-      catalogueEntry({}),
-      catalogueEntry({ name: 'sentry', description: 'Error tracking and performance monitoring' }),
-      catalogueEntry({ name: 'notion', description: 'Notes and docs' }),
-    ]
-    expect(filterRegistry(all, '', []).map((e) => e.name)).toEqual(['linear', 'sentry', 'notion'])
-    expect(filterRegistry(all, 'TRACKING', []).map((e) => e.name)).toEqual(['linear', 'sentry'])
-    expect(filterRegistry(all, 'error track', []).map((e) => e.name)).toEqual(['sentry'])
-    expect(filterRegistry(all, 'tracking', ['linear']).map((e) => e.name)).toEqual(['sentry'])
-  })
-})
-
-const server = (overrides: Partial<McpServer>): McpServer =>
-  ({
-    name: 'files',
-    status: 'connected',
-    source: 'user',
-    isManaged: false,
-    serverType: 'stdio',
-    ...overrides,
-  }) as McpServer
 
 describe('parseServerForm', () => {
   test('a stdio server needs a name and a command; args split on whitespace', () => {
@@ -83,19 +34,19 @@ describe('parseServerForm', () => {
       parseServerForm({ ...EMPTY_SERVER_FORM, name: 'fs', command: 'npx', args: ' -y  server ' }),
     ).toEqual({
       ok: true,
-      params: { name: 'fs', type: 'stdio', command: 'npx', args: ['-y', 'server'] },
+      params: { name: 'fs', transport: 'stdio', command: 'npx', args: ['-y', 'server'] },
     })
   })
 
   test('an http server needs a URL; headers are "Name: value" lines', () => {
     expect(
-      parseServerForm({ ...EMPTY_SERVER_FORM, name: 'api', type: 'http', url: 'localhost' }),
+      parseServerForm({ ...EMPTY_SERVER_FORM, name: 'api', transport: 'http', url: 'localhost' }),
     ).toMatchObject({ ok: false })
     expect(
       parseServerForm({
         ...EMPTY_SERVER_FORM,
         name: 'api',
-        type: 'http',
+        transport: 'http',
         url: 'https://mcp.example.com/mcp',
         headers: 'Authorization: Bearer x\n\nX-Team: a: b',
       }),
@@ -103,7 +54,7 @@ describe('parseServerForm', () => {
       ok: true,
       params: {
         name: 'api',
-        type: 'http',
+        transport: 'http',
         url: 'https://mcp.example.com/mcp',
         headers: { Authorization: 'Bearer x', 'X-Team': 'a: b' },
       },
@@ -112,62 +63,49 @@ describe('parseServerForm', () => {
       parseServerForm({
         ...EMPTY_SERVER_FORM,
         name: 'api',
-        type: 'sse',
-        url: 'https://x.y/sse',
+        transport: 'http',
+        url: 'https://x.y/mcp',
         headers: 'nonsense',
       }),
     ).toMatchObject({ ok: false })
   })
 })
 
-test('a registry entry fills the form', () => {
-  const entry = {
-    name: 'github',
-    description: 'GitHub',
-    type: 'http',
-    url: 'https://api.githubcopilot.com/mcp/',
-  } as McpRegistryEntry
-  expect(formFromRegistry(entry)).toMatchObject({
-    name: 'github',
-    type: 'http',
-    url: 'https://api.githubcopilot.com/mcp/',
-    command: '',
-  })
-})
-
-test('the organization’s servers are read-only and last; only the user’s can be removed', () => {
-  const org = server({ name: 'a-org', source: 'org' } as Partial<McpServer>)
-  const project = server({ name: 'z-proj', source: 'project' } as Partial<McpServer>)
+test('a repository’s servers and the app’s are read-only and last; only the user’s can be removed', () => {
+  const repo = server({ name: 'a-repo', repoRoot: '/w/app', trusted: true })
+  const app = server({ name: 'b-app', app: true })
   const mine = server({ name: 'm-mine' })
-  expect(sortServers([org, project, mine]).map((s) => s.name)).toEqual([
-    'm-mine',
-    'z-proj',
-    'a-org',
-  ])
-  expect(isReadOnly(org)).toBe(true)
-  expect(canRemove(project)).toBe(false)
+  expect(sortServers([repo, app, mine]).map((s) => s.name)).toEqual(['m-mine', 'a-repo', 'b-app'])
+  expect(isReadOnly(repo)).toBe(true)
+  expect(isReadOnly(app)).toBe(true)
+  expect(canRemove(repo)).toBe(false)
   expect(canRemove(mine)).toBe(true)
 })
 
-test('Droi’s Memory Server is the Shell’s: read-only and never removed from here', () => {
-  const memory = server({ name: 'memory', source: 'runtime' } as Partial<McpServer>)
-  expect(isDroiMemory(memory)).toBe(true)
-  expect(isReadOnly(memory)).toBe(true)
-  expect(canRemove(memory)).toBe(false)
-  expect(
-    isDroiMemory(server({ name: 'droi-memory', source: 'runtime' } as Partial<McpServer>)),
-  ).toBe(false)
-  // A memory server of the user's own, such as the reference one.
-  const mine = server({ name: 'memory', source: 'user' } as Partial<McpServer>)
-  expect(isDroiMemory(mine)).toBe(false)
-  expect(canRemove(mine)).toBe(true)
-  expect(isDroiMemory(server({ name: 'memory', source: 'project' } as Partial<McpServer>))).toBe(
-    false,
+test('a server wants signing in when it failed for want of authorization', () => {
+  expect(needsSignIn(server({ status: 'failed', error: 'authorization required (401)' }))).toBe(
+    true,
+  )
+  expect(needsSignIn(server({ status: 'failed', error: 'spawn ENOENT' }))).toBe(false)
+  expect(needsSignIn(server({}))).toBe(false)
+})
+
+test('a repository’s server waits for an OK, and shows what it would run', () => {
+  const waiting = server({
+    status: 'untrusted',
+    repoRoot: '/w/app',
+    command: 'npx',
+    args: ['-y', 'srv'],
+  })
+  expect(needsTrust(waiting)).toBe(true)
+  expect(serverCommand(waiting)).toBe('npx -y srv')
+  expect(serverCommand(server({ transport: 'http', url: 'https://x.y/mcp' }))).toBe(
+    'https://x.y/mcp',
   )
 })
 
-test('a server wants signing in when it needs auth and has no tokens', () => {
-  expect(needsSignIn(server({ requiresAuth: true }))).toBe(true)
-  expect(needsSignIn(server({ requiresAuth: true, hasAuthTokens: true }))).toBe(false)
-  expect(needsSignIn(server({}))).toBe(false)
+test('a tool is shown without its server’s prefix', () => {
+  expect(toolLabel({ name: 'linear' }, 'linear___create_issue')).toBe('create_issue')
+  expect(toolLabel({ name: 'my.srv' }, 'my_srv___x')).toBe('x')
+  expect(toolLabel({ name: 'linear' }, 'other')).toBe('other')
 })

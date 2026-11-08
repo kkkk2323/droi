@@ -1,10 +1,10 @@
 import type { Page } from '@playwright/test'
-import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { userEntry } from './fake-kernel/history'
 import { expect, openSessionList, pairPhone, pickSession, relaunch, test } from './fixtures'
 
-const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
-
-test.use({ scenario: { sessions: [deploy] } })
+test.use({
+  scenario: { sessions: [{ title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] }] },
+})
 
 // The theme's foreground: #262626 in light, #f5f5f5 in dark.
 const LIGHT_TEXT = 'rgb(23, 23, 23)'
@@ -15,9 +15,9 @@ async function openSettings(page: Page) {
   await page.getByRole('button', { name: 'Settings' }).click()
 }
 
-test('picking light, dark and system changes the theme', async ({ page, fakeDaemon }) => {
+test('picking light, dark and system changes the theme', async ({ page, fakeKernel }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await openSettings(page)
   const theme = page.getByRole('radiogroup', { name: 'Theme' })
   const label = theme.getByText('System')
@@ -38,9 +38,9 @@ test('picking light, dark and system changes the theme', async ({ page, fakeDaem
   await expect(label).toHaveCSS('color', DARK_TEXT)
 })
 
-test('Solarized Light+ draws the Settings in its colours', async ({ page, fakeDaemon }) => {
+test('Solarized Light+ draws the Settings in its colours', async ({ page, fakeKernel }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await openSettings(page)
   const theme = page.getByRole('radiogroup', { name: 'Theme' })
   await theme.getByRole('radio', { name: 'Solarized Light+' }).click()
@@ -49,8 +49,8 @@ test('Solarized Light+ draws the Settings in its colours', async ({ page, fakeDa
   await expect(theme.getByText('System')).toHaveCSS('color', 'rgb(75, 92, 98)')
 })
 
-test('text size changes the transcript and persists', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('text size changes the transcript and persists', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Deploy/)
   const message = page.getByRole('article', { name: 'You' }).getByText('ship it')
   await expect(message).toHaveCSS('font-size', '15px')
@@ -78,8 +78,8 @@ test('text size changes the transcript and persists', async ({ page, fakeDaemon 
 // The geometry the native app shares: the composer's 18px corners and the
 // 1px hairline of its card. The Synara pass (ADR 0025) once rounded the
 // phone's composer to 10px while the desktop app kept 18.
-test('the composer takes the desktop radius and hairline', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test('the composer takes the desktop radius and hairline', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Deploy/)
   const composer = page.getByRole('form', { name: 'Message composer' })
   await expect(composer).toHaveCSS('border-top-left-radius', '18px')

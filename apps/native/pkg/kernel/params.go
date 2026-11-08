@@ -603,6 +603,8 @@ type HarnessInfo struct {
 		Models []string `json:"models,omitempty"`
 	} `json:"providers"`
 	Models []ModelInfo `json:"models"`
+	// Agent is what a new conversation starts with when its create names no model; nil while none is set.
+	Agent *DefaultAgent `json:"agent,omitempty"`
 	// Capabilities says which methods this build implements.
 	Capabilities Capabilities    `json:"capabilities"`
 	Extensions   []ExtensionInfo `json:"extensions,omitempty"`
@@ -809,6 +811,16 @@ type HarnessConfigureParams struct {
 	MemoryDir *Field[string] `json:"memoryDir,omitempty"`
 	// Section takes the place of the app's prompt section with Some(text), or takes it away with None; nil leaves it.
 	Section *Field[string] `json:"section,omitempty"`
+	// Agent takes the place of what a new conversation starts with when its create names no model, with
+	// Some(agent), or takes it away with None; nil leaves it.
+	Agent *Field[DefaultAgent] `json:"agent,omitempty"`
+}
+
+// DefaultAgent is what a new conversation starts with when its create names no model: a model the Kernel offers,
+// and its thinking level ("" for the model's own).
+type DefaultAgent struct {
+	Model         ModelRef `json:"model"`
+	ThinkingLevel string   `json:"thinkingLevel,omitempty"`
 }
 
 // AppAgent is what a brand's app gives every conversation of the Kernel (ADR 0041), as the Host passes it at launch in

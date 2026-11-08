@@ -126,6 +126,61 @@ describe('harness.configure', () => {
     expect(info['providers']).toEqual([])
   })
 
+  test('sets the model a new conversation starts with, which harness.info reports', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const faux = fauxCatalog()
+    faux.faux.setResponses([fauxAssistantMessage('A title')])
+    const kernel = await start({ dir: data.dir, faux })
+    const client = new Client(kernel.port)
+    cleanups.push(async () => {
+      client.close()
+      await kernel.stop()
+    })
+    expect((await client.call('harness.info'))['agent']).toBeUndefined()
+
+    await client.call('harness.configure', { agent: { model: faux.model, thinkingLevel: 'high' } })
+    await client.waitForMethod('harness.changed')
+    expect((await client.call('harness.info'))['agent']).toEqual({
+      model: faux.model,
+      thinkingLevel: 'high',
+    })
+    const created = await client.call('conversation.create', { agent: { cwd: data.dir } })
+    const opened = await client.call('conversation.open', {
+      id: created['conversationId'],
+      seen: false,
+    })
+    const agent = (
+      opened['view'] as { docs: Record<string, { model?: unknown; thinkingLevel?: string }> }
+    ).docs['pi.agent']
+    expect(agent?.model).toMatchObject(faux.model)
+    expect(agent?.thinkingLevel).toBe('high')
+
+    // A model the create names wins over it.
+    const named = await client.call('conversation.create', {
+      agent: { cwd: data.dir, thinkingLevel: 'low' },
+    })
+    const reopened = await client.call('conversation.open', {
+      id: named['conversationId'],
+      seen: false,
+    })
+    expect(
+      (reopened['view'] as { docs: Record<string, { thinkingLevel?: string }> }).docs['pi.agent']
+        ?.thinkingLevel,
+    ).toBe('low')
+
+    await client.call('harness.configure', { agent: null })
+    expect((await client.call('harness.info'))['agent']).toBeUndefined()
+
+    const unknown = await client.fails('harness.configure', {
+      agent: { model: { provider: 'nobody', modelId: 'nothing' } },
+    })
+    expect(unknown.code).toBe(-32602)
+    expect(
+      (await client.fails('harness.configure', { agent: { thinkingLevel: 'high' } })).code,
+    ).toBe(-32602)
+  })
+
   test('refuses what it cannot take, and changes nothing then', async () => {
     const { client } = await boot()
     const bad = await client.fails('harness.configure', {

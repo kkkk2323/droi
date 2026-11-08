@@ -101,8 +101,12 @@ describe('removing a computer', () => {
         cwd: '/x',
         repoRoot: null,
         updatedAt: 1,
+        activityAt: 1000,
+        viewedAt: 1000,
+        kind: 'chat',
         archivedAt: null,
         parentId: null,
+        tags: [],
       },
     ])
     await removeComputer('c-office', keychain)

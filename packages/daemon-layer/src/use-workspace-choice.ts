@@ -1,12 +1,12 @@
 // Where a new Session will work, as the New session page offers it: a recent
 // Workspace, a typed path, or None, which is a fresh Scratch Workspace the
-// Gateway makes on the computer (ADR 0008).
+// Gateway makes on the computer (ADR 0008). A folder made for None that no
+// Session took goes when the page does (the Gateway removes it while empty).
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
-import { useConnectionState, useDaemonConnection } from './connection-context'
+import { useEffect, useRef, useState } from 'react'
+import { useConnectionState, useKernelConnection } from './connection-context'
 import { SCRATCH_TAG, type SessionTag } from './sessions'
 import type { RecentWorkspace } from './use-new-session'
-import { scratchDraftFolder } from './use-draft-session'
 import { uuid } from './uuid'
 
 export type WorkspacePick =
@@ -36,40 +36,47 @@ export interface WorkspaceChoice {
   /** Why no folder could be made for None. */
   error: string | null
   choose(pick: WorkspacePick): void
+  /** A Session was started in the Scratch folder: it stays when the page goes. */
+  keep(): void
 }
 
 export function useWorkspaceChoice(
   recent: readonly RecentWorkspace[] | null,
   initial: WorkspacePick | null,
 ): WorkspaceChoice {
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   const connected = useConnectionState().status === 'connected'
   const [chosen, setChosen] = useState(initial)
   const [page] = useState(uuid)
-  // Picking None again after something else makes a new folder: the previous
-  // one went with its draft.
-  const [round, setRound] = useState(0)
   const pick = chosen ?? defaultPick(recent)
   const scratch = pick?.kind === 'scratch'
   const folder = useQuery({
-    queryKey: ['scratch-workspace', page, round],
+    queryKey: ['scratch-workspace', page],
     enabled: connected && scratch,
     // Each answer is a folder on disk; asking again would make another.
     staleTime: Infinity,
     retry: false,
-    queryFn: () => {
-      const reuse = round === 0 ? scratchDraftFolder(connection) : null
-      return reuse ?? connection.scratch.create()
-    },
+    queryFn: () => connection.scratch.create(),
   })
+  const made = useRef<string | null>(null)
+  const kept = useRef(false)
+  useEffect(() => {
+    made.current = folder.data ?? null
+  }, [folder.data])
+  useEffect(
+    () => () => {
+      if (!kept.current && made.current) void connection.scratch.trash(made.current).catch(() => {})
+    },
+    [connection],
+  )
   return {
     pick,
     workspace: pick?.kind === 'recent' ? pick.path : scratch ? (folder.data ?? null) : null,
     tags: scratch ? SCRATCH_TAGS : NO_TAGS,
     error: scratch && folder.error ? folder.error.message : null,
-    choose(next) {
-      if (next.kind === 'scratch' && pick?.kind !== 'scratch') setRound(round + 1)
-      setChosen(next)
+    choose: setChosen,
+    keep: () => {
+      kept.current = true
     },
   }
 }

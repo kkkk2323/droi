@@ -1,4 +1,4 @@
-// A stand-in for a Relay in front of the Fake Daemon: it answers under /c/<Relay Id>/ as a
+// A stand-in for a Relay in front of the Fake Kernel's Gateway: it answers under /c/<Relay Id>/ as a
 // Relay addresses a computer (ADR 0034), or at its root as the computer's network address
 // would, and passes everything on, WebSockets included. The Relay's own protocol, between it
 // and the Host, is the Go tests' (apps/native/internal/relay); the phone sees only this.
@@ -11,7 +11,7 @@ export const RELAY_ID = 'abcdefghijklmnopqrstuvwx'
 export interface RelayStandIn {
   /** The address the phone is given: the origin, with /c/<Relay Id> for a Relay. */
   base: string
-  /** The paths it passed on, the Gateway's own (/daemon?token=..., /meta). */
+  /** The paths it passed on, the Gateway's own (/kernel?token=..., /meta). */
   requests: string[]
   /** Stops answering and drops every connection, as a network the phone left. */
   close(): Promise<void>
@@ -24,11 +24,17 @@ export async function startRelayStandIn(
     relayInMeta,
   }: {
     prefix?: string
-    /** The Relay the Gateway's /meta names through this stand-in, as a computer with one does. */
+    /**
+     * The Relay the Gateway's /meta names through this stand-in, as a computer with one does. A Relay
+     * stand-in names itself unless told otherwise: the Gateway behind it has no Relay of its own, and a /meta
+     * naming none would have the phone forget it.
+     */
     relayInMeta?: () => string
   } = {},
 ): Promise<RelayStandIn> {
   const t = new URL(target)
+  let base = ''
+  const named = relayInMeta ?? (prefix ? () => base : undefined)
   const requests: string[] = []
   const sockets = new Set<Socket>()
   const rewrite = (url = ''): string | null => {
@@ -54,12 +60,12 @@ export async function startRelayStandIn(
         headers: { ...req.headers, host: t.host },
       },
       (answer) => {
-        if (relayInMeta && path === '/meta') {
+        if (named && path === '/meta') {
           const chunks: Buffer[] = []
           answer.on('data', (chunk: Buffer) => chunks.push(chunk))
           answer.on('end', () => {
             const meta = JSON.parse(Buffer.concat(chunks).toString()) as Record<string, unknown>
-            const body = JSON.stringify({ ...meta, relay: relayInMeta() })
+            const body = JSON.stringify({ ...meta, relay: named() })
             const { 'content-length': _length, ...headers } = answer.headers
             res.writeHead(answer.statusCode ?? 502, headers).end(body)
           })
@@ -106,8 +112,9 @@ export async function startRelayStandIn(
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
+  base = `http://127.0.0.1:${port}${prefix}`
   return {
-    base: `http://127.0.0.1:${port}${prefix}`,
+    base,
     requests,
     close: () =>
       new Promise<void>((resolve) => {

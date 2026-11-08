@@ -1,8 +1,7 @@
 // A Workstream's ways around (ADR 0036): an orchestrator's header lists its
 // agents in a sheet, grouped by whether they wait on the user, work or idle,
 // and an agent's title leads back to its orchestrator.
-import type { SessionSummary } from '@droi/daemon-layer/sessions'
-import type { SessionRef } from '@droi/daemon-layer/subagents'
+import type { SessionRef, SessionSummary } from '@droi/daemon-layer/sessions'
 import { useSessionActivity } from '@droi/daemon-layer/use-session-activity'
 import { agentCount, groupAgents, type AgentStatus } from '@droi/daemon-layer/workstreams'
 import { ChevronLeft, CircleAlert, CircleDashed, Network } from 'lucide-react-native'

@@ -1,7 +1,7 @@
 // What a page of the connected computer shows when the connection is not simply up: the
-// computer is no longer paired, it cannot be reached, it is reconnecting, or
-// it runs another Droi version than the one this app was built from.
-import { useConnectionState, useDaemonConnection } from '@droi/daemon-layer/connection-context'
+// computer is no longer paired, it cannot be reached, its Droi runs no Kernel, it is
+// reconnecting, or it runs another Droi version than the one this app was built from.
+import { useConnectionState, useKernelConnection } from '@droi/daemon-layer/connection-context'
 import { GATEWAY_META_PATH, gatewayEndpoint, type GatewayMeta } from '@droi/daemon-layer/gateway'
 import { createStringPreference, usePreference } from '@droi/daemon-layer/local-preference'
 import { useQuery } from '@tanstack/react-query'
@@ -47,6 +47,13 @@ export function ConnectionGate({
       </View>
     )
   }
+  if (state.status === 'no-kernel') {
+    return (
+      <View style={styles.fill}>
+        <NoKernel computer={computer} />
+      </View>
+    )
+  }
   return (
     <View style={styles.fill}>
       {children}
@@ -64,6 +71,25 @@ function NoLongerPaired({ computer }: { computer: PairedComputer }) {
         Remote Access; the phone keeps this computer and its name.
       </Text>
       <PairingForm onPaired={() => {}} />
+    </ScrollView>
+  )
+}
+
+function NoKernel({ computer }: { computer: PairedComputer }) {
+  const colors = useColors()
+  return (
+    <ScrollView contentContainerStyle={styles.panel}>
+      <Heading>{computer.name} runs Droi without its Kernel</Heading>
+      <Text tone="muted">
+        This app works with the Sessions of Droi’s own Kernel. Update Droi on the computer, or turn
+        its Kernel on, and the phone connects by itself.
+      </Text>
+      <View style={styles.retrying}>
+        <Spinner size={14} color={colors.mutedForeground} />
+        <Text tone="muted" size="sm">
+          Checking again…
+        </Text>
+      </View>
     </ScrollView>
   )
 }
@@ -134,7 +160,7 @@ const dismissedVersionNotice = createStringPreference('droi.versionNoticeDismiss
 function Notices({ computer, reconnecting }: { computer: PairedComputer; reconnecting: boolean }) {
   const colors = useColors()
   const appVersion = Constants.expoConfig?.version ?? ''
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   const via = connection.gatewayUrl()
   const meta = useQuery({
     queryKey: ['meta', via],

@@ -104,6 +104,9 @@ func realPath(path string) string {
 	return filepath.Clean(path)
 }
 
+// NewWorkspaces is the Gateway's Workspaces on this computer, making worktrees in root.
+func NewWorkspaces(root func() string) gateway.Workspaces { return workspaces{root: root} }
+
 // workspaces is the Gateway's Workspaces on this computer: the file system and git.
 type workspaces struct {
 	// root is the folder worktrees go in.

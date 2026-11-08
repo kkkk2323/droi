@@ -225,11 +225,15 @@ func (a *App) readModels(c *kernel.Client, gen int64) {
 		return
 	}
 	a.kernel.mu.Lock()
-	if a.kernel.gen == gen {
+	current := a.kernel.gen == gen
+	if current {
 		a.kernel.models = info.Models
 	}
 	a.kernel.mu.Unlock()
 	a.redraw()
+	if current {
+		a.pushDefaultAgent(c, gen)
+	}
 }
 
 // pumpKernel takes the pushes of one connection to the conversations open on it, until the connection ends.

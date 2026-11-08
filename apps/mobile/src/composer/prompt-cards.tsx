@@ -1,14 +1,11 @@
-// Prompts take the composer's place (ADR 0003): a permission request is
-// answered with one tap; an ask-user question one question at a time, with a
-// line for an answer of one's own, or cancelled. Whichever Client answers
-// first wins, and the card goes everywhere.
-import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
-import {
-  permissionDetail,
-  scriptPermission,
-  type ScriptPermission,
-} from '@droi/daemon-layer/tool-calls'
-import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
+// Prompts take the composer's place (ADR 0003): an approval is answered with one
+// tap; an ask_user question one question at a time, with a line for an answer of
+// one's own, or cancelled. Whichever Client answers first wins, and the card goes
+// everywhere.
+import type { ApprovalRequest, AskRequest } from '@droi/daemon-layer/kernel-wire'
+import { scriptToolNames } from '@droi/daemon-layer/script-runs'
+import { approvalDetail } from '@droi/daemon-layer/tool-calls'
+import { usePromptActions, usePrompts, type AskAnswer } from '@droi/daemon-layer/use-prompts'
 import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, TextInput, View } from 'react-native'
@@ -18,15 +15,16 @@ import { fontSize, fonts, radius, space } from '../ui/theme'
 import { useColors } from '../ui/use-colors'
 import { SourceView } from '../transcript/script-run'
 
+/** A Prompt the run waits on, which takes the composer's place; a question that does not block sits above it. */
 export function hasPrompt(prompts: ReturnType<typeof usePrompts>): boolean {
-  return prompts.permissions.length > 0 || prompts.askUser.length > 0
+  return prompts.permissions.length > 0 || prompts.askUser.some((ask) => ask.blocking !== false)
 }
 
 export function PromptArea({ sessionId }: { sessionId: string }) {
   const colors = useColors()
   const prompts = usePrompts(sessionId)
   const actions = usePromptActions(sessionId)
-  if (!hasPrompt(prompts) && !actions.error) return null
+  if (prompts.permissions.length + prompts.askUser.length === 0 && !actions.error) return null
   return (
     <View aria-live="polite" style={styles.area}>
       {actions.error ? (
@@ -57,11 +55,12 @@ function PermissionCard({
   permission,
   onAnswer,
 }: {
-  permission: PendingPermission
-  onAnswer: (selectedOption: string) => void
+  permission: ApprovalRequest
+  onAnswer: (optionId: string) => void
 }) {
   const colors = useColors()
-  const title = permission.toolUses.map((t) => t.toolUse.name).join(', ')
+  const title = permission.tool
+  const code = permission.tool === 'codemode' ? permission.args['code'] : undefined
   return (
     <View
       role="group"
@@ -77,35 +76,22 @@ function PermissionCard({
       <Text size="sm" weight="medium">
         Droid wants to run {title}
       </Text>
-      {permission.toolUses.map((use) => {
-        const script = scriptPermission(use.details)
-        return script ? (
-          <ScriptPermissionDetail
-            key={use.toolUse.id}
-            permission={script}
-            input={use.toolUse.input}
-          />
-        ) : (
-          <Text
-            key={use.toolUse.id}
-            selectable
-            size="xs"
-            mono
-            style={[styles.detail, { backgroundColor: colors.muted }]}
-          >
-            {permissionDetail(use.details, use.toolUse.input)}
-          </Text>
-        )
-      })}
+      {typeof code === 'string' ? (
+        <ScriptPermissionDetail script={code} />
+      ) : (
+        <Text selectable size="xs" mono style={[styles.detail, { backgroundColor: colors.muted }]}>
+          {approvalDetail(permission.tool, permission.args)}
+        </Text>
+      )}
       <View style={styles.options}>
         {permission.options.map((option) => {
-          const cancel = option.value === 'cancel'
+          const cancel = option.id === 'cancel'
           return (
             <Pressable
-              key={option.value}
+              key={option.id}
               role="button"
               aria-label={option.label}
-              onPress={() => onAnswer(option.value)}
+              onPress={() => onAnswer(option.id)}
               style={({ pressed }) => [
                 styles.option,
                 { backgroundColor: pressed ? colors.accent : colors.card },
@@ -132,120 +118,79 @@ function PermissionCard({
   )
 }
 
-/**
- * A Script asks once for the calls it can see in its source: each by line,
- * as its own Prompt would show it, with the program a tap away.
- */
-function ScriptPermissionDetail({
-  permission,
-  input,
-}: {
-  permission: ScriptPermission
-  input: Record<string, unknown>
-}) {
+/** A script asks to run: the tools it calls, with its source a tap away. */
+function ScriptPermissionDetail({ script }: { script: string }) {
   const colors = useColors()
-  const script = typeof input['script'] === 'string' ? input['script'] : ''
-  const [open, setOpen] = useState(permission.calls.length === 0)
-  const impactColor = (impact: string | null) =>
-    impact === 'high'
-      ? colors.destructiveForeground
-      : impact === 'medium'
-        ? colors.attention
-        : colors.mutedForeground
+  const tools = scriptToolNames(script)
+  const [open, setOpen] = useState(tools.length === 0)
   return (
     <View style={[styles.script, { backgroundColor: colors.muted }]}>
-      {permission.calls.length > 0 ? (
-        <View role="list" aria-label="Calls in the Script" style={styles.scriptCalls}>
-          {permission.calls.map((call) => (
-            <View
-              key={`${call.line}:${call.tool}:${call.detail}`}
-              role="listitem"
-              aria-label={`Line ${call.line}, ${call.tool}: ${call.detail}${call.impact ? `, ${call.impact}` : ''}`}
-              style={styles.scriptCall}
-            >
-              <Text tone="muted" size="xs" mono style={styles.scriptLine}>
-                L{call.line}
+      {tools.length > 0 ? (
+        <View role="list" aria-label="Tools the script calls" style={styles.scriptCalls}>
+          {tools.map((tool) => (
+            <View key={tool} role="listitem" style={styles.scriptCall}>
+              <Text size="xs" mono>
+                {tool}
               </Text>
-              <Text size="xs" weight="medium">
-                {call.tool}
-              </Text>
-              <Text selectable size="xs" mono style={styles.fill}>
-                {call.detail}
-              </Text>
-              {call.impact ? (
-                <Text size="xs" style={{ color: impactColor(call.impact) }}>
-                  {call.impact}
-                </Text>
-              ) : null}
             </View>
           ))}
         </View>
       ) : null}
-      {script ? (
-        <>
-          <Pressable
-            role="button"
-            aria-expanded={open}
-            onPress={() => setOpen(!open)}
-            style={[styles.sourceToggle, { borderTopColor: colors.border }]}
-          >
-            <Text tone="muted" size="xs">
-              {open ? 'Hide source' : 'Show source'}
-            </Text>
-          </Pressable>
-          {open ? (
-            <SourceView script={script} highlight={new Set(permission.calls.map((c) => c.line))} />
-          ) : null}
-        </>
-      ) : null}
+      <Pressable
+        role="button"
+        aria-expanded={open}
+        onPress={() => setOpen(!open)}
+        style={[styles.sourceToggle, { borderTopColor: colors.border }]}
+      >
+        <Text tone="muted" size="xs">
+          {open ? 'Hide source' : 'Show source'}
+        </Text>
+      </Pressable>
+      {open ? <SourceView script={script} /> : null}
     </View>
   )
 }
-
-type Answers = Array<{ index: number; question: string; answer: string }>
 
 function AskUserCard({
   request,
   onAnswer,
   onCancel,
 }: {
-  request: PendingAskUserRequest
-  onAnswer: (answers: Answers) => void
+  request: AskRequest
+  onAnswer: (answers: AskAnswer[]) => void
   onCancel: () => void
 }) {
   const colors = useColors()
   const scale = useTextScale()
   const [step, setStep] = useState(0)
-  const [chosen, setChosen] = useState<Record<number, string[]>>({})
-  const [custom, setCustom] = useState<Record<number, string>>({})
+  const [chosen, setChosen] = useState<Record<string, string[]>>({})
+  const [custom, setCustom] = useState<Record<string, string>>({})
 
   const question = request.questions[step]
   if (!question) return null
-  // droid 1.2 says what each option means, index-aligned; the SDK's type
-  // predates it (Droi's patch keeps the field when the request is parsed).
-  const descriptions = (question as { optionDescriptions?: string[] }).optionDescriptions
-  const selected = chosen[question.index] ?? []
-  const typed = custom[question.index] ?? ''
+  const options = question.options ?? []
+  const selected = chosen[question.questionId] ?? []
+  const typed = custom[question.questionId] ?? ''
   const canContinue = selected.length > 0 || typed.trim().length > 0
   const last = step + 1 === request.questions.length
 
-  const select = (option: string) => {
-    setCustom((prev) => ({ ...prev, [question.index]: '' }))
+  const select = (optionId: string) => {
+    setCustom((prev) => ({ ...prev, [question.questionId]: '' }))
     setChosen((prev) => {
-      const current = prev[question.index] ?? []
-      if (!question.multiSelect) return { ...prev, [question.index]: [option] }
+      const current = prev[question.questionId] ?? []
+      if (!question.multiSelect) return { ...prev, [question.questionId]: [optionId] }
       return {
         ...prev,
-        [question.index]: current.includes(option)
-          ? current.filter((o) => o !== option)
-          : [...current, option],
+        [question.questionId]: current.includes(optionId)
+          ? current.filter((o) => o !== optionId)
+          : [...current, optionId],
       }
     })
   }
 
   const type = (value: string) => {
-    setCustom((prev) => ({ ...prev, [question.index]: value }))
-    if (value.trim()) setChosen((prev) => ({ ...prev, [question.index]: [] }))
+    setCustom((prev) => ({ ...prev, [question.questionId]: value }))
+    if (value.trim()) setChosen((prev) => ({ ...prev, [question.questionId]: [] }))
   }
 
   const advance = () => {
@@ -256,12 +201,10 @@ function AskUserCard({
     }
     onAnswer(
       request.questions.map((q) => {
-        const own = custom[q.index]?.trim()
-        return {
-          index: q.index,
-          question: q.question,
-          answer: own ? own : (chosen[q.index] ?? []).join(', '),
-        }
+        const own = custom[q.questionId]?.trim()
+        return own
+          ? { questionId: q.questionId, text: own }
+          : { questionId: q.questionId, selected: chosen[q.questionId] ?? [] }
       }),
     )
   }
@@ -274,8 +217,8 @@ function AskUserCard({
     >
       <View style={styles.kicker}>
         <MessageCircleQuestion size={12} color={colors.mutedForeground} strokeWidth={2} />
-        <Text size="xs" weight="semibold" tone="muted">
-          {question.topic}
+        <Text size="xs" weight="semibold" tone="muted" style={styles.fill} numberOfLines={2}>
+          {request.context}
         </Text>
         {request.questions.length > 1 ? (
           <Text size="xs" tone="muted" style={[styles.progress, { backgroundColor: colors.muted }]}>
@@ -286,26 +229,25 @@ function AskUserCard({
       <Text size="sm" weight="medium">
         {question.question}
       </Text>
-      {question.options.length > 0 ? (
+      {options.length > 0 ? (
         <View
           role={question.multiSelect ? 'group' : 'radiogroup'}
           aria-label={question.question}
           style={styles.options}
         >
-          {question.options.map((option, i) => {
-            const checked = selected.includes(option)
-            const description = descriptions?.[i]
+          {options.map((option) => {
+            const checked = selected.includes(option.id)
             return (
               <Pressable
-                key={option}
+                key={option.id}
                 role={question.multiSelect ? 'checkbox' : 'radio'}
                 aria-checked={checked}
-                aria-label={option}
-                accessibilityHint={description}
-                onPress={() => select(option)}
+                aria-label={option.label}
+                accessibilityHint={option.description}
+                onPress={() => select(option.id)}
                 style={[
                   styles.option,
-                  description ? styles.described : null,
+                  option.description ? styles.described : null,
                   {
                     backgroundColor: checked ? colors.accent : colors.card,
                     borderColor: checked ? colors.ring : 'transparent',
@@ -314,11 +256,11 @@ function AskUserCard({
               >
                 <View style={styles.fill}>
                   <Text size="sm" weight="medium">
-                    {option}
+                    {option.label}
                   </Text>
-                  {description ? (
+                  {option.description ? (
                     <Text size="xs" tone="muted">
-                      {description}
+                      {option.description}
                     </Text>
                   ) : null}
                 </View>
@@ -375,7 +317,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.sm,
     paddingVertical: 2,
   },
-  scriptLine: { width: 28 },
   sourceToggle: {
     borderTopWidth: 1,
     minHeight: 44,

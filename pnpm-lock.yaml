@@ -4,14 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  '@factory/droid-sdk@0.10.0':
-    hash: 557f3636144e20f89217ab3115bb221470f58d26839198997695f64836ed53bd
-    path: patches/@factory__droid-sdk@0.10.0.patch
-  '@factory/droid-sdk@0.9.1':
-    hash: caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7
-    path: patches/@factory__droid-sdk@0.9.1.patch
-
 importers:
 
   .:
@@ -74,9 +66,6 @@ importers:
       '@expo/ui':
         specifier: ~57.0.20
         version: 57.0.20(@babel/core@7.29.0)(@types/react-dom@19.3.0(@types/react@19.2.18))(@types/react@19.2.18)(expo@57.0.25)(react-dom@19.2.3(react@19.2.3))(react-native-worklets@0.10.1(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
-      '@factory/droid-sdk':
-        specifier: 0.10.0
-        version: 0.10.0(patch_hash=557f3636144e20f89217ab3115bb221470f58d26839198997695f64836ed53bd)
       '@react-native-async-storage/async-storage':
         specifier: 2.2.0
         version: 2.2.0(react-native@0.86.3(@babel/core@7.29.0)(@react-native/metro-config@0.86.3(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.3))
@@ -198,18 +187,12 @@ importers:
       '@types/react':
         specifier: ~19.2.2
         version: 19.2.18
-      abort-controller:
-        specifier: 3.0.0
-        version: 3.0.0
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
 
   packages/daemon-layer:
     dependencies:
-      '@factory/droid-sdk':
-        specifier: 0.10.0
-        version: 0.10.0(patch_hash=557f3636144e20f89217ab3115bb221470f58d26839198997695f64836ed53bd)
       '@tanstack/react-query':
         specifier: ^5.103.1
         version: 5.103.1(react@19.3.0)
@@ -217,6 +200,9 @@ importers:
         specifier: '>=19.2'
         version: 19.3.0
     devDependencies:
+      '@earendil-works/chord':
+        specifier: 1.5.0
+        version: 1.5.0(esbuild@0.27.3)
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
@@ -226,12 +212,6 @@ importers:
       '@droi/daemon-layer':
         specifier: workspace:*
         version: link:../packages/daemon-layer
-      '@droi/fake-daemon':
-        specifier: github:kkkk2323/droid-sdk-go#e0998547b759758782d3e1cad7ff6023567a1f5f&path:/fake-daemon
-        version: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/e0998547b759758782d3e1cad7ff6023567a1f5f#path:/fake-daemon
-      '@factory/droid-sdk':
-        specifier: 0.10.0
-        version: 0.10.0(patch_hash=557f3636144e20f89217ab3115bb221470f58d26839198997695f64836ed53bd)
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
@@ -247,9 +227,6 @@ importers:
       ws:
         specifier: ^8.21.3
         version: 8.21.3
-      zod:
-        specifier: ^4.6.5
-        version: 4.6.5
 
 packages:
 
@@ -790,10 +767,6 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/e0998547b759758782d3e1cad7ff6023567a1f5f#path:/fake-daemon':
-    resolution: {path: /fake-daemon, tarball: https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/e0998547b759758782d3e1cad7ff6023567a1f5f}
-    version: 0.1.0
-
   '@earendil-works/chord@1.5.0':
     resolution: {integrity: sha512-jf555zbCM21E03DVBDPD/Tuae0lz64YjaHx/athUxNZ/H7phVVb0dWfZsaYnxaXPQ1odW8iHEoVLOlE/prvUPg==}
     engines: {node: '>=22.19.0'}
@@ -1178,14 +1151,6 @@ packages:
   '@expo/xcpretty@4.4.5':
     resolution: {integrity: sha512-J3eL4n4h5QTwfD0SIz8OIk6/+sOL/hFZAMacgCM07UNlxBQfJipEpIC2AQxvGkbYeStByJ0TVhQAJo+DeNgaSQ==}
     hasBin: true
-
-  '@factory/droid-sdk@0.10.0':
-    resolution: {integrity: sha512-C9152p2CHvJV5Mw5EYZ7H+fflfqYXzMtTaC3TQK+AYLqOfzVFyI74npfqG/WWpkeRyDpRFsBjQiuTeSM6att7g==}
-    engines: {node: '>=18.0.0'}
-
-  '@factory/droid-sdk@0.9.1':
-    resolution: {integrity: sha512-KhMAQQejZWt4jTobuE1QK0UQIc+JtRvm4NcocyaFayE7RQIdsQM0d5ClfcrOvxjND9BYLq1f45KjySjREzJUwQ==}
-    engines: {node: '>=18.0.0'}
 
   '@google/genai@2.21.0':
     resolution: {integrity: sha512-+PDtco2/Z0ONdzCGekCoCT+O1VJS9xJQNN4XzQpXG/t3El/SWWMkCWlFRO1KmivOHPa4Q0VjUYu1HBKCZ/v33Q==}
@@ -2753,9 +2718,6 @@ packages:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
 
-  eventemitter3@5.0.4:
-    resolution: {integrity: sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw==}
-
   eventsource-parser@3.1.1:
     resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
     engines: {node: '>=18.0.0'}
@@ -3264,11 +3226,6 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
-  isows@1.0.7:
-    resolution: {integrity: sha512-I1fSfDCZL5P0v33sVqeTDSpcstAg/N+wF5HS033mogOVIp4B+oHC7oOCsA3axAbBSGTJ8QubbNmnIRN/h8U7hg==}
-    peerDependencies:
-      ws: '*'
-
   jackspeak@4.2.3:
     resolution: {integrity: sha512-ykkVRwrYvFm1nb2AJfKKYPr0emF6IiXDYUaFx4Zn9ZuIH7MrzEZ3sD5RlqGXNRpHtvUHJyOnCEFxOlNDtGo7wg==}
     engines: {node: 20 || >=22}
@@ -3358,12 +3315,6 @@ packages:
   leven@3.1.0:
     resolution: {integrity: sha512-qsda+H8jTaUaN/x5vzW2rzc+8Rw4TAQ/4KjB46IwK5VH+IlVeeeje/EoZRpiXvIqjFgK84QffqPztGI3VBLG1A==}
     engines: {node: '>=6'}
-
-  libsodium-sumo@0.8.4:
-    resolution: {integrity: sha512-TMtHShQfVVsaxDygyapvUC3o7YsPgXa/hRWeIgzyFz6w5k/1hirGptCxp1U7XwW3rCskaTTYKgV10v86UiGgNw==}
-
-  libsodium-wrappers-sumo@0.8.4:
-    resolution: {integrity: sha512-ql7hcgulKZ3ekfa2DGAogcCKsWU0diA/0nArz1CFzh93WQdb46/Kj18ka/Hifq6uA3Ush34Pc6vU/6HXeRwUkg==}
 
   lighthouse-logger@1.4.2:
     resolution: {integrity: sha512-gPWxznF6TKmUHrOQjlVo2UbaL2EJ71mb2CCeRs/2qBpi4L/g4LUVc9+3lKQ6DTUZwJswfM7ainGrLO1+fOqa2g==}
@@ -4675,11 +4626,6 @@ packages:
     deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
-  uuid@9.0.1:
-    resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
-    hasBin: true
-
   validate-npm-package-name@5.0.1:
     resolution: {integrity: sha512-OljLrQ9SQdOUqTaQxqL5dEfZWrXExyyWsozYlAWFawPVNuD83igl7uJD2RTkNMbniIYgt8l81eCJGIdQF7avLQ==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
@@ -5657,18 +5603,6 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@droi/fake-daemon@https://codeload.github.com/kkkk2323/droid-sdk-go/tar.gz/e0998547b759758782d3e1cad7ff6023567a1f5f#path:/fake-daemon':
-    dependencies:
-      '@factory/droid-sdk': 0.9.1(patch_hash=caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7)
-      '@types/ws': 8.18.1
-      ws: 8.21.3
-      zod: 4.6.5
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
   '@earendil-works/chord@1.5.0(esbuild@0.27.3)':
     dependencies:
       '@earendil-works/pi-schema': 1.5.0
@@ -6200,39 +6134,6 @@ snapshots:
       chalk: 4.1.2
       js-yaml: 4.1.1
 
-  '@factory/droid-sdk@0.10.0(patch_hash=557f3636144e20f89217ab3115bb221470f58d26839198997695f64836ed53bd)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
-      '@opentelemetry/api': 1.9.1
-      eventemitter3: 5.0.4
-      fast-deep-equal: 3.1.3
-      isows: 1.0.7(ws@8.21.3)
-      libsodium-wrappers-sumo: 0.8.4
-      uuid: 9.0.1
-      ws: 8.21.3
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
-  '@factory/droid-sdk@0.9.1(patch_hash=caa532d63c43eb376752f0e5b033d6ff5ba59e8983fba721b9c400aa74d470d7)':
-    dependencies:
-      '@modelcontextprotocol/sdk': 1.30.0(zod@3.25.76)
-      '@opentelemetry/api': 1.9.1
-      eventemitter3: 5.0.4
-      fast-deep-equal: 3.1.3
-      isows: 1.0.7(ws@8.21.3)
-      uuid: 9.0.1
-      ws: 8.21.3
-      zod: 3.25.76
-    transitivePeerDependencies:
-      - '@cfworker/json-schema'
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
   '@google/genai@2.21.0(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))':
     dependencies:
       google-auth-library: 10.9.1
@@ -6249,6 +6150,7 @@ snapshots:
   '@hono/node-server@1.19.9(hono@4.11.9)':
     dependencies:
       hono: 4.11.9
+    optional: true
 
   '@isaacs/cliui@9.0.0': {}
 
@@ -6293,28 +6195,6 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@modelcontextprotocol/sdk@1.30.0(zod@3.25.76)':
-    dependencies:
-      '@hono/node-server': 1.19.9(hono@4.11.9)
-      ajv: 8.20.0
-      ajv-formats: 3.0.1(ajv@8.20.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.1.1
-      express: 5.2.1
-      express-rate-limit: 8.7.0(express@5.2.1)
-      hono: 4.11.9
-      jose: 6.2.12
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
-    transitivePeerDependencies:
-      - supports-color
-
   '@modelcontextprotocol/sdk@1.30.0(zod@4.6.5)':
     dependencies:
       '@hono/node-server': 1.19.9(hono@4.11.9)
@@ -6338,7 +6218,8 @@ snapshots:
       - supports-color
     optional: true
 
-  '@opentelemetry/api@1.9.1': {}
+  '@opentelemetry/api@1.9.1':
+    optional: true
 
   '@oxc-project/types@0.150.0': {}
 
@@ -7109,6 +6990,7 @@ snapshots:
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
       ajv: 8.20.0
+    optional: true
 
   ajv@8.20.0:
     dependencies:
@@ -7116,6 +6998,7 @@ snapshots:
       fast-uri: 3.1.8
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
+    optional: true
 
   anser@1.4.10: {}
 
@@ -7149,9 +7032,11 @@ snapshots:
 
   assertion-error@2.0.1: {}
 
-  async-function@1.0.0: {}
+  async-function@1.0.0:
+    optional: true
 
-  async-generator-function@1.0.0: {}
+  async-generator-function@1.0.0:
+    optional: true
 
   babel-plugin-polyfill-corejs2@0.4.17(@babel/core@7.29.0):
     dependencies:
@@ -7282,6 +7167,7 @@ snapshots:
       type-is: 2.1.0
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   boolbase@1.0.0: {}
 
@@ -7342,11 +7228,13 @@ snapshots:
     dependencies:
       es-errors: 1.3.0
       function-bind: 1.1.2
+    optional: true
 
   call-bound@1.0.4:
     dependencies:
       call-bind-apply-helpers: 1.0.2
       get-intrinsic: 1.3.1
+    optional: true
 
   camelcase@6.3.0: {}
 
@@ -7468,17 +7356,22 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  content-disposition@1.1.0: {}
+  content-disposition@1.1.0:
+    optional: true
 
-  content-type@1.0.5: {}
+  content-type@1.0.5:
+    optional: true
 
-  content-type@2.1.0: {}
+  content-type@2.1.0:
+    optional: true
 
   convert-source-map@2.0.0: {}
 
-  cookie-signature@1.2.2: {}
+  cookie-signature@1.2.2:
+    optional: true
 
-  cookie@0.7.2: {}
+  cookie@0.7.2:
+    optional: true
 
   core-js-compat@3.50.0:
     dependencies:
@@ -7488,6 +7381,7 @@ snapshots:
     dependencies:
       object-assign: 4.1.1
       vary: 1.1.2
+    optional: true
 
   cross-fetch@3.2.0:
     dependencies:
@@ -7589,6 +7483,7 @@ snapshots:
       call-bind-apply-helpers: 1.0.2
       es-errors: 1.3.0
       gopd: 1.2.0
+    optional: true
 
   ecdsa-sig-formatter@1.0.11:
     dependencies:
@@ -7612,7 +7507,8 @@ snapshots:
     dependencies:
       stackframe: 1.3.4
 
-  es-define-property@1.0.1: {}
+  es-define-property@1.0.1:
+    optional: true
 
   es-errors@1.3.0: {}
 
@@ -7621,6 +7517,7 @@ snapshots:
   es-object-atoms@1.1.1:
     dependencies:
       es-errors: 1.3.0
+    optional: true
 
   esbuild@0.27.3:
     optionalDependencies:
@@ -7672,13 +7569,13 @@ snapshots:
 
   event-target-shim@5.0.1: {}
 
-  eventemitter3@5.0.4: {}
-
-  eventsource-parser@3.1.1: {}
+  eventsource-parser@3.1.1:
+    optional: true
 
   eventsource@3.0.7:
     dependencies:
       eventsource-parser: 3.1.1
+    optional: true
 
   expect-type@1.4.0: {}
 
@@ -7952,6 +7849,7 @@ snapshots:
       ip-address: 10.7.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   express@5.2.1:
     dependencies:
@@ -7985,6 +7883,7 @@ snapshots:
       vary: 1.1.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   extend@3.0.2: {}
 
@@ -7992,7 +7891,8 @@ snapshots:
 
   fast-sha256@1.3.0: {}
 
-  fast-uri@3.1.8: {}
+  fast-uri@3.1.8:
+    optional: true
 
   fb-dotslash@0.5.8: {}
 
@@ -8053,6 +7953,7 @@ snapshots:
       statuses: 2.0.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   flow-enums-runtime@0.0.6: {}
 
@@ -8062,11 +7963,13 @@ snapshots:
     dependencies:
       fetch-blob: 3.2.0
 
-  forwarded@0.2.0: {}
+  forwarded@0.2.0:
+    optional: true
 
   fresh@0.5.2: {}
 
-  fresh@2.0.0: {}
+  fresh@2.0.0:
+    optional: true
 
   fsevents@2.3.3:
     optional: true
@@ -8089,7 +7992,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  generator-function@2.0.1: {}
+  generator-function@2.0.1:
+    optional: true
 
   gensync@1.0.0-beta.2: {}
 
@@ -8110,6 +8014,7 @@ snapshots:
       has-symbols: 1.1.0
       hasown: 2.0.4
       math-intrinsics: 1.1.0
+    optional: true
 
   get-nonce@1.0.1: {}
 
@@ -8117,6 +8022,7 @@ snapshots:
     dependencies:
       dunder-proto: 1.0.1
       es-object-atoms: 1.1.1
+    optional: true
 
   getenv@2.0.0: {}
 
@@ -8139,7 +8045,8 @@ snapshots:
 
   google-logging-utils@1.1.3: {}
 
-  gopd@1.2.0: {}
+  gopd@1.2.0:
+    optional: true
 
   graceful-fs@4.2.11: {}
 
@@ -8147,7 +8054,8 @@ snapshots:
 
   has-flag@4.0.0: {}
 
-  has-symbols@1.1.0: {}
+  has-symbols@1.1.0:
+    optional: true
 
   hasown@2.0.4:
     dependencies:
@@ -8177,7 +8085,8 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.11.9: {}
+  hono@4.11.9:
+    optional: true
 
   hosted-git-info@7.0.2:
     dependencies:
@@ -8221,6 +8130,7 @@ snapshots:
   iconv-lite@0.7.3:
     dependencies:
       safer-buffer: 2.1.2
+    optional: true
 
   ignore@5.3.2: {}
 
@@ -8234,9 +8144,11 @@ snapshots:
     dependencies:
       loose-envify: 1.4.0
 
-  ip-address@10.7.2: {}
+  ip-address@10.7.2:
+    optional: true
 
-  ipaddr.js@1.9.1: {}
+  ipaddr.js@1.9.1:
+    optional: true
 
   is-arrayish@0.3.4: {}
 
@@ -8252,17 +8164,14 @@ snapshots:
 
   is-plain-obj@2.1.0: {}
 
-  is-promise@4.0.0: {}
+  is-promise@4.0.0:
+    optional: true
 
   is-wsl@2.2.0:
     dependencies:
       is-docker: 2.2.1
 
   isexe@2.0.0: {}
-
-  isows@1.0.7(ws@8.21.3):
-    dependencies:
-      ws: 8.21.3
 
   jackspeak@4.2.3:
     dependencies:
@@ -8300,7 +8209,8 @@ snapshots:
   jiti@2.7.0:
     optional: true
 
-  jose@6.2.12: {}
+  jose@6.2.12:
+    optional: true
 
   js-tokens@4.0.0: {}
 
@@ -8323,9 +8233,11 @@ snapshots:
       '@babel/runtime': 7.29.7
       ts-algebra: 2.0.0
 
-  json-schema-traverse@1.0.0: {}
+  json-schema-traverse@1.0.0:
+    optional: true
 
-  json-schema-typed@8.0.2: {}
+  json-schema-typed@8.0.2:
+    optional: true
 
   json5@2.2.3: {}
 
@@ -8349,12 +8261,6 @@ snapshots:
   lan-network@0.2.1: {}
 
   leven@3.1.0: {}
-
-  libsodium-sumo@0.8.4: {}
-
-  libsodium-wrappers-sumo@0.8.4:
-    dependencies:
-      libsodium-sumo: 0.8.4
 
   lighthouse-logger@1.4.2:
     dependencies:
@@ -8454,7 +8360,8 @@ snapshots:
 
   marky@1.3.0: {}
 
-  math-intrinsics@1.1.0: {}
+  math-intrinsics@1.1.0:
+    optional: true
 
   mathjax-full@3.2.2:
     dependencies:
@@ -8579,13 +8486,15 @@ snapshots:
 
   mdn-data@2.0.14: {}
 
-  media-typer@1.1.1: {}
+  media-typer@1.1.1:
+    optional: true
 
   memoize-one@5.2.1: {}
 
   memoize-one@6.0.0: {}
 
-  merge-descriptors@2.0.0: {}
+  merge-descriptors@2.0.0:
+    optional: true
 
   merge-options@3.0.4:
     dependencies:
@@ -9230,7 +9139,8 @@ snapshots:
 
   object-assign@4.1.1: {}
 
-  object-inspect@1.13.4: {}
+  object-inspect@1.13.4:
+    optional: true
 
   obug@2.2.1: {}
 
@@ -9247,6 +9157,7 @@ snapshots:
   once@1.4.0:
     dependencies:
       wrappy: 1.0.2
+    optional: true
 
   onetime@2.0.1:
     dependencies:
@@ -9340,7 +9251,8 @@ snapshots:
       lru-cache: 11.5.3
       minipass: 7.1.3
 
-  path-to-regexp@8.4.2: {}
+  path-to-regexp@8.4.2:
+    optional: true
 
   picocolors@1.1.1: {}
 
@@ -9348,7 +9260,8 @@ snapshots:
 
   picomatch@4.0.7: {}
 
-  pkce-challenge@5.0.1: {}
+  pkce-challenge@5.0.1:
+    optional: true
 
   playwright-core@1.63.0: {}
 
@@ -9413,6 +9326,7 @@ snapshots:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
+    optional: true
 
   proxy-agent-negotiate@1.1.0: {}
 
@@ -9420,6 +9334,7 @@ snapshots:
     dependencies:
       es-define-property: 1.0.1
       side-channel: 1.1.1
+    optional: true
 
   query-string@7.1.3:
     dependencies:
@@ -9432,7 +9347,8 @@ snapshots:
 
   range-parser@1.2.1: {}
 
-  range-parser@1.3.0: {}
+  range-parser@1.3.0:
+    optional: true
 
   raw-body@3.0.2:
     dependencies:
@@ -9440,6 +9356,7 @@ snapshots:
       http-errors: 2.0.1
       iconv-lite: 0.7.3
       unpipe: 1.0.0
+    optional: true
 
   react-devtools-core@6.1.5:
     dependencies:
@@ -9656,7 +9573,8 @@ snapshots:
 
   require-directory@2.1.1: {}
 
-  require-from-string@2.0.2: {}
+  require-from-string@2.0.2:
+    optional: true
 
   resolve-from@5.0.0: {}
 
@@ -9706,10 +9624,12 @@ snapshots:
       path-to-regexp: 8.4.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   safe-buffer@5.2.1: {}
 
-  safer-buffer@2.1.2: {}
+  safer-buffer@2.1.2:
+    optional: true
 
   sandbox-cli-detector@0.2.0: {}
 
@@ -9754,6 +9674,7 @@ snapshots:
       statuses: 2.0.2
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   serialize-error@2.1.0: {}
 
@@ -9774,6 +9695,7 @@ snapshots:
       send: 1.2.1
     transitivePeerDependencies:
       - supports-color
+    optional: true
 
   server-only@0.0.1: {}
 
@@ -9797,6 +9719,7 @@ snapshots:
     dependencies:
       es-errors: 1.3.0
       object-inspect: 1.13.4
+    optional: true
 
   side-channel-map@1.0.1:
     dependencies:
@@ -9804,6 +9727,7 @@ snapshots:
       es-errors: 1.3.0
       get-intrinsic: 1.3.1
       object-inspect: 1.13.4
+    optional: true
 
   side-channel-weakmap@1.0.2:
     dependencies:
@@ -9812,6 +9736,7 @@ snapshots:
       get-intrinsic: 1.3.1
       object-inspect: 1.13.4
       side-channel-map: 1.0.1
+    optional: true
 
   side-channel@1.1.1:
     dependencies:
@@ -9820,6 +9745,7 @@ snapshots:
       side-channel-list: 1.0.1
       side-channel-map: 1.0.1
       side-channel-weakmap: 1.0.2
+    optional: true
 
   siginfo@2.0.0: {}
 
@@ -9976,6 +9902,7 @@ snapshots:
       content-type: 2.1.0
       media-typer: 1.1.1
       mime-types: 3.0.2
+    optional: true
 
   typescript@6.0.3: {}
 
@@ -10078,8 +10005,6 @@ snapshots:
 
   uuid@7.0.3: {}
 
-  uuid@9.0.1: {}
-
   validate-npm-package-name@5.0.1: {}
 
   vary@1.1.2: {}
@@ -10172,7 +10097,8 @@ snapshots:
       string-width: 4.2.3
       strip-ansi: 6.0.1
 
-  wrappy@1.0.2: {}
+  wrappy@1.0.2:
+    optional: true
 
   ws@7.5.13: {}
 
@@ -10210,10 +10136,6 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
-  zod-to-json-schema@3.25.2(zod@3.25.76):
-    dependencies:
-      zod: 3.25.76
-
   zod-to-json-schema@3.25.2(zod@4.6.5):
     dependencies:
       zod: 4.6.5
@@ -10221,7 +10143,8 @@ snapshots:
 
   zod@3.25.76: {}
 
-  zod@4.6.5: {}
+  zod@4.6.5:
+    optional: true
 
   zwitch@2.0.4: {}
 

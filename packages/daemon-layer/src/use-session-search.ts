@@ -1,17 +1,19 @@
-// Full-text search over every Session on the computer, done by the Daemon
-// (`daemon.search_sessions`), which indexes the session files; no Client keeps
-// an index of its own. A hit comes back with snippets in which the Daemon
-// wraps the matched words in <mark> tags.
+// Full-text search over every Session on the computer, done by the Kernel: `conversation.list`
+// with a `query` matches titles and the text of every message. The Kernel has no excerpt of the
+// match, so a hit's second line is the conversation's newest message, with the query marked
+// where it shows.
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { useConnectionState, useDaemonConnection } from './connection-context'
+import { useConnectionState, useKernelConnection } from './connection-context'
+import type { ListItem } from './kernel-wire'
+import { sessionIdOf } from './kernel-wire'
 
 export interface SessionSearchHit {
   sessionId: string
   title: string
   /** Unix epoch seconds, like SessionSummary. */
   updatedAt: number | null
-  /** The best snippet, cut into plain runs and matched runs. */
+  /** The newest message, cut into plain runs and matched runs. */
   snippet: SnippetRun[]
 }
 
@@ -22,10 +24,12 @@ export interface SnippetRun {
   offset: number
 }
 
-/** Fewer characters and the Daemon scans thousands of files for nothing much. */
 export const SEARCH_MIN_LENGTH = 2
 export const SEARCH_LIMIT = 20
 const DEBOUNCE_MS = 250
+
+/** Conversations the Host runs for itself, which no list shows. */
+const HIDDEN_KINDS = new Set(['memory'])
 
 export function useSessionSearch(query: string): {
   hits: SessionSearchHit[] | undefined
@@ -34,7 +38,7 @@ export function useSessionSearch(query: string): {
   /** True when the query is long enough to be searched. */
   active: boolean
 } {
-  const { controller } = useDaemonConnection()
+  const connection = useKernelConnection()
   const connected = useConnectionState().status === 'connected'
   const trimmed = query.trim()
   const active = trimmed.length >= SEARCH_MIN_LENGTH
@@ -44,19 +48,18 @@ export function useSessionSearch(query: string): {
     enabled: connected && settled.length >= SEARCH_MIN_LENGTH,
     staleTime: 30_000,
     queryFn: async (): Promise<SessionSearchHit[]> => {
-      const found = await controller.searchSessions({
+      const found = await connection.call<{ items: ListItem[] }>('conversation.list', {
         query: settled,
-        kind: 'message_text' as never,
-        limitSessions: SEARCH_LIMIT,
-        limitHitsPerSession: 1,
-        contextChars: 80,
+        limit: SEARCH_LIMIT,
       })
-      return found.sessions.map((s) => ({
-        sessionId: s.sessionId,
-        title: s.title?.trim() || 'Untitled session',
-        updatedAt: s.updatedAt ? Math.floor(s.updatedAt / 1000) : null,
-        snippet: snippetRuns(s.hits[0]?.snippets[0] ?? ''),
-      }))
+      return found.items
+        .filter((item) => !HIDDEN_KINDS.has(item.kind ?? ''))
+        .map((item) => ({
+          sessionId: sessionIdOf(item.id),
+          title: item.title?.trim() || 'Untitled session',
+          updatedAt: Math.floor(item.lastActivityAt / 1000),
+          snippet: markedRuns(item.preview ?? '', settled),
+        }))
     },
   })
   return {
@@ -76,15 +79,21 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return settled
 }
 
-/** Splits a Daemon snippet on its <mark> tags; any other tag is dropped. */
-export function snippetRuns(snippet: string): SnippetRun[] {
+/** The text cut into runs, each place it has the query, in any case, marked. */
+export function markedRuns(text: string, query: string): SnippetRun[] {
+  const plain = text.trim().replace(/\s+/g, ' ')
+  if (!plain) return []
+  const lower = plain.toLowerCase()
+  const q = query.toLowerCase()
+  // Lowering a few letters changes their length, and the places found in lower are then not text's.
+  if (!q || lower.length !== plain.length) return [{ text: plain, match: false, offset: 0 }]
   const runs: SnippetRun[] = []
-  const parts = snippet.split(/<mark>|<\/mark>/)
-  let offset = 0
-  parts.forEach((part, index) => {
-    const text = part.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')
-    if (text) runs.push({ text, match: index % 2 === 1, offset })
-    offset += text.length
-  })
+  let from = 0
+  for (let at = lower.indexOf(q); at !== -1; at = lower.indexOf(q, from)) {
+    if (at > from) runs.push({ text: plain.slice(from, at), match: false, offset: from })
+    runs.push({ text: plain.slice(at, at + q.length), match: true, offset: at })
+    from = at + q.length
+  }
+  if (from < plain.length) runs.push({ text: plain.slice(from), match: false, offset: from })
   return runs
 }

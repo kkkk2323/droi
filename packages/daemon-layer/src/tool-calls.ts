@@ -1,6 +1,8 @@
 // What the transcript shows for a tool call, whichever Client draws it: a
 // one-line summary, the input, and the result read as a diff, a status or
-// plain text, with any pictures it handed back.
+// plain text, with any pictures it handed back. The names are the Kernel's
+// tools': bash, read, edit, write, codemode, and an MCP server's as
+// `<server>___<tool>`.
 import { leafCalls } from './script-runs'
 import { toolResultImages, toolResultText, type ToolCall } from './transcript'
 
@@ -19,33 +21,29 @@ export interface DiffResult {
 }
 
 /**
- * The Daemon's Edit / Create results are JSON with `diffLines`; anything
- * else (plain text, errors, other tools) is shown as it came.
+ * An edit's diff, as Pi's edit tool keeps it in the result's details: one line per row,
+ * `+12 text` added, `-12 text` removed, ` 12 text` kept, and `    ...` where unchanged
+ * lines are left out.
  */
-export function parseDiffResult(text: string): DiffResult | null {
-  if (!text.startsWith('{') || !text.includes('"diffLines"')) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
-  if (typeof parsed !== 'object' || parsed === null) return null
-  const raw = (parsed as { diffLines?: unknown }).diffLines
-  if (!Array.isArray(raw)) return null
+export function parseEditDiff(details: unknown): DiffResult | null {
+  const diff = (details as { diff?: unknown } | null | undefined)?.diff
+  if (typeof diff !== 'string' || !diff) return null
   const lines: DiffLine[] = []
-  for (const entry of raw) {
-    if (typeof entry !== 'object' || entry === null) continue
-    const e = entry as { type?: unknown; content?: unknown; lineNumber?: unknown }
-    if (e.type !== 'unchanged' && e.type !== 'added' && e.type !== 'removed') continue
-    const numbers = (e.lineNumber ?? {}) as { old?: unknown; new?: unknown }
-    lines.push({
-      type: e.type,
-      content: typeof e.content === 'string' ? e.content : '',
-      old: typeof numbers.old === 'number' ? numbers.old : null,
-      new: typeof numbers.new === 'number' ? numbers.new : null,
-    })
+  for (const raw of diff.split('\n')) {
+    const sign = raw[0]
+    const match = /^[+\- ]\s*(\d+) ?(.*)$/.exec(raw)
+    if (!match) {
+      if (raw.trim() === '...')
+        lines.push({ type: 'unchanged', content: '…', old: null, new: null })
+      continue
+    }
+    const n = Number(match[1])
+    const content = match[2] ?? ''
+    if (sign === '+') lines.push({ type: 'added', content, old: null, new: n })
+    else if (sign === '-') lines.push({ type: 'removed', content, old: n, new: null })
+    else lines.push({ type: 'unchanged', content, old: n, new: null })
   }
+  if (lines.length === 0) return null
   return {
     lines,
     added: lines.filter((l) => l.type === 'added').length,
@@ -85,12 +83,12 @@ export function parseStatusResult(text: string): StatusResult | null {
 }
 
 /**
- * Create answers with a bare status, so the file it wrote is read from the
+ * A write answers with a sentence, so the file it wrote is read from the
  * call's own input and shown as all-added lines.
  */
 export function createdFileDiff(call: ToolCall): DiffResult | null {
   const content = call.use.input['content']
-  if (call.use.name !== 'Create' || typeof content !== 'string') return null
+  if (call.use.name !== 'write' || typeof content !== 'string') return null
   const text = content.endsWith('\n') ? content.slice(0, -1) : content
   const lines: DiffLine[] = text
     .split('\n')
@@ -99,12 +97,12 @@ export function createdFileDiff(call: ToolCall): DiffResult | null {
 }
 
 export interface ToolName {
-  /** The MCP Server the tool belongs to; null for the Daemon's own tools. */
+  /** The MCP Server the tool belongs to; null for the Kernel's own tools. */
   server: string | null
   tool: string
 }
 
-/** The Daemon names an MCP tool `<server>___<tool>`; the row shows the two apart. */
+/** The Kernel names an MCP tool `<server>___<tool>`; the row shows the two apart. */
 export function toolDisplayName(name: string): ToolName {
   const at = name.indexOf('___')
   if (at <= 0 || at + 3 >= name.length) return { server: null, tool: name }
@@ -187,57 +185,22 @@ export function toolInputText(call: ToolCall): string {
 }
 
 /**
- * What a permission Prompt shows of the tool it asks about: the Daemon's
- * details (the full command, the file) first, else the tool's input.
+ * What an approval card shows of the call it asks about: the command, the file, or the
+ * script, else the arguments.
  */
-export function permissionDetail(details: unknown, input: Record<string, unknown>): string {
-  const d = (details ?? {}) as Record<string, unknown>
-  if (typeof d['fullCommand'] === 'string') return `$ ${d['fullCommand']}`
-  if (typeof d['filePath'] === 'string') return d['filePath']
-  if (typeof input['command'] === 'string') return `$ ${input['command']}`
-  return JSON.stringify(input)
-}
-
-export interface ScriptPermissionCall {
-  /** Where the call sits in the program, 1-based. */
-  line: number
-  tool: string
-  detail: string
-  /** The Daemon's impact level for this one call, when it gave one (`low`, `medium`, `high`). */
-  impact: string | null
-}
-
-export interface ScriptPermission {
-  /** The highest impact among the calls. */
-  impact: string | null
-  calls: ScriptPermissionCall[]
-}
-
-/**
- * A Script asks once for the calls it can see in its own source, each with
- * the details its direct call would have asked with. Calls whose input is
- * only known at run time are asked about one by one as they come.
- */
-export function scriptPermission(details: unknown): ScriptPermission | null {
-  const d = (details ?? {}) as Record<string, unknown>
-  if (d['type'] !== 'script' || !Array.isArray(d['calls'])) return null
-  const calls: ScriptPermissionCall[] = []
-  for (const raw of d['calls'] as unknown[]) {
-    if (typeof raw !== 'object' || raw === null) continue
-    const entry = raw as Record<string, unknown>
-    const confirmation = (entry['confirmation'] ?? {}) as Record<string, unknown>
-    const input = (entry['toolInput'] ?? {}) as Record<string, unknown>
-    calls.push({
-      line: typeof entry['line'] === 'number' ? entry['line'] : 0,
-      tool: toolDisplayName(String(entry['toolName'] ?? '')).tool,
-      detail: permissionDetail(confirmation, input),
-      impact: typeof confirmation['impactLevel'] === 'string' ? confirmation['impactLevel'] : null,
-    })
+export function approvalDetail(tool: string, args: Record<string, unknown>): string {
+  const command = args['command']
+  if (
+    (tool === 'bash' || tool === 'powershell' || tool === 'bash_background') &&
+    typeof command === 'string'
+  ) {
+    return `$ ${command}`
   }
-  return {
-    impact: typeof d['impactLevel'] === 'string' ? d['impactLevel'] : null,
-    calls,
-  }
+  const code = args['code']
+  if (tool === 'codemode' && typeof code === 'string') return code
+  const path = args['path']
+  if (typeof path === 'string') return path
+  return JSON.stringify(args, null, 2)
 }
 
 /**
@@ -261,12 +224,19 @@ export function clusterLabel(calls: readonly ToolCall[]): { label: string; pendi
 export function readToolResult(call: ToolCall) {
   const result = toolResultText(call.result)
   const isError = call.result?.isError === true
-  const diff = parseDiffResult(result) ?? (isError ? null : createdFileDiff(call))
+  const done = call.result !== null && !isError && !call.result.interrupted && !call.result.blocked
+  const diff = done ? (parseEditDiff(call.result?.details) ?? createdFileDiff(call)) : null
   return {
     text: result,
     images: toolResultImages(call.result),
     pending: call.result === null,
     isError,
+    /** Stopped before it finished: not a failure. */
+    interrupted: call.result?.interrupted === true,
+    /** Refused before it ran. */
+    blocked: call.result?.blocked === true,
+    /** The harness's notes: a truncation, the full output's path, an exit code. */
+    notes: call.result?.notes ?? '',
     diff,
     status: diff ? null : parseStatusResult(result),
   }
