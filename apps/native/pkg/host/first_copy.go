@@ -322,7 +322,14 @@ func ReplaceFromFactoryHome(factoryDir, userDir string, names []string, now time
 			return "", fmt.Errorf("host: replace from ~/.factory: %q is not something the import brings over", name)
 		}
 	}
-	backup := filepath.Join(userDir, replacedFolder, now.Format("2006-01-02T15-04-05"))
+	if err := os.MkdirAll(filepath.Join(userDir, replacedFolder), 0o755); err != nil {
+		return "", err
+	}
+	// A folder of its own each time: two replaces within a second must not put the second's over the first's.
+	backup, err := os.MkdirTemp(filepath.Join(userDir, replacedFolder), now.Format("2006-01-02T15-04-05")+"-")
+	if err != nil {
+		return "", err
+	}
 	var errs []error
 	for _, name := range names {
 		from, target, kept := filepath.Join(factoryDir, name), filepath.Join(userDir, name), filepath.Join(backup, name)

@@ -291,7 +291,7 @@ func TestImportAgainNamesWhatDiffersAndReplacingKeepsDroisAside(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if backup != filepath.Join(user, ".replaced", "2026-11-08T09-30-00") {
+	if !strings.HasPrefix(backup, filepath.Join(user, ".replaced", "2026-11-08T09-30-00-")) {
 		t.Fatalf("backup in %s", backup)
 	}
 	for _, f := range []struct{ path, body string }{
@@ -365,4 +365,47 @@ func TestTheHostsKernelStartsWithWhatDroidHad(t *testing.T) {
 		}
 	}
 	t.Fatalf("the Kernel's skills are %v, want gofmt from %s", names, filepath.Join(home, ".droi"))
+}
+
+// Two replaces in the same second each keep what they moved aside: the second does not put its copy over the first's.
+func TestTwoReplacesInOneSecondKeepBothOfDroisCopies(t *testing.T) {
+	factory := t.TempDir()
+	user := t.TempDir()
+	write(t, filepath.Join(factory, "AGENTS.md"), "droid's\n")
+	write(t, filepath.Join(user, "AGENTS.md"), "first\n")
+	at := time.Date(2026, 11, 8, 9, 30, 0, 0, time.UTC)
+	first, err := ReplaceFromFactoryHome(factory, user, []string{"AGENTS.md"}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(user, "AGENTS.md"), "second\n")
+	second, err := ReplaceFromFactoryHome(factory, user, []string{"AGENTS.md"}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for dir, want := range map[string]string{first: "first\n", second: "second\n"} {
+		if got, err := os.ReadFile(filepath.Join(dir, "AGENTS.md")); err != nil || string(got) != want {
+			t.Fatalf("%s holds %q, %v; want %q", dir, got, err, want)
+		}
+	}
+}
+
+// Stopping the Host's Kernel while the first copy is under way leaves it stopped: the launch that waited for the
+// copy does not start it after.
+func TestStoppingWhileTheFirstCopyRunsLeavesTheKernelStopped(t *testing.T) {
+	home := t.TempDir()
+	write(t, filepath.Join(home, ".factory", "AGENTS.md"), "x\n")
+	env := map[string]string{KernelEnv: "1", KernelBinEnv: kernelBinaryForTest(t)}
+	h := New(Config{UserData: t.TempDir(), Home: home, Env: func(k string) string { return env[k] }})
+	t.Cleanup(h.KeyPool().Stop)
+	h.startKernel()
+	k := &h.kernel
+	k.mu.Lock()
+	sup := k.sup
+	k.mu.Unlock()
+	h.stopKernel()
+	time.Sleep(300 * time.Millisecond)
+	if st := sup.State(); st.Status != KernelStopped {
+		t.Fatalf("the stopped Kernel is %s", st.Status)
+	}
 }
