@@ -25,7 +25,7 @@ const resultPreviewLines = 40
 // transcriptView is the MessageList: the entries in a list that follows
 // its end, the lead above them (previous messages), the activity row
 // below them, and the button back to the latest.
-func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessions.Summary) {
+func (v *View) transcriptView(c *ui.Context, s *Snapshot, listed []sessions.Summary) {
 	k, t := v.look()
 	ws := string(s.WorkingState())
 	if v.compacting {
@@ -33,7 +33,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	}
 	running := ws != string(protocol.DroidWorkingStateIdle)
 	entries := v.entries
-	hasOlder := s.HasOlderMessages()
+	hasOlder := s.HasOlder
 	if len(entries) == 0 && !hasOlder {
 		if v.env.Empty != nil && v.env.Empty(c) {
 			return
@@ -151,11 +151,11 @@ func (v *View) column(c *ui.Context) ui.Element { return Column(c, v.kit()) }
 
 // lead is the ListHeader: 12px of room, then the button for previous
 // messages while there are some.
-func (v *View) lead(c *ui.Context, s *session.Session) {
+func (v *View) lead(c *ui.Context, s *Snapshot) {
 	k, t := v.look()
 	ui.Column(c).FillWidth().Children(func() {
 		ui.Box(c).Height(k.Px(12))
-		if !s.HasOlderMessages() {
+		if !s.HasOlder {
 			return
 		}
 		v.mu.Lock()

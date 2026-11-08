@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -886,6 +887,14 @@ type fakeKernel struct {
 	// call in flight while the test makes another.
 	entered chan kernel.ID
 	release chan struct{}
+	// unwatchEntered and unwatchRelease do the same for an unwatch.
+	unwatchEntered chan kernel.ID
+	unwatchRelease chan struct{}
+	// calls is every open and unwatch in the order they reached the fake, as "open 1" and "unwatch 1".
+	calls []string
+	// entries answers conversation.entries; entriesParams are the calls it got.
+	entries       func(kernel.EntriesParams) (kernel.EntriesResult, error)
+	entriesParams []kernel.EntriesParams
 }
 
 func (f *fakeKernel) Open(ctx context.Context, p kernel.OpenParams) (kernel.OpenResult, error) {
@@ -895,6 +904,7 @@ func (f *fakeKernel) Open(ctx context.Context, p kernel.OpenParams) (kernel.Open
 	if err == nil {
 		f.params = append(f.params, p)
 	}
+	f.calls = append(f.calls, fmt.Sprintf("open %d", p.ID))
 	f.mu.Unlock()
 	if err != nil {
 		return kernel.OpenResult{}, err
@@ -918,9 +928,25 @@ func (f *fakeKernel) Open(ctx context.Context, p kernel.OpenParams) (kernel.Open
 
 func (f *fakeKernel) Unwatch(ctx context.Context, id kernel.ID) error {
 	f.mu.Lock()
+	entered, release := f.unwatchEntered, f.unwatchRelease
+	f.calls = append(f.calls, fmt.Sprintf("unwatch %d", id))
+	f.mu.Unlock()
+	if entered != nil {
+		entered <- id
+	}
+	if release != nil {
+		<-release
+	}
+	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.unwatch_ = append(f.unwatch_, id)
 	return nil
+}
+
+func (f *fakeKernel) callLog() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
 }
 
 func (f *fakeKernel) opened() []kernel.ID {
@@ -961,8 +987,15 @@ func (f *fakeKernel) Configure(context.Context, kernel.ConfigureParams) (kernel.
 	return kernel.ConfigureResult{}, errors.New("not in this test")
 }
 
-func (f *fakeKernel) Entries(context.Context, kernel.EntriesParams) (kernel.EntriesResult, error) {
-	return kernel.EntriesResult{}, errors.New("not in this test")
+func (f *fakeKernel) Entries(_ context.Context, p kernel.EntriesParams) (kernel.EntriesResult, error) {
+	f.mu.Lock()
+	f.entriesParams = append(f.entriesParams, p)
+	answer := f.entries
+	f.mu.Unlock()
+	if answer == nil {
+		return kernel.EntriesResult{}, errors.New("not in this test")
+	}
+	return answer(p)
 }
 
 func (f *fakeKernel) Usage(context.Context, kernel.ID) (kernel.Usage, error) {

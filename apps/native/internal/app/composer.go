@@ -62,7 +62,7 @@ type composerState struct {
 // composerArea is everything under the transcript: the shelf, the
 // composer or the Prompts standing in for it (queued question sets above
 // it), and the footer row.
-func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace string, loaded bool) {
+func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, workspace string, loaded bool) {
 	a := v.a
 	k := a.kit
 	if s == nil {
@@ -73,7 +73,7 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 	}
 	perms, asks := a.ctl.PendingPermissions(v.id), a.ctl.PendingAskUsers(v.id)
 	waits := sessionview.WaitsOnUser(perms, asks)
-	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.Compacting()
+	running := s.Running || v.Compacting()
 	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
 	}
@@ -100,7 +100,7 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 
 // takePending sends the message typed on the New session page once the
 // Session can take it.
-func (v *sessionView) takePending(s *session.Session) {
+func (v *sessionView) takePending(s *sessionview.Snapshot) {
 	if p, ok := v.a.pending.Take(v.id); ok {
 		v.send(s, p.Text, p.Images, "")
 	}
@@ -109,7 +109,7 @@ func (v *sessionView) takePending(s *session.Session) {
 // send sends a message, or queues it with placement while a turn runs;
 // `/compact` and `/loop` it runs itself. It reports whether it took the
 // message: a `/loop` it cannot run stays in the composer.
-func (v *sessionView) send(s *session.Session, text string, images []attachments.Image, placement protocol.QueuePlacement) bool {
+func (v *sessionView) send(s *sessionview.Snapshot, text string, images []attachments.Image, placement protocol.QueuePlacement) bool {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" && len(images) == 0 {
 		return false
@@ -244,7 +244,7 @@ func (f *tagField) splitTag(text string, items []slash.Item) (picked slash.Item,
 // settings and the send button in its footer row. Enter sends,
 // Shift+Enter breaks the line; while a turn runs Enter queues and Cmd+Enter
 // hands the message to the running turn.
-func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loaded bool) {
+func (v *sessionView) inputBar(c *ui.Context, s *sessionview.Snapshot, running, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
@@ -692,7 +692,7 @@ func (a *App) suggestionList(c *ui.Context, card ui.Element, items []slash.Item,
 
 // footer is the row under the composer: the Workspace, a finished
 // `/compact`, the model's speed and the context meter.
-func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string, loaded bool) {
+func (v *sessionView) footer(c *ui.Context, s *sessionview.Snapshot, workspace string, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
@@ -727,7 +727,7 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 // the last model call sent, over the budget of the model's breakdown.
 // The breakdown is read only while loaded: a call about a Session the
 // Daemon cleaned up loads it again.
-func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded bool) {
+func (v *sessionView) contextMeter(c *ui.Context, s *sessionview.Snapshot, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
@@ -788,7 +788,7 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded boo
 // it measured of each call; without, what the Session's notifications show:
 // that call's first token and output, and the Session's means and time in
 // the model and in tools.
-func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
+func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 	k, t := v.a.kit, v.a.kit.T
 	st := s.Stats()
 	calls, live, measured := v.a.modelCalls(v.id)
@@ -920,7 +920,7 @@ func groupDigits(f float64) string {
 // shelf is the ComposerShelf: the Session's loops, the task list under
 // way and the messages the Daemon holds, tucked against the composer's top
 // edge.
-func (v *sessionView) shelf(c *ui.Context, s *session.Session) {
+func (v *sessionView) shelf(c *ui.Context, s *sessionview.Snapshot) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	todos := s.Todos()
@@ -1081,7 +1081,7 @@ func isSteering(q session.QueuedMessage) bool {
 
 // queuedList is the messages waiting for the running turn: up to two as
 // a list, more folded behind the one that goes out first.
-func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []session.QueuedMessage) {
+func (v *sessionView) queuedList(c *ui.Context, s *sessionview.Snapshot, queued []session.QueuedMessage) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	icon := func(q session.QueuedMessage) {

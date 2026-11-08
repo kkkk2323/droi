@@ -2,10 +2,13 @@ package sessionview
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
@@ -66,6 +69,14 @@ type State struct {
 	usage    kernel.Usage
 	view     kernel.View
 	opened   bool
+	// held is every entry this window has of the conversation, in ID order: the view's window, the entries the
+	// window has dropped since, and the older pages loaded above it. Entries never change once committed, so a
+	// later window only adds to it (the rules are Pi's ConversationTranscript's, without its gaps: a window that
+	// does not continue what is held replaces it).
+	held []kernel.Entry
+	// low is held's exclusive lower bound: entries at or below it are not loaded. Entry IDs start at 1, so 0 says
+	// held starts at the conversation's first entry.
+	low kernel.ID
 	// landed says a whole view has been applied since the last conversation.open asked for one. Kernel starts
 	// the subscription before it answers, so a push that arrives during the round trip is the newer of the two.
 	landed bool
@@ -121,6 +132,33 @@ func (s *State) Before() json.RawMessage {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.view.Before
+}
+
+// Transcript is the view with every entry held instead of the window: what the window draws, oldest first.
+func (s *State) Transcript() kernel.View {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v := s.view
+	v.Entries = s.held
+	v.Before = nil
+	if s.low > 0 {
+		v.Before = json.RawMessage(strconv.FormatInt(int64(s.low), 10))
+	}
+	return v
+}
+
+// HasOlder reports whether entries exist above the ones held.
+func (s *State) HasOlder() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.low > 0
+}
+
+// Low is the newest entry not held: the page above starts there. 0 when held starts the conversation.
+func (s *State) Low() kernel.ID {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.low
 }
 
 // Run is pi.live's run, or nil when nothing runs: a conversation is busy exactly while this names one.
@@ -226,6 +264,7 @@ func (s *State) apply(n kernel.ViewNotification) bool {
 
 // take replaces the state with a whole view. It is called with the lock held.
 func (s *State) take(v kernel.View) {
+	s.hold(v)
 	s.view = v
 	s.opened = true
 	s.landed = true
@@ -295,6 +334,83 @@ func (s *State) applyBusy(n kernel.BusyNotification) bool {
 	s.run, s.failure = run, failure
 	s.revision++
 	return true
+}
+
+// hold adds a window's entries to the ones held. It is called with the lock held, before the view is replaced.
+//
+// A window with no before starts the conversation, so it is everything there is. One whose before lies past the
+// newest entry held does not continue it — pushes coalesced past a whole window, or a new connection — and the
+// entries in between are not known, so the window replaces what is held rather than leaving a hole in it.
+// Otherwise it continues what is held and only adds: the entries it dropped from its front stay.
+func (s *State) hold(v kernel.View) {
+	before := entryIDOf(v.Before)
+	tail := s.low
+	if n := len(s.held); n > 0 {
+		tail = s.held[n-1].ID
+	}
+	if before == 0 || !s.opened || before > tail {
+		s.held = slices.Clone(v.Entries)
+		s.low = before
+		return
+	}
+	s.held = mergeEntries(s.held, v.Entries)
+	s.low = min(s.low, before)
+}
+
+// PrependOlder puts a page of the entries just above the held ones on top of them, and reports whether it did.
+//
+// low is the Low the page was asked for: a page asked before a window replaced what is held, or before another
+// page landed, belongs to a transcript this state no longer has, and is dropped. The page is newest first, as
+// conversation.entries reads backwards. A page without a cursor, or an empty one, reaches the conversation's start.
+func (s *State) PrependOlder(low kernel.ID, page kernel.EntriesResult) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.opened || low == 0 || s.low != low {
+		return false
+	}
+	older := make([]kernel.Entry, 0, len(page.Items)+len(s.held))
+	for i := len(page.Items) - 1; i >= 0; i-- {
+		if e := page.Items[i]; e.ID <= low {
+			older = append(older, e)
+		}
+	}
+	if len(older) == 0 || len(page.Cursor) == 0 || string(page.Cursor) == "null" {
+		s.low = 0
+	} else {
+		s.low = older[0].ID - 1
+	}
+	s.held = append(older, s.held...)
+	s.revision++
+	return true
+}
+
+// entryIDOf reads a view's before: an entry ID, or 0 when the window starts the conversation.
+func entryIDOf(raw json.RawMessage) kernel.ID {
+	var id kernel.ID
+	if len(raw) == 0 || json.Unmarshal(raw, &id) != nil {
+		return 0
+	}
+	return id
+}
+
+// mergeEntries is held with the entries of window it lacks, in ID order. The window is newest last, so in the
+// common case it only appends.
+func mergeEntries(held, window []kernel.Entry) []kernel.Entry {
+	var fresh []kernel.Entry
+	for _, e := range window {
+		if _, found := slices.BinarySearchFunc(held, e.ID, func(h kernel.Entry, id kernel.ID) int { return cmp.Compare(h.ID, id) }); !found {
+			fresh = append(fresh, e)
+		}
+	}
+	if len(fresh) == 0 {
+		return held
+	}
+	if len(held) == 0 || fresh[0].ID > held[len(held)-1].ID {
+		return append(slices.Clip(held), fresh...)
+	}
+	merged := append(slices.Clone(held), fresh...)
+	slices.SortStableFunc(merged, func(a, b kernel.Entry) int { return cmp.Compare(a.ID, b.ID) })
+	return merged
 }
 
 // ApplyUsage takes conversation.usage's answer and reports whether it differs from the last one.
@@ -380,6 +496,11 @@ func messageOf(raw json.RawMessage) string {
 //
 // A Kernel restart ends the connection, and the states here outlive it. Reopen is what brings them onto the new
 // one; every push says which connection generation it arrived on, and one from an earlier generation is dropped.
+//
+// The subscription calls of one conversation on one connection reach Kernel in the order the store decided them,
+// each after the one before has answered. An unwatch that evicts a conversation and an open that brings it back are
+// decided in that order, but they run outside the lock, and an unwatch that landed second would end the new
+// subscription. Calls on a newer connection do not wait for the old one's: subscriptions are per connection.
 type Store struct {
 	max int
 
@@ -390,6 +511,14 @@ type Store struct {
 	states  map[kernel.ID]*State
 	subs    map[int]func(kernel.ID)
 	nextID  int
+	// turns is, per connection and conversation, the subscription call decided last: closed once it has answered.
+	turns map[turnKey]chan struct{}
+}
+
+// turnKey is a conversation on one connection generation.
+type turnKey struct {
+	gen int64
+	id  kernel.ID
 }
 
 // NewStore keeps the max most recently used conversations plus older busy ones. max below 1 keeps one.
@@ -406,6 +535,9 @@ func (st *Store) ready() {
 	}
 	if st.subs == nil {
 		st.subs = map[int]func(kernel.ID){}
+	}
+	if st.turns == nil {
+		st.turns = map[turnKey]chan struct{}{}
 	}
 	if st.max < 1 {
 		st.max = 1
@@ -438,7 +570,7 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	st.ready()
 	if _, held := st.states[id]; held {
 		st.touchLocked(id)
-		evicted := st.trimLocked(id)
+		evicted := st.unwatchesLocked(st.trimLocked(id))
 		st.mu.Unlock()
 		st.unwatch(ctx, k, evicted)
 		return nil
@@ -451,12 +583,17 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	st.order = append(st.order, id)
 	st.windows[id] = window
 	gen := st.gen
-	evicted := st.trimLocked(id)
+	evicted := st.unwatchesLocked(st.trimLocked(id))
+	turn := st.turnLocked(id)
 	st.mu.Unlock()
 
 	st.unwatch(ctx, k, evicted)
 
-	opened, err := k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView})
+	var opened kernel.OpenResult
+	err := turn.run(ctx, func() (err error) {
+		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView})
+		return err
+	})
 
 	st.mu.Lock()
 	if st.gen != gen || st.states[id] != state {
@@ -479,6 +616,25 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 	return nil
 }
 
+// Use records that conversation id was used again, as Open does for one the store holds, and reports whether the
+// store holds it. It does not wait for the unwatches of the conversations that leaves out: their order among the
+// other calls of each conversation is settled here, under the lock.
+func (st *Store) Use(ctx context.Context, k Kernel, id kernel.ID) bool {
+	st.mu.Lock()
+	st.ready()
+	if _, held := st.states[id]; !held {
+		st.mu.Unlock()
+		return false
+	}
+	st.touchLocked(id)
+	evicted := st.unwatchesLocked(st.trimLocked(id))
+	st.mu.Unlock()
+	if len(evicted) > 0 {
+		go st.unwatch(ctx, k, evicted)
+	}
+	return true
+}
+
 // Close stops this connection's subscription and drops the state.
 func (st *Store) Close(ctx context.Context, k Kernel, id kernel.ID) {
 	st.mu.Lock()
@@ -487,10 +643,12 @@ func (st *Store) Close(ctx context.Context, k Kernel, id kernel.ID) {
 	delete(st.states, id)
 	delete(st.windows, id)
 	st.order = withoutID(st.order, id)
-	st.mu.Unlock()
+	var evicted []unwatchCall
 	if held {
-		_ = k.Unwatch(ctx, id)
+		evicted = st.unwatchesLocked([]kernel.ID{id})
 	}
+	st.mu.Unlock()
+	st.unwatch(ctx, k, evicted)
 }
 
 // Reopen takes the store onto a new connection: generation gen, answering on k. The connection the subscriptions
@@ -531,9 +689,14 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 	}
 	window := st.windows[id]
 	state.expectOpen()
+	turn := st.turnLocked(id)
 	st.mu.Unlock()
 
-	opened, err := k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView})
+	var opened kernel.OpenResult
+	err := turn.run(ctx, func() (err error) {
+		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView})
+		return err
+	})
 
 	st.mu.Lock()
 	if st.gen != gen || st.states[id] != state {
@@ -551,6 +714,40 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 		st.notify(id)
 	}
 	return err
+}
+
+// LoadEarlier brings the page of up to limit entries above the ones the conversation's state holds. It does
+// nothing for a conversation that is not open or whose state already starts at its first entry.
+//
+// The page is asked by entry ID, not by the view's cursor: the view's before is the entry just above its window,
+// and conversation.entries takes it as maxEntryId. A page that arrives after the state moved on is dropped.
+func (st *Store) LoadEarlier(ctx context.Context, k Kernel, id kernel.ID, limit int) error {
+	state := st.State(id)
+	if state == nil {
+		return nil
+	}
+	low := state.Low()
+	if low == 0 {
+		return nil
+	}
+	query, err := json.Marshal(struct {
+		Order      string    `json:"order"`
+		MaxEntryID kernel.ID `json:"maxEntryId"`
+	}{"descending", low})
+	if err != nil {
+		return err
+	}
+	page, err := k.Entries(ctx, kernel.EntriesParams{ID: id, Query: query, Limit: limit})
+	if err != nil {
+		return err
+	}
+	st.mu.Lock()
+	changed := st.states[id] == state && state.PrependOlder(low, page)
+	st.mu.Unlock()
+	if changed {
+		st.notify(id)
+	}
+	return nil
 }
 
 // State is the conversation's state, nil when it is not open.
@@ -653,11 +850,68 @@ func (st *Store) trimLocked(protect kernel.ID) []kernel.ID {
 	return evicted
 }
 
+// turn is one subscription call's place in its conversation's order: it runs once the call before has answered,
+// and the call after waits for it.
+type turn struct {
+	after <-chan struct{}
+	done  func()
+}
+
+// turnLocked takes the next place in conversation id's order on the current connection. It is called with the
+// lock held, at the moment the store decides the call, which is what makes the order the order of the decisions.
+func (st *Store) turnLocked(id kernel.ID) turn {
+	key := turnKey{st.gen, id}
+	after := st.turns[key]
+	mine := make(chan struct{})
+	st.turns[key] = mine
+	return turn{after: after, done: func() {
+		close(mine)
+		st.mu.Lock()
+		if st.turns[key] == mine {
+			delete(st.turns, key)
+		}
+		st.mu.Unlock()
+	}}
+}
+
+// run makes call once the call before has answered. A context that ends first returns its error without the
+// call, and the place is held until the call before answers, so the one after still cannot overtake it.
+func (t turn) run(ctx context.Context, call func() error) error {
+	if t.after != nil {
+		select {
+		case <-t.after:
+		case <-ctx.Done():
+			go func() {
+				<-t.after
+				t.done()
+			}()
+			return ctx.Err()
+		}
+	}
+	defer t.done()
+	return call()
+}
+
+// unwatchCall is an unwatch the store decided, with its place in the conversation's order.
+type unwatchCall struct {
+	id   kernel.ID
+	turn turn
+}
+
+// unwatchesLocked takes a place for an unwatch of each id. It is called with the lock held.
+func (st *Store) unwatchesLocked(ids []kernel.ID) []unwatchCall {
+	calls := make([]unwatchCall, len(ids))
+	for i, id := range ids {
+		calls[i] = unwatchCall{id: id, turn: st.turnLocked(id)}
+	}
+	return calls
+}
+
 // unwatch stops the subscriptions of conversations this store dropped. Each is a round trip, so none of them runs
 // under the lock.
-func (st *Store) unwatch(ctx context.Context, k Kernel, ids []kernel.ID) {
-	for _, id := range ids {
-		_ = k.Unwatch(ctx, id)
+func (st *Store) unwatch(ctx context.Context, k Kernel, calls []unwatchCall) {
+	for _, c := range calls {
+		_ = c.turn.run(ctx, func() error { return k.Unwatch(ctx, c.id) })
 	}
 }
 

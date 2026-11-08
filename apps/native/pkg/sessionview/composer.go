@@ -5,7 +5,6 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
@@ -24,19 +23,19 @@ type plainComposer struct {
 // Enter queues the message, Cmd+Enter hands it to the running turn and
 // Escape stops the turn. The Session's open Prompts stand in for it, or sit
 // above it when all are queued question sets.
-func (v *View) Composer(c *ui.Context, s *session.Session) {
+func (v *View) Composer(c *ui.Context, sn *Snapshot) {
 	ctl := v.env.Controller
-	if s == nil || ctl == nil {
+	if sn == nil || ctl == nil {
 		return
 	}
 	k := v.kit()
 	perms, asks := ctl.PendingPermissions(v.id), ctl.PendingAskUsers(v.id)
 	waits := WaitsOnUser(perms, asks)
-	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.compacting
+	running := sn.Running || v.compacting
 	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
 	}
-	ready := s.LoadState() == session.Loaded || v.hasLoaded
+	ready := sn.Loaded || v.hasLoaded
 	Column(c, k).Shrink(0).Padding(0, k.Px(24), k.Px(12), k.Px(24)).Children(func() {
 		if waits {
 			v.Prompts(c, perms, asks)
