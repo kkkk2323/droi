@@ -23,7 +23,8 @@
           ]
         }
       ],
-      "memoryDir": "/Users/dev/Library/Application Support/Droi/memory"
+      "memoryDir": "/Users/dev/Library/Application Support/Droi/memory",
+      "section": "Answer in the language the user writes in."
     }
   },
   "response": {

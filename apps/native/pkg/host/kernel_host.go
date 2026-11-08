@@ -49,6 +49,8 @@ type kernelHost struct {
 	waitingForKey bool
 	// memoryOn is whether the latest launch was given the Memory folder.
 	memoryOn bool
+	// section is the prompt section the Kernel has, as the latest launch or harness.configure gave it.
+	section string
 	// link is the Host's own connection to the Kernel, over which a change of its settings reaches it
 	// (configureKernel); unhearLink stops it hearing the Supervisor.
 	link *KernelLink
@@ -218,6 +220,58 @@ func (h *Host) releaseKeyPool() {
 	h.KeyPool().Stop()
 }
 
+// kernelAgent is what the Kernel is given for every conversation: the app's Agent (Config.KernelAgent), its section
+// after Settings' System Prompt Addition. An app that gives no section of its own has its SystemPrompt there
+// instead, as the Daemon's Sessions do; one that gives both has it once.
+func (h *Host) kernelAgent() kernel.AppAgent {
+	var a kernel.AppAgent
+	if h.cfg.KernelAgent != nil {
+		a = h.cfg.KernelAgent(h)
+	}
+	var parts []string
+	if p := h.Settings.Get().AppendSystemPrompt; p != nil && strings.TrimSpace(*p) != "" {
+		parts = append(parts, *p)
+	}
+	app := strings.TrimSpace(a.Section)
+	if app == "" && h.cfg.AppendSystemPrompt != nil {
+		app = strings.TrimSpace(h.cfg.AppendSystemPrompt())
+	}
+	if app != "" {
+		parts = append(parts, app)
+	}
+	a.Section = strings.Join(parts, "\n\n")
+	return a
+}
+
+// kernelSectionChanged gives the running Kernel the section as Settings and the app have it now, when it changed
+// since: each conversation has it from its next turn. A Kernel that cannot take it is started again.
+func (h *Host) kernelSectionChanged() {
+	k := &h.kernel
+	k.configuring.Lock()
+	defer k.configuring.Unlock()
+	section := h.kernelAgent().Section
+	k.mu.Lock()
+	sup := k.sup
+	if sup == nil || k.section == section {
+		k.mu.Unlock()
+		return
+	}
+	k.section = section
+	runs := k.runs
+	k.mu.Unlock()
+	change := kernel.None[string]()
+	if section != "" {
+		change = kernel.Some(section)
+	}
+	err := h.configureKernel(kernel.HarnessConfigureParams{Section: change})
+	if err == nil {
+		log.Println("droi: kernel: the prompt section changed in the running Kernel")
+		return
+	}
+	log.Println("droi: kernel: the prompt section changed; starting the Kernel again:", err)
+	h.restartKernel(sup, runs)
+}
+
 // kernelEnv is what a Kernel launch gets: Factory's models on the Key Pool's proxy, and a token of this launch's
 // that their requests carry. A pool that cannot start (no key yet) gives the Kernel no models; it starts all the same,
 // its conversations stay readable, and it is started again once a key is added (kernelPoolChanged).
@@ -238,8 +292,15 @@ func (h *Host) kernelEnv() []string {
 	if memoryOn {
 		env = append(env, kernel.MemoryDirEnv+"="+h.MemoryDir())
 	}
+	agent := h.kernelAgent()
+	if !agent.Empty() {
+		if b, err := json.Marshal(agent); err == nil {
+			env = append(env, kernel.AppAgentEnv+"="+string(b))
+		}
+	}
 	k.mu.Lock()
 	k.memoryOn = memoryOn
+	k.section = agent.Section
 	k.mu.Unlock()
 	pool := h.KeyPool()
 	if conflict := h.baseURLConflict(); conflict != "" {

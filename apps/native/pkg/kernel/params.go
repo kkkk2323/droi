@@ -807,6 +807,35 @@ type HarnessConfigureParams struct {
 	Providers json.RawMessage `json:"providers,omitempty"`
 	// MemoryDir turns Memory on with Some(the Memory folder) or off with None; nil leaves it.
 	MemoryDir *Field[string] `json:"memoryDir,omitempty"`
+	// Section takes the place of the app's prompt section with Some(text), or takes it away with None; nil leaves it.
+	Section *Field[string] `json:"section,omitempty"`
+}
+
+// AppAgent is what a brand's app gives every conversation of the Kernel (ADR 0041), as the Host passes it at launch in
+// AppAgentEnv.
+type AppAgent struct {
+	// MCPServers are the app's servers by name, beside the user's; one replaces a user's or a repository's of its name.
+	MCPServers map[string]AppMCPServer `json:"mcpServers,omitempty"`
+	// AlwaysAllow is Kernel tool names (`<server>___<tool>`) that run without asking, after the user's own rules.
+	AlwaysAllow []string `json:"alwaysAllow,omitempty"`
+	// Section is text every conversation's prompt has.
+	Section string `json:"section,omitempty"`
+}
+
+// AppMCPServer is one of an app's MCP servers: a command for stdio, or a URL for streamable HTTP.
+type AppMCPServer struct {
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	// BlockOnLoad makes a turn wait until the server's first connection has ended, so the first turn has its tools.
+	BlockOnLoad bool `json:"blockOnLoad,omitempty"`
+}
+
+// Empty reports that the app gives nothing.
+func (a AppAgent) Empty() bool {
+	return len(a.MCPServers) == 0 && len(a.AlwaysAllow) == 0 && a.Section == ""
 }
 
 // HarnessChanged is harness.changed's params: none; harness.info answers what changed.

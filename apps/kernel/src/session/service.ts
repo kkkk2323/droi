@@ -479,9 +479,10 @@ export class Kernel implements Dispatcher {
   // ── harness.configure ───────────────────────────────────────────────────────────────────────────
 
   /**
-   * `harness.configure {providers?, memoryDir?}`: what the Host's settings changed, for a running kernel. A new
+   * `harness.configure {providers?, memoryDir?, section?}`: what the Host's settings changed, for a running kernel. A new
    * catalog takes the place of the old at once, so every conversation's next request resolves its model in it; Memory
-   * turned on or off reaches each conversation at its next turn (selectMemory). A run under way is not touched.
+   * turned on or off reaches each conversation at its next turn (selectMemory), and so does the app's section (the
+   * Host's prompt addition and the brand's). A run under way is not touched.
    * Every client hears `harness.changed` and reads `harness.info` again.
    */
   async #harnessConfigure(params: Record<string, unknown>): Promise<unknown> {
@@ -514,15 +515,30 @@ export class Kernel implements Dispatcher {
       }
       memoryDir = given
     }
+    let appSection: string | null | undefined
+    if ('section' in params) {
+      const given = params['section']
+      if (given !== null && typeof given !== 'string') {
+        throw invalidParams([{ path: 'section', message: 'a string, or null for none' }])
+      }
+      appSection = given === null || given.trim() === '' ? null : given
+    }
     if (providers !== undefined) {
       replaceProviders(models, config.providers, providers)
       config.providers = providers
     }
     if (memoryDir === null) delete config.memoryDir
     else if (memoryDir !== undefined) config.memoryDir = memoryDir
+    if (appSection !== undefined) {
+      const app = config.app ?? { mcpServers: {}, blockOnLoad: [], alwaysAllow: [] }
+      if (appSection === null) delete app.section
+      else app.section = appSection
+      config.app = app
+    }
     info('harness configured', {
       ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
       ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),
+      ...(appSection === undefined ? {} : { section: appSection !== null }),
     })
     this.#notifier?.broadcast('harness.changed', {})
     return {}
@@ -1082,6 +1098,8 @@ export class Kernel implements Dispatcher {
         if (known.submissionId !== undefined) return { submissionId: known.submissionId }
       }
     }
+    // The app's servers a turn waits for have ended their first connection, so the first turn has their tools.
+    await this.#options.mcp.loaded()
     // The servers this turn may use: the global ones and its own repository's, connected or connecting.
     await selectServers(this.#options.mcp, this.#options.harness, conversation, context).catch(
       (cause: unknown) => warn('mcp servers not selected', { id, error: String(cause) }),

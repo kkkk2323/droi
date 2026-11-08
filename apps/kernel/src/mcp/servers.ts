@@ -42,6 +42,8 @@ export type WireServer = {
   tools: string[]
   error: string | null
   repoRoot?: string
+  /** A server the brand's app gives (`DROI_KERNEL_AGENT`): not the user's, so `mcp.set` does not change it. */
+  app?: boolean
   trusted?: boolean
   /** A repository server's config as `mcp.set {trust}` must name it: what the person was shown. */
   fingerprint?: string
@@ -55,6 +57,11 @@ type Server = {
   name: string
   /** Set for a server a repository's own file brings. */
   repoRoot?: string
+  /** Set for a server the brand's app gives: it replaces a user's or a repository's server of its name. */
+  app?: boolean
+  /** An app server a turn waits for: settled when its first connection has ended, either way. */
+  loaded?: Promise<void>
+  settleLoaded?: () => void
   raw: RawEntry
   parsed: ParsedEntry
   status: ServerStatus
@@ -91,6 +98,8 @@ export type McpServersOptions = {
   namespaces?: CodemodeNamespace[]
   version: string
   context: Context
+  /** The brand's app's servers, in `mcp.json`'s entry shape, and those a turn waits for. */
+  app?: { servers: Record<string, RawEntry>; blockOnLoad: readonly string[] }
 }
 
 /** What `trustServer` found: the server, none of that name, or one whose config is not the one the person saw. */
@@ -152,6 +161,31 @@ export class McpServers {
       PRIMARY KEY (repo_root, name)
     )`)
     await this.refreshGlobal()
+    await this.#serial(() => this.#openApp())
+  }
+
+  /** The brand's app's servers: given once at launch, they stay as they are until the kernel stops. */
+  async #openApp(): Promise<void> {
+    const app = this.#options.app
+    if (app === undefined || this.#closed) return
+    for (const [name, raw] of Object.entries(app.servers)) {
+      const key = appKey(name)
+      if (app.blockOnLoad.includes(name)) {
+        const server = this.#placeholder(key, name, undefined, true)
+        server.loaded = new Promise((resolve) => (server.settleLoaded = resolve))
+      }
+      await this.#upsert(key, name, undefined, raw, true)
+    }
+    this.#changed()
+  }
+
+  /**
+   * Resolves once every app server a turn waits for (`blockOnLoad`) has ended its first connection, connected or
+   * not: its tools are then in the turn's selection, or it failed and `mcp.list` says why. Each connection is
+   * bounded by its own timeouts.
+   */
+  async loaded(): Promise<void> {
+    await Promise.all([...this.#servers.values()].map((server) => server.loaded))
   }
 
   /** Read the global file again if it changed, and bring the servers in line with it. */
@@ -177,7 +211,9 @@ export class McpServers {
       await this.#upsert(key, name, undefined, raw)
     }
     for (const server of [...this.#servers.values()]) {
-      if (server.repoRoot === undefined && !seen.has(server.key)) await this.#remove(server)
+      if (server.repoRoot === undefined && server.app !== true && !seen.has(server.key)) {
+        await this.#remove(server)
+      }
     }
     // A repository's entry can take fields from the global one of its name.
     for (const root of [...this.#repos.keys()]) await this.#refreshRepo(root)
@@ -216,18 +252,23 @@ export class McpServers {
    */
   selectionFor(repoRoot: string | undefined): string[] {
     const repo = repoRoot === undefined ? undefined : this.#repos.get(repoRoot)
+    const app = [...this.#servers.values()].filter((s) => s.app === true)
+    // The app's servers are the brand's promise: one of the user's or a repository's of the same name would offer
+    // the same tool names, and take the app's AlwaysAllow with them.
+    const appNames = new Set(app.map((s) => s.name))
     const own = [...this.#servers.values()].filter(
-      (s) => repoRoot !== undefined && s.repoRoot === repoRoot,
+      (s) => repoRoot !== undefined && s.repoRoot === repoRoot && !appNames.has(s.name),
     )
-    const replaced = new Set(own.map((s) => s.name))
+    const replaced = new Set([...own.map((s) => s.name), ...appNames])
     const names: string[] = []
     for (const server of this.#servers.values()) {
-      if (server.repoRoot !== undefined) continue
+      if (server.repoRoot !== undefined || server.app === true) continue
       if (replaced.has(server.name)) continue
       const switched = repo?.switches.get(server.name)
       if (switched ?? server.parsed.enabled) names.push(server.extension)
     }
     for (const server of own) if (server.parsed.enabled) names.push(server.extension)
+    for (const server of app) if (server.parsed.enabled) names.push(server.extension)
     return names
   }
 
@@ -319,24 +360,21 @@ export class McpServers {
 
   async close(): Promise<void> {
     this.#closed = true
+    for (const server of this.#servers.values()) this.#settleLoaded(server)
     await this.#queue
     await Promise.all([...this.#servers.values()].map((server) => this.#disconnect(server)))
   }
 
-  async #upsert(
-    key: string,
-    name: string,
-    repoRoot: string | undefined,
-    raw: RawEntry,
-  ): Promise<void> {
+  /** The table's entry for key, made when there is none yet. */
+  #placeholder(key: string, name: string, repoRoot: string | undefined, app = false): Server {
     const existing = this.#servers.get(key)
-    if (existing !== undefined && JSON.stringify(existing.raw) === JSON.stringify(raw)) return
-    if (existing !== undefined) await this.#disconnect(existing)
-    const server: Server = existing ?? {
+    if (existing !== undefined) return existing
+    const server: Server = {
       key,
       name,
       ...(repoRoot === undefined ? {} : { repoRoot }),
-      raw,
+      ...(app ? { app: true } : {}),
+      raw: {},
       parsed: { enabled: true },
       status: 'connecting',
       error: null,
@@ -344,8 +382,23 @@ export class McpServers {
       classified: [],
       generation: 0,
       retryDelay: RETRY_FIRST_MS,
-      extension: extensionName(name, repoRoot),
+      extension: app ? `mcp-app-${cleanName(name)}` : extensionName(name, repoRoot),
     }
+    this.#servers.set(key, server)
+    return server
+  }
+
+  async #upsert(
+    key: string,
+    name: string,
+    repoRoot: string | undefined,
+    raw: RawEntry,
+    app = false,
+  ): Promise<void> {
+    const existing = this.#servers.get(key)
+    if (existing !== undefined && JSON.stringify(existing.raw) === JSON.stringify(raw)) return
+    if (existing !== undefined) await this.#disconnect(existing)
+    const server: Server = this.#placeholder(key, name, repoRoot, app)
     server.raw = raw
     server.parsed = parseEntry(raw)
     server.retryDelay = RETRY_FIRST_MS
@@ -363,10 +416,12 @@ export class McpServers {
     const parsed = server.parsed
     if (parsed.config === undefined) {
       this.#set(server, 'failed', parsed.error ?? 'invalid entry')
+      this.#settleLoaded(server)
       return
     }
     if (!parsed.enabled) {
       this.#set(server, 'disabled', null)
+      this.#settleLoaded(server)
       return
     }
     if (server.repoRoot !== undefined && !(await this.#trusted(server, parsed.config))) {
@@ -395,6 +450,20 @@ export class McpServers {
   }
 
   async #connect(server: Server): Promise<void> {
+    try {
+      await this.#connectOnce(server)
+    } finally {
+      // Its first connection ended, whichever way: a turn that waits for it goes on.
+      this.#settleLoaded(server)
+    }
+  }
+
+  #settleLoaded(server: Server): void {
+    server.settleLoaded?.()
+    server.settleLoaded = undefined
+  }
+
+  async #connectOnce(server: Server): Promise<void> {
     if (this.#closed || server.parsed.config === undefined) return
     const generation = ++server.generation
     if (server.retry !== undefined) clearTimeout(server.retry)
@@ -608,6 +677,7 @@ export class McpServers {
       enabled: server.parsed.enabled,
       tools: server.status === 'connected' ? this.#toolNames(server) : [],
       error: server.error,
+      ...(server.app === true ? { app: true } : {}),
       ...(server.repoRoot === undefined
         ? {}
         : {
@@ -646,6 +716,11 @@ export function toolName(
 
 function cleanName(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]/g, '_')
+}
+
+/** An app server's key: apart from the user's global one of the same name. */
+function appKey(name: string): string {
+  return `a:${name}`
 }
 
 /** A server's own key: the global one by its name, a repository's by its root and its name. */

@@ -254,12 +254,22 @@ type hostKernel struct {
 
 func startHostKernel(t *testing.T, f *fakeFactory, withKey bool) *hostKernel {
 	t.Helper()
+	return startHostKernelWith(t, f, withKey, nil)
+}
+
+// startHostKernelWith is startHostKernel with the Host's Config changed by change first.
+func startHostKernelWith(t *testing.T, f *fakeFactory, withKey bool, change func(*Config)) *hostKernel {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("runs the Kernel")
 	}
 	bin := kernelBinaryForTest(t)
 	env := map[string]string{KernelEnv: "1", KernelBinEnv: bin}
-	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(k string) string { return env[k] }, KeyPoolUpstream: f.URL})
+	cfg := Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(k string) string { return env[k] }, KeyPoolUpstream: f.URL}
+	if change != nil {
+		change(&cfg)
+	}
+	h := New(cfg)
 	if !h.KernelEnabled() {
 		t.Fatal("the Kernel is not enabled")
 	}

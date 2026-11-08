@@ -111,6 +111,9 @@ const (
 // Memory tools and no Memory in its prompt (ADR 0042).
 const MemoryDirEnv = "DROI_MEMORY_DIR"
 
+// AppAgentEnv carries what a brand's app gives every conversation, an AppAgent as JSON (ADR 0041).
+const AppAgentEnv = "DROI_KERNEL_AGENT"
+
 // The error codes of the contract's table. Clients branch on Code, never on
 // Message.
 const (

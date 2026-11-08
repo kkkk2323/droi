@@ -408,7 +408,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | Method                 | Params                                                                        | Result                                                                    | Capability      | M1  |
 | ---------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------- | --- |
 | `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?}` | —               | yes |
-| `harness.configure`    | `{providers?, memoryDir?}`                                                    | `{}`                                                                      | —               | no  |
+| `harness.configure`    | `{providers?, memoryDir?, section?}`                                          | `{}`                                                                      | —               | no  |
 | `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                  | `conversations` | yes |
 | `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                      | `conversations` | yes |
 | `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                             | `conversations` | yes |
@@ -858,14 +858,29 @@ the summary does not age out.
 
 ### Settings that change while the kernel runs
 
-`harness.configure {providers?, memoryDir?}` is how the Host's settings reach a running kernel, so none of them
+`harness.configure {providers?, memoryDir?, section?}` is how the Host's settings reach a running kernel, so none of them
 restarts it or stops a run (ADR 0038). `providers` (the shape of `DROI_KERNEL_PROVIDERS`) takes the place of the
 catalog at once: each conversation's next request resolves its model in the new one, and a conversation whose model
 is gone ends its next run without an answer. `memoryDir`, an absolute path or `null`, turns Memory on or off: the `memory`
 extension is installed always and selected per conversation before each turn, as the MCP servers are, so the change
 reaches every conversation at its next turn; a turn under way keeps what it had. Keys never cross the wire: a
-provider names the environment variable its key is read from. Every connection hears `harness.changed {}`. A
+provider names the environment variable its key is read from. `section`, a string or `null`, takes the place of
+the app's prompt section (below) from each conversation's next turn. Every connection hears `harness.changed {}`. A
 read-only kernel refuses it.
+
+### The brand's app (ADR 0041)
+
+An app built on Droi gives every conversation three things, which the Host passes at launch in
+`DROI_KERNEL_AGENT`, a JSON object whose fields are all optional:
+
+- `mcpServers`: by name, entries in `mcp.json`'s shape, each with an optional `blockOnLoad: true`. They run beside
+  the user's servers; one of them takes the place of a user's or a repository's server of the same name. `mcp.list`
+  reports them with `app: true`; `mcp.set` does not change them. A turn waits for each `blockOnLoad` server to end
+  its first connection (connected, or failed and reported), so the first turn after a start already has its tools.
+- `alwaysAllow`: tool names (`<server>___<tool>`) the approval policy lets run without asking, judged after the
+  user's own rules. They are in no `policy.changed` snapshot: they are the app's, not the user's to store.
+- `section`: text added to every conversation's prompt, the Host's prompt addition and the brand's. `harness.configure
+{section}` changes it.
 
 ### `codemode`: scripts that call the conversation's tools
 
