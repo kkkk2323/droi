@@ -857,8 +857,9 @@ export class Kernel implements Dispatcher {
     // commit between them would leave a delta subscriber's baseline one step behind the ops it gets.
     const watch = await conversation.watch(context, window)
     const view = watch.value
-    // A viewer writes nothing, not even "seen": its data directory is another process's.
-    if (!this.#options.config.readOnly) {
+    // A viewer writes nothing, not even "seen": its data directory is another process's. A client opening a
+    // conversation again on a new connection says `seen: false`: nobody looked at it.
+    if (!this.#options.config.readOnly && optionalBoolean(params, 'seen') !== false) {
       await this.#options.indexer.markViewed(id)
       // Seen here is seen everywhere: the other clients take the dot off too.
       await this.#indexChanged(id)

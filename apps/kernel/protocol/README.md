@@ -405,7 +405,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?}` | —               | yes |
 | `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                  | `conversations` | yes |
 | `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                      | `conversations` | yes |
-| `conversation.open`    | `{id, window?, subscribe?}`                                                   | `{view, policy?, pending[]?}`                                             | `conversations` | yes |
+| `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                             | `conversations` | yes |
 | `conversation.unwatch` | `{id}`                                                                        | `{}`                                                                      | `conversations` | yes |
 | `conversation.submit`  | `{id, input?, continue?, whenBusy?, whenIdle?, requestId?}`                   | `{submissionId}`                                                          | `conversations` | yes |
 | `conversation.abort`   | `{id, background?}`                                                           | `{}`                                                                      | `conversations` | yes |
@@ -506,7 +506,8 @@ Three fields a sidebar groups and sorts by:
 
 A `viewedAt` in `index.update` is the unread marker: a millisecond time says "a person has seen everything
 up to here", `null` asks for the dot back, and an absent field leaves it as it was. `conversation.open`
-writes a time by itself, so a client only needs this call when a conversation is on screen while an answer
+writes a time by itself (unless it carries `seen: false`, which a client sends when it opens a conversation again on
+a new connection without a person looking at it), so a client only needs this call when a conversation is on screen while an answer
 arrives, or when it wants a cleared one to look unread again. Either way every client hears it: `index.changed`
 carries `viewedAt`, so a dot one client clears goes away on the others too. A conversation is unread while its
 `lastActivityAt` is later than its `viewedAt`, or while `viewedAt` is `null`. A new conversation starts seen up to

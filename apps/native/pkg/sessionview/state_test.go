@@ -765,6 +765,15 @@ func TestStoreReopensEveryConversationOnANewConnection(t *testing.T) {
 	if p := second.openParams()[0]; p.Window == nil || p.Window.Min != 10 || p.Window.Max != 20 {
 		t.Errorf("the re-open asked for window %+v", p.Window)
 	}
+	// Nobody looked: a conversation opened again on the new connection keeps its unread mark. A person's open marks it.
+	for _, p := range second.openParams() {
+		if p.Seen == nil || *p.Seen {
+			t.Errorf("conversation %d was opened again as seen", p.ID)
+		}
+	}
+	if p := first.openParams()[0]; p.Seen != nil {
+		t.Errorf("a person's open said seen %v", *p.Seen)
+	}
 }
 
 // TestStoreDropsAPushFromAnEarlierGeneration: a push already on its way when the connection ended names

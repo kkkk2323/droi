@@ -765,8 +765,10 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 	st.mu.Unlock()
 
 	var opened kernel.OpenResult
+	// Opening again is the connection's doing, not a person's: what arrived while the window was away stays unread.
+	seen := false
 	err := turn.run(ctx, func() (err error) {
-		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView})
+		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView, Seen: &seen})
 		return err
 	})
 

@@ -148,6 +148,9 @@ type OpenParams struct {
 	// Subscribe is "view" (the default, and "" for it) or "delta". The answer
 	// is always a whole view, so a delta subscriber starts from one.
 	Subscribe string `json:"subscribe,omitempty"`
+	// Seen false opens without marking the conversation seen: a client opening it again on a new connection, with
+	// nobody looking at it. Absent marks it seen, as a person opening it does.
+	Seen *bool `json:"seen,omitempty"`
 }
 
 // OpenResult is the first view of an opened conversation.
