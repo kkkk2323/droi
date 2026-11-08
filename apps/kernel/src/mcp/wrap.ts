@@ -35,12 +35,13 @@ const isObject = (v: unknown): v is Schema =>
 
 class RecursiveSchema extends Error {}
 
-// Moves a "#" or "#/…" $ref or $dynamicRef under the argument. A resource with its own $id keeps its references,
-// and literal data (const, default, examples) is not visited.
+// Moves a "#" or "#/…" $ref or $dynamicRef under the argument. A resource with an $id keeps its references, and
+// literal data (const, default, examples) is not visited. Unlike upstream's, a fragment-only $id ("#root") keeps
+// them too: pi-schema registers such a schema as the document's root, so its pointers resolve inside it.
 function rebase(schema: unknown, relocate: boolean, legacy: boolean): void {
   if (!isObject(schema)) return
   const id = schema['$id'] ?? (legacy ? schema['id'] : undefined)
-  if (typeof id === 'string' && id.split('#')[0]) relocate = false
+  if (typeof id === 'string') relocate = false
   if (relocate) {
     // Draft 2019-09's recursive anchor must stay a resource root: moving it would change what it resolves to.
     if (schema['$recursiveAnchor'] === true || Object.hasOwn(schema, '$recursiveRef'))
@@ -66,10 +67,11 @@ function rebase(schema: unknown, relocate: boolean, legacy: boolean): void {
 
 /**
  * The parameters to offer for a tool whose input schema is `schema`, and whether they wrap it. A schema with no
- * composition at its root, and one that cannot be moved (a recursive anchor without $id), come back as they are.
+ * composition at its root, one whose root has `properties` (they reach every route, and the composition only
+ * narrows them), and one that cannot be moved (a recursive anchor without $id) come back as they are.
  */
 export function wrapToolSchema(schema: Schema): { parameters: Schema; wrapped: boolean } {
-  if (!compositions.some((key) => Object.hasOwn(schema, key)))
+  if (!compositions.some((key) => Object.hasOwn(schema, key)) || isObject(schema['properties']))
     return { parameters: schema, wrapped: false }
   const moved = structuredClone(schema)
   const draft = typeof moved['$schema'] === 'string' ? moved['$schema'] : ''
@@ -92,8 +94,9 @@ export function wrapToolSchema(schema: Schema): { parameters: Schema; wrapped: b
   }
 }
 
-/** A wrapped tool's call arguments as the server's schema says them. */
+/** A wrapped tool's call arguments as the server's schema says them. MCP takes only an object. */
 export function unwrapArguments(args: Record<string, unknown>): Record<string, unknown> {
   const inner = args[WRAP_ARGUMENT]
-  return isObject(inner) ? inner : {}
+  if (!isObject(inner)) throw new Error(`the call's "${WRAP_ARGUMENT}" must be an object`)
+  return inner
 }

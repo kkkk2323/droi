@@ -910,7 +910,7 @@ never offered another repository's tools. The selection is stored as an edit of 
 name says so; every other MCP tool as a command.
 
 **A schema with a composition at its root.** A tool whose `inputSchema` has `anyOf`, `oneOf` or `allOf` at its
-root is offered as `{type: "object", properties: {arguments: <its schema>}, required: ["arguments"]}`, its
+root, and no `properties` there, is offered as `{type: "object", properties: {arguments: <its schema>}, required: ["arguments"]}`, its
 `#` references moved under `arguments`, and a call's `arguments` is what the server gets. As it came, the
 Anthropic route would offer it with no parameters at all (pi-ai sends only the root's `properties`) and OpenAI's
 would refuse it. A call's recorded arguments, its approval card and a codemode script use the wrapped shape. A
