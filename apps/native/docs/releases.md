@@ -13,6 +13,29 @@ which puts in one GitHub Release:
 The workflow builds into a draft and publishes it once every build is in, as the latest
 Release: apps read the manifest from `releases/latest/download/`.
 
+## The Kernel in every package
+
+Each build job runs `bun run build.ts --stage <platforms>` in `apps/kernel` before `mygo build`: it
+compiles the Kernel for the job's platforms and puts each in `apps/native/resources/<GOOS>-<GOARCH>/`
+(not committed), with its notices in `kernel-licenses/`: those of the WebAssembly it embeds (Photon,
+Apache-2.0; QuickJS, MIT) and `THIRD-PARTY-NOTICES.md`, the licenses of Bun and of every npm package in
+the bundle, which `apps/kernel/notices.ts` reads from the bundle's source map. A package that ships no
+license text and has no upstream text in `apps/kernel/src/vendor/licenses/` stops the build. MyGo ships that folder with that platform's app only: in the macOS bundle's
+`Contents/Resources` (darwin-arm64 and darwin-amd64 joined into one universal file), next to `Droi.exe`
+on Windows and next to `droi` on Linux, which is where the Host looks for it.
+
+On macOS the Kernel is signed with the app under the hardened runtime, which forbids the JIT its
+WebAssembly needs: `mygo.json`'s `macos.helperEntitlements` gives it `kernel.entitlements.plist`
+(`allow-jit`, `allow-unsigned-executable-memory`, `disable-library-validation`). Without them it
+starts but every script fails. The macOS job runs `smoke.ts` on the Kernel inside the signed app,
+and the Linux job on the staged Linux one; the PR workflow runs the Windows one on Windows.
+
+The Kernel is a file of its own in the app, so an update does not resend it when it did not change:
+a delta holds a copy instruction for every file whose SHA-256 matches the old app's, and a patch for
+the others. The Kernel builds byte for byte the same from the same sources and Bun, so a release that
+changes only Go code adds nothing for it; a new Pi version or change under `apps/kernel` patches it.
+A Kernel's own version is `harness.info`'s (`kernel-<pi version>-<revision>`).
+
 ## How the app updates itself
 
 `internal/updates` walks the update through the Shell's `UpdateState`: check, download,
@@ -21,7 +44,9 @@ waits for the user: the corner card offers Update, Details and Skip this version
 it is installed, "Restart now" (or About's "Restart to update") starts the new version.
 With Settings → About → "Install updates automatically" on, the check installs what it
 finds, and the app restarts into it once no Session works or waits for an answer and the
-window is in the background, checking every minute.
+window is in the background, checking every minute. On a Kernel an update that has waited
+three hours for that restarts anyway, still only with the window in the background: the Kernel
+resumes the runs a restart interrupts (ADR 0038). On the Daemon it waits as long as it takes.
 
 MyGo's updater does the rest: it downloads the delta for the running version when there is
 one (else the whole archive, as an app more than one version behind does), checks the
@@ -96,9 +121,10 @@ Push only `v<version>`: once the release is published, the workflow tags
 and fails if that tag already exists. When a run fails only on a flaky test, fix the test on
 main and rerun the failed jobs (`gh run rerun <id> --failed`) rather than releasing another
 version.
-To try a signed build locally:
+To try a signed build locally (stage the Kernel first, or the app has none):
 
 ```sh
+(cd apps/kernel && bun run build.ts --stage darwin-arm64 darwin-x64)
 MYGO_UPDATER_PRIVATE_KEY="$(cat ~/Library/Application\ Support/mygo/update-keys/mygo-update.key)" \
   go tool -modfile=apps/native/go.mod mygo build apps/native
 ```

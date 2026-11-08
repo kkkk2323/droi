@@ -1,6 +1,7 @@
 import { $ } from 'bun'
-import { cpSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { thirdPartyNotices } from './notices.ts'
+import { chmodSync, cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 /**
  * Build the kernel for every platform Droi ships, into `apps/native/assets/kernel/<platform>/`.
@@ -16,11 +17,16 @@ import { join } from 'node:path'
  * built binary.
  */
 const targets = [
-  { target: 'bun-darwin-arm64', platform: 'darwin-arm64' },
-  { target: 'bun-darwin-x64', platform: 'darwin-x64' },
-  { target: 'bun-windows-x64', platform: 'windows-x64', executable: 'kernel.exe' },
-  { target: 'bun-linux-x64', platform: 'linux-x64' },
-  { target: 'bun-linux-arm64', platform: 'linux-arm64' },
+  { target: 'bun-darwin-arm64', platform: 'darwin-arm64', goPlatform: 'darwin-arm64' },
+  { target: 'bun-darwin-x64', platform: 'darwin-x64', goPlatform: 'darwin-amd64' },
+  {
+    target: 'bun-windows-x64',
+    platform: 'windows-x64',
+    goPlatform: 'windows-amd64',
+    executable: 'kernel.exe',
+  },
+  { target: 'bun-linux-x64', platform: 'linux-x64', goPlatform: 'linux-amd64' },
+  { target: 'bun-linux-arm64', platform: 'linux-arm64', goPlatform: 'linux-arm64' },
 ] as const
 
 /**
@@ -34,6 +40,14 @@ const entry = join(root, 'src/main.ts')
 /** Codemode's worker thread: a second entrypoint, the only way a compiled binary can start it (src/codemode/sandbox.ts). */
 const worker = join(root, 'src/codemode-worker.ts')
 const outRoot = join(root, '..', '..', 'apps', 'native', 'assets', 'kernel')
+/**
+ * The native app's resources: MyGo ships `resources/<GOOS>-<GOARCH>/` with that platform's app only, next to the
+ * executable (in a macOS bundle, in Contents/Resources), which is where the Host looks for the Kernel. A universal
+ * macOS build joins darwin-arm64's and darwin-amd64's into one file.
+ */
+const resourcesRoot = join(root, '..', '..', 'apps', 'native', 'resources')
+/** What a release that ships the Kernel must carry with it: the notices of the WebAssembly it embeds. */
+const notices = ['NOTICE.md', 'LICENSE-photon.txt', 'LICENSE-photon.md', 'LICENSE-quickjs-wasi.txt']
 
 export type BuildOptions = {
   /** Which targets: all of `releaseTargets` unless narrowed. */
@@ -67,8 +81,40 @@ export async function build(
   return built
 }
 
+/**
+ * Put built executables where `mygo build` takes them, with the notices beside them in `kernel-licenses/`: the
+ * WebAssembly's, and THIRD-PARTY-NOTICES.md for Bun and every package in the bundle (notices.ts). The staged
+ * folders are not committed (.gitignore); a release stages the platforms it builds right before it.
+ */
+export async function stage(
+  built: { platform: string; path: string }[],
+  into: string = resourcesRoot,
+  thirdParty?: string,
+): Promise<string[]> {
+  thirdParty ??= await thirdPartyNotices()
+  const staged: string[] = []
+  for (const artifact of built) {
+    const entryTarget = targets.find((each) => each.platform === artifact.platform)
+    if (entryTarget === undefined) throw new Error(`no Go platform for ${artifact.platform}`)
+    const dir = join(into, entryTarget.goPlatform)
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(join(dir, 'kernel-licenses'), { recursive: true })
+    const executable = join(dir, basename(artifact.path))
+    cpSync(artifact.path, executable)
+    chmodSync(executable, 0o755)
+    for (const notice of notices) {
+      cpSync(join(root, 'src', 'vendor', notice), join(dir, 'kernel-licenses', notice))
+    }
+    writeFileSync(join(dir, 'kernel-licenses', 'THIRD-PARTY-NOTICES.md'), thirdParty)
+    staged.push(executable)
+  }
+  return staged
+}
+
 if (import.meta.main) {
-  const only = process.argv.slice(2)
+  const args = process.argv.slice(2)
+  const staging = args.includes('--stage')
+  const only = args.filter((arg) => arg !== '--stage')
   const selected =
     only.length === 0
       ? targets
@@ -87,6 +133,9 @@ if (import.meta.main) {
     process.stdout.write(
       `${artifact.platform}  ${(artifact.bytes / 1_000_000).toFixed(1)} MB  ${artifact.path}\n`,
     )
+  }
+  if (staging) {
+    for (const path of await stage(built)) process.stdout.write(`staged  ${path}\n`)
   }
 }
 

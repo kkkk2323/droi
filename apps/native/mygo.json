@@ -5,6 +5,11 @@
   "version": "1.92.0",
   "icon": "resources/icon.png",
   "out": "build",
+  "macos": {
+    "helperEntitlements": {
+      "kernel": "kernel.entitlements.plist"
+    }
+  },
   "updates": {
     "publicKey": "3OeFjinbGKRwGSEC25EkVeZdEUJ9SIZBS4+XMr57SM4=",
     "github": "kkkk2323/droi",
