@@ -575,6 +575,8 @@ type Skills struct {
 type SkillsSetDisabledParams struct {
 	Name     string `json:"name"`
 	Disabled bool   `json:"disabled"`
+	// ID, when set, has the answer list that conversation's workspace skills too, as skills.list with it does.
+	ID *ID `json:"id,omitempty"`
 }
 
 // HarnessInfo is harness.info's result.
@@ -822,6 +824,14 @@ type ResourcesResult struct {
 	Skills       []Skill          `json:"skills"`
 	Prompts      []PromptTemplate `json:"prompts"`
 	ContextFiles []ContextFile    `json:"contextFiles"`
+	// Diagnostics are the files that look like a skill or a template but are not used, and why.
+	Diagnostics []ResourceDiagnostic `json:"diagnostics,omitempty"`
+}
+
+// ResourceDiagnostic is one file resources.list could not use.
+type ResourceDiagnostic struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
 }
 
 // PolicyChanged is policy.changed's params: the whole snapshot of one scope.

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fauxAssistantMessage } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, type Faux } from './helpers.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 
@@ -84,6 +85,70 @@ describe('skills.list', () => {
     const failure = await client.fails('skills.list', { id: 424242 })
     expect(failure.code).toBe(-32000)
   })
+
+  test('a skill changed in place reads as it is now', async () => {
+    const path = 'skills/review/SKILL.md'
+    write(userDir(), path, '---\nname: review\ndescription: Review it.\n---\n')
+    expect(
+      ((await client.call('skills.list', {}))['skills'] as { description: string }[])[0]
+        ?.description,
+    ).toBe('Review it.')
+    write(userDir(), path, '---\nname: review\ndescription: Review it with care.\n---\n')
+    expect(
+      ((await client.call('skills.list', {}))['skills'] as { description: string }[])[0]
+        ?.description,
+    ).toBe('Review it with care.')
+  })
+
+  test("turning a skill off with an id answers that conversation's list", async () => {
+    const workspace = join(data.dir, 'repo')
+    write(
+      workspace,
+      '.factory/skills/local/SKILL.md',
+      '---\nname: local\ndescription: Here only.\n---\n',
+    )
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: workspace },
+    })
+    const answer = await client.call('skills.setDisabled', {
+      name: 'local',
+      disabled: true,
+      id: created['conversationId'],
+    })
+    expect(answer['skills']).toEqual([
+      expect.objectContaining({ name: 'local', scope: 'workspace', enabled: false }),
+    ])
+  })
+})
+
+describe('a skill command', () => {
+  test('names the conversation as it was typed', async () => {
+    const workspace = join(data.dir, 'repo')
+    write(
+      workspace,
+      '.factory/skills/local/SKILL.md',
+      '---\nname: local\ndescription: Here only.\n---\nDo it.\n',
+    )
+    const created = await client.call('conversation.create', {
+      agent: { model: faux.model, cwd: workspace },
+    })
+    const id = created['conversationId'] as number
+    faux.faux.setResponses([fauxAssistantMessage('done')])
+    await client.call('conversation.submit', { id, input: '/local the login page' })
+    const deadline = Date.now() + 20_000
+    for (;;) {
+      const list = await client.call('conversation.list', {})
+      const row = (list['items'] as { id: number; title?: string; preview?: string }[]).find(
+        (item) => item.id === id,
+      )
+      if (row?.title !== undefined) {
+        expect(row.title).toBe('/local the login page')
+        break
+      }
+      if (Date.now() > deadline) throw new Error('no title')
+      await Bun.sleep(25)
+    }
+  })
 })
 
 describe('resources.list', () => {
@@ -124,6 +189,24 @@ describe('resources.list', () => {
     const answer = await client.call('resources.list', {})
     expect((answer['contextFiles'] as unknown[]).length).toBe(1)
     expect(answer['prompts']).toEqual([])
+    expect(answer['diagnostics']).toEqual([])
+  })
+
+  test('says why a skill a person wrote is not offered', async () => {
+    write(userDir(), 'skills/Notes/SKILL.md', '---\ndescription: My notes.\n---\n')
+    write(userDir(), 'skills/plain/SKILL.md', 'no frontmatter\n')
+    const answer = await client.call('resources.list', {})
+    expect(answer['skills']).toEqual([])
+    expect(answer['diagnostics']).toEqual([
+      {
+        path: join(userDir(), 'skills/Notes/SKILL.md'),
+        message: 'the name "Notes" is not a skill name',
+      },
+      {
+        path: join(userDir(), 'skills/plain/SKILL.md'),
+        message: 'a description is required in the frontmatter',
+      },
+    ])
   })
 })
 

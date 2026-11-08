@@ -1352,7 +1352,8 @@ export class Kernel implements Dispatcher {
       throw invalidParams([{ path: 'disabled', message: 'true or false is required' }])
     }
     await this.#options.disabledSkills.set(name, disabled)
-    return this.#skillsList({})
+    // The list the client showed: with `id`, that conversation's workspace skills are in it too.
+    return this.#skillsList(params)
   }
 
   #wireSkills(loaded: LoadedResources): unknown[] {
@@ -1382,6 +1383,7 @@ export class Kernel implements Dispatcher {
         ...(prompt.description === undefined ? {} : { description: prompt.description }),
       })),
       contextFiles: loaded.contextFiles.map((file) => ({ path: file.path, bytes: file.bytes })),
+      diagnostics: loaded.diagnostics,
     }
   }
 

@@ -1099,8 +1099,20 @@ function previewText(entry: EntryRecord): string | undefined {
 }
 
 function firstLine(text: string, limit: number): string {
-  const line = text.trim().split('\n')[0] ?? ''
+  const line = asTyped(text.trim()).split('\n')[0] ?? ''
   return line.length > limit ? `${line.slice(0, limit - 1)}…` : line
+}
+
+/**
+ * A skill command as the person typed it, `/name args`: the kernel sends the model the skill's instructions in
+ * a `<skill>` block (resources/expand.ts), and that block is no name for a conversation.
+ */
+function asTyped(text: string): string {
+  const match =
+    /^<skill name="([^"]+)" location="[^"]*">\n[\s\S]*\n<\/skill>(?:\n\n([\s\S]*))?$/.exec(text)
+  if (match === null) return text
+  const args = match[2]?.trim() ?? ''
+  return args === '' ? `/${match[1]}` : `/${match[1]} ${args}`
 }
 
 /**

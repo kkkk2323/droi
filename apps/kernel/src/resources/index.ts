@@ -111,8 +111,10 @@ export function loadContextChain(
 
 /** A skill's instructions: its file without the frontmatter. Undefined when it can no longer be read. */
 export function skillBody(path: string): string | undefined {
+  const text = read(path, [])
+  if (text === undefined) return undefined
   try {
-    return split(readFileSync(path, 'utf8')).body
+    return split(text).body
   } catch {
     return undefined
   }
@@ -345,10 +347,24 @@ function merge<T extends { name: string; path: string }>(
   return [...byName.values()]
 }
 
+/**
+ * The files read so far, by path, with the size and modification time they had. Every prompt and every slash
+ * command reads the resources again; a file that has not changed since is not read twice.
+ */
+const reads = new Map<string, { size: number; mtimeMs: number; text: string }>()
+
 function read(path: string, diagnostics: LoadedResources['diagnostics']): string | undefined {
   try {
-    return readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
+    const stats = statSync(path)
+    const cached = reads.get(path)
+    if (cached !== undefined && cached.size === stats.size && cached.mtimeMs === stats.mtimeMs) {
+      return cached.text
+    }
+    const text = readFileSync(path, 'utf8').replace(/^\uFEFF/, '')
+    reads.set(path, { size: stats.size, mtimeMs: stats.mtimeMs, text })
+    return text
   } catch (error) {
+    reads.delete(path)
     diagnostics.push({ path, message: error instanceof Error ? error.message : 'cannot be read' })
     return undefined
   }
