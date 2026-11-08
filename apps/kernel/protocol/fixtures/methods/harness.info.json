@@ -36,7 +36,7 @@
         "mcp": true,
         "skills": true,
         "models": true,
-        "codemode": false,
+        "codemode": true,
         "resources": true
       },
       "providers": [

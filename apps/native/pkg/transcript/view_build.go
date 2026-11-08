@@ -38,6 +38,7 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 		}
 	}()
 
+	bl.liveScripts = liveNested(view)
 	results := bl.toolResults(view)
 	var entries []*Entry
 	// boundary is set by the two entries that move the context on — a reset and a compaction — so the answer
@@ -202,6 +203,7 @@ func createdAt(e kernel.Entry) float64 {
 // entry, after the answer that asked for the call.
 func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 	out := map[string]*ToolResultView{}
+	bl.scripts = map[string][]*ToolCall{}
 	for _, entry := range view.Entries {
 		if entry.Kind != kernel.EntryToolResult {
 			continue
@@ -211,6 +213,9 @@ func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 			if m.Role == "toolResult" && m.ToolCallID != "" {
 				m.Diagnostics = diagnostics
 				out[m.ToolCallID] = m.resultView()
+				if m.ToolName == CodemodeTool {
+					bl.scripts[m.ToolCallID] = codemodeNested(m.ToolCallID, m.Details)
+				}
 			}
 		}
 	}
@@ -261,6 +266,11 @@ func (bl *Builder) blocksOf(entry kernel.Entry, results map[string]*ToolResultVi
 						call.ResultView = result
 					}
 				}
+				if c.Name == CodemodeTool {
+					// A script's card: the calls it made hang under it, as a Script's do.
+					call.Lifecycle = true
+					call.Nested = bl.scriptCalls(c.ID)
+				}
 				if n := len(blocks); n > 0 && blocks[n-1].Kind == Tools {
 					blocks[n-1].Calls = append(blocks[n-1].Calls, call)
 					continue
@@ -270,6 +280,18 @@ func (bl *Builder) blocksOf(entry kernel.Entry, results map[string]*ToolResultVi
 		}
 	}
 	return blocks
+}
+
+// scriptCalls are the calls codemode call id made: all of them once it answered, the running ones before. Never
+// nil, so its row is a script card even before the script has called anything.
+func (bl *Builder) scriptCalls(id string) []*ToolCall {
+	if calls, ok := bl.scripts[id]; ok {
+		return calls
+	}
+	if calls := bl.liveScripts[id]; calls != nil {
+		return calls
+	}
+	return []*ToolCall{}
 }
 
 // messagesOf is the entry's messages decoded, those unchanged since the last build as it left them.
@@ -304,9 +326,12 @@ type piMessage struct {
 	StopReason   string
 	ErrorMessage string
 	ToolCallID   string
+	ToolName     string
 	IsError      bool
 	Text         string
-	Blocks       []piContent
+	// Details is a tool result's details: a codemode result lists the calls its script made there.
+	Details json.RawMessage
+	Blocks  []piContent
 	// Diagnostics are a tool result's structured findings, from the entry's data: the harness reports a stopped
 	// run there rather than in the result's shape.
 	Diagnostics []piDiagnostic
@@ -346,7 +371,9 @@ func decodeMessages(raw json.RawMessage) ([]piMessage, error) {
 		StopReason   string          `json:"stopReason"`
 		ErrorMessage string          `json:"errorMessage"`
 		ToolCallID   string          `json:"toolCallId"`
+		ToolName     string          `json:"toolName"`
 		IsError      bool            `json:"isError"`
+		Details      json.RawMessage `json:"details"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil {
 		return nil, err
@@ -354,7 +381,7 @@ func decodeMessages(raw json.RawMessage) ([]piMessage, error) {
 	out := make([]piMessage, 0, len(wire))
 	for _, w := range wire {
 		m := piMessage{Role: w.Role, Timestamp: w.Timestamp, StopReason: w.StopReason,
-			ErrorMessage: w.ErrorMessage, ToolCallID: w.ToolCallID, IsError: w.IsError}
+			ErrorMessage: w.ErrorMessage, ToolCallID: w.ToolCallID, ToolName: w.ToolName, IsError: w.IsError, Details: w.Details}
 		if len(w.Content) > 0 && w.Content[0] == '"' {
 			// A message's content is a bare string whenever the sender had only text: the Host submits
 			// `input:"hello"`, Pi stores it as `content:"hello"`, and it is the ordinary shape of a user message,

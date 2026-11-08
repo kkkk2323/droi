@@ -40,6 +40,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 1.5.0
         version: 1.5.0(@aws-sdk/credential-provider-node@3.972.94)(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))(@smithy/signature-v4@5.7.5)(zod@4.6.5)
+      '@earendil-works/pi-codemode':
+        specifier: 1.5.0
+        version: 1.5.0
       '@earendil-works/pi-durable':
         specifier: 1.5.0
         version: 1.5.0(@aws-sdk/credential-provider-node@3.972.94)(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))(@smithy/signature-v4@5.7.5)(esbuild@0.27.3)(zod@4.6.5)

@@ -14,6 +14,9 @@ import { Asks } from './ask/asks.ts'
 import { backgroundExtension } from './extensions/background.ts'
 import { Background } from './processes/background.ts'
 import { McpServers } from './mcp/servers.ts'
+import type { CodemodeNamespace } from '@earendil-works/pi-durable/codemode'
+import { codemodeExtension } from './extensions/codemode.ts'
+import { codemodeSandbox } from './codemode/sandbox.ts'
 import { McpAuth } from './mcp/oauth.ts'
 import { PolicyStore } from './policy/store.ts'
 import { resourcesExtension } from './extensions/resources.ts'
@@ -48,7 +51,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   asks: true,
   mcp: true,
   skills: true,
-  codemode: false,
+  codemode: true,
   resources: true,
   models: true,
 }
@@ -127,12 +130,16 @@ export async function startKernel(
     const askTool = askExtension(() => asks)
     let background: Background | undefined
     const backgroundTool = backgroundExtension(() => background)
+    /** The MCP servers as codemode groups their tools: `McpServers` keeps the list current. */
+    const namespaces: CodemodeNamespace[] = []
+    const codemode = codemodeExtension({ sandbox: codemodeSandbox(), namespaces })
     const registry: Registry = createRegistry()
     registry.install(coding.extension)
     registry.install(approvalHook)
     registry.install(resources)
     registry.install(askTool)
     registry.install(backgroundTool)
+    registry.install(codemode)
     for (const extension of options.extensions ?? []) registry.install(extension)
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
@@ -148,6 +155,7 @@ export async function startKernel(
         resources,
         askTool,
         backgroundTool,
+        codemode,
         ...(options.extensions ?? []),
       ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its
@@ -249,6 +257,7 @@ export async function startKernel(
       registry,
       notify: (method, payload) => server?.broadcast(method, payload),
       authProvider: (name, url) => mcpAuth.authProvider(name, url),
+      namespaces,
       version: VERSION,
       context,
     })

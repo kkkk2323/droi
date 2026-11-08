@@ -58,12 +58,11 @@ describe('the handshake and the connection', () => {
       string,
       boolean
     >
-    // codemode is the one not built yet, and no method waits on it.
     expect(
       Object.entries(capabilities)
         .filter(([, on]) => !on)
         .map(([name]) => name),
-    ).toEqual(['codemode'])
+    ).toEqual([])
     expect(kernel.kernel.gated('mcp.authorize')).toBeUndefined()
     const saved = CAPABILITIES['mcp']
     CAPABILITIES['mcp'] = false

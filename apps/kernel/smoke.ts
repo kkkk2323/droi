@@ -75,8 +75,9 @@ async function stop(child: ReturnType<typeof spawn>): Promise<void> {
   clearTimeout(timer)
 }
 
+const provider = startFakeProvider()
+
 async function main(): Promise<void> {
-  const provider = startFakeProvider()
   const configPath = join(workDir, 'config.json')
   writeFileSync(configPath, JSON.stringify(fakeKernelConfig(provider.baseUrl), null, 2))
   const imagePath = join(workDir, 'screenshot.png')
@@ -87,6 +88,8 @@ async function main(): Promise<void> {
   try {
     const info = await client.call('harness.info')
     process.stdout.write(`binary: ${String(info['version'])}\n`)
+    // The Host's first policy.set: until one comes, a tool above "ask" waits for a person.
+    await client.call('policy.set', { policy: { autonomy: 'all' } })
 
     provider.push({ toolCall: { name: 'read', arguments: { path: imagePath } } })
     provider.push({ text: 'that is a gradient' })
@@ -119,6 +122,7 @@ async function main(): Promise<void> {
         if (bytes.subarray(1, 4).toString('ascii') !== 'PNG')
           throw new Error('the image is not a PNG')
         process.stdout.write(`image: ${image.mimeType ?? '?'}, ${bytes.length} bytes\n`)
+        await codemode(client, binary.stderr)
         return
       }
       await Bun.sleep(50)
@@ -135,4 +139,43 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * A codemode script, which runs in QuickJS in a worker thread: both the wasm and the worker are files a single-file
+ * binary has to carry itself (src/codemode/sandbox.ts), so only a built binary shows they are there.
+ */
+async function codemode(client: Client, stderr: () => string): Promise<void> {
+  provider.push({
+    toolCall: { name: 'codemode', arguments: { code: 'text(String(6 * 7)); return 1' } },
+  })
+  provider.push({ text: 'the script ran' })
+  const created = await client.call('conversation.create', {
+    agent: { cwd: workDir, model: { provider: 'fake', modelId: 'fake-1' } },
+  })
+  const id = created['conversationId'] as number
+  await client.call('conversation.submit', { id, input: 'run a script' })
+  const deadline = Date.now() + 60_000
+  for (;;) {
+    if (Date.now() > deadline) throw new Error(`the script never answered:\n${stderr()}`)
+    const page = await client.call('conversation.entries', {
+      id,
+      query: { order: 'ascending' },
+      limit: 100,
+    })
+    const result = (
+      page['items'] as {
+        kind: string
+        model?: { content: { text?: string }[]; isError?: boolean }[]
+      }[]
+    ).find((entry) => entry.kind === 'pi.tool-result')
+    if (result !== undefined) {
+      const text = (result.model?.[0]?.content ?? []).map((part) => part.text ?? '').join('\n')
+      if (result.model?.[0]?.isError === true || !text.includes('42')) {
+        throw new Error(`the script failed: ${text}\n${stderr()}`)
+      }
+      process.stdout.write('codemode: a script ran\n')
+      return
+    }
+    await Bun.sleep(50)
+  }
+}
 if (import.meta.main) await main()

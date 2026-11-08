@@ -612,7 +612,12 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 	failed := run.Status == "failed" || run.Status == "cancelled"
 	open := v.flag("script:"+call.Use.ID, false)
 	ui.Column(c.Key(call.Use.ID)).Children(func() {
-		p := v.rowTrigger(c, open, call.Use.Name+": "+summary)
+		name := call.Use.Name
+		if name == transcript.CodemodeTool {
+			// Kernel's codemode is the Daemon's Script: one card, one name.
+			name = transcript.ScriptTool
+		}
+		p := v.rowTrigger(c, open, name+": "+summary)
 		hover := p.Trigger.Hovered() || p.Trigger.Focused()
 		p.Trigger.Children(func() {
 			fg, iconColor := t.Foreground, t.MutedForeground
@@ -623,7 +628,7 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			k.Text(c, l10n.L("Script"), 12.5, 18.75).FontWeight(500).TextColor(fg).Shrink(0)
 			k.Text(c, summary, 11.5, 17.25).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 			switch {
-			case call.Result == nil:
+			case transcript.Pending(call):
 				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 			case run.Status == "running":
 				if j, ok := v.job(call.Use.ID); ok && j.Done {
@@ -642,7 +647,7 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			default:
 				k.Icon(c, "check", 14, t.Success).Label(l10n.L("Succeeded"))
 			}
-			if call.Result != nil {
+			if !transcript.Pending(call) {
 				ch := k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
 				if !hover && !*open && p.Progress() == 0 {
 					ch.Opacity(0)

@@ -187,6 +187,9 @@ type Builder struct {
 	// view is the same cache for the Kernel's entries, which BuildView reads.
 	view    map[string]*seenViewEntry
 	viewGen uint64
+	// scripts are the calls each codemode call made, by its call ID, for the build under way: from a finished
+	// call's result, else from pi.live while it runs.
+	scripts, liveScripts map[string][]*ToolCall
 }
 
 // seenMessage is a message's blocks as the last Build decoded them.

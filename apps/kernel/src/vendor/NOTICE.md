@@ -11,3 +11,13 @@ this file must carry the notice with it.
 The file is committed rather than copied at build time because a single-file `bun build --compile`
 binary cannot resolve it from `node_modules`, and because the kernel reads it at runtime through
 `import … with { type: 'file' }`.
+
+# QuickJS
+
+`quickjs.wasm` is QuickJS compiled to WebAssembly (WASI), taken unchanged from `quickjs-wasi` 3.6.2, which
+`@earendil-works/pi-codemode` 1.5.0 depends on. It runs codemode scripts (`src/codemode/sandbox.ts`).
+
+`quickjs-wasi` is licensed under the MIT License; its license text is in `LICENSE-quickjs-wasi.txt`. A Droi
+release that ships this file must carry the notice with it.
+
+It is committed for the same reason as Photon: a single-file binary cannot resolve it from `node_modules`.

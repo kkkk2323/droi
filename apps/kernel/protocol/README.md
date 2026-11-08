@@ -459,7 +459,7 @@ Three qualifications a client that reads a range needs:
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
-Every M3 method is built (`processes`, `mcp`, `skills` and `resources` are true). `-32009` stays the
+Every M3 method is built (`processes`, `mcp`, `skills`, `resources` and `codemode` are true). `-32009` stays the
 answer for a method a build leaves out, with the capability that would bring it. `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
@@ -636,7 +636,7 @@ What `apps/kernel/test/documents.test.ts` pins, and what it does not:
 | `pi.live.tools[i].output` while the call runs                      | yes                                                                                  |
 | a `done` slot has no output, seen while its sibling still runs     | yes                                                                                  |
 | `nestedTools` from a call a **tool** makes through `executeTool()` | yes, with a test extension                                                           |
-| `nestedTools` from a **shipped** M1 tool                           | no — no shipped tool makes a nested call; the field arrives with M3's codemode       |
+| `nestedTools` from a **shipped** tool (`codemode`)                 | the result's `details.calls` with each call's `output` (`test/codemode.test.ts`)     |
 | `pi.live.compactions` fields while a compaction runs               | yes                                                                                  |
 | `pi.live` has no `compactions` key while idle                      | yes                                                                                  |
 | `generation.retry` as `{at, error}` across attempts                | yes                                                                                  |
@@ -840,6 +840,25 @@ it. Each answer is `{questionId, selected?, text?}`: option ids the question off
   conversation's next user message, which the kernel submits itself (`followUp` while a run is under way), in
   the same commit as the `answered` record. Such a question outlives the run and the process: it is kept until
   it is answered, and `conversation.open` lists it after a restart.
+
+### `codemode`: scripts that call the conversation's tools
+
+Every conversation is offered the `codemode` tool unless its extensions say otherwise: its argument is
+`{code}`, a JavaScript script that calls the conversation's other tools as `tools.<name>(args)` (an MCP tool as
+`tools.<server>___<tool>`, grouped under its server in the prompt). It runs in QuickJS, in a worker thread of
+its own, so a script that computes never holds up the kernel; Pi journals each result, so a script cut off by a
+restart starts again from where it was. `conversation.configure {id, change: {extensions: {remove:
+['codemode']}}}` takes it away from one conversation, for good.
+
+Each call the script makes is a tool call of its own: the approval policy judges it as it would the model's
+(an `ask` level asks for the script, then for each call it makes), and `pi.live.nestedTools` shows it while it
+runs. The result keeps them as `details.calls[]`, in the order the script made them: Pi's
+`{id, name, args, status, durationMs?, error?}` (`status` is `ok`, `error`, `cancelled` or `running`), and two
+fields the kernel adds — `output`, the call's answer as text, at most 4 KiB of it, and `truncated: true` when
+it was cut. An image is `[image]`. A call that failed answers its error there.
+
+A call a restart cut off is not run twice when its tool is not safe to repeat (`bash`): it ends as `error`, and
+the script goes on with that answer.
 
 ### MCP servers, and the ones a repository brings
 
