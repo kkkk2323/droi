@@ -87,4 +87,25 @@ func TestShape(t *testing.T) {
 			t.Fatalf("droid's streamed request kept context_management: %s", out)
 		}
 	})
+
+	t.Run("a tool message whose role is written with a \\u escape is still quoted, once", func(t *testing.T) {
+		encoded, _ := json.Marshal(anywherePhrases[0] + "\n" + toolOnlyPhrases[0])
+		content := strings.Replace(string(encoded), anywherePhrases[0], escapeFirst(anywherePhrases[0]), 1)
+		in := []byte(`{"model":"glm-5.3","messages":[{"role":"system","content":"` + DroidLine + `"},{"role":"t\u006fol","tool_call_id":"c1","content":` + content + `}]}`)
+		path, once, _ := Request(chat, in)
+		var b struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(once, &b); err != nil || len(b.Messages) != 2 {
+			t.Fatalf("%v: %s", err, once)
+		}
+		if !strings.HasPrefix(b.Messages[1].Content, quotedToolPrefix) {
+			t.Fatalf("the tool output went as it came: %q", b.Messages[1].Content)
+		}
+		if _, twice, _ := Request(path, once); string(twice) != string(once) {
+			t.Fatalf("a second pass changed it:\n%s\n%s", once, twice)
+		}
+	})
 }

@@ -93,9 +93,9 @@ names, limits and prices come with 4F, the usage windows with 4G.
 - **No HTML escaping.** Adapted text keeps `<`, `>` and `&` as they are, as
   `JSON.stringify` writes them.
 - **A message that cannot change is not decoded.** `promptOpenings` checks for
-  pi's sentence, `/summary` (an escaped `</summary>` is `\u003c/summary\u003e`)
-  or tool output with `bytes.Contains` first, so a long conversation's other
-  messages cost no parse.
+  pi's sentence, `/summary` (an escaped `</summary>` is `\u003c/summary\u003e`),
+  tool output or any `\u` escape with `bytes.Contains` first, so a long
+  conversation's other messages cost no parse.
 - **A content array whose first part already opens with the line is left
   alone.** The reference prepends the line to any array that holds a part that
   is not text, so a request with an image first would collect one line per

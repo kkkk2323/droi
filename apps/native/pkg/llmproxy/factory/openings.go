@@ -95,9 +95,10 @@ func promptOpenings(msgs []json.RawMessage) bool {
 // mayAdapt reports a message promptOpenings could change, so a long conversation's other messages are not decoded
 // at all: pi's opening or compaction sentence, a pi summary (it ends with </summary>, which an escaped encoding
 // spells \u003c/summary\u003e, so the check is its middle), or tool output (chat's tool messages, Responses'
-// function_call_output).
+// function_call_output). A message with a \u escape is decoded too: the escape could spell any of them.
 func mayAdapt(raw json.RawMessage) bool {
-	return bytes.Contains(raw, []byte(anywherePhrases[0])) ||
+	return bytes.Contains(raw, []byte(`\u`)) ||
+		bytes.Contains(raw, []byte(anywherePhrases[0])) ||
 		bytes.Contains(raw, []byte(anywherePhrases[1])) ||
 		bytes.Contains(raw, []byte("/summary")) ||
 		bytes.Contains(raw, []byte("\"tool\"")) ||
