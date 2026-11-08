@@ -13,6 +13,8 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/activity"
 	"github.com/kkkk2323/droi/apps/native/internal/sessionfile"
+	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
@@ -40,11 +42,13 @@ type snippetRun struct {
 // searchState is the sidebar's search, which the Daemon does
 // (daemon.search_sessions) once typing settles.
 type searchState struct {
-	mu      sync.Mutex
-	query   string // the query the hits are for
-	hits    []searchHit
-	err     string
-	asked   string // the query sent last
+	mu    sync.Mutex
+	query string // the query the hits are for
+	hits  []searchHit
+	err   string
+	// seq counts the queries typed. Only the last one's answers are shown: an earlier one's timer can run late,
+	// after a later query was asked, and its hits are not for the text in the box.
+	seq     uint64
 	timer   *time.Timer
 	pending bool
 }
@@ -77,7 +81,7 @@ func (a *App) searchBox(c *ui.Context) {
 	})
 }
 
-// search asks the Daemon once the query stops changing for a moment.
+// search asks Kernel, or the Daemon, once the query stops changing for a moment.
 func (a *App) search(query string) {
 	s := &a.sidebar.search
 	q := strings.TrimSpace(query)
@@ -86,39 +90,27 @@ func (a *App) search(query string) {
 	if s.timer != nil {
 		s.timer.Stop()
 	}
-	if len([]rune(q)) < searchMinLength || a.ctl == nil {
+	s.seq++
+	seq := s.seq
+	if len([]rune(q)) < searchMinLength || a.ctl == nil && !a.onKernel() {
 		return
 	}
 	s.pending = true
 	s.timer = time.AfterFunc(searchDebounce, func() {
+		if c, err := a.kernel.client(); err == nil {
+			a.searchKernel(c, seq, q)
+			return
+		}
+		if a.ctl == nil {
+			return
+		}
 		cl, err := a.ctl.Client()
 		if err != nil {
 			return
 		}
 		_, listed, _, _, _, _ := a.snapshot()
 		hits := titleHits(listed, q)
-		// publish reports whether q is still the query to answer.
-		publish := func(done bool, err error) bool {
-			s.mu.Lock()
-			current := s.asked == q
-			if current {
-				s.pending = !done
-				s.query = q
-				s.hits = hits
-				s.err = ""
-				if err != nil && len(hits) == 0 {
-					s.err = err.Error()
-				}
-			}
-			s.mu.Unlock()
-			if current {
-				a.redraw()
-			}
-			return current
-		}
-		s.mu.Lock()
-		s.asked = q
-		s.mu.Unlock()
+		publish := func(done bool, err error) bool { return a.publishSearch(seq, q, hits, done, err) }
 		if !publish(false, nil) {
 			return
 		}
@@ -148,6 +140,90 @@ func (a *App) search(query string) {
 		hits = mergeHits(hits, older)
 		publish(true, err)
 	})
+}
+
+// publishSearch shows hits for query q, the seq-th typed, unless another query was typed since; it reports whether q
+// is still the one to answer. done says no more hits are coming.
+func (a *App) publishSearch(seq uint64, q string, hits []searchHit, done bool, err error) bool {
+	s := &a.sidebar.search
+	s.mu.Lock()
+	current := s.seq == seq
+	if current {
+		s.pending = !done
+		s.query = q
+		s.hits = hits
+		s.err = ""
+		if err != nil && len(hits) == 0 {
+			s.err = err.Error()
+		}
+	}
+	s.mu.Unlock()
+	if current {
+		a.redraw()
+	}
+	return current
+}
+
+// searchKernel is the search on Kernel: the listed titles at once, then one conversation.list{query}, which matches
+// titles and the text of every message. Kernel has no excerpt of the match, so a hit's second line is the
+// conversation's newest message, with the query marked where it shows. Kernel searches the live conversations or
+// the archived ones; the archived are searched too while the list shows them.
+func (a *App) searchKernel(c *kernel.Client, seq uint64, q string) {
+	_, listed, _, _, _, _ := a.snapshot()
+	hits := titleHits(listed, q)
+	if !a.publishSearch(seq, q, hits, false, nil) {
+		return
+	}
+	reads := []kernel.ListParams{{Query: q, Limit: searchLimit}}
+	if prefs.ShowArchived.Get(a.prefs) {
+		archived := true
+		reads = append(reads, kernel.ListParams{Query: q, Limit: searchLimit, Archived: &archived})
+	}
+	var err error
+	var found []searchHit
+	for _, p := range reads {
+		res, e := c.List(a.ctx, p)
+		if e != nil {
+			err = e
+			continue
+		}
+		for _, sum := range a.kernelSummaries(res.Items) {
+			found = append(found, searchHit{sessionID: sum.SessionID, title: sum.Title, updatedAt: sum.UpdatedAt, snippet: markedRuns(sum.Preview, q)})
+		}
+	}
+	// Each read is newest first; together they are too, before mergeHits keeps searchLimit of them, so a full page
+	// of live hits does not leave out a newer archived one.
+	slices.SortStableFunc(found, func(a, b searchHit) int { return cmp.Compare(b.updatedAt, a.updatedAt) })
+	a.publishSearch(seq, q, mergeHits(hits, found), true, err)
+}
+
+// markedRuns are text's runs with each place it has query, in any case, marked.
+func markedRuns(text, query string) []snippetRun {
+	text = spaceRun.ReplaceAllString(strings.TrimSpace(text), " ")
+	if text == "" {
+		return nil
+	}
+	lower, q := strings.ToLower(text), strings.ToLower(query)
+	// Lowering a few letters changes their length, and the places found in lower are then not text's.
+	if len(lower) != len(text) || q == "" {
+		return []snippetRun{{text: text}}
+	}
+	var runs []snippetRun
+	for {
+		i := strings.Index(lower, q)
+		if i < 0 {
+			break
+		}
+		if i > 0 {
+			runs = append(runs, snippetRun{text: text[:i]})
+		}
+		runs = append(runs, snippetRun{text: text[i : i+len(q)], match: true})
+		text, lower = text[i+len(q):], lower[i+len(q):]
+	}
+	if text != "" {
+		runs = append(runs, snippetRun{text: text})
+	}
+	return runs
 }
 
 // titleHits are the listed Sessions whose title has the query, newest first.
