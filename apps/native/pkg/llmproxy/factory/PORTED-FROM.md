@@ -31,6 +31,22 @@ this layer existed (M1 acceptance, 2026-11-08).
 | `geminiBody`                           | `geminiBody` 663-698                       | the system instruction only, its role removed; the model in the body and the `/generate` path are not here            |
 | `DroidLine`                            | `DROID_LINE` 470                           | the same sentence, byte for byte                                                                                      |
 
+4A adds what a request needs around its body when the client holds no key (the
+Kernel, decision Q15): the proxy picks a Key Pool key and sends the request as
+droid would.
+
+| Go                             | upstream (`index.mjs`)                               | notes                                                                                                                  |
+| ------------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `models.go`                    | `MODELS` 59-116, `byId` 118, wires 33-39             | id, wire and vendor only; names, limits, efforts and prices come with the picker (4F)                                  |
+| `headers.go`: `Headers`        | `factoryHeaders` 342-349, `send`'s headers 2071-2092 | the Authorization is the proxy's (the pool key); `X-Session-Id` is per conversation (`SessionID`), not one per process |
+| `headers.go`: `ClientVersion`  | `VERSION` 23                                         | the same release, a constant: there is no droid to ask any more                                                        |
+| `identity.go`: `LLMBase`       | `base` 329, `llmBase` 333-339                        | a base that is not Factory's own API (a test server, a proxy in front) is kept                                         |
+| `identity.go`: `OrgRefused`    | `orgRefused` 405                                     | the proxy asks whoami again and sends once more with the same key                                                      |
+| `explain.go`: `ContentRefused` | `contentRefused` 412-422                             | only to keep a content refusal from being blamed on the key; the explanation itself is 4D                              |
+
+`route_test.go` checks every model id against the excerpts of droid's registry
+upstream keeps in `testdata/` (copied byte for byte).
+
 The golden cases in `droidbody_test.go` come from the upstream tests
 `droid.test.mjs` (the cases that cover the routes Droi sends), which are
 themselves the built-in's `TestFactoryOpensAsDroid`.
@@ -41,7 +57,7 @@ themselves the built-in's `TestFactoryOpensAsDroid`.
 the upstream layer to this package: pi's opening and compaction sentences,
 `escapeDeep` and the refusal phrase list, `fastBody`, the OpenAI `temperature`
 rule, the whole four-dialect body shaping, the 413 attachment drop and the 403
-explanations. Those functions and their golden tests are listed in
+explanations. Model display names, limits and prices come with 4F. Those functions and their golden tests are listed in
 `shared/design/gap-analysis.md` §6.
 
 ## Deliberate differences

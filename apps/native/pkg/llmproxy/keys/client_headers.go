@@ -27,8 +27,16 @@ const (
 	orgRetry = 10 * time.Minute
 )
 
+// Identity is what whoami says of a key: its organization, the region that organization is served from, and the
+// organization's own host, when it has one.
+type Identity struct {
+	OrgID        string
+	Region       string
+	PremBaseHost string
+}
+
 type orgLookup struct {
-	id string
+	id Identity
 	at time.Time
 }
 
@@ -95,13 +103,32 @@ func installedDroidVersion() string {
 // run: a pool key belongs to another org than the droid account, so the
 // account's X-Factory-Org-Id would not match the key.
 func (r *KeyRotator) orgID(ctx context.Context, key, ua string) string {
+	return r.identity(ctx, key, ua).OrgID
+}
+
+// Identity is key's own organization, region and host, from whoami once per run (a failed whoami is asked again
+// after orgRetry). A model request the proxy sends for a client that holds no key is addressed by it.
+func (r *KeyRotator) Identity(ctx context.Context, key string) Identity {
+	ua, _ := r.clientHeaders()
+	return r.identity(ctx, key, ua)
+}
+
+// ForgetIdentity drops key's whoami answer, so the next request asks again: Factory refused the organization it
+// named.
+func (r *KeyRotator) ForgetIdentity(key string) {
+	r.orgMu.Lock()
+	delete(r.orgIDs, key)
+	r.orgMu.Unlock()
+}
+
+func (r *KeyRotator) identity(ctx context.Context, key, ua string) Identity {
 	r.orgMu.Lock()
 	got, ok := r.orgIDs[key]
 	r.orgMu.Unlock()
-	if ok && (got.id != "" || r.nowTime().Sub(got.at) < orgRetry) {
+	if ok && (got.id.OrgID != "" || r.nowTime().Sub(got.at) < orgRetry) {
 		return got.id
 	}
-	id := r.fetchOrgID(ctx, key, ua)
+	id := r.fetchIdentity(ctx, key, ua)
 	r.orgMu.Lock()
 	if r.orgIDs == nil {
 		r.orgIDs = make(map[string]orgLookup)
@@ -111,16 +138,16 @@ func (r *KeyRotator) orgID(ctx context.Context, key, ua string) string {
 	return id
 }
 
-// fetchOrgID asks whoami on the billing endpoint's host, with the headers
+// fetchIdentity asks whoami on the billing endpoint's host, with the headers
 // droid sends on its own whoami.
-func (r *KeyRotator) fetchOrgID(ctx context.Context, key, ua string) string {
+func (r *KeyRotator) fetchIdentity(ctx context.Context, key, ua string) Identity {
 	u, err := url.Parse(r.cfg.UsageAPIURL)
 	if err != nil || u.Host == "" {
-		return ""
+		return Identity{}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.Scheme+"://"+u.Host+whoamiPath, nil)
 	if err != nil {
-		return ""
+		return Identity{}
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("X-Factory-Whoami-Extended", "true")
@@ -129,24 +156,26 @@ func (r *KeyRotator) fetchOrgID(ctx context.Context, key, ua string) string {
 	req.Header.Set("Accept-Encoding", contentenc.AcceptEncoding)
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return ""
+		return Identity{}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return ""
+		return Identity{}
 	}
 	body, closer, ok := contentenc.Decode(resp.Header.Get("Content-Encoding"), resp.Body)
 	if closer != nil {
 		defer closer.Close()
 	}
 	if !ok {
-		return ""
+		return Identity{}
 	}
 	var who struct {
-		OrgID string `json:"orgId"`
+		OrgID          string `json:"orgId"`
+		Region         string `json:"region"`
+		PremBaseHostV2 string `json:"premBaseHostV2"`
 	}
 	if json.NewDecoder(io.LimitReader(body, 1<<20)).Decode(&who) != nil {
-		return ""
+		return Identity{}
 	}
-	return who.OrgID
+	return Identity{OrgID: who.OrgID, Region: who.Region, PremBaseHost: who.PremBaseHostV2}
 }
