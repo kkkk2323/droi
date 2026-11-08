@@ -146,7 +146,7 @@ func TestSanitizeBody(t *testing.T) {
 	if out, changed := sanitizeBody(spelled, anywherePhrases); !changed || strings.Contains(string(out), piCompacted) {
 		t.Fatalf("a phrase spelled with an escape went through: %s", out)
 	}
-	for _, other := range []string{`not json`, `"` + piCompacted + `"`, `{"a":1} {"b":2}`} {
+	for _, other := range []string{`not json`, `"` + piCompacted + `"`, `{"a":1} {"b":2}`, "\t" + `{"a":"\u0068i"}`} {
 		if out, changed := sanitizeBody([]byte(other), anywherePhrases); changed || string(out) != other {
 			t.Fatalf("%q changed", other)
 		}

@@ -56,7 +56,11 @@ func escapeBody(body []byte, phrases []string) ([]byte, bool) {
 	if !mayQuote(body, phrases) || i >= len(body) || (body[i] != '{' && body[i] != '[') {
 		return body, false
 	}
-	return escapeDeep(body[i:], phrases)
+	out, changed := escapeDeep(body[i:], phrases)
+	if !changed {
+		return body, false
+	}
+	return out, true
 }
 
 // escapeDeep is raw, a valid JSON value with no space before it, with escapePhrases on every string in it; object
