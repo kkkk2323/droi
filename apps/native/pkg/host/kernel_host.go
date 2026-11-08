@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -269,7 +270,18 @@ type kernelModel struct {
 	Input         []string `json:"input"`
 	Reasoning     bool     `json:"reasoning"`
 	Thinking      []string `json:"thinking"`
+	// ThinkingLevelMap is pi-ai's: each of pi's levels as the effort Factory takes, or null when it takes none.
+	ThinkingLevelMap map[string]*string `json:"thinkingLevelMap,omitempty"`
+	Compat           *kernelCompat      `json:"compat,omitempty"`
 }
+
+type kernelCompat struct {
+	ForceAdaptiveThinking bool `json:"forceAdaptiveThinking"`
+}
+
+// piThinkingLevels are pi-ai's thinking levels. pi-ai sends a level its model's map leaves out as another: xhigh
+// and max as high, and off as effort "none" on Responses, which a model without it refuses.
+var piThinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 // kernelProviders are Factory's models on the proxy at base, one provider per wire, as JSON. A model droid's registry
 // gives no limits stays out: the Kernel needs them.
@@ -317,6 +329,25 @@ func kernelModelOf(m factory.Model) kernelModel {
 		}
 		km.Thinking = append(km.Thinking, e)
 		km.Reasoning = true
+	}
+	if km.Reasoning {
+		km.ThinkingLevelMap = map[string]*string{}
+		for _, level := range piThinkingLevels {
+			effort := level
+			if level == "off" {
+				effort = "none"
+			}
+			if slices.Contains(m.Efforts, effort) {
+				km.ThinkingLevelMap[level] = &effort
+			} else {
+				km.ThinkingLevelMap[level] = nil
+			}
+		}
+	}
+	// Every Claude model Factory offers the Kernel is 4.6 or later, which thinks adaptively: pi-ai budgets Claude's
+	// thinking unless told so, and Haiku 5.5 and Opus 4.7 and later refuse a budget with a 400.
+	if m.Wire == factory.WireAnthropic && strings.HasPrefix(m.ID, "claude-") && !strings.HasPrefix(m.ID, "claude-haiku-4-5") {
+		km.Compat = &kernelCompat{ForceAdaptiveThinking: true}
 	}
 	return km
 }

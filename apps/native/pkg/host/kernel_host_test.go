@@ -68,6 +68,60 @@ func TestTheKernelsProvidersAreFactorysModelsOnTheProxy(t *testing.T) {
 	}
 }
 
+// pi-ai sends a level the model's thinkingLevelMap leaves out as another: xhigh and max as high, and off as effort
+// "none" on Responses; and Claude's thinking budgeted unless the model is marked adaptive, which Haiku 5.5 and Opus
+// 4.7 and later refuse with a 400. Each model says what Factory takes of it.
+func TestKernelModelsSayWhichThinkingLevelsFactoryTakes(t *testing.T) {
+	var providers []kernelProvider
+	if err := json.Unmarshal([]byte(kernelProviders("http://127.0.0.1:4000")), &providers); err != nil {
+		t.Fatal(err)
+	}
+	models := map[string]kernelModel{}
+	for _, p := range providers {
+		for _, m := range p.Models {
+			models[m.ID] = m
+		}
+	}
+	levels := func(m kernelModel) string {
+		var out []string
+		for _, l := range []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"} {
+			v, ok := m.ThinkingLevelMap[l]
+			switch {
+			case !ok:
+				out = append(out, l+"=?")
+			case v == nil:
+				out = append(out, l+"=-")
+			default:
+				out = append(out, l+"="+*v)
+			}
+		}
+		return strings.Join(out, " ")
+	}
+	for id, want := range map[string]string{
+		"claude-haiku-5-5":  "off=- minimal=- low=low medium=medium high=high xhigh=xhigh max=max",
+		"claude-sonnet-4-6": "off=- minimal=- low=low medium=medium high=high xhigh=- max=max",
+		"kimi-k3":           "off=none minimal=- low=low medium=- high=high xhigh=- max=max",
+		"gpt-6-luna":        "off=none minimal=- low=low medium=medium high=high xhigh=xhigh max=max",
+		"gpt-5.5":           "off=- minimal=- low=low medium=medium high=high xhigh=xhigh max=-",
+		"gemini-3.5-flash":  "off=- minimal=minimal low=low medium=medium high=high xhigh=- max=-",
+		"minimax-m2.7":      "off=- minimal=- low=- medium=- high=high xhigh=- max=-",
+	} {
+		m, ok := models[id]
+		if !ok {
+			t.Fatalf("no %s", id)
+		}
+		if got := levels(m); got != want {
+			t.Errorf("%s: %s, want %s", id, got, want)
+		}
+	}
+	for id, m := range models {
+		adaptive := m.Compat != nil && m.Compat.ForceAdaptiveThinking
+		if want := strings.HasPrefix(id, "claude-"); adaptive != want {
+			t.Errorf("%s: adaptive thinking %v, want %v", id, adaptive, want)
+		}
+	}
+}
+
 // The Kernel runs when a person asks for it and there is one to run: the one DROI_KERNEL_BIN names, or the one beside
 // the app.
 func TestTheKernelRunsOnlyWhenAskedAndPresent(t *testing.T) {
