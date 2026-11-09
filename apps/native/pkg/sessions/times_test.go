@@ -42,6 +42,22 @@ func TestBusyThenUnreadThenNewest(t *testing.T) {
 	eq(t, ids(GroupByWorkspace(list, Pins{}, o, false)[0].Sessions), []string{"new", "done", "working-old", "working"})
 }
 
+// A busy Session is placed by its BusyAt while its turn runs, however its
+// date moves: the Kernel dates a conversation at each step of a turn.
+func TestBusySessionsKeepTheirPlaceWhileTheyRun(t *testing.T) {
+	o := DefaultOrder
+	o.Busy = map[string]bool{"first": true, "second": true}
+	o.BusyAt = map[string]int64{"first": 2_000, "second": 1_000}
+	pins := Pins{Sessions: map[string]bool{"first": true, "second": true}}
+	for _, step := range [][2]int64{{3, 4}, {6, 5}, {7, 8}} {
+		list := []Summary{
+			{SessionID: "first", Cwd: "/w/a", UpdatedAt: step[0]},
+			{SessionID: "second", Cwd: "/w/a", UpdatedAt: step[1]},
+		}
+		eq(t, ids(GroupByTime(list, pins, o, time.UnixMilli(0))[0].Sessions), []string{"first", "second"})
+	}
+}
+
 // While the pointer is over the list its rows keep their places: a held
 // Session keeps the Key it had, and one new to the list takes its own.
 func TestHeldKeysKeepTheRowsInPlace(t *testing.T) {

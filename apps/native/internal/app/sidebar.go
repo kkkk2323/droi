@@ -247,6 +247,8 @@ type listMemo struct {
 	notedRev uint64
 	notedRaw string
 	noted    bool
+	// busyAt is Order.BusyAt: each busy Session's time as its turn was first seen.
+	busyAt map[string]int64
 	// navKey names the list and the Session nav was found for, without its
 	// runs, which change without the list.
 	navKey string
@@ -404,7 +406,28 @@ func (a *App) sortOrder(listed []sessions.Summary, busy map[string]activity.Acti
 			o.Busy[id] = doing != ""
 		}
 	}
+	o.BusyAt = a.busyAt(listed, o)
 	return o
+}
+
+// busyAt is each busy Session's time as its turn was first seen running, kept until the turn ends: a Session at
+// work keeps its place while the Kernel dates it anew at each step. A Session busy but not in listed (a view of
+// part of the list) keeps the time it has.
+func (a *App) busyAt(listed []sessions.Summary, o sessions.Order) map[string]int64 {
+	m := &a.listMemo
+	next := make(map[string]int64, len(o.Busy))
+	for id, busy := range o.Busy {
+		if at, ok := m.busyAt[id]; busy && ok {
+			next[id] = at
+		}
+	}
+	for _, s := range listed {
+		if _, ok := next[s.SessionID]; !ok && o.Busy[s.SessionID] {
+			next[s.SessionID] = sessions.UsedAt(s, o.Times)
+		}
+	}
+	m.busyAt = next
+	return next
 }
 
 // holdOrder holds the rows' places while the pointer is over the list, as

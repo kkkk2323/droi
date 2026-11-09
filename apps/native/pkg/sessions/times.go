@@ -84,6 +84,9 @@ func (o Order) LiveKey(s Summary) Key {
 	switch {
 	case o.Busy[s.SessionID]:
 		k.Rank = RankBusy
+		if at, ok := o.BusyAt[s.SessionID]; ok {
+			k.At = at
+		}
 	case o.Unread[s.SessionID]:
 		k.Rank = RankUnread
 	}
