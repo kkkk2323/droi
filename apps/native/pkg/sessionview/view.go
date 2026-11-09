@@ -395,7 +395,8 @@ func olderPages(loaded int) int {
 // Hold stops the transcript following its end, as the web Client's list
 // follows only rows added: a fold opened near the end grows below the row
 // clicked instead of pushing it up. Scrolling back to the end follows
-// again (resume).
+// again (resume). ListState.HoldPlace holds only the next layout, and a
+// fold here opens over several frames.
 func (v *View) Hold() {
 	v.list.FollowEnd = false
 	v.leftEnd = false
@@ -477,7 +478,9 @@ func (v *View) Release() {
 	if v.Busy() {
 		return
 	}
-	atEnd := v.list.FollowEnd
+	// FollowEnd stays set as the user scrolls away from the end; only a
+	// fold held open clears it. AtEnd is where the list was last shown.
+	atEnd := v.list.AtEnd()
 	if ctl := v.env.Controller; ctl != nil {
 		if s := ctl.Store().Session(v.id); s != nil {
 			if n := s.MessageCount(); n > LoadedMessageLimit && (atEnd || n > releaseAbove) {

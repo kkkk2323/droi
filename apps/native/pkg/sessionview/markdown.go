@@ -323,7 +323,7 @@ func measureTable(c *ui.Context, d *parser.Document, i int, th *markdown.Theme) 
 					wt = 600
 				}
 				switch n.Kind {
-				case parser.Text, parser.HTML, parser.Math:
+				case parser.Text, parser.HTML, parser.Math, parser.Mention, parser.Reference:
 					spans = append(spans, ui.Span{Text: n.Text, Font: th.Font, Size: em, Weight: wt})
 				case parser.Code:
 					spans = append(spans, ui.Span{Text: n.Text, Font: th.CodeFont, Size: em * code, Weight: wt})
