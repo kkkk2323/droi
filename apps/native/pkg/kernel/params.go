@@ -841,6 +841,8 @@ type HarnessConfigureParams struct {
 // for each conversation's own.
 type CompactionSettings struct {
 	Model *ModelRef `json:"model"`
+	// ThinkingLevel is the model's thinking level (off, minimal, low, medium, high, xhigh); "" for its default.
+	ThinkingLevel string `json:"thinkingLevel,omitempty"`
 }
 
 // Codemode's modes, as pi-coding-agent's codemode.mode setting: CodemodeOn offers the model every tool and codemode

@@ -762,15 +762,15 @@ record a Client can open. The kernel sends the request, validates the answer
 when a `schema` is given, and answers once; nothing is stored, and no entry,
 conversation or task is created.
 
-| Param           | Meaning                                                                                                                                                                                                |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                                                                                                                             |
-| `system`        | Optional system text. Absent sends the kernel's own minimal instruction, never a bare user turn.                                                                                                       |
-| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                                                                                                                   |
-| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON (inside a Markdown code fence, when the model put it in one) and must match it.                                                         |
-| `thinkingLevel` | Optional: `off`, `low`, `medium`, `high`. `off` asks for no thinking and sends nothing, which is the provider's own default: a model that reasons unless told otherwise still may. Absent is the same. |
-| `maxTokens`     | Optional cap on the answer: a positive whole number, at most what the model itself takes (`-32017`).                                                                                                   |
-| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                                                                                                                         |
+| Param           | Meaning                                                                                                                                                                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model`         | `{provider, modelId}`, the same shape `agent.model` takes.                                                                                                                                                                                                                           |
+| `system`        | Optional system text. Absent sends the kernel's own minimal instruction, never a bare user turn.                                                                                                                                                                                     |
+| `input`         | A string, or a list of content blocks: `{"type":"text","text":...}`.                                                                                                                                                                                                                 |
+| `schema`        | Optional JSON Schema. When given, the answer is parsed as JSON (inside a Markdown code fence, when the model put it in one) and must match it.                                                                                                                                       |
+| `thinkingLevel` | Optional: `off`, `minimal`, `low`, `medium`, `high`, `xhigh` (a model's own levels, as Settings picks them for Memory). `off` asks for no thinking and sends nothing, which is the provider's own default: a model that reasons unless told otherwise still may. Absent is the same. |
+| `maxTokens`     | Optional cap on the answer: a positive whole number, at most what the model itself takes (`-32017`).                                                                                                                                                                                 |
+| `timeoutMs`     | Optional deadline for the whole call, at most `600000`. Absent means `120000`.                                                                                                                                                                                                       |
 
 The result is `{model, text, json?, usage}`:
 
@@ -878,7 +878,7 @@ thinkingLevel?}` or `null`, is what a new conversation starts with when its crea
 defaults' model, which every client then starts with, a phone included. The model must be one the kernel offers;
 `harness.info` reports it as `agent` while one is set. `codemode`, `{mode: 'on' | 'only'}`, is how codemode presents
 tools (below), from every conversation's next request; `harness.info` reports it as `codemode`. `compaction`,
-`{model: {provider, modelId} | null}`, is the model that writes every compaction's summary from the next compaction on
+`{model: {provider, modelId} | null, thinkingLevel?}`, is the model that writes every compaction's summary from the next compaction on
 (below); `harness.info` reports it as `compaction`. Every connection hears `harness.changed {}`. A read-only kernel
 refuses it.
 
@@ -888,7 +888,9 @@ Pi summarizes with the conversation's own model. The kernel's compaction model, 
 (`provider/modelId`) or the config file's `compaction.model` at launch and `harness.configure {compaction: {model}}`
 while it runs, writes the summary instead: the kernel answers Pi's `beforeCompact` hook with Pi's own summary request
 sent to that model (`src/extensions/compaction-model.ts`). A model the kernel does not have, or a request that fails,
-leaves the summary to the conversation's model, with Pi's retries. Its tokens count in the Host's LLM Proxy, not in
+leaves the summary to the conversation's model, with Pi's retries. Its thinking level (`off`, `minimal`, `low`, `medium`,
+`high`, `xhigh`; `DROI_KERNEL_COMPACTION_THINKING` or `compaction.thinkingLevel`) goes with the model: a change that
+names none is the model's own default. Its tokens count in the Host's LLM Proxy, not in
 `conversation.usage`'s `models`. The summary is kept in the compaction task's memo, so a compaction resumed after a
 restart does not pay for it twice.
 

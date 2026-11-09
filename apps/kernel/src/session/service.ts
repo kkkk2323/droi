@@ -24,7 +24,7 @@ import type { ConversationMeta } from '../indexer/schema.ts'
 import type { ConversationRow } from '../indexer/schema.ts'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
 import type { AgentDefaults, KernelConfig, ProviderConfig } from '../config.ts'
-import { modelRefOf, validateProviders } from '../config.ts'
+import { COMPACTION_THINKING_LEVELS, modelRefOf, validateProviders } from '../config.ts'
 import { replaceProviders, supportedApi } from '../models.ts'
 import { selectMemory } from '../memory/select.ts'
 import { isCodemodeMode, type CodemodeMode } from '../extensions/codemode.ts'
@@ -466,7 +466,12 @@ export class Kernel implements Dispatcher {
       },
       capabilities: this.#options.capabilities,
       codemode: { mode: config.codemodeMode ?? 'on' },
-      compaction: { model: config.compactionModel ?? null },
+      compaction: {
+        model: config.compactionModel ?? null,
+        ...(config.compactionThinking === undefined
+          ? {}
+          : { thinkingLevel: config.compactionThinking }),
+      },
       providers,
       models,
       // What a new conversation starts with when its create names no model.
@@ -552,8 +557,10 @@ export class Kernel implements Dispatcher {
       codemodeMode = mode
     }
     let compactionModel: ModelRef | null | undefined
+    let compactionThinking: string | undefined
     if (params['compaction'] !== undefined) {
-      const model = (params['compaction'] as { model?: unknown } | null)?.model
+      const given = params['compaction'] as { model?: unknown; thinkingLevel?: unknown } | null
+      const model = given?.model
       compactionModel = model === null ? null : modelRefOf(model)
       if (compactionModel === undefined) {
         throw invalidParams([
@@ -562,6 +569,18 @@ export class Kernel implements Dispatcher {
             message: "{provider, modelId}, or null for each conversation's own",
           },
         ])
+      }
+      const level = given?.thinkingLevel
+      if (level !== undefined && level !== null) {
+        if (typeof level !== 'string' || !COMPACTION_THINKING_LEVELS.has(level)) {
+          throw invalidParams([
+            {
+              path: 'compaction.thinkingLevel',
+              message: 'off, minimal, low, medium, high or xhigh',
+            },
+          ])
+        }
+        compactionThinking = level
       }
     }
     if (providers !== undefined) {
@@ -592,8 +611,14 @@ export class Kernel implements Dispatcher {
       config.codemodeMode = codemodeMode
       this.#options.syncCodemode?.()
     }
-    if (compactionModel === null) delete config.compactionModel
-    else if (compactionModel !== undefined) config.compactionModel = compactionModel
+    if (compactionModel !== undefined) {
+      // The level goes with the model: a change that names none is the model's own default.
+      if (compactionModel === null) delete config.compactionModel
+      else config.compactionModel = compactionModel
+      if (compactionModel === null || compactionThinking === undefined)
+        delete config.compactionThinking
+      else config.compactionThinking = compactionThinking
+    }
     info('harness configured', {
       ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
       ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),

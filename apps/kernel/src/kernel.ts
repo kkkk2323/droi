@@ -160,7 +160,15 @@ export async function startKernel(
     registry.install(memory)
     // The compaction model, read at each compaction so harness.configure can change it.
     const compactionModel = compactionModelExtension({
-      model: () => config.compactionModel,
+      model: () =>
+        config.compactionModel === undefined
+          ? undefined
+          : {
+              ...config.compactionModel,
+              ...(config.compactionThinking === undefined
+                ? {}
+                : { thinkingLevel: config.compactionThinking }),
+            },
       warn: (message) => warn('compaction', { message }),
     })
     registry.install(compactionModel)

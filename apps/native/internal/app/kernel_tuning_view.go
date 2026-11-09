@@ -1,6 +1,8 @@
 package app
 
 import (
+	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -9,6 +11,8 @@ import (
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // minContextWindow is the smallest context window Settings takes for a model: the Kernel keeps 16,384 tokens free
@@ -35,52 +39,85 @@ func (a *App) codemodeGroup(c *ui.Context) {
 // the Host's, so every Session has it from its next compaction.
 func (a *App) compactionGroup(c *ui.Context) {
 	h := a.cfg.Host
-	opts := []kit.Option{{Value: "", Label: L("Session's own model")}}
-	current := h.KernelCompactionModel()
-	found := current == ""
-	for _, m := range h.KernelModelContexts() {
-		key := host.ModelKey(m.Provider, m.ID)
-		opts = append(opts, kit.Option{Value: key, Label: contextModelLabel(m)})
-		found = found || key == current
-	}
-	if !found {
+	current, thinking := h.KernelCompactionModel(), h.KernelCompactionThinking()
+	choices := a.keyedKernelChoices()
+	if current != "" && !slices.ContainsFunc(choices, func(m models.Choice) bool { return m.ID == current }) {
 		// A model its source no longer lists stays shown, so the setting is not hidden; the Kernel uses each
 		// Session's own until it is listed again.
-		opts = append(opts, kit.Option{Value: current, Label: current})
+		choices = append(choices, models.Choice{ID: current, Label: current})
 	}
 	a.settingGroup(c, L("Compaction"), "", func() {
 		a.settingRow(c, L("Summary model"), L("The model that writes the summary when a Session is compacted. A cheaper, faster model makes compaction cheaper; if it fails, the Session's own model writes the summary."), func() {
-			if next, ok := a.fieldSelect(c, L("Compaction model"), current, opts, false); ok {
-				if err := h.SetKernelCompactionModel(next); err != nil {
-					a.settings.err = err.Error()
-				}
-			}
+			settingsview.ModelEffortField(c, a.kit, a.prefs, L("Compaction model"), L("Session's own model"), false,
+				a.settings.Flag("model:kernel-compaction"), a.settings.Picker(), choices, current, thinking,
+				func(next string) {
+					// A new model starts from its own default level.
+					if err := h.SetKernelCompactionModel(next, ""); err != nil {
+						a.settings.err = err.Error()
+					}
+				},
+				func(level string) {
+					if err := h.SetKernelCompactionModel(current, level); err != nil {
+						a.settings.err = err.Error()
+					}
+				})
 		}, nil)
 	})
+}
+
+// keyedKernelChoices are the models the Kernel offers, for a Settings picker that names a model by host.ModelKey
+// (its provider and id) rather than by id alone, as the Kernel's own settings do. Without a connection, the models
+// the Model Sources list, without their thinking levels.
+func (a *App) keyedKernelChoices() []models.Choice {
+	offered := a.kernel.offered()
+	if len(offered) == 0 {
+		var out []models.Choice
+		for _, m := range a.cfg.Host.KernelModelContexts() {
+			out = append(out, models.Choice{ID: host.ModelKey(m.Provider, m.ID), Label: contextModelLabel(m), Provider: m.Provider})
+		}
+		return out
+	}
+	byID := map[string]models.Choice{}
+	for _, ch := range a.kernelChoices() {
+		byID[ch.ID] = ch
+	}
+	out := make([]models.Choice, 0, len(offered))
+	for _, m := range offered {
+		ch, ok := byID[m.ID]
+		if !ok {
+			ch = models.Choice{Label: cmp.Or(m.Name, m.ID), ReasoningEfforts: m.Thinking, Provider: m.Provider}
+		}
+		ch.ID = host.ModelKey(m.Provider, m.ID)
+		if m.Provider == "magpie" {
+			ch.Label += " · Magpie"
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 // contextWindowsGroup sets the context window of the Kernel's models in Settings → Advanced: a window set smaller
 // than the one the model's source lists is also where the Kernel compacts it.
 func (a *App) contextWindowsGroup(c *ui.Context) {
 	h := a.cfg.Host
-	models := h.KernelModelContexts()
-	if len(models) == 0 {
+	listed := h.KernelModelContexts()
+	if len(listed) == 0 {
 		return
 	}
 	k := a.kit
 	s := &a.settings
-	opts := make([]kit.Option, len(models))
+	choices := make([]models.Choice, len(listed))
 	var picked *host.KernelModelContext
-	for i := range models {
-		m := &models[i]
+	for i := range listed {
+		m := &listed[i]
 		key := host.ModelKey(m.Provider, m.ID)
-		opts[i] = kit.Option{Value: key, Label: contextModelLabel(*m)}
+		choices[i] = models.Choice{ID: key, Label: contextModelLabel(*m), Provider: m.Provider}
 		if key == s.contextModel {
 			picked = m
 		}
 	}
 	if picked == nil {
-		picked = &models[0]
+		picked = &listed[0]
 		s.contextModel = host.ModelKey(picked.Provider, picked.ID)
 	}
 	save := func() {
@@ -103,9 +140,9 @@ func (a *App) contextWindowsGroup(c *ui.Context) {
 	rows := []func(){
 		func() {
 			a.settingRow(c, L("Model"), L("Its source lists %s tokens. Leave the field empty and save to use that again.", groupedTokens(picked.Listed)), func() {
-				if next, ok := a.fieldSelect(c, L("Context window model"), s.contextModel, opts, false); ok {
+				a.modelField(c, L("Context window model"), false, s.Flag("model:context-window"), s.Picker(), choices, s.contextModel, func(next string) {
 					s.contextModel, s.contextTokens = next, ""
-				}
+				})
 			}, func() {
 				placeholder := groupedTokens(picked.Listed)
 				if picked.Set > 0 {
@@ -123,7 +160,7 @@ func (a *App) contextWindowsGroup(c *ui.Context) {
 			})
 		},
 	}
-	for _, m := range models {
+	for _, m := range listed {
 		if m.Set == 0 {
 			continue
 		}
