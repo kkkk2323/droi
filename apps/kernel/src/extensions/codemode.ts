@@ -1,5 +1,5 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
-import { LiveDoc, NestedCallDoc, ToolTask, hook } from '@earendil-works/pi-durable'
+import { LiveDoc, NestedCallDoc, ToolTask, hook, section } from '@earendil-works/pi-durable'
 import type {
   Extension,
   HookApi,
@@ -40,8 +40,8 @@ const INTERNAL_PREFIX = 'pi.codemode.'
 
 /**
  * How codemode presents tools, as pi-coding-agent's `codemode.mode` setting: `on` offers the model every tool and
- * codemode beside them; `only` offers it codemode and the tools a script cannot call (`callers: ['model']`, such as
- * `ask_user`), so every other tool is reached from a script.
+ * codemode beside them; `only` offers it codemode, `read` ({@link DIRECT_IN_ONLY}) and the tools a script cannot
+ * call (`callers: ['model']`, such as `ask_user`), so every other tool is reached from a script.
  */
 export type CodemodeMode = 'on' | 'only'
 
@@ -54,6 +54,9 @@ export function isCodemodeMode(value: unknown): value is CodemodeMode {
  * the model and scripts may call so only scripts may: a wrap applies where codemode is selected, so a conversation that
  * turned codemode off keeps its tools. The wraps follow the installed tools, so the caller installs this again whenever
  * the registry changes (an MCP server connects); {@link codemodeKey} tells whether anything changed.
+ *
+ * A model that calls one of those tools anyway, out of habit, gets Pi's "not available" with how to call it instead
+ * ({@link scriptOnlyReminder}), so its next call is right rather than another guess.
  */
 export function codemodeInMode(
   base: Extension,
@@ -63,18 +66,61 @@ export function codemodeInMode(
   if (mode === 'on') return base
   const names = new Set<string>()
   for (const { extension, tool } of snapshot.tools()) {
-    if (extension.name === base.name) continue
+    if (extension.name === base.name || DIRECT_IN_ONLY.has(tool.name)) continue
     const callers = tool.callers ?? ['model', 'tools']
     if (callers.includes('model') && callers.includes('tools')) names.add(tool.name)
   }
   return {
     ...base,
+    hooks: [
+      ...(base.hooks ?? []),
+      hook(ToolTask, { afterTool: (call, result) => scriptOnlyReminder(names, call, result) }),
+    ],
     wraps: [...names].sort().map((name) => ({
       tool: name,
       wrap: (tool: ToolRegistration) => ({ ...tool, callers: ['tools'] as const }),
     })),
   }
 }
+
+/**
+ * The tools `only` still offers the model as well as scripts. Reading one file needs no script, and a model reads
+ * often; a script still reads many at once (`Promise.all(paths.map((path) => tools.read({ path })))`).
+ */
+const DIRECT_IN_ONLY = new Set(['read'])
+
+/** Pi's answer to a model's call of a tool `only` keeps for scripts, with how to make it from one. */
+function scriptOnlyReminder(
+  scriptOnly: ReadonlySet<string>,
+  call: ToolHookCall,
+  result: ToolExecutionResult,
+): ToolExecutionResult | undefined {
+  if (call.parent !== undefined || !scriptOnly.has(call.name)) return undefined
+  if (!(result.diagnostics ?? []).some((diagnostic) => diagnostic.code === 'tool_unavailable'))
+    return undefined
+  const message = `In this conversation \`${call.name}\` is called from a codemode script, as \`await tools.${call.name}(args)\`, and so is every tool not in your tool list. Make this call that way.`
+  return {
+    ...result,
+    diagnostics: [
+      ...(result.diagnostics ?? []),
+      { severity: 'info', code: 'codemode_only', message },
+    ],
+  }
+}
+
+/**
+ * How to write a script, for the conversations codemode is selected in: what Droid's Script tool asked of a model,
+ * which pi-durable's codemode description does not say. Without it a model wraps one long shell pipeline in a script,
+ * and runs a slow command twice to read its output two ways.
+ */
+export const CODEMODE_GUIDELINES = [
+  'How to write codemode scripts:',
+  '- Make one nested call per command, search or file, and start independent ones together (`Promise.allSettled`). A pipeline of several commands in one shell call hides which part failed.',
+  "- Keep what a call returns in a variable and filter, count or slice it in JavaScript. Do not pipe a command's output through grep, awk or head, and do not run a slow command twice to read its output two ways: in a script, a shell call returns up to 1 MiB of output.",
+  '- Search and list files with `tools.grep`, `tools.find` and `tools.ls`, which return arrays; read files with `tools.read`.',
+  '- Give paths from the working directory, or absolute ones, rather than chaining `cd … &&`.',
+  '- `text()` or return only what you need to decide or to report.',
+].join('\n')
 
 /** What {@link codemodeInMode} made: the tools its wraps hide, so an unchanged one is not installed again. */
 export function codemodeKey(extension: Extension): string {
@@ -107,6 +153,7 @@ export function codemodeExtension(options: {
   return {
     ...base,
     hooks: [...(base.hooks ?? []), hook(ToolTask, { afterTool: withNestedOutput })],
+    sections: [...(base.sections ?? []), section('codemode-guidelines', () => CODEMODE_GUIDELINES)],
   }
 }
 

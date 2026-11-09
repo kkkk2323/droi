@@ -16,14 +16,15 @@ import {
   UsageDoc,
   type UsageState,
 } from '@earendil-works/pi-durable'
-import type { MutableModels } from '@earendil-works/pi-ai'
+import type { AssistantMessage, Message, MutableModels } from '@earendil-works/pi-ai'
+import { calculateContextTokens, estimateMessageTokens } from '@earendil-works/pi-ai/utils/estimate'
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context'
 import type { Indexer } from '../indexer/index.ts'
 import type { ConversationMeta } from '../indexer/schema.ts'
 import type { ConversationRow } from '../indexer/schema.ts'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
 import type { AgentDefaults, KernelConfig, ProviderConfig } from '../config.ts'
-import { validateProviders } from '../config.ts'
+import { modelRefOf, validateProviders } from '../config.ts'
 import { replaceProviders, supportedApi } from '../models.ts'
 import { selectMemory } from '../memory/select.ts'
 import { isCodemodeMode, type CodemodeMode } from '../extensions/codemode.ts'
@@ -464,6 +465,7 @@ export class Kernel implements Dispatcher {
       },
       capabilities: this.#options.capabilities,
       codemode: { mode: config.codemodeMode ?? 'on' },
+      compaction: { model: config.compactionModel ?? null },
       providers,
       models,
       // What a new conversation starts with when its create names no model.
@@ -494,7 +496,7 @@ export class Kernel implements Dispatcher {
   // ── harness.configure ───────────────────────────────────────────────────────────────────────────
 
   /**
-   * `harness.configure {providers?, memoryDir?, section?, agent?, codemode?}`: what the Host's settings changed, for a running kernel. A new
+   * `harness.configure {providers?, memoryDir?, section?, agent?, codemode?, compaction?}`: what the Host's settings changed, for a running kernel. A new
    * catalog takes the place of the old at once, so every conversation's next request resolves its model in it; Memory
    * turned on or off reaches each conversation at its next turn (selectMemory), and so does the app's section (the
    * Host's prompt addition and the brand's). A run under way is not touched.
@@ -548,6 +550,19 @@ export class Kernel implements Dispatcher {
       }
       codemodeMode = mode
     }
+    let compactionModel: ModelRef | null | undefined
+    if (params['compaction'] !== undefined) {
+      const model = (params['compaction'] as { model?: unknown } | null)?.model
+      compactionModel = model === null ? null : modelRefOf(model)
+      if (compactionModel === undefined) {
+        throw invalidParams([
+          {
+            path: 'compaction.model',
+            message: "{provider, modelId}, or null for each conversation's own",
+          },
+        ])
+      }
+    }
     if (providers !== undefined) {
       replaceProviders(models, config.providers, providers)
       config.providers = providers
@@ -576,6 +591,8 @@ export class Kernel implements Dispatcher {
       config.codemodeMode = codemodeMode
       this.#options.syncCodemode?.()
     }
+    if (compactionModel === null) delete config.compactionModel
+    else if (compactionModel !== undefined) config.compactionModel = compactionModel
     info('harness configured', {
       ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
       ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),
@@ -584,6 +601,14 @@ export class Kernel implements Dispatcher {
         : { agent: agent === null ? null : `${agent.provider}/${agent.modelId}` }),
       ...(appSection === undefined ? {} : { section: appSection !== null }),
       ...(codemodeMode === undefined ? {} : { codemode: codemodeMode }),
+      ...(compactionModel === undefined
+        ? {}
+        : {
+            compactionModel:
+              compactionModel === null
+                ? null
+                : `${compactionModel.provider}/${compactionModel.modelId}`,
+          }),
     })
     this.#notifier?.broadcast('harness.changed', {})
     return {}
@@ -1510,9 +1535,8 @@ export class Kernel implements Dispatcher {
       agent.model === undefined
         ? undefined
         : this.#options.models.getModel(agent.model.provider, agent.model.modelId)
-    const used = approximateTokens(view.messages)
+    const used = contextTokens(view)
     const limit = model?.contextWindow ?? 0
-    const reserve = 16_000
     return {
       models: usage.models,
       tools: usage.tools,
@@ -1521,7 +1545,7 @@ export class Kernel implements Dispatcher {
         entries: view.entries.length,
         used,
         limit,
-        compactionAt: limit === 0 ? null : Math.max(limit - reserve, 0),
+        compactionAt: limit === 0 ? null : Math.max(limit - RESERVE_TOKENS - BACKGROUND_TOKENS, 0),
       },
     }
   }
@@ -2529,11 +2553,39 @@ function wireAgent(agent: {
 }
 
 /** Roughly how many tokens a context holds: four characters to a token, which is close for code. */
-function approximateTokens(messages: readonly unknown[]): number {
-  if (messages.length === 0) return 0
-  let characters = 0
-  for (const message of messages) characters += JSON.stringify(message).length
-  return Math.ceil(characters / 4)
+/**
+ * Pi's compaction policy, which the Kernel does not change: a generation compacts in the background once the context
+ * passes `contextWindow - reserveTokens - backgroundTokens`, and before its request once it passes
+ * `contextWindow - reserveTokens` (pi-durable's harness/agent.js, DEFAULT_COMPACTION_POLICY).
+ */
+const RESERVE_TOKENS = 16_384
+const BACKGROUND_TOKENS = 32_768
+
+/**
+ * How full the context is, counted as Pi counts it for compaction (pi-durable's `estimateContext`, which it does not
+ * export): the tokens the provider reported for the last answer since the last compaction, plus an estimate of each
+ * message after it. Counting the transcript's JSON by characters instead reads well above what the provider counts
+ * (522k shown where Pi, and the provider, had 310k), so the meter said full while Pi rightly did not compact.
+ */
+function contextTokens(view: {
+  readonly head?: { readonly id: number }
+  readonly entries: readonly { readonly id: number }[]
+  readonly contributions: readonly (readonly Message[])[]
+  readonly messages: readonly Message[]
+}): number {
+  const after = view.head?.id ?? Number.NEGATIVE_INFINITY
+  let measured: AssistantMessage | undefined
+  for (let index = view.entries.length - 1; index >= 0 && measured === undefined; index--) {
+    if (view.entries[index]!.id <= after) continue
+    measured = view.contributions[index]?.findLast(
+      (message): message is AssistantMessage =>
+        message.role === 'assistant' && calculateContextTokens(message.usage) > 0,
+    )
+  }
+  const from = measured === undefined ? 0 : view.messages.lastIndexOf(measured) + 1
+  let tokens = measured === undefined ? 0 : calculateContextTokens(measured.usage)
+  for (const message of view.messages.slice(from)) tokens += estimateMessageTokens(message)
+  return tokens
 }
 
 export { warn, invalidRequest }

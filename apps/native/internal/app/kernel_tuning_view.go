@@ -21,9 +21,37 @@ func (a *App) codemodeGroup(c *ui.Context) {
 	h := a.cfg.Host
 	opts := []kit.Option{{Value: kernel.CodemodeOn, Label: "on"}, {Value: kernel.CodemodeOnly, Label: "only"}}
 	a.settingGroup(c, L("Codemode"), "", func() {
-		a.settingRow(c, L("Mode"), L("on: the model gets every tool, and codemode beside them to run a script that calls them. only: the model gets codemode and the tools a script cannot call (ask_user, Memory), and calls every other tool from a script. Every Session has it from its next message."), func() {
+		a.settingRow(c, L("Mode"), L("on: the model gets every tool, and codemode beside them to run a script that calls them. only: the model gets codemode, read, and the tools a script cannot call (ask_user, Memory), and calls every other tool from a script. Every Session has it from its next message."), func() {
 			if next, ok := a.fieldSelect(c, L("Codemode mode"), h.KernelCodemode(), opts, false); ok {
 				if err := h.SetKernelCodemode(next); err != nil {
+					a.settings.err = err.Error()
+				}
+			}
+		}, nil)
+	})
+}
+
+// compactionGroup is the model that writes every compaction's summary on the Kernel, or each Session's own. It is
+// the Host's, so every Session has it from its next compaction.
+func (a *App) compactionGroup(c *ui.Context) {
+	h := a.cfg.Host
+	opts := []kit.Option{{Value: "", Label: L("Session's own model")}}
+	current := h.KernelCompactionModel()
+	found := current == ""
+	for _, m := range h.KernelModelContexts() {
+		key := host.ModelKey(m.Provider, m.ID)
+		opts = append(opts, kit.Option{Value: key, Label: contextModelLabel(m)})
+		found = found || key == current
+	}
+	if !found {
+		// A model its source no longer lists stays shown, so the setting is not hidden; the Kernel uses each
+		// Session's own until it is listed again.
+		opts = append(opts, kit.Option{Value: current, Label: current})
+	}
+	a.settingGroup(c, L("Compaction"), "", func() {
+		a.settingRow(c, L("Summary model"), L("The model that writes the summary when a Session is compacted. A cheaper, faster model makes compaction cheaper; if it fails, the Session's own model writes the summary."), func() {
+			if next, ok := a.fieldSelect(c, L("Compaction model"), current, opts, false); ok {
+				if err := h.SetKernelCompactionModel(next); err != nil {
 					a.settings.err = err.Error()
 				}
 			}

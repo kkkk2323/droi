@@ -275,10 +275,18 @@ describe('conversations', () => {
     const keys = Object.keys(models)
     expect(keys.length).toBe(1)
     expect(models[keys[0]!]!.totalTokens).toBeGreaterThan(0)
-    const context = usage['context'] as { used: number; limit: number; entries: number }
+    const context = usage['context'] as {
+      used: number
+      limit: number
+      entries: number
+      compactionAt: number
+    }
     expect(context.entries).toBeGreaterThan(0)
-    expect(context.used).toBeGreaterThan(0)
+    // Counted as Pi counts it for compaction: the one answer is the last message, so what the provider reported for it.
+    expect(context.used).toBe(models[keys[0]!]!.totalTokens)
     expect(context.limit).toBeGreaterThan(0)
+    // Where Pi starts compacting in the background: the window less its reserve and background margins.
+    expect(context.compactionAt).toBe(Math.max(context.limit - 16_384 - 32_768, 0))
   })
 
   test('conversation.configure resolves names back to the registry', async () => {

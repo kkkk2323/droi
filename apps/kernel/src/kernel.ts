@@ -16,6 +16,7 @@ import { Background } from './processes/background.ts'
 import { McpServers } from './mcp/servers.ts'
 import type { CodemodeNamespace } from '@earendil-works/pi-durable/codemode'
 import { codemodeExtension, codemodeInMode, codemodeKey } from './extensions/codemode.ts'
+import { compactionModelExtension } from './extensions/compaction-model.ts'
 import { memoryExtension } from './extensions/memory.ts'
 import { codemodeSandbox } from './codemode/sandbox.ts'
 import { McpAuth } from './mcp/oauth.ts'
@@ -25,7 +26,7 @@ import { DisabledSkills } from './resources/disabled.ts'
 import { photonImages } from './images.ts'
 import { Indexer } from './indexer/index.ts'
 import { repoRootOf } from './workspace.ts'
-import { info, error } from './log.ts'
+import { info, error, warn } from './log.ts'
 import { buildModels } from './models.ts'
 import { serve, type ServerHandle } from './protocol/server.ts'
 import { BunSqliteDatabase } from './storage/facade.ts'
@@ -157,6 +158,12 @@ export async function startKernel(
     registry.install(backgroundTool)
     registry.install(codemode)
     registry.install(memory)
+    // The compaction model, read at each compaction so harness.configure can change it.
+    const compactionModel = compactionModelExtension({
+      model: () => config.compactionModel,
+      warn: (message) => warn('compaction', { message }),
+    })
+    registry.install(compactionModel)
     for (const extension of options.extensions ?? []) registry.install(extension)
     // Codemode as config says now: in `only` its wraps hide each tool a script can call from the model. They name the
     // tools installed, so every change of the registry (a server that connects) makes them again; one that hides the
@@ -187,6 +194,7 @@ export async function startKernel(
         backgroundTool,
         codemode,
         appSection,
+        compactionModel,
         ...(options.extensions ?? []),
       ],
       // Our own metadata and search writes are batched by the indexer; Pi's progress commits are its

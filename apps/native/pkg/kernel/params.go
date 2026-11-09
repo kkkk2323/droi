@@ -627,6 +627,8 @@ type HarnessInfo struct {
 	// Policy is the default approval policy in effect; nil until the Host has
 	// sent one, and from a build without approvals.
 	Policy *Policy `json:"policy,omitempty"`
+	// Compaction is the model that writes every compaction's summary; nil from a build without it.
+	Compaction *CompactionSettings `json:"compaction,omitempty"`
 }
 
 // Limits are Kernel's own bounds, which a client reads rather than assumes.
@@ -831,6 +833,14 @@ type HarnessConfigureParams struct {
 	Agent *Field[DefaultAgent] `json:"agent,omitempty"`
 	// Codemode is how codemode presents tools from every conversation's next request; nil leaves it.
 	Codemode *CodemodeSettings `json:"codemode,omitempty"`
+	// Compaction is the model that writes every compaction's summary from the next compaction on; nil leaves it.
+	Compaction *CompactionSettings `json:"compaction,omitempty"`
+}
+
+// CompactionSettings are harness.configure's compaction: Model is the model that writes the summaries, nil (null)
+// for each conversation's own.
+type CompactionSettings struct {
+	Model *ModelRef `json:"model"`
 }
 
 // Codemode's modes, as pi-coding-agent's codemode.mode setting: CodemodeOn offers the model every tool and codemode

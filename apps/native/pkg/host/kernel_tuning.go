@@ -4,12 +4,14 @@ import (
 	"log"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
-// Two of the Kernel's settings that are Pi's rather than the Daemon's: codemode's mode, and the context window of
-// each model, which is also where the Kernel compacts it. Both reach a running Kernel without a restart.
+// The Kernel's settings that are Pi's rather than the Daemon's: codemode's mode, the context window of each model,
+// which is also where the Kernel compacts it, and the model that writes the summaries. Each reaches a running Kernel
+// without a restart.
 
 // KernelCodemode is codemode's mode as Settings has it: kernel.CodemodeOnly, else kernel.CodemodeOn.
 func (h *Host) KernelCodemode() string {
@@ -53,6 +55,49 @@ func (h *Host) kernelCodemodeChanged() {
 		return
 	}
 	log.Println("droi: kernel: codemode's mode changed; starting the Kernel again:", err)
+	h.restartKernel(sup, runs)
+}
+
+// KernelCompactionModel is the model that writes every compaction's summary, by ModelKey; "" for each
+// conversation's own.
+func (h *Host) KernelCompactionModel() string { return h.Settings.Get().CompactionModel }
+
+// SetKernelCompactionModel stores the compaction model, by ModelKey ("" for each conversation's own), and gives it to
+// the running Kernel.
+func (h *Host) SetKernelCompactionModel(key string) error {
+	if err := h.Settings.Update(func(s *Settings) { s.CompactionModel = key }); err != nil {
+		return err
+	}
+	h.Changed()
+	return nil
+}
+
+// kernelCompactionChanged gives the running Kernel the compaction model when it changed since the Kernel last had it:
+// the next compaction uses it. A Kernel that cannot take it is started again.
+func (h *Host) kernelCompactionChanged() {
+	k := &h.kernel
+	k.configuring.Lock()
+	defer k.configuring.Unlock()
+	key := h.KernelCompactionModel()
+	k.mu.Lock()
+	sup := k.sup
+	if sup == nil || k.compaction == key {
+		k.mu.Unlock()
+		return
+	}
+	k.compaction = key
+	runs := k.runs
+	k.mu.Unlock()
+	settings := &kernel.CompactionSettings{}
+	if provider, id, ok := strings.Cut(key, "/"); ok {
+		settings.Model = &kernel.ModelRef{Provider: provider, ModelID: id}
+	}
+	err := h.configureKernel(kernel.HarnessConfigureParams{Compaction: settings})
+	if err == nil {
+		log.Println("droi: kernel: the compaction model changed in the running Kernel:", key)
+		return
+	}
+	log.Println("droi: kernel: the compaction model changed; starting the Kernel again:", err)
 	h.restartKernel(sup, runs)
 }
 

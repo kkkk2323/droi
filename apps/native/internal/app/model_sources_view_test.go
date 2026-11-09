@@ -118,8 +118,8 @@ func TestOnKernelAdvancedHasNoDaemon(t *testing.T) {
 }
 
 // TestOnKernelSessionDefaultsLeaveOutTheDaemons: the Session defaults on the Kernel are what a Kernel conversation
-// starts with: no Spec mode, compaction or subagent settings, and no Script or Direct: codemode's mode, on or only,
-// is the Kernel's.
+// starts with: no Spec mode, Daemon compaction or subagent settings, and no Script or Direct: codemode's mode, on or
+// only, and the model that writes compaction summaries are the Kernel's.
 func TestOnKernelSessionDefaultsLeaveOutTheDaemons(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
 	if h.kernel == nil {
@@ -128,7 +128,10 @@ func TestOnKernelSessionDefaultsLeaveOutTheDaemons(t *testing.T) {
 	h.until("the Kernel", func() bool { return h.a.onKernel() })
 	h.openSettingsTab("defaults")
 	h.until("the defaults", func() bool { return h.hasText("Codemode") && h.hasText("Model and autonomy") })
-	for _, gone := range []string{"Spec mode", "Compaction", "Subagents", "Interaction mode", "Follow droid settings", "Script models", "Shared with the droid CLI", "Tool calls"} {
+	if !h.hasText("Summary model") {
+		t.Error("the Session defaults on the Kernel have no compaction model")
+	}
+	for _, gone := range []string{"Spec mode", "Compact automatically", "Token limit", "Subagents", "Interaction mode", "Follow droid settings", "Script models", "Shared with the droid CLI", "Tool calls"} {
 		for _, s := range h.tt.Texts() {
 			if strings.Contains(s, gone) {
 				t.Errorf("the Session defaults show %q on the Kernel", gone)

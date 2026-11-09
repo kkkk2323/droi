@@ -650,6 +650,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 	if a.cfg.Host != nil && !a.following() {
 		if a.kernelMode() {
 			a.codemodeGroup(c)
+			a.compactionGroup(c)
 		}
 		a.newSessionsGroup(c)
 	}
