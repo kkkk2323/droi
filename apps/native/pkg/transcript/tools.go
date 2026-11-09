@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
@@ -65,6 +66,70 @@ func ParseDiff(text string) *Diff {
 	return d
 }
 
+// ParsePiDiff reads the diff Pi's edit tool keeps in its details: one line each, a sign ('+' added, '-' removed,
+// ' ' unchanged), the line's number right-aligned (the new file's for an added line, the old file's otherwise), a
+// space, and the line; a line of only "..." after the sign and padding marks unchanged lines left out. Pi numbers
+// an unchanged line by the old file, so its new number follows from the lines added and removed before it. ""
+// or anything else is nil.
+func ParsePiDiff(text string) *Diff {
+	if text == "" {
+		return nil
+	}
+	d := &Diff{Lines: []DiffLine{}}
+	shift := 0 // new line number minus old, after the lines so far
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" {
+			continue
+		}
+		sign, rest := line[0], line[1:]
+		if sign != '+' && sign != '-' && sign != ' ' {
+			return nil
+		}
+		trimmed := strings.TrimLeft(rest, " ")
+		if trimmed == "..." {
+			d.Lines = append(d.Lines, DiffLine{Type: "unchanged", Content: "…"})
+			continue
+		}
+		digits := 0
+		for digits < len(trimmed) && trimmed[digits] >= '0' && trimmed[digits] <= '9' {
+			digits++
+		}
+		if digits == 0 {
+			return nil
+		}
+		n, _ := strconv.Atoi(trimmed[:digits])
+		content := strings.TrimPrefix(trimmed[digits:], " ")
+		switch sign {
+		case '+':
+			d.add(DiffLine{Type: "added", Content: content, New: n})
+			shift++
+		case '-':
+			d.add(DiffLine{Type: "removed", Content: content, Old: n})
+			shift--
+		default:
+			d.add(DiffLine{Type: "unchanged", Content: content, Old: n, New: n + shift})
+		}
+	}
+	if len(d.Lines) == 0 {
+		return nil
+	}
+	return d
+}
+
+// piDetailsDiff is the diff in a Kernel edit's details, nil for any other result.
+func piDetailsDiff(details json.RawMessage) *Diff {
+	if len(details) == 0 || !bytes.Contains(details, []byte(`"diff"`)) {
+		return nil
+	}
+	var d struct {
+		Diff string `json:"diff"`
+	}
+	if json.Unmarshal(details, &d) != nil {
+		return nil
+	}
+	return ParsePiDiff(d.Diff)
+}
+
 func (d *Diff) add(l DiffLine) {
 	d.Lines = append(d.Lines, l)
 	switch l.Type {
@@ -117,7 +182,8 @@ func ParseStatus(text string) *Status {
 // as all-added lines: Create answers with a bare status.
 func CreatedFileDiff(c *ToolCall) *Diff {
 	content, ok := c.Input["content"].(string)
-	if c.Use.Name != "Create" || !ok {
+	// The Kernel's write is the Daemon's Create.
+	if (c.Use.Name != "Create" && c.Use.Name != "write") || !ok {
 		return nil
 	}
 	content = strings.TrimSuffix(content, "\n")
@@ -382,7 +448,9 @@ func ReadResult(c *ToolCall) ToolResultView {
 			IsError: c.Result != nil && c.Result.IsError != nil && *c.Result.IsError,
 		}
 	}
-	v.Diff = ParseDiff(v.Text)
+	if v.Diff == nil {
+		v.Diff = ParseDiff(v.Text)
+	}
 	if v.Diff == nil && !v.IsError {
 		v.Diff = CreatedFileDiff(c)
 	}

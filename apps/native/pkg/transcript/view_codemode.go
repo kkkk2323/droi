@@ -27,6 +27,7 @@ func codemodeNested(parent string, details json.RawMessage) []*ToolCall {
 			Error     string          `json:"error"`
 			Output    string          `json:"output"`
 			Truncated bool            `json:"truncated"`
+			Diff      string          `json:"diff"`
 		} `json:"calls"`
 	}
 	nested := []*ToolCall{}
@@ -49,6 +50,9 @@ func codemodeNested(parent string, details json.RawMessage) []*ToolCall {
 		}
 		if c.Truncated {
 			result.Notes = l10n.L("The output is cut here; the script read all of it.")
+		}
+		if !result.IsError {
+			result.Diff = ParsePiDiff(c.Diff)
 		}
 		nested = append(nested, nestedCall(fmt.Sprintf("%s/c%d", parent, c.ID), c.Name, rowArguments(c.Arguments, c.Args), result))
 	}

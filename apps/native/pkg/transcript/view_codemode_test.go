@@ -127,3 +127,64 @@ func TestAScriptCallShowsTheWholeArgumentsNotPisPreview(t *testing.T) {
 		t.Errorf("the cancelled call reads %+v", r)
 	}
 }
+
+// TestAKernelEditShowsItsDiff: Pi's edit answers one line of text and keeps what it changed in its details, both
+// for a call the model made and one a script made; the row shows the change as the Daemon's Edit did.
+func TestAKernelEditShowsItsDiff(t *testing.T) {
+	diff := "  1 one\n-2 two\n+2 zwei\n  3 three\n    ...\n+9 nine"
+	edit := entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 2000, "toolUse",
+		map[string]any{"type": "toolCall", "id": "e1", "name": "edit", "arguments": map[string]any{"path": "a.txt"}},
+		map[string]any{"type": "toolCall", "id": "cm", "name": "codemode", "arguments": map[string]any{"code": "await tools.edit({})"}},
+	), nil)
+	results := []map[string]any{{
+		"role": "toolResult", "toolCallId": "e1", "toolName": "edit", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Successfully replaced 1 block(s) in a.txt.")},
+		"details": map[string]any{"diff": diff, "firstChangedLine": 2},
+	}, {
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Script completed")},
+		"details": map[string]any{"calls": []map[string]any{
+			{"id": 1, "name": "edit", "args": "{}", "status": "ok", "output": "Successfully replaced 1 block(s) in a.txt.", "diff": diff},
+		}},
+	}}
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		edit,
+		entry(t, 3, kernel.EntryToolResult, results, nil),
+	)
+	calls := transcript.BuildView(v)[1].Blocks[0].Calls
+	for _, c := range []*transcript.ToolCall{calls[0], calls[1].Nested[0]} {
+		d := transcript.ReadResult(c).Diff
+		if d == nil {
+			t.Fatalf("%s shows no diff", c.Use.ID)
+		}
+		if d.Added != 2 || d.Removed != 1 {
+			t.Errorf("%s: +%d -%d, want +2 -1", c.Use.ID, d.Added, d.Removed)
+		}
+		want := []transcript.DiffLine{
+			{Type: "unchanged", Content: "one", Old: 1, New: 1},
+			{Type: "removed", Content: "two", Old: 2},
+			{Type: "added", Content: "zwei", New: 2},
+			{Type: "unchanged", Content: "three", Old: 3, New: 3},
+			{Type: "unchanged", Content: "…"},
+			{Type: "added", Content: "nine", New: 9},
+		}
+		if len(d.Lines) != len(want) {
+			t.Fatalf("%s: %d lines, want %d: %+v", c.Use.ID, len(d.Lines), len(want), d.Lines)
+		}
+		for i := range want {
+			if d.Lines[i] != want[i] {
+				t.Errorf("%s line %d: %+v, want %+v", c.Use.ID, i, d.Lines[i], want[i])
+			}
+		}
+	}
+}
+
+// TestAKernelWriteShowsTheFileItWrote: the Kernel's write is the Daemon's Create, whose row shows the file.
+func TestAKernelWriteShowsTheFileItWrote(t *testing.T) {
+	c := &transcript.ToolCall{Input: map[string]any{"path": "b.txt", "content": "a\nb\n"}}
+	c.Use.Name = "write"
+	if d := transcript.CreatedFileDiff(c); d == nil || d.Added != 2 {
+		t.Fatalf("write's diff is %+v", d)
+	}
+}

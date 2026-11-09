@@ -30,7 +30,12 @@ export type NestedCallWithOutput = CodemodeNestedCall & {
   arguments?: JsonValue
   output?: string
   truncated?: true
+  /** An `edit`'s diff, as Pi's edit tool writes it in its details, so the card shows what changed. */
+  diff?: string
 }
+
+/** The most of an `edit`'s diff a script's card carries. */
+export const NESTED_DIFF_BYTES = 32 * 1024
 
 /** Pi's row keeps this much of a call's arguments as JSON (pi-durable codemode's ARGS_PREVIEW_CHARS). */
 const ARGS_PREVIEW_CHARS = 200
@@ -193,6 +198,10 @@ async function withNestedOutput(
       if (stopped && answer.diagnostics.some((diagnostic) => diagnostic.code === 'aborted')) {
         const { error: _error, ...rest } = withArguments
         withArguments = { ...rest, status: 'cancelled' }
+      }
+      const diff = (answer.details as { diff?: unknown } | undefined)?.diff
+      if (typeof diff === 'string' && diff !== '') {
+        withArguments = { ...withArguments, diff: cutBytes(diff, NESTED_DIFF_BYTES) }
       }
       const text = outputText(answer)
       if (text === '') return withArguments

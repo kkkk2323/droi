@@ -60,6 +60,7 @@ type Call = {
   output?: string
   truncated?: boolean
   error?: string
+  diff?: string
 }
 type Entry = {
   kind: string
@@ -120,6 +121,21 @@ describe('codemode', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ name: 'read', status: 'ok' })
     expect(calls[0]?.output).toContain('hello from a file')
+  }, 60_000)
+
+  test("a script's edit carries its diff, so the card shows what changed", async () => {
+    const b = await boot()
+    writeFileSync(join(b.dir, 'a.txt'), 'one\ntwo\nthree\n')
+    const id = await conversation(b)
+    script(
+      b,
+      'await tools.edit({ path: "a.txt", edits: [{ oldText: "two", newText: "zwei" }] }); return 1',
+    )
+    await b.client.call('conversation.submit', { id, input: 'edit in a script' })
+    const [call] = callsOf(await result(b.client, id))
+    expect(call).toMatchObject({ name: 'edit', status: 'ok' })
+    expect(call?.diff).toContain('-2 two')
+    expect(call?.diff).toContain('+2 zwei')
   }, 60_000)
 
   test('a call that fails keeps the calls before it, each with its own answer', async () => {

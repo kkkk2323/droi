@@ -554,6 +554,10 @@ func (m piMessage) resultView() *ToolResultView {
 	default:
 		v.IsError = m.IsError
 	}
+	// An edit answers one line of text; what it changed is in its details, as the Daemon's Edit answered it.
+	if !v.IsError {
+		v.Diff = piDetailsDiff(m.Details)
+	}
 	return v
 }
 
