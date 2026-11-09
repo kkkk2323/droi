@@ -6,6 +6,7 @@ import type {
   HookApi,
   NestedToolSlot,
   NestedToolExecutionResult,
+  PromptSection,
   RegistrySnapshot,
   ToolExecutionResult,
   ToolHookCall,
@@ -124,7 +125,7 @@ export const CODEMODE_GUIDELINES = [
   'How to write codemode scripts:',
   '- Make one nested call per command, search or file, and start independent ones together (`Promise.allSettled`). A pipeline of several commands in one shell call hides which part failed.',
   "- Keep what a call returns in a variable and filter, count or slice it in JavaScript. Do not pipe a command's output through grep, awk or head, and do not run a slow command twice to read its output two ways: in a script, a shell call returns up to 1 MiB of output.",
-  '- Search and list files with `tools.grep`, `tools.find` and `tools.ls`, which return arrays; read files with `tools.read`.',
+  '- Search and list files with `tools.grep`, `tools.find` and `tools.ls`, which return arrays. Read files with `tools.read`, whose offset and limit take a range of lines, rather than `cat`, `head`, `tail`, `sed` or `nl`. Change files with `tools.edit` rather than writing them again whole or running `sed -i`.',
   '- Give paths from the working directory, or absolute ones, rather than chaining `cd … &&`.',
   '- `text()` or return only what you need to decide or to report.',
   '- A script that may run for more than a minute or two (a build, a test suite, many slow calls) starts with `// @options: {"background": true}`: codemode answers at once with a job id, the script runs on while you work, and its result comes to you as a message when it ends. `codemode_job` reports one, waits for it, or stops it.',
@@ -179,8 +180,48 @@ export function codemodeExtension(options: {
     ],
     tasks: [...(base.tasks ?? []), jobs.task as unknown as AnyTask],
     hooks: [...(base.hooks ?? []), hook(ToolTask, { afterTool: withNestedOutput })],
-    sections: [...(base.sections ?? []), section('codemode-guidelines', () => CODEMODE_GUIDELINES)],
+    sections: [
+      ...(base.sections ?? []).map((piSection) =>
+        piSection.key === 'codemode' ? catalogSection(piSection, options) : piSection,
+      ),
+      section('codemode-guidelines', () => CODEMODE_GUIDELINES),
+    ],
   }
+}
+
+/**
+ * The `codemode` section with every tool of Droi's own listed: the coding tools and the rest outside an MCP server's
+ * namespace are listed whole, and Pi's budget is left to the MCP servers' tools.
+ *
+ * Pi lists tools within one budget for all, a group at a time and the cheapest of each first, so with three MCP
+ * servers connected `grep` and `edit`, the largest of the coding tools, were the ones left out: a model that could
+ * not see them ran `grep` and `sed` in `bash`, and rewrote a file with `write` to change a line of it.
+ */
+export function catalogSection(
+  piSection: PromptSection,
+  options: { sandbox: CodemodeSandboxBase; namespaces: readonly CodemodeNamespace[] },
+): PromptSection {
+  const whole = createCodemodeExtension({
+    sandbox: options.sandbox,
+    models: false,
+    inlineBudget: Number.MAX_SAFE_INTEGER,
+  }).sections!.find((s) => s.key === 'codemode')!
+  return section('codemode', async (input, context) => {
+    const inServer = (name: string) =>
+      options.namespaces.some((namespace) => name.startsWith(namespace.prefix))
+    const only = (keep: boolean) => ({
+      ...input,
+      agent: {
+        ...input.agent,
+        callable: input.agent.callable.filter((tool) => inServer(tool.name) === keep),
+      },
+    })
+    const own = await whole.render(only(false), context)
+    const servers = await piSection.render(only(true), context)
+    if (own === undefined || servers === undefined) return own ?? servers
+    // Both begin with the same line, "Tools scripts can call (...)".
+    return [own, servers.slice(servers.indexOf('\n\n') + 2)].join('\n\n')
+  })
 }
 
 async function withNestedOutput(

@@ -936,7 +936,9 @@ Scripts have three tools the model is never offered (`callers: ['tools']`), each
 untracked, without the ignored ones). A script's `bash` or `powershell` call resolves to up to 1 MiB of output
 (the first and last 512 KiB around a marker when longer), where the model sees the last 2000 lines or 50 KB. A
 conversation with `codemode` has a `codemode-guidelines` prompt section on how to write a script: one nested call per
-command, independent ones together, filtering in JavaScript rather than in a shell pipeline.
+command, independent ones together, filtering in JavaScript rather than in a shell pipeline, `read` and `edit` rather
+than `sed`. The `codemode` prompt section lists every tool outside an MCP server's namespace whole; Pi's budget (3000
+tokens) is left to the servers' tools, which `searchTools()` finds when they do not fit.
 
 Each call the script makes is a tool call of its own: the approval policy judges it as it would the model's
 (an `ask` level asks for the script, then for each call it makes), and `pi.live.nestedTools` shows it while it
