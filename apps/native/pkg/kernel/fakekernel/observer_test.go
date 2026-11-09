@@ -128,6 +128,11 @@ func TestObserverRecordsEveryMethod(t *testing.T) {
 			_, err := o.SetSkillDisabled(ctx, kernel.SkillsSetDisabledParams{Name: "s", Disabled: true})
 			return err
 		}},
+		{kernel.MethodDroidsList, func() error { _, err := o.Droids(ctx); return err }},
+		{kernel.MethodDroidsSet, func() error {
+			_, err := o.SetDroid(ctx, kernel.DroidsSetParams{Name: "walk", Droid: &kernel.Droid{Name: "walk", Description: "d", Prompt: "p"}})
+			return err
+		}},
 		{kernel.MethodPolicySet, func() error {
 			_, err := o.PolicySet(ctx, kernel.PolicySetParams{Policy: kernel.PolicyChange{Autonomy: "ask"}})
 			return err

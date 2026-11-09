@@ -30,6 +30,10 @@ const CLASSES: Readonly<Record<string, ToolClass>> = {
   codemode: 'exec',
   // It reports a background script, waits for one or stops one: the script's own calls are judged as they are made.
   codemode_job: 'meta',
+  // A subagent's own calls are judged in its conversation, as they are made (ADR 0040).
+  task: 'meta',
+  task_output: 'meta',
+  task_stop: 'meta',
   ask_user: 'meta',
   submit_plan: 'meta',
   // Memory's tools read the Memory folder and write only a Memory Note the user asked for (ADR 0042).

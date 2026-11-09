@@ -16,6 +16,8 @@
     "methods/conversation.submit.json",
     "methods/conversation.unwatch.json",
     "methods/conversation.usage.json",
+    "methods/droids.list.json",
+    "methods/droids.set.json",
     "methods/harness.configure.json",
     "methods/harness.info.json",
     "methods/index.update.json",

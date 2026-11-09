@@ -255,6 +255,11 @@ func TestLiveKernelEveryMethod(t *testing.T) {
 			_, err := c.SetSkillDisabled(ctx, SkillsSetDisabledParams{Name: "walk", Disabled: true})
 			return err
 		}, 0},
+		{"droids.list", func() error { _, err := c.Droids(ctx); return err }, 0},
+		{"droids.set", func() error {
+			_, err := c.SetDroid(ctx, DroidsSetParams{Name: "walk", Droid: &Droid{Name: "walk", Description: "d", Prompt: "p"}})
+			return err
+		}, 0},
 		{"policy.set", func() error {
 			_, err := c.PolicySet(ctx, PolicySetParams{Policy: PolicyChange{Autonomy: "ask"}})
 			return err

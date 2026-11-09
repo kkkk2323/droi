@@ -461,6 +461,8 @@ Three qualifications a client that reads a range needs:
 | `skills.list` | — | `{skills[]}` | `skills` | no |
 | `skills.setDisabled` | `{name, disabled, id?}` | `{skills[]}` | `skills` | no |
 | `resources.list` | `{id?}` | `{skills[], prompts[], contextFiles[]}` | `resources` | no |
+| `droids.list` | — | `{droids[], diagnostics[]}` | `subagents` | no |
+| `droids.set` | `{name, droid?, remove?}` | `{droids[], diagnostics[]}` | `subagents` | no |
 | `model.complete` | `{model, system?, input, schema?, thinkingLevel?, maxTokens?, timeoutMs?}` | `{model, text, json?, usage}` | `models` | yes |
 
 Every M3 method is built (`processes`, `mcp`, `skills`, `resources` and `codemode` are true). `-32009` stays the
@@ -659,20 +661,39 @@ The kernel's own kinds are model-invisible bookkeeping that a client renders as 
 shapes the kernel guarantees — the first three exist today, the rest are fixed now and written in M3/M4,
 so a client can build the card before the feature lands:
 
-| kind            | `data`                                                                          | Written            | Exists |
-| --------------- | ------------------------------------------------------------------------------- | ------------------ | ------ |
-| `droi.meta`     | `{createdAt, requestId?, requestFingerprint?, kind?, workspace?, parentId?}`    | the kernel         | yes    |
-| `droi.request`  | `{requestId, fingerprint, submissionId}`                                        | the kernel         | yes    |
-| `droi.note`     | `{text}`                                                                        | the kernel         | yes    |
-| `droi.approval` | `{requestId, tool, args, status, outcome?, scope?, at}`                         | the approval layer | M3     |
-| `droi.ask`      | `{requestId, questions[], context, blocking, status, answers?, cancelled?, at}` | the ask tool       | M3     |
-| `droi.subagent` | `{parentCallId, childConversationId, title, status}`                            | the subagent tool  | M4     |
-| `droi.process`  | `{processId, pid, command, logPath, callId?, status, exitCode?, at}`            | `bash_background`  | M3     |
+| kind                 | `data`                                                                                 | Written                     | Exists |
+| -------------------- | -------------------------------------------------------------------------------------- | --------------------------- | ------ |
+| `droi.meta`          | `{createdAt, requestId?, requestFingerprint?, kind?, workspace?, parentId?, ownerId?}` | the kernel                  | yes    |
+| `droi.request`       | `{requestId, fingerprint, submissionId}`                                               | the kernel                  | yes    |
+| `droi.note`          | `{text}`                                                                               | the kernel                  | yes    |
+| `droi.approval`      | `{requestId, tool, args, status, outcome?, scope?, at}`                                | the approval layer          | M3     |
+| `droi.ask`           | `{requestId, questions[], context, blocking, status, answers?, cancelled?, at}`        | the ask tool                | M3     |
+| `droi.subagent.done` | `{conversationId, subagentType, description, status, background, callId, output}`      | a background subagent's end | yes    |
+| `droi.process`       | `{processId, pid, command, logPath, callId?, status, exitCode?, at}`                   | `bash_background`           | M3     |
 
 `status` is the entry's current state, one of `pending` / `allowed` / `denied` / `abandoned` for an
 approval, `pending` / `answered` / `abandoned` for an ask, `running` / `done` / `failed` / `stopped` for a
 process and for a subagent. `at` is epoch milliseconds. An entry that has not settled yet is the newest
 record of that `requestId`: the kernel appends one entry per change rather than rewriting.
+
+### Subagents
+
+The `subagents` extension gives a conversation Factory Droid's subagent tools: `task {subagent_type, description,
+prompt, image_paths?, complexity?, run_in_background?, resume?}`, `task_output {task_id, block?, timeout_seconds?}` and
+`task_stop {task_id}`. A subagent runs in a conversation of its own, a child of the call (ADR 0043): its index row has
+`kind: "subagent"` and `ownerId` the parent, so `conversation.list` leaves it out and `{parent}` finds it. `task_id` is
+that conversation's id. The child has neither `task` nor `ask_user`.
+
+A foreground call's `details` is `{conversationId, subagentType, description, status}` from the moment the child
+exists, `status` `running` until the call answers `completed` or `failed`; a client opens `conversationId` to show the
+subagent's work under the card. A background call answers at once with `background: true`; its end writes
+`droi.subagent.done` into the parent, as a background script's end writes `droi.codemode.done`.
+
+The droids are `worker` and `explorer`, built in, and a person's own in `<userDir>/droids/<name>.md` (Markdown with
+YAML frontmatter `name`, `description`, `model?`, `reasoningEffort?`, `tools?`; the body is the prompt). One named as a
+built-in takes its place. `droids.list` answers `{droids: [{name, description, prompt, model?, reasoningEffort?, tools?,
+source, path?}], diagnostics: [{path, message}]}`, `source` `builtin` or `personal`; `droids.set` writes or removes
+a person's own and answers the same.
 
 ### `conversation.import`
 

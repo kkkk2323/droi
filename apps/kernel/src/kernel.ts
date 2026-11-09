@@ -18,6 +18,7 @@ import type { CodemodeNamespace } from '@earendil-works/pi-durable/codemode'
 import { codemodeExtension, codemodeInMode, codemodeKey } from './extensions/codemode.ts'
 import { compactionModelExtension } from './extensions/compaction-model.ts'
 import { memoryExtension } from './extensions/memory.ts'
+import { subagentExtension } from './extensions/subagent.ts'
 import { codemodeSandbox } from './codemode/sandbox.ts'
 import { McpAuth } from './mcp/oauth.ts'
 import { PolicyStore } from './policy/store.ts'
@@ -58,6 +59,7 @@ export const CAPABILITIES: Record<string, boolean> = {
   codemode: true,
   resources: true,
   models: true,
+  subagents: true,
 }
 
 export type KernelHandle = {
@@ -151,6 +153,25 @@ export async function startKernel(
       onRead: (file, at) => server?.broadcast('memory.read', { file, at: at.toISOString() }),
       history: () => indexer,
     })
+    // Subagents (ADR 0043): a child conversation the index records as this one's, so it stays out of the list.
+    const subagents = subagentExtension({
+      userDir: () => config.userDir,
+      onChild: async (child) => {
+        await indexer?.touch(child.id, child.createdAt, {
+          kind: 'subagent',
+          title: child.title,
+          ownerId: child.ownerId,
+          createdAt: child.createdAt,
+          viewedAt: child.createdAt,
+          ...(child.workspace === undefined
+            ? {}
+            : { workspace: child.workspace, repoRoot: await repoRootOf(child.workspace) }),
+        })
+      },
+      abortTask: async (id) => {
+        await harness?.abortTask(id as never, context)
+      },
+    })
     // The brand's app's section (ADR 0041), read at each turn so harness.configure can change it.
     const appSection = defineExtension({
       name: APP_EXTENSION,
@@ -165,6 +186,7 @@ export async function startKernel(
     registry.install(backgroundTool)
     registry.install(codemode)
     registry.install(memory)
+    registry.install(subagents)
     // The compaction model, read at each compaction so harness.configure can change it.
     const compactionModel = compactionModelExtension({
       model: () =>
@@ -208,6 +230,7 @@ export async function startKernel(
         askTool,
         backgroundTool,
         codemode,
+        subagents,
         appSection,
         compactionModel,
         ...(options.extensions ?? []),

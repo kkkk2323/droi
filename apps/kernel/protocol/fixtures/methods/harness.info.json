@@ -37,7 +37,8 @@
         "skills": true,
         "models": true,
         "codemode": true,
-        "resources": true
+        "resources": true,
+        "subagents": true
       },
       "providers": [
         {

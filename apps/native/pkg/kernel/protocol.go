@@ -58,6 +58,10 @@ const (
 	MethodMCPAuthorizeCancel  = "mcp.authorize.cancel"
 	MethodSkillsList          = "skills.list"
 	MethodSkillsSetDisabled   = "skills.setDisabled"
+	// MethodDroidsList is the droids the task tool can start; MethodDroidsSet writes or removes a person's own
+	// (~/.droi/droids). Capability subagents.
+	MethodDroidsList = "droids.list"
+	MethodDroidsSet  = "droids.set"
 	// MethodPolicySet sends the Host's approval policy; capability approvals.
 	MethodPolicySet = "policy.set"
 	// MethodResourcesList is what the kernel would load for a conversation:
@@ -83,7 +87,8 @@ var Methods = []string{
 	MethodConversationUsage, MethodTaskAbort, MethodIndexUpdate, MethodProcessList,
 	MethodProcessStop, MethodApprovalRespond, MethodAskRespond, MethodMCPList,
 	MethodMCPSet, MethodMCPAuthorize, MethodMCPAuthorizeCancel, MethodSkillsList,
-	MethodSkillsSetDisabled, MethodPolicySet, MethodResourcesList, MethodModelComplete, MethodKernelShutdown,
+	MethodSkillsSetDisabled, MethodPolicySet, MethodResourcesList, MethodDroidsList, MethodDroidsSet,
+	MethodModelComplete, MethodKernelShutdown,
 }
 
 // The protocol's notifications.

@@ -190,6 +190,16 @@ func (c *Client) SetSkillDisabled(ctx context.Context, p SkillsSetDisabledParams
 	return call[Skills](c, ctx, MethodSkillsSetDisabled, p)
 }
 
+// Droids is the droids the task tool can start.
+func (c *Client) Droids(ctx context.Context) (Droids, error) {
+	return call[Droids](c, ctx, MethodDroidsList, nil)
+}
+
+// SetDroid writes or removes a person's own droid and answers the list.
+func (c *Client) SetDroid(ctx context.Context, p DroidsSetParams) (Droids, error) {
+	return call[Droids](c, ctx, MethodDroidsSet, p)
+}
+
 // ModelComplete asks a model once, with no conversation, no tools and nothing
 // stored. It answers CodeUnsupported until harness.info says
 // capabilities.models.

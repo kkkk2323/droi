@@ -59,6 +59,7 @@ import type { Asks } from '../ask/asks.ts'
 import type { Background } from '../processes/background.ts'
 import type { McpServers } from '../mcp/servers.ts'
 import { mcpAuthorize, mcpAuthorizeCancel, mcpList, mcpSet, selectServers } from '../mcp/methods.ts'
+import { droidsList, droidsSet } from '../subagents/methods.ts'
 import type { McpAuth } from '../mcp/oauth.ts'
 
 /** Pi's background context: work the kernel starts carries no client's cancellation. */
@@ -205,6 +206,14 @@ export class Kernel implements Dispatcher {
     add('skills.list', (p) => this.#skillsList(p))
     add('skills.setDisabled', (p) => this.#skillsSetDisabled(p))
     add('resources.list', (p) => this.#resourcesList(p))
+    add('droids.list', () => {
+      this.#readable()
+      return droidsList(this.#options.config.userDir)
+    })
+    add('droids.set', (p) => {
+      this.#writable()
+      return droidsSet(this.#options.config.userDir, p)
+    })
     this.methods = handlers
   }
 
