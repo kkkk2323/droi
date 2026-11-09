@@ -50,6 +50,9 @@ type kernelHost struct {
 	sources []ModelSourceStatus
 	// memoryOn is whether the latest launch was given the Memory folder.
 	memoryOn bool
+	// path is kernelPath's, worked out once.
+	pathOnce sync.Once
+	path     string
 	// section is the prompt section the Kernel has, as the latest launch or harness.configure gave it.
 	section string
 	// codemode is codemode's mode the Kernel has, as the latest launch or harness.configure gave it.
@@ -76,6 +79,18 @@ type kernelHost struct {
 // KernelEnabled reports whether this Host runs a Kernel: a person asked for it, and there is one to run.
 func (h *Host) KernelEnabled() bool {
 	return h.env(KernelEnv) == "1" && h.kernelBinary() != ""
+}
+
+// kernelPath is the PATH the Kernel and every command it runs get: the login shell's (loginPath), worked out once;
+// "" leaves the launch's own. An environment without SHELL (a test's) is left as it is.
+func (h *Host) kernelPath() string {
+	k := &h.kernel
+	k.pathOnce.Do(func() {
+		if shell := h.env("SHELL"); shell != "" {
+			k.path = loginPath(shell, h.env("PATH"))
+		}
+	})
+	return k.path
 }
 
 func (h *Host) env(name string) string {
@@ -294,6 +309,10 @@ func (h *Host) kernelEnv() []string {
 		return nil
 	}
 	env := []string{kernelLLMTokenEnv + "=" + token, kernelMagpieKeyEnv + "=" + magpieKey}
+	// After the app's own PATH in the launch's environment, so this one is what the Kernel gets.
+	if path := h.kernelPath(); path != "" {
+		env = append(env, "PATH="+path)
+	}
 	memoryOn := h.Settings.Get().MemoryEnabled
 	if memoryOn {
 		env = append(env, kernel.MemoryDirEnv+"="+h.MemoryDir())
