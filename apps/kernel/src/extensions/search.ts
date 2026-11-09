@@ -15,8 +15,9 @@ import { arr, bool, int, obj, opt, str } from '@earendil-works/pi-schema'
  * They are callable from scripts only (`callers: ['tools']`): a request offers the model none of them, so a
  * conversation pays nothing for them until a script calls one. Their names and arguments are pi-coding-agent's.
  *
- * Inside a git work tree the files are git's: tracked and untracked, without what it ignores. Elsewhere a walk
- * that skips `.git` and `node_modules`.
+ * Inside a git work tree the files are git's: tracked and untracked, without what it ignores. Elsewhere, and under a
+ * path git ignores all of (a search of `node_modules/x` names what it wants), a walk that skips `.git` and
+ * `node_modules` below it.
  */
 
 /** The most files one search looks at. */
@@ -58,7 +59,8 @@ function shown(given: string | undefined, rel: string): string {
 /** The files under `root`, relative to it with `/` separators. */
 async function filesUnder(root: string): Promise<Listing> {
   const fromGit = await gitFiles(root)
-  if (fromGit !== undefined) {
+  // A folder git ignores (node_modules, a build's output) has no files of git's: a search that names it means it.
+  if (fromGit !== undefined && fromGit.length > 0) {
     const files = fromGit.slice(0, MAX_FILES)
     return { files, truncated: fromGit.length > MAX_FILES }
   }
@@ -127,7 +129,7 @@ type Match = { path: string; line: number; text: string }
 const grep = defineTool({
   name: 'grep',
   description:
-    'Search file contents with a JavaScript regular expression, line by line. Inside a git work tree it searches the files git knows of, without the ignored ones; binary files and files over 2 MB are skipped. Resolves to { matches: [{ path, line, text }], truncated }, to filter in the script.',
+    'Search file contents with a JavaScript regular expression, line by line. Inside a git work tree it searches the files git knows of, without the ignored ones, unless `path` is a folder git ignores (node_modules, a build folder), which is searched as it is; binary files and files over 2 MB are skipped. Resolves to { matches: [{ path, line, text }], truncated }, to filter in the script.',
   parameters: obj({
     pattern: str({
       description:
@@ -229,7 +231,7 @@ async function readSmall(path: string): Promise<string | undefined> {
 const find = defineTool({
   name: 'find',
   description:
-    "Find files by glob. A pattern without '/' matches file names at any depth ('*.ts'); one with '/' matches the path ('src/**/*.spec.ts'). Inside a git work tree only the files git knows of, without the ignored ones. Resolves to { paths, truncated }.",
+    "Find files by glob. A pattern without '/' matches file names at any depth ('*.ts'); one with '/' matches the path ('src/**/*.spec.ts'). Inside a git work tree only the files git knows of, without the ignored ones, unless `path` is a folder git ignores. Resolves to { paths, truncated }.",
   parameters: obj({
     pattern: str({ description: "Glob pattern, e.g. '*.ts', '**/*.json' or 'src/**/*.spec.ts'" }),
     path: opt(str({ description: 'Directory to search in (default: the working directory)' })),

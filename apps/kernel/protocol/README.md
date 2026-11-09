@@ -933,7 +933,7 @@ Scripts have three tools the model is never offered (`callers: ['tools']`), each
 `grep {pattern, path?, glob?, ignoreCase?, literal?, limit?}` → `{matches: [{path, line, text}], truncated}`,
 `find {pattern, path?, limit?}` → `{paths, truncated}` and `ls {path?, limit?}` →
 `{entries: [{name, type, size}], truncated}`. Inside a git work tree `grep` and `find` see git's files (tracked and
-untracked, without the ignored ones). A script's `bash` or `powershell` call resolves to up to 1 MiB of output
+untracked, without the ignored ones; a `path` git ignores all of, such as `node_modules/x`, is walked as it is). A script's `bash` or `powershell` call resolves to up to 1 MiB of output
 (the first and last 512 KiB around a marker when longer), where the model sees the last 2000 lines or 50 KB. A
 conversation with `codemode` has a `codemode-guidelines` prompt section on how to write a script: one nested call per
 command, independent ones together, filtering in JavaScript rather than in a shell pipeline, `read` and `edit` rather
