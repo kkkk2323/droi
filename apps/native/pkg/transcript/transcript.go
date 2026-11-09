@@ -52,6 +52,8 @@ type ToolCall struct {
 	Lifecycle bool
 	// Queued is where an AskUser call that queued its questions stands.
 	Queued QueuedState
+	// Subagent is a Kernel task call's subagent; nil for every other call, and for the Daemon's Task.
+	Subagent *KernelSubagent
 }
 
 type BlockKind uint8
@@ -190,6 +192,9 @@ type Builder struct {
 	// scripts are the calls each codemode call made, by its call ID, for the build under way: from a finished
 	// call's result, else from pi.live while it runs.
 	scripts, liveScripts map[string][]*ToolCall
+	// subagents are what the Kernel said of each task call's subagent, by its call ID: its result's details, pi.live's
+	// while it runs, and a background one's end.
+	subagents, liveSubagents, subagentsDone map[string]subagentState
 }
 
 // seenMessage is a message's blocks as the last Build decoded them.

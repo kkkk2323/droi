@@ -39,6 +39,7 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 	}()
 
 	bl.liveScripts = liveNested(view)
+	bl.liveSubagents = liveSubagents(view)
 	results := bl.toolResults(view)
 	var entries []*Entry
 	// boundary is set by the two entries that move the context on — a reset and a compaction — so the answer
@@ -88,10 +89,13 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 			// A reset's handoff may carry a message; it is not something the user said. It marks where the context
 			// moved and draws no row yet.
 			boundary = true
-		case kernel.EntryNote, EntryCodemodeDone:
+		case kernel.EntryNote, EntryCodemodeDone, EntrySubagentDone:
 			block, ok := noteBlock(entry)
-			if entry.Kind == EntryCodemodeDone {
+			switch entry.Kind {
+			case EntryCodemodeDone:
 				block, ok = jobDoneBlock(entry)
+			case EntrySubagentDone:
+				block, ok = subagentDoneBlock(entry)
 			}
 			if !ok {
 				continue
@@ -281,6 +285,7 @@ func (bl *Builder) createdAt(e kernel.Entry) float64 {
 func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 	out := map[string]*ToolResultView{}
 	bl.scripts = map[string][]*ToolCall{}
+	bl.subagents, bl.subagentsDone = map[string]subagentState{}, map[string]subagentState{}
 	for _, entry := range view.Entries {
 		if entry.Kind != kernel.EntryToolResult {
 			continue
@@ -291,6 +296,11 @@ func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 				m.Diagnostics = diagnostics
 				view := m.resultView()
 				out[m.ToolCallID] = view
+				if m.ToolName == KernelTaskTool {
+					if s, ok := subagentStateOf(m.Details); ok {
+						bl.subagents[m.ToolCallID] = s
+					}
+				}
 				if m.ToolName == CodemodeTool {
 					if job := backgroundJob(m.Details); job != 0 {
 						// A background script: its calls are pi.live's while it runs, and its result's once it ends.
@@ -303,6 +313,12 @@ func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 		}
 	}
 	for _, entry := range view.Entries {
+		if entry.Kind == EntrySubagentDone {
+			if s, ok := subagentStateOf(entry.Data); ok && s.CallID != "" {
+				bl.subagentsDone[s.CallID] = s
+			}
+			continue
+		}
 		if entry.Kind != EntryCodemodeDone {
 			continue
 		}
@@ -375,6 +391,12 @@ func (bl *Builder) blocksOf(entry kernel.Entry, results map[string]*ToolResultVi
 					// A script's card: the calls it made hang under it, as a Script's do.
 					call.Lifecycle = true
 					call.Nested = bl.scriptCalls(c.ID)
+				}
+				if c.Name == KernelTaskTool {
+					// A subagent's card, on its own as a Task's is.
+					call.Subagent = bl.kernelSubagent(c.ID, call.Input)
+					blocks = append(blocks, Block{Kind: Subagent, ID: blockID, Call: call})
+					continue
 				}
 				if n := len(blocks); n > 0 && blocks[n-1].Kind == Tools {
 					blocks[n-1].Calls = append(blocks[n-1].Calls, call)

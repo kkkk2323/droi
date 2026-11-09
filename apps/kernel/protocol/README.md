@@ -685,8 +685,9 @@ prompt, image_paths?, complexity?, run_in_background?, resume?}`, `task_output {
 that conversation's id. The child has neither `task` nor `ask_user`.
 
 A foreground call's `details` is `{conversationId, subagentType, description, status}` from the moment the child
-exists, `status` `running` until the call answers `completed` or `failed`; a client opens `conversationId` to show the
-subagent's work under the card. A background call answers at once with `background: true`; its end writes
+exists, `status` `running` until the call answers `completed`, `failed`, or `stopped` when the child's run was
+aborted (`conversation.abort` on `conversationId`, which is how a client stops one); a client opens `conversationId`
+to show the subagent's work under the card. A background call answers at once with `background: true`; its end writes
 `droi.subagent.done` into the parent, as a background script's end writes `droi.codemode.done`.
 
 The droids are `worker` and `explorer`, built in, and a person's own in `<userDir>/droids/<name>.md` (Markdown with

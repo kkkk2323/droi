@@ -807,7 +807,12 @@ var complexityLabels = map[string]string{
 // Session, and the prompt and report folded.
 func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *subagents.Links) {
 	k, t := v.look()
-	link := subagents.LinkFor(call, links)
+	var link subagents.Link
+	if call.Subagent != nil {
+		link = v.kernelLink(call)
+	} else {
+		link = subagents.LinkFor(call, links)
+	}
 	name := subagents.SubagentName(link.Request.SubagentType)
 	if link.Request.Resume != "" {
 		name = l10n.L("Resume %s", name)
@@ -864,8 +869,8 @@ func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *sub
 					})
 				}
 			})
-			if running && link.SessionID != "" && v.env.Controller != nil && StopSubagentButton(c, k) {
-				StopSubagent(v.env.Ctx, v.env.Controller, link.SessionID)
+			if running && link.SessionID != "" && v.canStopSubagent(call) && StopSubagentButton(c, k) {
+				v.stopSubagent(call, link.SessionID)
 			}
 			if link.SessionID != "" && v.env.OpenSession != nil {
 				b := ui.ButtonBase(c).Label(l10n.L("Open subagent session")).Height(k.Px(28)).Gap(k.Px(4)).PaddingX(k.Px(8)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)
