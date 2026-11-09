@@ -252,6 +252,61 @@ func TestAKernelSummaryWithAnExtraFieldOrNoSlugIsKept(t *testing.T) {
 	eq(t, f.read("session_summaries/2026-10-27T05-00-00-7.md"), "session_id: 7\nupdated_at: 2026-10-27T05:00:00Z\nworkspace: "+f.root+"\ntitle: Conversation 7\n\n# Task: fix login\n")
 }
 
+// A model that writes the summaries as the text itself, without the JSON around them, still updates Memory: the
+// Kernel refuses the answer as not JSON, and the text stands for the one field Memory needs.
+func TestAKernelSummaryWrittenAsPlainTextIsKept(t *testing.T) {
+	f := newFixture(t)
+	k := newFakeKernel(f)
+	k.conversation(f, 7, "chat", 7*time.Hour, "Fix the login bug")
+	answer := k.answer
+	k.answer = func(p kernel.ModelCompleteParams) (kernel.ModelCompleteResult, error) {
+		res, err := answer(p)
+		if err != nil {
+			return res, err
+		}
+		var fields map[string]any
+		if err := json.Unmarshal(res.JSON, &fields); err != nil {
+			t.Fatal(err)
+		}
+		text, _ := fields["summary"].(string)
+		if s, ok := fields["memory_summary"].(string); ok {
+			text = s
+		}
+		data, _ := json.Marshal(map[string]any{"issues": []any{map[string]any{"path": "", "message": "the answer is not JSON"}}, "text": text})
+		return kernel.ModelCompleteResult{}, &kernel.RPCError{Code: kernel.CodeModelInvalid, Message: "the model's answer is not JSON", Data: data}
+	}
+	if err := f.kernelWork(k).Pass(context.Background(), MinIdle, false); err != nil {
+		t.Fatal(err)
+	}
+	st := memory.LoadState(f.dir)
+	eq(t, []string{st.Runs[0].Error, st.Runs[1].Error, st.Phase2.LastError}, []string{"", "", ""})
+	files, _ := memory.Files(f.dir)
+	var paths []string
+	for _, file := range files {
+		paths = append(paths, file.Path)
+	}
+	if !slices.ContainsFunc(paths, func(p string) bool { return strings.HasPrefix(p, "session_summaries/2026-10-27T05-00-00-7") }) {
+		t.Fatalf("no Session Summary: %v", paths)
+	}
+	if !strings.HasPrefix(f.read(memory.SummaryFile), validSummary) {
+		t.Fatalf("the Memory Summary was not kept: %q", f.read(memory.SummaryFile))
+	}
+}
+
+// JSON that does not fit is still a failure: only text that is not JSON at all stands for the summary.
+func TestPlainAnswerTakesOnlyTextThatIsNotJSON(t *testing.T) {
+	notJSON, _ := json.Marshal(map[string]any{"issues": []any{map[string]any{"path": "", "message": "the answer is not JSON"}}, "text": "v1\n## User Profile"})
+	misfit, _ := json.Marshal(map[string]any{"issues": []any{map[string]any{"path": "/x", "message": "unexpected"}}, "text": "{\"x\":1}"})
+	got, ok := plainAnswer(&kernel.RPCError{Code: kernel.CodeModelInvalid, Data: notJSON}, MemorySummarySchema)
+	eq(t, []any{string(got), ok}, []any{`{"memory_summary":"v1\n## User Profile"}`, true})
+	got, ok = plainAnswer(&kernel.RPCError{Code: kernel.CodeModelInvalid, Data: notJSON}, SessionSummarySchema)
+	eq(t, []any{string(got), ok}, []any{`{"summary":"v1\n## User Profile"}`, true})
+	_, ok = plainAnswer(&kernel.RPCError{Code: kernel.CodeModelInvalid, Data: misfit}, MemorySummarySchema)
+	eq(t, ok, false)
+	_, ok = plainAnswer(errors.New("websocket: closed"), MemorySummarySchema)
+	eq(t, ok, false)
+}
+
 // A conversation imported from droid holds droid's Session, which Memory summarized or left out before: it is
 // summarized once it goes on in Droi, not for being imported.
 func TestAnImportedConversationIsSummarizedOnlyOnceItGoesOn(t *testing.T) {
