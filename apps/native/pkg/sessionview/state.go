@@ -98,6 +98,8 @@ type State struct {
 	// counts the reads begun (under the store's lock), so an older answer cannot replace a newer one.
 	processes      []kernel.Process
 	processesAsked int
+	// speed is the model speed under the composer: the answer streaming now and the figures last added up.
+	speed speed
 }
 
 // NewState makes the state of conversation id, empty until a view arrives.
@@ -627,6 +629,7 @@ func (s *State) readDocs() {
 	if raw := s.view.Doc("pi.agent"); len(raw) > 0 {
 		s.agent = raw
 	}
+	s.trackLive()
 }
 
 // namesARun says whether a run document names one: absent, empty and the JSON null are all "nothing runs".
