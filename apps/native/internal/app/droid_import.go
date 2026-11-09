@@ -56,7 +56,7 @@ func (a *App) droidSessionsDir() string {
 func (a *App) droidStore() *droidimport.Store {
 	di := &a.settings.droidImport
 	if di.store == nil {
-		di.store = droidimport.OpenStore(filepath.Join(a.cfg.Host.UserData(), "droid-imports.json"))
+		di.store = droidimport.OpenStore(filepath.Join(a.cfg.Host.UserData(), droidimport.StoreFile))
 	}
 	return di.store
 }

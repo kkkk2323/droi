@@ -56,7 +56,7 @@ func NewKernelRunner(k Kernel) Run {
 			// Not this Session's fault: the model is not offered now, as before a key is added.
 			return Reply{}, errors.New(l10n.L("No provider offers the model %s.", r.ModelID))
 		}
-		schema, err := json.Marshal(r.Schema)
+		schema, err := json.Marshal(lenient(r.Schema))
 		if err != nil {
 			return Reply{}, err
 		}
@@ -80,6 +80,20 @@ func NewKernelRunner(k Kernel) Run {
 		}
 		return Reply{JSON: res.JSON, Model: res.Model.ModelID, Started: true}, nil
 	}
+}
+
+// lenient is schema with no field required and none refused: model.complete offers the model no constrained
+// output, so a summary with one more field than asked, or without its slug, would be thrown away by the
+// Kernel's check, a model call paid for nothing. The checks of what Memory needs are Memory's own
+// (checkSessionSummary, checkMemorySummaryShape). The Daemon's structured output keeps the strict schema.
+func lenient(schema map[string]any) map[string]any {
+	out := make(map[string]any, len(schema))
+	for k, v := range schema {
+		if k != "required" && k != "additionalProperties" {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // kernelError is err, or ErrKernelGone when the call failed because the
@@ -129,6 +143,10 @@ func (p *pass) gatherKernel(ctx context.Context, now time.Time) {
 					break
 				}
 				if slices.Contains(skippedKinds, s.Kind) || s.OwnerID != nil {
+					continue
+				}
+				if at, ok := p.w.Imported[int64(s.ID)]; ok && s.LastActivityAt <= at {
+					// Imported from droid and not gone on with in Droi: what it holds is droid's Session's.
 					continue
 				}
 				seen[strconv.FormatInt(int64(s.ID), 10)] = &memory.SessionRecord{

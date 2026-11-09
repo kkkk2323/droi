@@ -33,7 +33,9 @@ type Options struct {
 	// nil while there is none. Memory then lists, reads and summarizes through
 	// the Kernel (ADR 0042), and Runner is not used.
 	Kernel func() Kernel
-	Models func() Models
+	// Imported answers the conversations imported from droid and when (Work.Imported); nil for none.
+	Imported func() map[int64]int64
+	Models   func() Models
 	// OnChange says something Settings → Memory shows changed.
 	OnChange func()
 	Log      func(string)
@@ -102,7 +104,11 @@ func (c *Controller) work(run Run, k Kernel) (Work, error) {
 	if err != nil {
 		return Work{}, err
 	}
-	return Work{Dir: c.o.MemoryDir, Run: run, Models: c.o.Models(), SessionPrompt: sessionPrompt, MemoryPrompt: memoryPrompt, Home: c.o.Home, Kernel: k, Now: c.o.Now, Log: c.o.Log}, nil
+	var imported map[int64]int64
+	if k != nil && c.o.Imported != nil {
+		imported = c.o.Imported()
+	}
+	return Work{Dir: c.o.MemoryDir, Run: run, Models: c.o.Models(), SessionPrompt: sessionPrompt, MemoryPrompt: memoryPrompt, Home: c.o.Home, Kernel: k, Imported: imported, Now: c.o.Now, Log: c.o.Log}, nil
 }
 
 // runner is what a pass runs Memory's model calls on, and the Kernel when it
