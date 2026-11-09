@@ -129,9 +129,22 @@ const shellOutputForScripts = obj(
   { open: true },
 )
 
-/** A shell tool whose structured output is described as {@link scriptOutput} makes it. */
+/**
+ * What a script is told of a shell call, in place of Pi's "Output is truncated to last 2000 lines or 50KB", which is
+ * what the model sees of a call it makes itself, not what a script gets: told that, a model filters in the shell
+ * before the tail cuts it, and a pipe into `head` or `grep` answers the pipe's exit code, not the command's. In
+ * Droid's words for its Script tool.
+ */
+export const SHELL_IN_SCRIPTS =
+  "A call the model makes itself sees the last 2000 lines or 50KB of the output. A script's call resolves for any exit code with `exitCode` and `output`, up to 1 MiB: filter, slice or count `output` in JavaScript, keeping the exit code. When output may be larger, redirect it to a file in the same command (`cmd > <file> 2>&1`) and read or grep that file in the same script; do not pipe it into `head`, `tail` or `grep`, which hides the command's exit code. Run one command per call: independent commands are separate calls in one `Promise.allSettled`, never joined with `&&` or `;`, so each answers its own exit code."
+
+/** A shell tool whose structured output is described as {@link scriptOutput} makes it, and says so. */
 function forScripts(tool: ToolRegistration): ToolRegistration {
-  return { ...tool, structuredOutputSchema: shellOutputForScripts }
+  const description = tool.description.replace(
+    /Output is truncated to last [^.]*\.(?: If truncated, full output is saved to a temp file\.)?/,
+    SHELL_IN_SCRIPTS,
+  )
+  return { ...tool, description, structuredOutputSchema: shellOutputForScripts }
 }
 
 /**
