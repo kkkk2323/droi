@@ -293,6 +293,7 @@ func TestObservePageAnswersThePointer(t *testing.T) {
 // Settings → Advanced offers Droi's droid and says where the Key Pool
 // stands; Open Usage goes to the Usage tab.
 func TestSettingsOffersDroisDroid(t *testing.T) {
+	keepOnDaemon(t, "Droi's droid is the Daemon's; on Kernel the Key Pool needs none (TestOnKernelTheKeyPoolNeedsNoDroisDroid)")
 	h0 := keyPoolTestHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the session list", func() bool { return h.hasText("One") })
@@ -377,8 +378,8 @@ func usageSample(a *App, now time.Time) {
 			Totals: proxy.CacheWarmingTotals{Refreshes: 7, Failures: 1, CacheReadTokens: 512000, CacheWriteTokens: 9000, SpentUnits: 51200, SavedUnits: 640000},
 		},
 		Events: []diag.Event{
-			{Seq: 1, Time: now.Add(-40 * time.Minute), Kind: "key_cooldown", Key: "fk-cool9...7c21", Pool: "standard", Model: "claude-opus-5-5", Status: 429, Detail: "rate limited"},
-			{Seq: 2, Time: now.Add(-12 * time.Minute), Kind: "key_switched", Key: "fk-4f2a1...91be", Detail: "the current key cannot serve"},
+			{Seq: 1, Time: now.Add(-40 * time.Minute), Kind: "key_cooldown", Key: "***************", Pool: "standard", Model: "claude-opus-5-5", Status: 429, Detail: "rate limited"},
+			{Seq: 2, Time: now.Add(-12 * time.Minute), Kind: "key_switched", Key: "***************", Detail: "the current key cannot serve"},
 		},
 	}
 	s := &a.usage
@@ -393,7 +394,7 @@ func usageSample(a *App, now time.Time) {
 	s.hasSpend, s.spendAt = true, far
 	var records []diag.RequestRecord
 	for i := range 24 {
-		r := diag.RequestRecord{Seq: 100 - i, Time: now.Add(-time.Duration(i) * 47 * time.Second), Model: "claude-opus-5-5", Provider: "anthropic", Key: "fk-4f2a1...91be",
+		r := diag.RequestRecord{Seq: 100 - i, Time: now.Add(-time.Duration(i) * 47 * time.Second), Model: "claude-opus-5-5", Provider: "anthropic", Key: "***************",
 			Pool: "standard", RequestedPool: "standard", Status: 200, Stream: true, DurationMs: int64(1800 + i*730), TTFBMs: int64(420 + i*13),
 			RequestBytes: 180000, Bytes: 5100, Usage: &diag.TokenUsage{Input: int64(62000 + i*900), Output: int64(350 + i*40), CacheRead: int64(58000 + i*800)}, Attempts: 1}
 		switch i % 6 {
@@ -527,4 +528,35 @@ func TestANewerDroisDroidShowsACard(t *testing.T) {
 	}
 	h.click("Dismiss")
 	h.until("the card to close", func() bool { return !h.hasText("Droi's droid " + p.Latest + " is available") })
+}
+
+// On Kernel the Key Pool serves Kernel's models through its own proxy: Settings offers its keys and the Usage tab
+// where they are added, with Droi's droid off, and no switch that would fetch a droid and restart the Daemon.
+func TestOnKernelTheKeyPoolNeedsNoDroisDroid(t *testing.T) {
+	home := t.TempDir()
+	// Signed in, as the other Key Pool tests are: the window's sign-in is another test's.
+	token := testJWT(map[string]any{"sub": "ua", "email": "a@x.dev", "org_id": "org_acme", "external_org_id": "org_acme"})
+	if err := host.WriteCliLogin(filepath.Join(home, ".factory"), token, "r"); err != nil {
+		t.Fatal(err)
+	}
+	h0 := host.New(host.Config{UserData: t.TempDir(), Home: home, Env: func(string) string { return "" }})
+	t.Cleanup(h0.Stop)
+	t.Cleanup(h0.KeyPool().Stop)
+	h := newHarnessWith(t, sessionsScenario(), "", func(cfg *Config) { cfg.Host = h0 })
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.click("Settings")
+	h.click("Advanced")
+	h.until("the Key Pool", func() bool { return h.hasText("Keys") })
+	if h.hasText("Use the Key Pool") {
+		t.Errorf("on Kernel Settings offers to fetch Droi's droid: %q", h.tt.Texts())
+	}
+	if !h.hasText("The Key Pool has no key yet. Droi's models are there once you add one on the Usage tab.") {
+		t.Errorf("the Key Pool row does not say where a key goes: %q", h.tt.Texts())
+	}
+	h.click("Open Usage")
+	h.until("the Usage tab", func() bool { return h.hasText("Keys and quota") })
 }

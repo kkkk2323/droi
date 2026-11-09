@@ -601,3 +601,29 @@ func TestALateLaunchAfterTheKernelStoppedLetsNoTokenIn(t *testing.T) {
 		t.Fatal("a stopped Kernel's token is kept")
 	}
 }
+
+// The Kernel's models go to Factory through the Key Pool's proxy, whatever FACTORY_API_BASE_URL says: that variable
+// is where the Daemon's droid sends its requests, and a droid-proxy there has nothing to do with the Kernel's.
+func TestTheHostsKernelUsesTheKeyPoolWhateverFactoryAPIBaseURLSays(t *testing.T) {
+	f := newFakeFactory(t)
+	hk := startHostKernelWith(t, f, true, func(cfg *Config) {
+		env := cfg.Env
+		cfg.Env = func(k string) string {
+			if k == "FACTORY_API_BASE_URL" {
+				return "http://127.0.0.1:9"
+			}
+			return env(k)
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	c := hk.next(t, ctx)
+	chat, ok := offered(t, ctx, c, "factory-chat", "deepseek-v4.1-flash-1017")
+	if !ok {
+		t.Fatal("with FACTORY_API_BASE_URL set the Kernel has no Factory models")
+	}
+	answer(t, ctx, c, chat)
+	if seen := f.requests(); len(seen) != 1 || seen[0].Get("Authorization") != "Bearer "+poolKey {
+		t.Fatalf("Factory saw %v", seen)
+	}
+}

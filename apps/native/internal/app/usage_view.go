@@ -101,10 +101,11 @@ type usageCard struct {
 	view       llmusage.KeyCardView
 }
 
-// usageTabShown: Settings has the Usage tab once Droi's droid runs the
-// Daemon, since only then does the Key Pool serve its requests.
+// usageTabShown: Settings has the Usage tab when the Key Pool serves model
+// requests: always on Kernel, whose models go through it, and on the Daemon
+// once Droi's droid runs it.
 func (a *App) usageTabShown() bool {
-	return a.cfg.Host != nil && !a.settingHidden("usage") && a.cfg.Host.DroiDroidState().Enabled
+	return a.cfg.Host != nil && !a.settingHidden("usage") && (a.onKernel() || a.cfg.Host.DroiDroidState().Enabled)
 }
 
 func (a *App) keyPool() *keypool.Pool {

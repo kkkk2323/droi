@@ -433,6 +433,8 @@ func (a *App) advancedTab(c *ui.Context) {
 			inherited = a.cfg.Env("FACTORY_API_BASE_URL")
 		}
 		switch {
+		case a.onKernel():
+			desc = L("Only the Daemon uses this. Droi's own models go through the Key Pool to Factory, whatever it says.")
 		case st.FactoryAPIBaseURL != nil:
 			desc = L("The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy.")
 		case inherited != "":

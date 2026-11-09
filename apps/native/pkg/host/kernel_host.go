@@ -302,11 +302,9 @@ func (h *Host) kernelEnv() []string {
 	k.memoryOn = memoryOn
 	k.section = agent.Section
 	k.mu.Unlock()
+	// The Kernel's requests always go through the pool: a Factory API base URL (FACTORY_API_BASE_URL, a
+	// droid-proxy) is where the Daemon's droid sends its own, and does not apply to them.
 	pool := h.KeyPool()
-	if conflict := h.baseURLConflict(); conflict != "" {
-		log.Println("droi: kernel: no Factory models:", conflict)
-		return env
-	}
 	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
 	base, err := pool.Start()
 	k.mu.Lock()
@@ -361,7 +359,7 @@ func (h *Host) kernelPoolChanged() {
 // it was launched with, and answers its models on it: none while the pool has no key. ok is false when the proxy
 // cannot serve it, or the Kernel stopped or was started again meanwhile.
 func (h *Host) kernelProvidersNow(token string, runs int) (providers json.RawMessage, ok bool) {
-	if token == "" || h.baseURLConflict() != "" {
+	if token == "" {
 		return nil, false
 	}
 	pool := h.KeyPool()
