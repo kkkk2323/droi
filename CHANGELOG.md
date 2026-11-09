@@ -1,8 +1,19 @@
 ## Unreleased
 
+### Added
+
+- Settings → General → Sidebar has a Show Workstreams switch, on by default. Turned off, the sidebar has no Workstreams group, no New Workstream button and no orchestrator rows; the Workstreams themselves keep running.
+- Replies show GitHub's alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) as boxes with their icons and colors, also while the reply streams in.
+
+### Changed
+
+- Droi is built on MyGo 0.8.3. While another window is in front, the controls MyGo draws in the accent color turn gray, as other Mac apps do. Korean text breaks lines between words.
+
 ### Fixed
 
 - A long session no longer slows Droi down or keeps its memory. Read back to its start, a session of 27,000 messages took 20 seconds to load and then cost 17 MB of work on every frame, 170 ms for every tool call its agent made, and 220 ms for every step of a scroll; it now loads in 2 seconds, a frame costs well under a millisecond, a tool call about 10 ms, and a scroll step about 12 ms. Once you scroll back to the latest messages or open another session, Droi lets go of the older messages it read: in the same test, 227 MB stayed in use after leaving the session, and now 12 MB does.
+- MyGo 0.8.3 frees the GPU memory of animations on macOS: an app that animated for a long time could grow past 1.5 GB. Droi animates while an agent works.
+- A session read back to the middle no longer lets go of what you read when you open another one, unless it holds more than 2,000 messages; you come back to where you were.
 
 ## 1.92.0 - 2026-11-06
 

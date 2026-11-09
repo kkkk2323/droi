@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/andybalholm/brotli v1.2.6
 	github.com/coder/websocket v1.8.15
-	github.com/egoist/mygo v0.7.3
+	github.com/egoist/mygo v0.8.3
 	github.com/google/uuid v1.6.0
 	github.com/kkkk2323/droid-sdk-go v0.7.3
 	github.com/klauspost/compress v1.20.3

@@ -116,6 +116,23 @@ func TestALongSessionLetsGoOfWhatItRead(t *testing.T) {
 	h.until("the transcript again", func() bool { return len(h.a.views[id].Entries()) > 0 && h.hasText("Long session") })
 }
 
+// A Session read back to the middle keeps what it read when it is left,
+// unless that is more than a few pages: the user comes back to where they
+// were.
+func TestALongSessionLeftInTheMiddleKeepsItsPlace(t *testing.T) {
+	const messages = 1500
+	h, id := longTranscriptHarness(t, workingSession(messages))
+	s := h.openLoaded(id, messages)
+	h.a.Go(Route{Name: "session", SessionID: h.d.Sessions[1].SessionID})
+	h.until("the other Session", func() bool { return h.hasText("hi") })
+	for range 5 {
+		h.frame()
+	}
+	if n := s.MessageCount(); n != messages {
+		t.Fatalf("the Session left in the middle holds %d messages, not %d", n, messages)
+	}
+}
+
 // openLoaded opens Session id and loads all its messages, as when the user
 // reads it back to its start, so the transcript no longer follows its end.
 func (h *harness) openLoaded(id string, messages int) *session.Session {

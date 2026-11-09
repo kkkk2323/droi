@@ -272,14 +272,19 @@ func TestObservePageAnswersThePointer(t *testing.T) {
 	loaded("every request", func(q llmusage.ObserveQuery) bool { return q.Model == "" })
 
 	h.scrollUsage()
-	// Scrolling over the list scrolls it too: a request it shows.
+	// Scrolling over the list scrolls it too: a request it shows. The list
+	// also builds rows just out of view, which a click does not reach.
 	var first llmusage.RequestRowView
 	for _, row := range h.a.observeView().Rows {
-		if first.Time == "" && shows(row.Time) {
+		if shows(row.Time) && h.tt.Click(row.Time) == nil {
 			first = row
+			break
 		}
 	}
-	h.click(first.Time)
+	if first.Time == "" {
+		t.Fatalf("no request in view: %q", h.tt.Texts())
+	}
+	h.frame()
 	h.until("the request's details", func() bool { return h.hasText("Request details") })
 	h.click("Close")
 	h.until("the details to close", func() bool { return !h.hasText("Request details") })
