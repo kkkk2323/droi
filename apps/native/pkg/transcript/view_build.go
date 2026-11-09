@@ -96,10 +96,79 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 		// Every other kind shows nothing here: a tool result completes a call, a positional system entry is
 		// the prompt rather than the conversation, and Droi's bookkeeping entries are not lines of a transcript.
 	}
+	// The answer the model is writing now is in pi.live until its generation ends and Pi writes it as an entry: drawn
+	// as the turn's last answer, it grows as the view does instead of arriving whole at the end.
+	if live, ok := liveAnswer(view); ok {
+		if blocks := streaming(bl.blocksOf(live, results, true)); len(blocks) > 0 {
+			if n := len(entries); n > 0 && !entries[n-1].User && !boundary {
+				joinAnswer(entries[n-1], blocks, createdAt(live), false)
+			} else {
+				entries = append(entries, &Entry{ID: entryID(live), Blocks: blocks, CreatedAt: createdAt(live)})
+			}
+		}
+	}
 	if failure, ok := runFailureEntry(view, entries); ok {
 		entries = append(entries, failure)
 	}
 	return entries
+}
+
+// liveEntryID is the id the answer being written takes until Pi writes it: no entry has a negative id.
+const liveEntryID kernel.ID = -1
+
+// liveAnswer is pi.live's generation as an assistant entry, while its message is being written. A generation whose
+// message an entry already holds (the same response, written, before pi.live moved on) is not drawn twice.
+func liveAnswer(view kernel.View) (kernel.Entry, bool) {
+	raw := view.Doc("pi.live")
+	if len(raw) == 0 {
+		return kernel.Entry{}, false
+	}
+	var doc struct {
+		Generation *struct {
+			Message json.RawMessage `json:"message"`
+		} `json:"generation"`
+	}
+	if json.Unmarshal(raw, &doc) != nil || doc.Generation == nil || len(doc.Generation.Message) == 0 {
+		return kernel.Entry{}, false
+	}
+	var msg struct {
+		Role       string `json:"role"`
+		ResponseID string `json:"responseId"`
+	}
+	if json.Unmarshal(doc.Generation.Message, &msg) != nil || msg.Role != "assistant" {
+		return kernel.Entry{}, false
+	}
+	if msg.ResponseID != "" {
+		for i := len(view.Entries) - 1; i >= 0; i-- {
+			if view.Entries[i].Kind != kernel.EntryAssistant {
+				continue
+			}
+			var written []struct {
+				ResponseID string `json:"responseId"`
+			}
+			if json.Unmarshal(view.Entries[i].Model, &written) == nil {
+				for _, w := range written {
+					if w.ResponseID == msg.ResponseID {
+						return kernel.Entry{}, false
+					}
+				}
+			}
+			break
+		}
+	}
+	model := make(json.RawMessage, 0, len(doc.Generation.Message)+2)
+	model = append(append(append(model, '['), doc.Generation.Message...), ']')
+	return kernel.Entry{ID: liveEntryID, Kind: kernel.EntryAssistant, Model: model}, true
+}
+
+// streaming marks the text and thinking of an answer still being written.
+func streaming(blocks []Block) []Block {
+	for i := range blocks {
+		if blocks[i].Kind == Text || blocks[i].Kind == Thinking {
+			blocks[i].Streaming = true
+		}
+	}
+	return blocks
 }
 
 // answerEnd reads how an answer ended: a failure, and a turn the user stopped.
