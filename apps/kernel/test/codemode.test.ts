@@ -282,7 +282,10 @@ describe('codemode', () => {
         'const g = await tools.grep({ pattern: "todo", ignoreCase: true, path: "repo", glob: "*.ts" })',
         'const f = await tools.find({ pattern: "*.ts", path: "repo" })',
         'const l = await tools.ls({ path: "repo/src" })',
-        'return JSON.stringify({ g: g.matches.map((m) => m.path + ":" + m.line), f: f.paths, l: l.entries.map((e) => e.name + "/" + e.type) })',
+        // A folder git ignores is searched when a call names it.
+        'const ig = await tools.grep({ pattern: "TODO", path: "repo/built" })',
+        'const igf = await tools.find({ pattern: "*.ts", path: "repo/built" })',
+        'return JSON.stringify({ g: g.matches.map((m) => m.path + ":" + m.line), f: f.paths, l: l.entries.map((e) => e.name + "/" + e.type), ig: ig.matches.map((m) => m.path + ":" + m.line), igf: igf.paths })',
       ].join('\n'),
     )
     await b.client.call('conversation.submit', { id, input: 'search' })
@@ -292,11 +295,15 @@ describe('codemode', () => {
       g: string[]
       f: string[]
       l: string[]
+      ig: string[]
+      igf: string[]
     }
     expect(answer.g.sort()).toEqual(['repo/src/a.ts:2', 'repo/src/deep/b.ts:1'])
     expect(answer.f.sort()).toEqual(['repo/src/a.ts', 'repo/src/deep/b.ts'])
     expect(answer.l).toEqual(['a.ts/file', 'c.go/file', 'deep/directory'])
-    expect(callsOf(entry).map((call) => call.name)).toEqual(['grep', 'find', 'ls'])
+    expect(answer.ig).toEqual(['repo/built/x.ts:1'])
+    expect(answer.igf).toEqual(['repo/built/x.ts'])
+    expect(callsOf(entry).map((call) => call.name)).toEqual(['grep', 'find', 'ls', 'grep', 'find'])
   }, 60_000)
 
   test('a conversation with codemode is told how to write a script; one without is not', async () => {

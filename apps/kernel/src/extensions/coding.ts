@@ -95,12 +95,14 @@ export function shellChoice(options: CodingOptions = {}): ShellChoice {
 function filesystemRule(platform: Platform): string {
   if (platform === 'win32') {
     return [
-      'Use `read`, `write`, and `edit` for files. Use `powershell` to run commands; it starts PowerShell',
+      'Use `read`, `write`, and `edit` for files, and in a script `grep`, `find` and `ls` to search them. Use',
+      '`powershell` to run commands (builds, tests, git), not to read, search or change files; it starts PowerShell',
       'directly, so paths are Windows paths (`C:\\...`) and there is no POSIX shell in between.',
     ].join(' ')
   }
   return [
-    'Use `read`, `write`, and `edit` for files. Use `bash` to run commands; each call starts a fresh',
+    'Use `read`, `write`, and `edit` for files, and in a script `grep`, `find` and `ls` to search them.',
+    'Use `bash` to run commands (builds, tests, git), not to read, search or change files; each call starts a fresh',
     'shell in the working directory, so `cd` does not carry over: give paths from there, or absolute ones,',
     'rather than chaining `cd … &&`.',
   ].join(' ')
