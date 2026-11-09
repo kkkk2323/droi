@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
 )
 
 // Two agents the Host starts under one name each have a row: the rows do not

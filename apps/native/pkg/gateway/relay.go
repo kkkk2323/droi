@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/internal/relay"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/relay"
 )
 
 // RelayConfig is the Relay a Host meets phones at when they are away from

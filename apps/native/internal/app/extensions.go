@@ -5,9 +5,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // extensionEnv is what an app's own Page or Settings section draws with.

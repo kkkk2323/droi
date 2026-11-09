@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // narrowWidth is the web Client's md breakpoint in CSS pixels: below it the

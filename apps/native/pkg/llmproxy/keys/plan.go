@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/contentenc"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/contentenc"
 )
 
 // A key's plan sets the size of its quota: the billing endpoint counts every

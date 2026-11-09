@@ -14,15 +14,15 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/proxy"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/proxy"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // keyPoolTestHost is a Host that runs Droi's droid, with a stand-in Factory

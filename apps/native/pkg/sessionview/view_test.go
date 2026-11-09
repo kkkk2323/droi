@@ -17,8 +17,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/theme"
 )
 
 // harness is one Session's View against a Fake Daemon: Update queues work

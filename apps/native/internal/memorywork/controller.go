@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // The Host's side of Memory (ADR 0031): a pass when Memory starts, every

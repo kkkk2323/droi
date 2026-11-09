@@ -6,7 +6,7 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
 )
 
 // liveRefresh is how often the speed under the composer is read again while

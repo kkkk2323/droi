@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/mcpserver"
 )
 
 // ServerName is the Memory Server's name in the Runtime Overlay and in MCP.

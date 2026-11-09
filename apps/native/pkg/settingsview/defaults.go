@@ -9,7 +9,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
 )
 
 // Defaults are the Daemon's Session Defaults as the app last read them.

@@ -8,11 +8,11 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/activity"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/activity"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 func (h *harness) textCount(text string) int {

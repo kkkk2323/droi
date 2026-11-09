@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // Harness is a scripted model and the directories a Kernel runs in, with no

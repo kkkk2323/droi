@@ -6,11 +6,11 @@ import (
 	"log"
 	"sync/atomic"
 
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hostrun"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // startGateway starts the Gateway that paired phones and this window connect

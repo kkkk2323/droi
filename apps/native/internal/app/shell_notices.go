@@ -5,9 +5,9 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 )
 
 // startingUp is the Daemon coming up: never connected yet, and not given

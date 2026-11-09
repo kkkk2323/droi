@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // Status is where an update is.

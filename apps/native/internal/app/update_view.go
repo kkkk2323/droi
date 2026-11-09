@@ -7,10 +7,10 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
-	"github.com/kkkk2323/droi/apps/native/internal/updates"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // mdNotes is how the release notes read.

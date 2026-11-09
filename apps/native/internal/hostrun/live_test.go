@@ -20,10 +20,10 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
-	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automationwork"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hostrun"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // liveHost is the Host as the app runs it, with its Services and its
@@ -69,7 +69,7 @@ func newLiveHost(t *testing.T) *liveHost {
 	// The Daemon runs `<this binary> host-tools <server>` for the Host's tool
 	// servers. Built before HOME moves, which holds Go's cache.
 	lh.bin = filepath.Join(lh.root, "Droi")
-	if out, err := exec.Command("go", "build", "-o", lh.bin, "github.com/kkkk2323/droi/apps/native").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", lh.bin, "github.com/kkkk2323/droi/apps/native/v2").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	lh.home, lh.data = filepath.Join(lh.root, "home"), filepath.Join(lh.root, "data")

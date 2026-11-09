@@ -5,9 +5,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
 )
 
 // PastedCard is a pasted text's card, as tall as an attached image: a

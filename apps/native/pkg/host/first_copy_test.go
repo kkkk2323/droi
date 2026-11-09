@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // write puts a file, creating its folder.

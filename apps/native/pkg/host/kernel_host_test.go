@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // The Kernel's providers are Factory's models on the proxy, on the wire droid sends each, with the Host's token for a

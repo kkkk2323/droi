@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
 )
 
 // A Kernel codemode call is a script card: its program, and the calls its script made hanging under it, each with

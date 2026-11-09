@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // openSessionDefaults opens Settings on the Session defaults page.

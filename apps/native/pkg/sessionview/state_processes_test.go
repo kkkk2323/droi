@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // processKernel answers process.list from a function, so a test can hold one answer back.

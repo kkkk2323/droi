@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // fakeKernel is a Kernel whose conversations and entries the test writes. It answers two rows a page, whatever the

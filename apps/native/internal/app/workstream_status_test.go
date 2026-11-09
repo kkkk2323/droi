@@ -9,8 +9,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // waitFor draws frames until cond holds and returns how long that took, or

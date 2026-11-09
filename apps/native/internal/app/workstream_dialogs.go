@@ -10,12 +10,12 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // workstreamNameMax is the longest name of a Workstream, in characters.

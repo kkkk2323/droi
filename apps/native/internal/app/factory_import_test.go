@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // kernelHostWithFactory is a Host that runs a Kernel, in throwaway folders whose ~/.factory has a skill and an

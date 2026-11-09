@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/titles"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/titles"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel/fakekernel"
 )
 
 // A conversation named by the model: the title it answered, written to the list, and the call that asked for

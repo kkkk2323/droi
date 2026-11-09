@@ -3,7 +3,7 @@ package fakekernel
 import (
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // TestObserverForwardsEveryMethodOfTheContract is the Observer's own guard: the hand-written forwarding

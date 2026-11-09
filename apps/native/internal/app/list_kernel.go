@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // maxListPages bounds a read of the whole list: a cursor that never ends must not keep the window reading.

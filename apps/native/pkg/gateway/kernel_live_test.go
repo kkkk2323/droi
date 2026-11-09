@@ -12,8 +12,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel/fakekernel"
 )
 
 // rpc is a phone's side of the Kernel's protocol, through the Gateway: one request at a time, the notifications that

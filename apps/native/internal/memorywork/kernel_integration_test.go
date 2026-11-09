@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel/fakekernel"
 )
 
 // A Memory pass on the real Kernel (ADR 0042): a conversation is read through conversation.entries, its Session

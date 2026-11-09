@@ -7,9 +7,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/activity"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/activity"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 const workstreamsSectionKey = "droi:workstreams"

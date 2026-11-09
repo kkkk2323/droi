@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 // The Kernel holds no Factory key (decision Q15): its model requests reach the proxy with a token of the Host's own in

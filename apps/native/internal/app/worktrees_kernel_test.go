@@ -11,8 +11,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gitutil"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // The Host's own git on Kernel (M4 4N): a conversation's changes, new worktrees and Settings → Worktrees, with git

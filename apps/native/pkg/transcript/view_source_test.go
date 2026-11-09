@@ -30,9 +30,9 @@ func TestTheKernelPathImportsNoWayToReadText(t *testing.T) {
 		"bytes":         true,
 		"encoding/json": true,
 		"fmt":           true,
-		"github.com/kkkk2323/droid-sdk-go/protocol":       true,
-		"github.com/kkkk2323/droi/apps/native/pkg/kernel": true,
-		"github.com/kkkk2323/droi/apps/native/pkg/l10n":   true,
+		"github.com/kkkk2323/droid-sdk-go/protocol":          true,
+		"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel": true,
+		"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n":   true,
 	}
 	// bytes is allowed for the cache's comparison of unchanged JSON, not for searching text in it.
 	forbiddenInBytes := []string{"bytes.Contains", "bytes.HasPrefix", "bytes.HasSuffix", "bytes.Index", "bytes.Split", "bytes.Fields"}

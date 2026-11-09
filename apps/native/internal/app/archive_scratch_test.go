@@ -8,8 +8,8 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // scratchTrash is a Scratch folder on disk whose Trash is a list.

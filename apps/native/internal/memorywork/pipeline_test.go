@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
 )
 
 func eq[T any](t *testing.T, got, want T) {

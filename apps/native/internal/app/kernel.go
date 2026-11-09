@@ -9,9 +9,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // The window's half of the Kernel: the connection the Host hands it, the conversations its pages have open, and

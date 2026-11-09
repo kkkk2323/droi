@@ -15,8 +15,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hostsession"
 )
 
 func newRunner(t *testing.T, d *fakedaemon.Daemon) *hostsession.Runner {

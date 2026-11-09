@@ -10,8 +10,8 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel/fakekernel"
 )
 
 // askHarness is a window on Kernel whose model, asked "Help me", asks question (blocking or not), then answers

@@ -16,9 +16,9 @@ import (
 
 	"github.com/egoist/mygo/netproxy"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/contentenc"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/contentenc"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
 )
 
 type KeyUsage struct {

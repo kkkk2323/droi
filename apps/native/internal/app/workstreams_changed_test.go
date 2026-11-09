@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
 )
 
 // countingWorkstreams counts the times the window asks for the list.

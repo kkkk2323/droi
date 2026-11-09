@@ -11,10 +11,10 @@ import (
 	"github.com/egoist/mygo/ui/markdown/parser"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
-	"github.com/kkkk2323/droi/apps/native/pkg/jsonrender"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/jsonrender"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // MarkdownStyle is how a kind of Markdown reads: its text size, in px of

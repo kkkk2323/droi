@@ -3,7 +3,7 @@ package models
 import (
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // Which company a model comes from, for grouping and the brand mark. The

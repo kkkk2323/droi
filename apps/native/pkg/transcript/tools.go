@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 

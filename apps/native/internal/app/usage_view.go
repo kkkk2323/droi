@@ -7,12 +7,12 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 // The Usage tab's pages, in the order of its segmented control.

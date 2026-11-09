@@ -9,8 +9,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gitutil"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // gitChanges is the Session's branch and what it has not committed, as the

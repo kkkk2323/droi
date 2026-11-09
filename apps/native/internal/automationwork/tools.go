@@ -9,9 +9,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
-	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/mcpserver"
 )
 
 // ServerName is the tool server through which Droid manages Droi's

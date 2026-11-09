@@ -14,8 +14,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel/fakekernel"
 )
 
 // The composer on the Kernel path, against a Kernel: what a send, a queued message, Stop and taking a message back

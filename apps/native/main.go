@@ -1,7 +1,7 @@
 // Command native is Droi as a native app (package droiapp).
 package main
 
-import "github.com/kkkk2323/droi/apps/native/pkg/droiapp"
+import "github.com/kkkk2323/droi/apps/native/v2/pkg/droiapp"
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
 const devVersion = "1.92.0"

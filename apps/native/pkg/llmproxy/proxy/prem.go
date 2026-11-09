@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
 )
 
 // Factory's whoami identity may carry premBaseHostV2. When it is set, droid

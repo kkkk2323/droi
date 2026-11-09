@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
 )
 
 // ScriptModelList is where the models that may use Script stand (ADR 0028):

@@ -17,13 +17,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/proxy"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/smartwarm"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/proxy"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/smartwarm"
 )
 
 // Options say where the Key Pool keeps its files and what it talks to.

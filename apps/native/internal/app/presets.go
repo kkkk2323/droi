@@ -3,7 +3,7 @@ package app
 import (
 	"log"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // applyPresets gives this computer's Daemon and this device the app's

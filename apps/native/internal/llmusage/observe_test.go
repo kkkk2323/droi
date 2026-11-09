@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
 )
 
 func writeRequestLog(t *testing.T, records []diag.RequestRecord) string {

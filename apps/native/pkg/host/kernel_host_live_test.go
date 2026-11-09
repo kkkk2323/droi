@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // One real round through everything the Host runs: the Kernel asks for a Factory model, the Key Pool's proxy sends

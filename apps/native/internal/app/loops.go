@@ -11,8 +11,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/loops"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/loops"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // loopCommand is `/loop <interval> <prompt>`, `/loop <prompt> every

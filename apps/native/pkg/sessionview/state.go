@@ -13,7 +13,7 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // A View draws a conversation; it does not keep one. Kernel pushes a whole view after every commit — that is what

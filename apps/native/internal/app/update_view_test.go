@@ -7,9 +7,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/updates"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 

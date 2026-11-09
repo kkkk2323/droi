@@ -10,10 +10,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // Advanced's switch puts the Key Pool in the menu bar, whose panel shows

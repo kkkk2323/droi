@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
 )
 
 // waitLive answers the live calls once ok takes them, or after five seconds:

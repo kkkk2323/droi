@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // resultCap bounds one tool result in the Markdown: the conversation is what the user reads there.

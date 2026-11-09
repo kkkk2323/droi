@@ -13,14 +13,14 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/activity"
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/activity"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // The Host's Automations come through the Gateway (ADR 0035). This

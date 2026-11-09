@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 const kernelToken = "droi-kernel-test-token"

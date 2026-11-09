@@ -8,8 +8,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessiontimes"
 )
 
 func notification(sessionID, state string) string {

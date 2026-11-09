@@ -7,9 +7,9 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memorywork"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // StartMemory is the Host's side of Memory (ADR 0031): Settings → Memory,

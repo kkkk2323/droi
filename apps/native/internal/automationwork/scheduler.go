@@ -17,10 +17,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/internal/keepawake"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/keepawake"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // TagName tags a run's Session, with the Automation's id and name, the

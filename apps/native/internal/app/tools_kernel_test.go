@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // testMCPServerEnv makes this test binary a stdio MCP server instead of running tests: Kernel starts it as a

@@ -4,7 +4,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // Snapshot is what one frame draws of a conversation besides its rows: whether it loaded, whether a run is in

@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
 )
 
 // The Host's Kernel (ADR 0038): one sidecar beside the Daemon, for every window of this computer. Its model requests

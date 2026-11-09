@@ -14,10 +14,10 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
-	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automationwork"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 func TestOnlyTheDeviceChoiceOfDirectIsAskedOfTheDaemon(t *testing.T) {

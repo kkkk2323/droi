@@ -17,9 +17,9 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memorywork"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // TestLiveMemory runs Memory against a real Daemon started with the Runtime
@@ -42,7 +42,7 @@ func TestLiveMemory(t *testing.T) {
 	}
 	root, _ := filepath.EvalSymlinks(t.TempDir())
 	bin := filepath.Join(root, "Droi")
-	if out, err := exec.Command("go", "build", "-o", bin, "github.com/kkkk2323/droi/apps/native").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", bin, "github.com/kkkk2323/droi/apps/native/v2").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	fake, workspace, memDir := filepath.Join(root, "home"), filepath.Join(root, "workspace"), filepath.Join(root, "memory")

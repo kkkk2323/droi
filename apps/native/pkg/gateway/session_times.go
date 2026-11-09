@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // The Session Times (ADR 0032), which every Client orders its Session list

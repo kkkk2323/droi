@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/subagents"
 )
 
 // knownSubagents is the frame's list as every view reads it: the Daemon's

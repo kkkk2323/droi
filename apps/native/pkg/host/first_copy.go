@@ -11,7 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
 )
 
 // factoryImportedMarker is written into the user's directory once the first

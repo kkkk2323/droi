@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // The Gateway gives a phone the Workspace order the sidebar shows, and a pin

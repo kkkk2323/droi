@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
 )
 
 // usageLook is dashkit's Look, which the Usage tab and the menu bar panel

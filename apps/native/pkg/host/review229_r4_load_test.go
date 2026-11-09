@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // A pending RPC is not itself a reason to restart. Two transient health

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // The Daemon lists only the Sessions of its login's organization: droid
