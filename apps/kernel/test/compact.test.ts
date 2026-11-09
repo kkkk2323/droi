@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { fauxAssistantMessage } from '@earendil-works/pi-ai'
+import { createModels, fauxAssistantMessage, fauxProvider } from '@earendil-works/pi-ai'
+import type { FauxResponseStep } from '@earendil-works/pi-ai'
 import { Client, fauxCatalog, start, tempData, waitIdle } from './helpers.ts'
 
 /**
@@ -75,5 +76,97 @@ describe('conversation.compact with wait', () => {
     await turn(client, id, 'hello')
     const answer = await client.call('conversation.compact', { id })
     expect(Object.keys(answer)).toEqual(['taskId'])
+  }, 60_000)
+})
+
+/** A long answer: three of them are more than a summary keeps verbatim. */
+const long = (n: number) => `answer ${n}: ` + 'lorem ipsum dolor sit amet '.repeat(2500)
+
+/** A kernel with two faux models, `main` for the conversation and `small` to compact with, and who answered what. */
+async function bootTwo(compactionModel?: string) {
+  const data = tempData()
+  const faux = fauxProvider({ models: [{ id: 'main' }, { id: 'small' }] })
+  const models = createModels()
+  models.setProvider(faux.provider)
+  const answered: { model: string; summary: boolean }[] = []
+  const answer =
+    (text: string): FauxResponseStep =>
+    (context, _options, _state, model) => {
+      const summary = JSON.stringify(context.messages).includes('<conversation>')
+      answered.push({ model: model.id, summary })
+      return fauxAssistantMessage(text)
+    }
+  faux.setResponses([answer(long(1)), answer(long(2)), answer(long(3)), answer('the summary')])
+  const provider = faux.getModel().provider
+  const kernel = await start({
+    dir: data.dir,
+    faux: { faux, models, model: { provider, modelId: 'main' } },
+    ...(compactionModel === undefined
+      ? {}
+      : { overrides: { compactionModel: { provider, modelId: compactionModel } } }),
+  })
+  const client = new Client(kernel.port)
+  cleanups.push(() => data.cleanup())
+  cleanups.push(async () => {
+    client.close()
+    await kernel.stop()
+  })
+  const { conversationId: id } = (await client.call('conversation.create', {
+    agent: { model: { provider, modelId: 'main' } },
+  })) as { conversationId: number }
+  for (let n = 1; n <= 3; n++) await turn(client, id, `turn ${n}`)
+  return { client, id, answered, provider }
+}
+
+async function summaryText(client: Client, id: number): Promise<string> {
+  const page = await client.call('conversation.entries', {
+    id,
+    query: { order: 'ascending' },
+    limit: 200,
+  })
+  const entry = (page['items'] as { kind: string; model?: unknown }[]).find(
+    (item) => item.kind === 'pi.compaction',
+  )
+  return JSON.stringify(entry?.model ?? '')
+}
+
+describe('the compaction model', () => {
+  test("unset, the conversation's own model writes the summary", async () => {
+    const { client, id, answered } = await bootTwo()
+    expect((await client.call('harness.info', {}))['compaction']).toEqual({ model: null })
+    expect((await client.call('conversation.compact', { id, wait: true }))['outcome']).toBe(
+      'compacted',
+    )
+    expect(answered.filter((a) => a.summary)).toEqual([{ model: 'main', summary: true }])
+  }, 60_000)
+
+  test("set at launch, it writes the summary in Pi's format", async () => {
+    const { client, id, answered, provider } = await bootTwo('small')
+    expect((await client.call('harness.info', {}))['compaction']).toEqual({
+      model: { provider, modelId: 'small' },
+    })
+    expect((await client.call('conversation.compact', { id, wait: true }))['outcome']).toBe(
+      'compacted',
+    )
+    expect(answered.filter((a) => a.summary)).toEqual([{ model: 'small', summary: true }])
+    expect(await summaryText(client, id)).toContain('the summary')
+  }, 60_000)
+
+  test("harness.configure sets and clears it; a model the kernel lacks leaves the summary to the conversation's", async () => {
+    const { client, id, answered, provider } = await bootTwo()
+    await client.call('harness.configure', {
+      compaction: { model: { provider, modelId: 'nowhere' } },
+    })
+    expect((await client.call('harness.info', {}))['compaction']).toEqual({
+      model: { provider, modelId: 'nowhere' },
+    })
+    expect((await client.call('conversation.compact', { id, wait: true }))['outcome']).toBe(
+      'compacted',
+    )
+    expect(answered.filter((a) => a.summary)).toEqual([{ model: 'main', summary: true }])
+    await client.call('harness.configure', { compaction: { model: null } })
+    expect((await client.call('harness.info', {}))['compaction']).toEqual({ model: null })
+    const refused = await client.fails('harness.configure', { compaction: { model: { provider } } })
+    expect(refused.code).toBe(-32602)
   }, 60_000)
 })

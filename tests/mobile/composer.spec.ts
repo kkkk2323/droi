@@ -133,7 +133,8 @@ test.describe('a turn from the phone', () => {
 })
 
 test.describe('the context meter', () => {
-  // The Kernel counts four characters of the context to a token: about 50k here.
+  // The Kernel counts the context as Pi does for compaction: with no answer that reported usage, about 3.5
+  // characters to a token, so about 57k here.
   test.use({
     scenario: {
       sessions: [
@@ -150,8 +151,8 @@ test.describe('the context meter', () => {
     await pairPhone(page, fakeKernel)
     await pickSession(page, /Chat/)
     const meter = page.getByRole('meter', { name: 'Context used' })
-    await expect(meter).toHaveAttribute('aria-valuenow', '25')
-    await expect(meter).toContainText(`50k / ${CONTEXT_WINDOW / 1000}k · 25%`)
+    await expect(meter).toHaveAttribute('aria-valuenow', '29')
+    await expect(meter).toContainText(`57k / ${CONTEXT_WINDOW / 1000}k · 29%`)
 
     fakeKernel.model.push({ match: 'go on', text: 'y'.repeat(40_000) })
     await type(page, 'go on')
@@ -165,7 +166,7 @@ test.describe('the context meter', () => {
       },
     )
     const percent = Math.round((usage.context.used / usage.context.limit) * 100)
-    expect(percent).toBeGreaterThan(25)
+    expect(percent).toBeGreaterThan(29)
     await expect(meter).toHaveAttribute('aria-valuenow', String(percent))
     await expect(meter).toContainText(
       `${Math.round(usage.context.used / 1000)}k / ${CONTEXT_WINDOW / 1000}k · ${percent}%`,

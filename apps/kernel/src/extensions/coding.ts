@@ -1,7 +1,15 @@
 import { existsSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import { win32 } from 'node:path'
-import { defineExtension, section } from '@earendil-works/pi-durable'
-import type { Extension, ToolRegistration } from '@earendil-works/pi-durable'
+import { ToolTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
+import type {
+  Extension,
+  ToolExecutionResult,
+  ToolHookCall,
+  ToolRegistration,
+} from '@earendil-works/pi-durable'
+import { bool, num, obj, opt, str } from '@earendil-works/pi-schema'
+import type { JsonValue } from '@earendil-works/chord'
 import {
   createBashTool,
   createEditTool,
@@ -10,6 +18,7 @@ import {
   createWriteTool,
 } from '@earendil-works/pi-durable/tools'
 import type { ImageProcessor } from '@earendil-works/pi-durable/tools'
+import { searchTools } from './search.ts'
 
 /**
  * Droi's coding tools, chosen for the platform the kernel runs on.
@@ -92,8 +101,89 @@ function filesystemRule(platform: Platform): string {
   }
   return [
     'Use `read`, `write`, and `edit` for files. Use `bash` to run commands; each call starts a fresh',
-    'shell in the working directory, so `cd` does not carry over unless the command chains it.',
+    'shell in the working directory, so `cd` does not carry over: give paths from there, or absolute ones,',
+    'rather than chaining `cd … &&`.',
   ].join(' ')
+}
+
+/** The most of a shell command's output a script receives: pi-coding-agent's limit for codemode scripts. */
+export const SCRIPT_OUTPUT_BYTES = 1024 * 1024
+
+/**
+ * What a script that calls `bash` or `powershell` receives. Pi's own schema says `output` is the tail the model
+ * sees (2000 lines or 50 KB), which is what made a script filter in the shell: whatever came before the tail was gone
+ * by the time it reached JavaScript. A script gets up to {@link SCRIPT_OUTPUT_BYTES} instead ({@link scriptOutput}).
+ */
+const shellOutputForScripts = obj(
+  {
+    output: str({
+      description:
+        'Combined stdout and stderr, up to 1 MiB: longer output keeps its first and last 512 KiB around an omission marker',
+    }),
+    truncated: bool({ description: 'Whether `output` omits part of the command output' }),
+    fullOutputPath: opt(
+      str({ description: 'File with the complete output, when it was longer than the model sees' }),
+    ),
+    exitCode: num(),
+  },
+  { open: true },
+)
+
+/** A shell tool whose structured output is described as {@link scriptOutput} makes it. */
+function forScripts(tool: ToolRegistration): ToolRegistration {
+  return { ...tool, structuredOutputSchema: shellOutputForScripts }
+}
+
+/**
+ * A script's `bash` or `powershell` call answers the whole output, up to {@link SCRIPT_OUTPUT_BYTES}, as
+ * pi-coding-agent's do (1ff5b6fdd): Pi keeps the tail the model sees, and spills the complete output to a file once
+ * it is longer, so a spilled call's output is read back from that file. A call the model made itself is left as it
+ * is: the model reads its `output`, and only a script reads the structured value.
+ */
+async function scriptOutput(
+  call: ToolHookCall,
+  result: ToolExecutionResult,
+): Promise<ToolExecutionResult | undefined> {
+  if (call.parent === undefined || (call.name !== 'bash' && call.name !== 'powershell'))
+    return undefined
+  const value = result.structuredOutput as { [key: string]: JsonValue } | undefined
+  if (value === undefined || value === null || typeof value['fullOutputPath'] !== 'string')
+    return undefined
+  const full = await headAndTail(value['fullOutputPath'], SCRIPT_OUTPUT_BYTES).catch(
+    () => undefined,
+  )
+  if (full === undefined) return undefined
+  return { ...result, structuredOutput: { ...value, output: full.text, truncated: full.truncated } }
+}
+
+/** A file as text, or its first and last `max / 2` bytes around a marker when it is longer. */
+export async function headAndTail(
+  path: string,
+  max: number,
+): Promise<{ text: string; truncated: boolean }> {
+  const file = await open(path, 'r')
+  try {
+    const size = (await file.stat()).size
+    if (size <= max) return { text: (await file.readFile()).toString('utf8'), truncated: false }
+    const headBytes = Math.floor(max / 2)
+    const tailBytes = max - headBytes
+    const head = Buffer.alloc(headBytes)
+    const tail = Buffer.alloc(tailBytes)
+    await file.read(head, 0, headBytes, 0)
+    await file.read(tail, 0, tailBytes, size - tailBytes)
+    // Cut at characters: the head drops an incomplete last one, the tail skips continuation bytes.
+    const headText = new TextDecoder().decode(head, { stream: true })
+    let start = 0
+    while (start < tail.length && (tail[start]! & 0xc0) === 0x80) start++
+    const omitted = size - headBytes - tailBytes
+    const tailText = tail.subarray(start).toString('utf8')
+    return {
+      text: `${headText}\n\n[... ${omitted} bytes omitted ...]\n\n${tailText}`,
+      truncated: true,
+    }
+  } finally {
+    await file.close()
+  }
 }
 
 export function codingTools(options: CodingOptions = {}): CodingTools {
@@ -107,17 +197,19 @@ export function codingTools(options: CodingOptions = {}): CodingTools {
     createEditTool() as ToolRegistration,
   ]
   if (choice.kind === 'bash' && choice.shellPath !== undefined) {
-    tools.push(createBashTool() as ToolRegistration)
-    tools.push(createPowerShellTool() as ToolRegistration)
+    tools.push(forScripts(createBashTool() as ToolRegistration))
+    tools.push(forScripts(createPowerShellTool() as ToolRegistration))
   } else if (choice.kind === 'bash') {
-    tools.push(createBashTool() as ToolRegistration)
+    tools.push(forScripts(createBashTool() as ToolRegistration))
   } else {
     // No Git Bash: only PowerShell. Offering `bash` here would run WSL.
-    tools.push(createPowerShellTool() as ToolRegistration)
+    tools.push(forScripts(createPowerShellTool() as ToolRegistration))
   }
+  tools.push(...searchTools())
   const extension = defineExtension({
     name: options.name ?? 'coding',
     tools,
+    hooks: [hook(ToolTask, { afterTool: scriptOutput })],
     sections: [
       section('environment', () =>
         [

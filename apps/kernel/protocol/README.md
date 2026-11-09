@@ -408,7 +408,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | Method                 | Params                                                                        | Result                                                                            | Capability      | M1  |
 | ---------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- | --- |
 | `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?, agent?}` | —               | yes |
-| `harness.configure`    | `{providers?, memoryDir?, section?, agent?, codemode?}`                       | `{}`                                                                              | —               | no  |
+| `harness.configure`    | `{providers?, memoryDir?, section?, agent?, codemode?, compaction?}`          | `{}`                                                                              | —               | no  |
 | `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                          | `conversations` | yes |
 | `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                              | `conversations` | yes |
 | `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                                     | `conversations` | yes |
@@ -866,7 +866,7 @@ the summary does not age out.
 
 ### Settings that change while the kernel runs
 
-`harness.configure {providers?, memoryDir?, section?, agent?}` is how the Host's settings reach a running kernel, so none of them
+`harness.configure {providers?, memoryDir?, section?, agent?, codemode?, compaction?}` is how the Host's settings reach a running kernel, so none of them
 restarts it or stops a run (ADR 0038). `providers` (the shape of `DROI_KERNEL_PROVIDERS`) takes the place of the
 catalog at once: each conversation's next request resolves its model in the new one, and a conversation whose model
 is gone ends its next run without an answer. `memoryDir`, an absolute path or `null`, turns Memory on or off: the `memory`
@@ -877,8 +877,25 @@ the app's prompt section (below) from each conversation's next turn. `agent`, `{
 thinkingLevel?}` or `null`, is what a new conversation starts with when its create names no model: the Session
 defaults' model, which every client then starts with, a phone included. The model must be one the kernel offers;
 `harness.info` reports it as `agent` while one is set. `codemode`, `{mode: 'on' | 'only'}`, is how codemode presents
-tools (below), from every conversation's next request; `harness.info` reports it as `codemode`. Every connection hears
-`harness.changed {}`. A read-only kernel refuses it.
+tools (below), from every conversation's next request; `harness.info` reports it as `codemode`. `compaction`,
+`{model: {provider, modelId} | null}`, is the model that writes every compaction's summary from the next compaction on
+(below); `harness.info` reports it as `compaction`. Every connection hears `harness.changed {}`. A read-only kernel
+refuses it.
+
+### The compaction model
+
+Pi summarizes with the conversation's own model. The kernel's compaction model, `DROI_KERNEL_COMPACTION_MODEL`
+(`provider/modelId`) or the config file's `compaction.model` at launch and `harness.configure {compaction: {model}}`
+while it runs, writes the summary instead: the kernel answers Pi's `beforeCompact` hook with Pi's own summary request
+sent to that model (`src/extensions/compaction-model.ts`). A model the kernel does not have, or a request that fails,
+leaves the summary to the conversation's model, with Pi's retries. Its tokens count in the Host's LLM Proxy, not in
+`conversation.usage`'s `models`. The summary is kept in the compaction task's memo, so a compaction resumed after a
+restart does not pay for it twice.
+
+`conversation.usage`'s `context.used` counts as Pi does when it decides to compact: the tokens the provider reported
+for the last answer since the last compaction, plus an estimate of each message after it. `context.compactionAt` is
+where Pi starts a compaction in the background, the window less 16,384 tokens kept for the answer and 32,768 more;
+at the window less 16,384 it compacts before the next request.
 
 ### The brand's app (ADR 0041)
 
@@ -905,9 +922,19 @@ restart starts again from where it was. `conversation.configure {id, change: {ex
 
 Its mode, as pi-coding-agent's `codemode.mode` setting, is the kernel's, not a conversation's: `DROI_KERNEL_CODEMODE`
 (or the config file's `codemode.mode`) at launch, and `harness.configure {codemode: {mode}}` while it runs. `on`, the
-default, offers the model every tool and `codemode` beside them. `only` offers it `codemode` and the tools a script
-cannot call (`callers: ['model']`: `ask_user`, the Memory tools); every other tool, an MCP server's included, is reached
-from a script. A conversation that took `codemode` away keeps all its tools in either mode.
+default, offers the model every tool and `codemode` beside them. `only` offers it `codemode`, `read` and the tools a
+script cannot call (`callers: ['model']`: `ask_user`, the Memory tools); every other tool, an MCP server's included, is
+reached from a script. A model that calls one of those itself gets Pi's `tool_unavailable` with a line saying how to
+call it from a script. A conversation that took `codemode` away keeps all its tools in either mode.
+
+Scripts have three tools the model is never offered (`callers: ['tools']`), each answering an array:
+`grep {pattern, path?, glob?, ignoreCase?, literal?, limit?}` → `{matches: [{path, line, text}], truncated}`,
+`find {pattern, path?, limit?}` → `{paths, truncated}` and `ls {path?, limit?}` →
+`{entries: [{name, type, size}], truncated}`. Inside a git work tree `grep` and `find` see git's files (tracked and
+untracked, without the ignored ones). A script's `bash` or `powershell` call resolves to up to 1 MiB of output
+(the first and last 512 KiB around a marker when longer), where the model sees the last 2000 lines or 50 KB. A
+conversation with `codemode` has a `codemode-guidelines` prompt section on how to write a script: one nested call per
+command, independent ones together, filtering in JavaScript rather than in a shell pipeline.
 
 Each call the script makes is a tool call of its own: the approval policy judges it as it would the model's
 (an `ask` level asks for the script, then for each call it makes), and `pi.live.nestedTools` shows it while it

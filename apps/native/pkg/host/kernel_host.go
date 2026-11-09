@@ -54,6 +54,9 @@ type kernelHost struct {
 	section string
 	// codemode is codemode's mode the Kernel has, as the latest launch or harness.configure gave it.
 	codemode string
+	// compaction is the compaction model the Kernel has, by ModelKey, as the latest launch or harness.configure gave
+	// it.
+	compaction string
 	// listed are the models the Kernel was last given, with the context windows their sources list.
 	listed []KernelModelContext
 	// link is the Host's own connection to the Kernel, over which a change of its settings reaches it
@@ -297,6 +300,10 @@ func (h *Host) kernelEnv() []string {
 	}
 	codemode := h.KernelCodemode()
 	env = append(env, kernel.CodemodeEnv+"="+codemode)
+	compaction := h.KernelCompactionModel()
+	if compaction != "" {
+		env = append(env, kernel.CompactionModelEnv+"="+compaction)
+	}
 	agent := h.kernelAgent()
 	if !agent.Empty() {
 		if b, err := json.Marshal(agent); err == nil {
@@ -307,6 +314,7 @@ func (h *Host) kernelEnv() []string {
 	k.memoryOn = memoryOn
 	k.section = agent.Section
 	k.codemode = codemode
+	k.compaction = compaction
 	k.mu.Unlock()
 	// Stopped, or started again, while this launch was preparing: the proxy does not take its token.
 	providers, _, ok := h.loadModelSources(token, runs, true)

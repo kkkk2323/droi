@@ -138,7 +138,7 @@ export class ScriptedModel {
       const whole = messages.map((m) => textOf(m.content)).join('\n')
       const index = this.#completions.findIndex((c) => !c.match || whole.includes(c.match))
       const answer = index === -1 ? FAKE_TITLE : this.#completions.splice(index, 1)[0]!.text
-      if (request.stream) await stream(res, { text: answer }, req)
+      if (request.stream) await stream(res, { text: answer }, req, promptTokens(messages))
       else answerWhole(res, answer)
       return
     }
@@ -159,7 +159,7 @@ export class ScriptedModel {
       res.end(JSON.stringify({ error: { message: step.failure.body ?? 'failed' } }))
       return
     }
-    await stream(res, step, req)
+    await stream(res, step, req, promptTokens(messages))
   }
 }
 
@@ -182,6 +182,20 @@ function textOf(content: unknown): string {
 
 const usage = { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }
 
+/** What a provider would count the request's text as, at four characters to a token. */
+function promptTokens(messages: Array<{ content: unknown }>): number {
+  return Math.ceil(messages.reduce((chars, m) => chars + textOf(m.content).length, 0) / 4)
+}
+
+/**
+ * The usage a streamed answer reports: the request's text and the answer's, at four characters to a token, so the
+ * Kernel's context count, which takes the provider's word for it, grows as a real one does.
+ */
+function streamedUsage(prompt: number, step: Step) {
+  const completion = Math.ceil((step.text ?? JSON.stringify(step.call ?? '')).length / 4)
+  return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion }
+}
+
 function answerWhole(res: ServerResponse, text: string): void {
   res.writeHead(200, { 'content-type': 'application/json' })
   res.end(
@@ -196,7 +210,12 @@ function answerWhole(res: ServerResponse, text: string): void {
   )
 }
 
-async function stream(res: ServerResponse, step: Step, req: IncomingMessage): Promise<void> {
+async function stream(
+  res: ServerResponse,
+  step: Step,
+  req: IncomingMessage,
+  prompt: number,
+): Promise<void> {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
   let gone = false
   req.on('close', () => (gone = true))
@@ -252,6 +271,6 @@ async function stream(res: ServerResponse, step: Step, req: IncomingMessage): Pr
     }
     send({}, 'stop')
   }
-  send({}, null, { choices: [], usage })
+  send({}, null, { choices: [], usage: streamedUsage(prompt, step) })
   if (!gone) res.end('data: [DONE]\n\n')
 }

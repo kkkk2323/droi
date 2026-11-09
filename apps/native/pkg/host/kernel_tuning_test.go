@@ -51,6 +51,29 @@ func TestTheKernelIsToldCodemodesMode(t *testing.T) {
 	}
 }
 
+// The compaction model reaches a Kernel at launch as provider/modelId, and none is given for each conversation's own.
+func TestTheKernelIsToldTheCompactionModel(t *testing.T) {
+	h := testHost(t)
+	t.Cleanup(h.KeyPool().Stop)
+	model := func() (string, bool) {
+		for _, kv := range h.kernelEnv() {
+			if v, ok := strings.CutPrefix(kv, kernel.CompactionModelEnv+"="); ok {
+				return v, true
+			}
+		}
+		return "", false
+	}
+	if got, ok := model(); ok {
+		t.Fatalf("by default the Kernel got %q", got)
+	}
+	if err := h.Settings.Update(func(s *Settings) { s.CompactionModel = ModelKey("factory-chat", "small") }); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := model(); got != "factory-chat/small" {
+		t.Fatalf("with a compaction model set the Kernel got %q", got)
+	}
+}
+
 // Codemode's mode and a model's context window, changed in Settings, reach the running Kernel without a restart:
 // harness.info reports the window, and in only the model's request declares no bash of its own.
 func TestCodemodeAndContextWindowsReachTheRunningKernel(t *testing.T) {
@@ -101,5 +124,24 @@ func TestCodemodeAndContextWindowsReachTheRunningKernel(t *testing.T) {
 	}
 	if listed == 0 || listed == 64_000 {
 		t.Fatalf("the source's window is %d", listed)
+	}
+
+	// The compaction model, set and cleared, reaches the same Kernel.
+	if err := hk.h.SetKernelCompactionModel(ModelKey(chat.Provider, chat.ModelID)); err != nil {
+		t.Fatal(err)
+	}
+	harnessChanged(t, ctx, c)
+	hk.stillRunning(t, first)
+	if info, err := c.Harness(ctx); err != nil || info.Compaction == nil || info.Compaction.Model == nil ||
+		*info.Compaction.Model != (kernel.ModelRef{Provider: chat.Provider, ModelID: chat.ModelID}) {
+		t.Fatalf("the Kernel's compaction model is %+v (%v)", info.Compaction, err)
+	}
+	if err := hk.h.SetKernelCompactionModel(""); err != nil {
+		t.Fatal(err)
+	}
+	harnessChanged(t, ctx, c)
+	hk.stillRunning(t, first)
+	if info, err := c.Harness(ctx); err != nil || info.Compaction == nil || info.Compaction.Model != nil {
+		t.Fatalf("cleared, the Kernel's compaction model is %+v (%v)", info.Compaction, err)
 	}
 }

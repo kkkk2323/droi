@@ -81,6 +81,12 @@ export type KernelConfig = {
    * `harness.configure {codemode: {mode}}` changes it for every conversation's next request.
    */
   codemodeMode?: CodemodeMode
+  /**
+   * The model that writes every compaction's summary (`DROI_KERNEL_COMPACTION_MODEL` as `provider/modelId`, or the
+   * config file's `compaction.model`); unset, each conversation's own. `harness.configure {compaction: {model}}`
+   * changes it for the next compaction.
+   */
+  compactionModel?: { provider: string; modelId: string }
 }
 
 /**
@@ -307,6 +313,42 @@ export function codemodeModeFrom(
   return mode
 }
 
+/**
+ * `DROI_KERNEL_COMPACTION_MODEL` (`provider/modelId`: a provider id has no `/`, a model id may), else the config
+ * file's `compaction.model` (`{provider, modelId}`); undefined for each conversation's own model.
+ */
+export function compactionModelFrom(
+  file: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): { provider: string; modelId: string } | undefined {
+  const given = env['DROI_KERNEL_COMPACTION_MODEL']
+  if (given !== undefined && given.trim() !== '') {
+    const at = given.indexOf('/')
+    if (at <= 0 || at === given.length - 1)
+      throw new Error(`DROI_KERNEL_COMPACTION_MODEL must be provider/modelId, not ${given}`)
+    return { provider: given.slice(0, at), modelId: given.slice(at + 1) }
+  }
+  const model = (file as { model?: unknown } | undefined)?.model
+  if (model === undefined || model === null) return undefined
+  const ref = modelRefOf(model)
+  if (ref === undefined) throw new Error('compaction.model must be {provider, modelId}')
+  return ref
+}
+
+/** `{provider, modelId}` with two non-empty strings, else undefined. */
+export function modelRefOf(value: unknown): { provider: string; modelId: string } | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const { provider, modelId } = value as { provider?: unknown; modelId?: unknown }
+  if (
+    typeof provider !== 'string' ||
+    provider === '' ||
+    typeof modelId !== 'string' ||
+    modelId === ''
+  )
+    return undefined
+  return { provider, modelId }
+}
+
 /** Read the config file, or the empty config when there is none. */
 export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): KernelConfig {
   let file: Partial<KernelConfig> = {}
@@ -320,6 +362,7 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
   const memoryDir = memoryDirFromEnv(env)
   const app = appAgentFromEnv(env)
   const codemodeMode = codemodeModeFrom((file as { codemode?: unknown }).codemode, env)
+  const compactionModel = compactionModelFrom((file as { compaction?: unknown }).compaction, env)
   return {
     port: args.port,
     host: args.host,
@@ -334,5 +377,6 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     viewPushesPerSecond: file.viewPushesPerSecond ?? 5,
     ...(app === undefined ? {} : { app }),
     ...(codemodeMode === undefined ? {} : { codemodeMode }),
+    ...(compactionModel === undefined ? {} : { compactionModel }),
   }
 }

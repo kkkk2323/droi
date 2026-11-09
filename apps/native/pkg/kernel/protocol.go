@@ -114,6 +114,10 @@ const MemoryDirEnv = "DROI_MEMORY_DIR"
 // CodemodeEnv is codemode's mode a Kernel is started with, CodemodeOn or CodemodeOnly; without it, CodemodeOn.
 const CodemodeEnv = "DROI_KERNEL_CODEMODE"
 
+// CompactionModelEnv is the model a Kernel is started with to write every compaction's summary, as provider/modelId;
+// without it, each conversation's own.
+const CompactionModelEnv = "DROI_KERNEL_COMPACTION_MODEL"
+
 // AppAgentEnv carries what a brand's app gives every conversation, an AppAgent as JSON (ADR 0041).
 const AppAgentEnv = "DROI_KERNEL_AGENT"
 

@@ -65,9 +65,9 @@ describe('the platform tool layer', () => {
 
   test('the extension carries the reading tools and a section for each platform', () => {
     const mac = codingTools({ platform: 'darwin' })
-    expect(mac.names).toEqual(['read', 'write', 'edit', 'bash'])
+    expect(mac.names).toEqual(['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls'])
     const windows = codingTools({ platform: 'win32', ...windowsEnv(false) })
-    expect(windows.names).toEqual(['read', 'write', 'edit', 'powershell'])
+    expect(windows.names).toEqual(['read', 'write', 'edit', 'powershell', 'grep', 'find', 'ls'])
     expect(mac.extension.sections?.map((section) => section.key)).toEqual(['environment', 'cwd'])
   })
 })

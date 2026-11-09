@@ -161,15 +161,16 @@ describe('codemode', () => {
     expect(await offered(b, id)).not.toContain('codemode')
   }, 60_000)
 
-  test('in only mode the model is offered codemode and what a script cannot call, and scripts still call the rest', async () => {
+  test('in only mode the model is offered codemode, read and what a script cannot call, and scripts still call the rest', async () => {
     const b = await boot({ codemodeMode: 'only' })
     writeFileSync(join(b.dir, 'a.txt'), 'only through a script')
     const id = await conversation(b)
     const tools = await offered(b, id)
     expect(tools).toContain('codemode')
     expect(tools).toContain('ask_user')
-    expect(tools).not.toContain('read')
-    expect(tools).not.toContain('bash')
+    expect(tools).toContain('read')
+    for (const name of ['bash', 'edit', 'write', 'grep', 'find', 'ls'])
+      expect(tools).not.toContain(name)
     const info = await b.client.call('harness.info', {})
     expect(info['codemode']).toEqual({ mode: 'only' })
     script(b, 'const t = await tools.read({ path: "a.txt" }); text(t); return "ok"')
@@ -187,15 +188,121 @@ describe('codemode', () => {
       id: direct,
       change: { extensions: { remove: ['codemode'] } },
     })
-    expect(await offered(b, id)).toContain('read')
+    expect(await offered(b, id)).toContain('bash')
     await b.client.call('harness.configure', { codemode: { mode: 'only' } })
-    expect(await offered(b, id)).not.toContain('read')
-    expect(await offered(b, direct)).toContain('read')
+    expect(await offered(b, id)).not.toContain('bash')
+    expect(await offered(b, direct)).toContain('bash')
     await b.client.call('harness.configure', { codemode: { mode: 'on' } })
-    expect(await offered(b, id)).toContain('read')
+    expect(await offered(b, id)).toContain('bash')
     await expect(
       b.client.call('harness.configure', { codemode: { mode: 'off' } }),
     ).rejects.toThrow()
+  }, 60_000)
+
+  test('in only mode a direct call of a script-only tool says how to make it from a script', async () => {
+    const b = await boot({ codemodeMode: 'only' })
+    const id = await conversation(b)
+    b.faux.faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('bash', { command: 'echo hi' }), { stopReason: 'toolUse' }),
+      fauxAssistantMessage('done'),
+    ])
+    await b.client.call('conversation.submit', { id, input: 'run it' })
+    const entry = await result(b.client, id)
+    const said = entry.model?.[0]?.content.map((part) => part.text ?? '').join('\n') ?? ''
+    expect(said).toContain('is not available')
+    expect(said).toContain('await tools.bash(args)')
+  }, 60_000)
+
+  test('a script gets the whole output of a long command, the card still a cut of it', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    // 30,000 lines, about 170 KB: past the 2000 lines and 50 KB the model sees, which keep only the tail.
+    script(
+      b,
+      'const r = await tools.bash({ command: "seq 1 30000" }); const lines = r.output.trim().split("\\n"); return JSON.stringify({ first: lines[0], count: lines.length, truncated: r.truncated })',
+    )
+    await b.client.call('conversation.submit', { id, input: 'count' })
+    const entry = await result(b.client, id)
+    const said = entry.model?.[0]?.content.map((part) => part.text ?? '').join('') ?? ''
+    expect(said).toContain('"first":"1"')
+    expect(said).toContain('"count":30000')
+    expect(said).toContain('"truncated":false')
+    const [call] = callsOf(entry)
+    expect(Buffer.byteLength(call?.output ?? '', 'utf8')).toBeLessThanOrEqual(NESTED_OUTPUT_BYTES)
+  }, 60_000)
+
+  test('a direct bash call still gives the model the tail it always had', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    b.faux.faux.setResponses([
+      fauxAssistantMessage(fauxToolCall('bash', { command: 'seq 1 30000' }), {
+        stopReason: 'toolUse',
+      }),
+      fauxAssistantMessage('done'),
+    ])
+    await b.client.call('conversation.submit', { id, input: 'run it' })
+    const said =
+      (await result(b.client, id)).model?.[0]?.content.map((part) => part.text ?? '').join('') ?? ''
+    expect(said).toContain('30000')
+    expect(said).not.toMatch(/^1\n2\n/)
+  }, 60_000)
+
+  test('grep, find and ls answer a script arrays, and git decides which files there are', async () => {
+    const b = await boot()
+    const repo = join(b.dir, 'repo')
+    mkdirSync(join(repo, 'src', 'deep'), { recursive: true })
+    writeFileSync(join(repo, '.gitignore'), 'built/\n')
+    writeFileSync(join(repo, 'src', 'a.ts'), 'export const a = 1\n// TODO: one\n')
+    writeFileSync(join(repo, 'src', 'deep', 'b.ts'), 'const b = 2 // todo: two\n')
+    writeFileSync(join(repo, 'src', 'c.go'), 'package c // TODO: three\n')
+    mkdirSync(join(repo, 'built'))
+    writeFileSync(join(repo, 'built', 'x.ts'), '// TODO: ignored\n')
+    Bun.spawnSync(['git', 'init', '-q'], { cwd: repo })
+    const id = await conversation(b)
+    script(
+      b,
+      [
+        'const g = await tools.grep({ pattern: "todo", ignoreCase: true, path: "repo", glob: "*.ts" })',
+        'const f = await tools.find({ pattern: "*.ts", path: "repo" })',
+        'const l = await tools.ls({ path: "repo/src" })',
+        'return JSON.stringify({ g: g.matches.map((m) => m.path + ":" + m.line), f: f.paths, l: l.entries.map((e) => e.name + "/" + e.type) })',
+      ].join('\n'),
+    )
+    await b.client.call('conversation.submit', { id, input: 'search' })
+    const entry = await result(b.client, id)
+    const said = entry.model?.[0]?.content.map((part) => part.text ?? '').join('') ?? ''
+    const answer = JSON.parse(said.slice(said.indexOf('{'), said.lastIndexOf('}') + 1)) as {
+      g: string[]
+      f: string[]
+      l: string[]
+    }
+    expect(answer.g.sort()).toEqual(['repo/src/a.ts:2', 'repo/src/deep/b.ts:1'])
+    expect(answer.f.sort()).toEqual(['repo/src/a.ts', 'repo/src/deep/b.ts'])
+    expect(answer.l).toEqual(['a.ts/file', 'c.go/file', 'deep/directory'])
+    expect(callsOf(entry).map((call) => call.name)).toEqual(['grep', 'find', 'ls'])
+  }, 60_000)
+
+  test('a conversation with codemode is told how to write a script; one without is not', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    const direct = await conversation(b)
+    await b.client.call('conversation.configure', {
+      id: direct,
+      change: { extensions: { remove: ['codemode'] } },
+    })
+    const prompts: string[] = []
+    // The system prompt is the request's system message.
+    const answer = (request: { messages: { role: string; content: unknown }[] }) => {
+      prompts.push(JSON.stringify(request.messages.filter((message) => message.role === 'system')))
+      return fauxAssistantMessage('ok')
+    }
+    b.faux.faux.setResponses([answer, answer])
+    await b.client.call('conversation.submit', { id, input: 'hi' })
+    await until(async () => (prompts.length >= 1 ? true : undefined))
+    await b.client.call('conversation.submit', { id: direct, input: 'hi' })
+    await until(async () => (prompts.length >= 2 ? true : undefined))
+    expect(prompts[0]).toContain('How to write codemode scripts')
+    expect(prompts[1]).not.toContain('How to write codemode scripts')
   }, 60_000)
 
   test("a script's own calls wait for the approval policy too", async () => {

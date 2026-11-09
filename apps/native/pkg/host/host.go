@@ -236,6 +236,7 @@ func (h *Host) Changed() {
 		h.kernelMemoryChanged()
 		h.kernelSectionChanged()
 		h.kernelCodemodeChanged()
+		h.kernelCompactionChanged()
 		h.kernelModelsChanged()
 	}()
 	h.changed()

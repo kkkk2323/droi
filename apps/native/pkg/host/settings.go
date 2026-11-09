@@ -68,6 +68,9 @@ type Settings struct {
 	ConversationPolicies map[string]ConversationPolicy `json:"conversationPolicies,omitempty"`
 	// CodemodeMode is how the Kernel's codemode presents tools: kernel.CodemodeOnly, else kernel.CodemodeOn.
 	CodemodeMode string `json:"codemodeMode,omitempty"`
+	// CompactionModel is the Kernel model, by ModelKey, that writes every compaction's summary; "" for each
+	// conversation's own.
+	CompactionModel string `json:"compactionModel,omitempty"`
 	// ModelContextWindows are the context windows set for the Kernel's models, in tokens, by ModelKey: each takes the
 	// place of the one its Model Source lists, which is also where the Kernel compacts. Replace the map, do not
 	// change it in place: Get's copies share it.

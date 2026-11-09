@@ -1796,6 +1796,8 @@ var zh = map[string]string{
 	"The compaction failed: %s":   "压缩失败：%s",
 	"The compaction was stopped.": "压缩已停止。",
 	"no reason given":             "没有给出原因",
-	"on: the model gets every tool, and codemode beside them to run a script that calls them. only: the model gets codemode and the tools a script cannot call (ask_user, Memory), and calls every other tool from a script. Every Session has it from its next message.": "on：模型拿到所有工具，另外还有 codemode，可以写脚本调用它们。only：模型只拿到 codemode 和脚本调不到的工具（ask_user、Memory），其他工具都要通过脚本调用。所有会话从下一条消息开始生效。",
-	"Context compacted: the earlier messages are summarised for the model.": "上下文已压缩：较早的消息已为模型总结。",
+	"on: the model gets every tool, and codemode beside them to run a script that calls them. only: the model gets codemode, read, and the tools a script cannot call (ask_user, Memory), and calls every other tool from a script. Every Session has it from its next message.": "on：模型拿到所有工具，另外还有 codemode，可以写脚本调用它们。only：模型只拿到 codemode、read 和脚本调不到的工具（ask_user、Memory），其他工具都要通过脚本调用。所有会话从下一条消息开始生效。",
+	"Session's own model": "会话自己的模型",
+	"The model that writes the summary when a Session is compacted. A cheaper, faster model makes compaction cheaper; if it fails, the Session's own model writes the summary.": "压缩会话时写摘要的模型。用更便宜、更快的模型可以降低压缩成本；它失败时，由会话自己的模型来写。",
+	"Context compacted: the earlier messages are summarised for the model.":                                                                                                     "上下文已压缩：较早的消息已为模型总结。",
 }
