@@ -276,7 +276,6 @@ var zh = map[string]string{
 	"Default autonomy level":   "默认 Autonomy 级别",
 	"Default interaction mode": "默认交互模式",
 	"Default model":            "默认模型",
-	"Default reasoning level":  "默认 Reasoning 级别",
 	"Default tool calls":       "默认工具调用",
 	"Delete":                   "删除",
 	"Delete local branch":      "删除本地分支",
