@@ -238,6 +238,13 @@ func (a *App) generalTab(c *ui.Context) {
 				go a.reloadList()
 			}
 		}, nil)
+	}, func() {
+		a.settingRow(c, L("Show Workstreams"), L("Show the Workstreams group in the sidebar. When off, your Workstreams keep running."), func() {
+			on := prefs.ShowWorkstreams.Get(a.prefs)
+			if a.toggle(c, L("Show Workstreams"), on, false) {
+				prefs.ShowWorkstreams.Set(a.prefs, !on)
+			}
+		}, nil)
 	})
 }
 

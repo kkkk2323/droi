@@ -289,6 +289,9 @@ var (
 	ShowArchived   = Bool{Key: "droi.showArchived"}
 	FavoriteModels = List{Key: "droi.favoriteModels"}
 	LastSessionID  = String{Key: "droi.lastSession"}
+	// ShowWorkstreams is Settings' "Show Workstreams": off, the sidebar has no
+	// Workstreams group, and the Workstreams keep running.
+	ShowWorkstreams = Bool{Key: "droi.showWorkstreams", Fallback: true}
 	// SkippedUpdate is the release Skip this version passed over.
 	SkippedUpdate = String{Key: "droi.skippedUpdate"}
 	// AutoUpdate is About's "Install updates automatically"; off, an update

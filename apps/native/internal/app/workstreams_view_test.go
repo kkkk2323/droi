@@ -86,6 +86,34 @@ func TestTheSidebarListsWorkstreamsAboveTheWorkspaces(t *testing.T) {
 	}
 }
 
+// Settings' "Show Workstreams", off, takes the Workstreams group out of the
+// sidebar, orchestrators included, and leaves the Workstreams as they are;
+// on again, the group is back.
+func TestShowWorkstreamsOffHidesTheGroup(t *testing.T) {
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}
+	h := workstreamsHarness(t, fake, nil)
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") && h.hasText("Payment migration lead") })
+
+	h.openSettingsTab("general")
+	h.clickSwitch("Show Workstreams", func() bool { return !prefs.ShowWorkstreams.Get(h.a.prefs) })
+	h.a.Go(Route{Name: "home"})
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.settle()
+	for _, gone := range []string{"Workstreams", "Payment migration lead", "New Workstream"} {
+		if h.hasText(gone) || h.finds(gone) {
+			t.Errorf("%q is still in the sidebar: %q", gone, h.tt.Texts())
+		}
+	}
+	if len(h.a.workstreams.list) != 1 {
+		t.Fatalf("hiding the group changed the Workstreams: %v", h.a.workstreams.list)
+	}
+
+	h.openSettingsTab("general")
+	h.clickSwitch("Show Workstreams", func() bool { return prefs.ShowWorkstreams.Get(h.a.prefs) })
+	h.a.Go(Route{Name: "home"})
+	h.until("the group again", func() bool { return h.hasText("Payment migration lead") && h.finds("New Workstream") })
+}
+
 // A Workstream's row says how many of its agents wait on the user or work.
 func TestAWorkstreamRowSaysWhatItsAgentsDo(t *testing.T) {
 	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
