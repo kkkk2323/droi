@@ -59,6 +59,58 @@ func codemodeNested(parent string, details json.RawMessage) []*ToolCall {
 	return nested
 }
 
+// EntryCodemodeDone is the entry a background script's end writes: its result, for the model and the card.
+const EntryCodemodeDone = "droi.codemode.done"
+
+// backgroundJob is the job a codemode result started, from its details' background: 0 for a script that ran here.
+func backgroundJob(details json.RawMessage) int64 {
+	if len(details) == 0 {
+		return 0
+	}
+	var d struct {
+		Background *struct {
+			JobID int64 `json:"jobId"`
+		} `json:"background"`
+	}
+	if json.Unmarshal(details, &d) != nil || d.Background == nil {
+		return 0
+	}
+	return d.Background.JobID
+}
+
+// jobDone is a background script's end, as its entry carries it.
+type jobDone struct {
+	JobID   int64           `json:"jobId"`
+	CallID  string          `json:"callId"`
+	Status  string          `json:"status"`
+	Output  string          `json:"output"`
+	Details json.RawMessage `json:"details"`
+}
+
+func jobDoneOf(e kernel.Entry) (jobDone, bool) {
+	var d jobDone
+	if len(e.Data) == 0 || json.Unmarshal(e.Data, &d) != nil || d.CallID == "" {
+		return jobDone{}, false
+	}
+	return d, true
+}
+
+// jobDoneBlock is the note a background script's end draws where it ended.
+func jobDoneBlock(e kernel.Entry) (Block, bool) {
+	d, ok := jobDoneOf(e)
+	if !ok {
+		return Block{}, false
+	}
+	text := l10n.L("Background script %d finished.", d.JobID)
+	switch d.Status {
+	case "failed":
+		text = l10n.L("Background script %d failed.", d.JobID)
+	case "stopped":
+		text = l10n.L("Background script %d was stopped.", d.JobID)
+	}
+	return Block{Kind: Text, ID: entryID(e) + ":0:0", Text: text}, true
+}
+
 // liveNested are the calls running scripts are making now, by the script's call ID: pi.live's nestedTools, which
 // hold a call until it settles. A script's card shows them until its result lists them all.
 func liveNested(view kernel.View) map[string][]*ToolCall {

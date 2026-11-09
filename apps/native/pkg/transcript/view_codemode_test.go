@@ -188,3 +188,38 @@ func TestAKernelWriteShowsTheFileItWrote(t *testing.T) {
 		t.Fatalf("write's diff is %+v", d)
 	}
 }
+
+// TestABackgroundScriptRunsOnThenShowsItsResult: a background script's card says it is still running until its job
+// ends; then it shows the job's output and calls, and a note marks where it ended.
+func TestABackgroundScriptRunsOnThenShowsItsResult(t *testing.T) {
+	started := []map[string]any{{
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Started in the background as job 16.")},
+		"details": map[string]any{"calls": []any{}, "background": map[string]any{"jobId": 16}},
+	}}
+	base := []kernel.Entry{
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		codemodeCall(t),
+		entry(t, 3, kernel.EntryToolResult, started, nil),
+	}
+	call := transcript.BuildView(viewOf(base...))[1].Blocks[0].Calls[0]
+	if run := transcript.ReadScriptRun(call); run.Status != "running" {
+		t.Fatalf("a started job's run is %+v", run)
+	}
+	done := entry(t, 5, transcript.EntryCodemodeDone, nil, map[string]any{
+		"jobId": 16, "callId": "cm", "status": "completed", "output": "Script completed\nhi",
+		"details": map[string]any{"calls": []map[string]any{{"id": 1, "name": "read", "args": "{}", "status": "ok", "output": "hello"}}},
+	})
+	rows := transcript.BuildView(viewOf(append(base, done)...))
+	call = rows[1].Blocks[0].Calls[0]
+	if run := transcript.ReadScriptRun(call); run.Status != "completed" || !strings.Contains(run.Output, "hi") {
+		t.Fatalf("an ended job's run is %+v", run)
+	}
+	if len(call.Nested) != 1 || call.Nested[0].Use.Name != "read" {
+		t.Fatalf("an ended job's calls: %+v", call.Nested)
+	}
+	last := rows[len(rows)-1]
+	if !last.Note || !strings.Contains(last.Blocks[0].Text, "16") {
+		t.Fatalf("the last row is %+v", last)
+	}
+}

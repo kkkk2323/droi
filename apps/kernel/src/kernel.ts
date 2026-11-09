@@ -136,7 +136,14 @@ export async function startKernel(
     const backgroundTool = backgroundExtension(() => background)
     /** The MCP servers as codemode groups their tools: `McpServers` keeps the list current. */
     const namespaces: CodemodeNamespace[] = []
-    const codemode = codemodeExtension({ sandbox: codemodeSandbox(), namespaces })
+    const codemode = codemodeExtension({
+      sandbox: codemodeSandbox(),
+      namespaces,
+      // Read once the harness is open: a background script is stopped as Harness.abortTask stops a task.
+      abortTask: async (id) => {
+        await harness?.abortTask(id as never, context)
+      },
+    })
     // Always installed, and selected per conversation before each turn while Memory is on (selectMemory), so
     // harness.configure can turn it on or off without a restart. The folder is read as config holds it then.
     const memory = memoryExtension({

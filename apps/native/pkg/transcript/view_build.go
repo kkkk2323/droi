@@ -88,8 +88,11 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 			// A reset's handoff may carry a message; it is not something the user said. It marks where the context
 			// moved and draws no row yet.
 			boundary = true
-		case kernel.EntryNote:
+		case kernel.EntryNote, EntryCodemodeDone:
 			block, ok := noteBlock(entry)
+			if entry.Kind == EntryCodemodeDone {
+				block, ok = jobDoneBlock(entry)
+			}
 			if !ok {
 				continue
 			}
@@ -286,12 +289,40 @@ func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 		for _, m := range bl.messagesOf(entry) {
 			if m.Role == "toolResult" && m.ToolCallID != "" {
 				m.Diagnostics = diagnostics
-				out[m.ToolCallID] = m.resultView()
+				view := m.resultView()
+				out[m.ToolCallID] = view
 				if m.ToolName == CodemodeTool {
+					if job := backgroundJob(m.Details); job != 0 {
+						// A background script: its calls are pi.live's while it runs, and its result's once it ends.
+						view.Background = &BackgroundJob{ID: job}
+						continue
+					}
 					bl.scripts[m.ToolCallID] = codemodeNested(m.ToolCallID, m.Details)
 				}
 			}
 		}
+	}
+	for _, entry := range view.Entries {
+		if entry.Kind != EntryCodemodeDone {
+			continue
+		}
+		done, ok := jobDoneOf(entry)
+		if !ok {
+			continue
+		}
+		result := out[done.CallID]
+		if result == nil || result.Background == nil {
+			continue
+		}
+		result.Background.Done = true
+		result.Text = withoutTrailingNewlines(done.Output)
+		switch done.Status {
+		case "failed":
+			result.IsError = true
+		case "stopped":
+			result.Interrupted = true
+		}
+		bl.scripts[done.CallID] = codemodeNested(done.CallID, done.Details)
 	}
 	return out
 }

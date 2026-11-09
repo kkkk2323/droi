@@ -951,6 +951,18 @@ others `cancelled`.
 A script runs until it ends, the user stops it, or its `// @options: {"timeout_ms": …}` line's time is up; with
 no such line, for 30 minutes.
 
+**Background scripts.** A script whose options line has `"background": true` runs as a job: `codemode` answers at
+once (`Started in the background as job <id>`, `details: {calls: [], background: {jobId}}`) and the turn goes on.
+The job is a `background` task of the conversation (`droi.codemode.job`), so Stop and the turn's end do not wait on
+it and a restart resumes it, replaying what its script was handed. Its calls are tool tasks of its own: the approval
+policy judges each, and while the conversation is idle `pi.live.nestedTools` shows them under the card of the call
+that started it (a new round deletes those slots; the job keeps its own list). When it ends it writes a
+`droi.codemode.done` entry, `{jobId, callId, status: completed | failed | stopped, output, details: {calls}}`, whose
+user message carries the result to the model: placed as a follow-up input while a run is in progress, or appended
+to the context while the conversation is idle (no run starts). The model's `codemode_job {id, wait_seconds?,
+stop?}` reports a job, waits up to 600 seconds for it, or stops it (`Harness.abortTask`): calls still running are
+cancelled, those that ended keep their answers.
+
 A call a restart cut off is not run twice when its tool is not safe to repeat (`bash`): it ends as `error`, and
 the script goes on with that answer.
 

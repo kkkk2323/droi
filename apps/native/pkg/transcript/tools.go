@@ -432,6 +432,15 @@ type ToolResultView struct {
 	Notes  string
 	Diff   *Diff
 	Status *Status
+	// Background is the job a background codemode script runs as; nil for any other call.
+	Background *BackgroundJob
+}
+
+// BackgroundJob is a codemode script that runs on in the background: the job's id, and whether it has ended, its
+// result then in the call's.
+type BackgroundJob struct {
+	ID   int64
+	Done bool
 }
 
 func ReadResult(c *ToolCall) ToolResultView {
@@ -541,7 +550,7 @@ func ReadScriptRun(c *ToolCall) ScriptRun {
 func kernelScriptRun(v ToolResultView) ScriptRun {
 	run := ScriptRun{Images: v.Images}
 	switch {
-	case v.Pending:
+	case v.Pending, v.Background != nil && !v.Background.Done:
 		run.Status = "running"
 		run.Output = v.Text
 	case v.Interrupted:
