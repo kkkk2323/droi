@@ -497,6 +497,13 @@ func TestBuildViewStartsANewRowAfterTheContextMoves(t *testing.T) {
 				entry(t, 3, kernel.EntryAssistant, assistantMessage(t, 3000, "stop", text("after")), nil),
 			)
 			got := transcript.BuildView(v)
+			// A compaction is a note of its own between the two, which says the context moved; a reset draws none.
+			if kind == kernel.EntryCompaction {
+				if len(got) != 3 || !got[1].Note || !strings.Contains(got[1].Blocks[0].Text, "Context compacted") {
+					t.Fatalf("%d rows, no compaction note between them: %+v", len(got), got)
+				}
+				got = []*transcript.Entry{got[0], got[2]}
+			}
 			if len(got) != 2 {
 				t.Fatalf("%d rows: the answers folded across a %s", len(got), kind)
 			}

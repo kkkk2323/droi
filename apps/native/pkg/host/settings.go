@@ -66,6 +66,12 @@ type Settings struct {
 	// ConversationPolicies are what Kernel conversations have of their own approval policy, by conversation id
 	// (kernel_policy.go).
 	ConversationPolicies map[string]ConversationPolicy `json:"conversationPolicies,omitempty"`
+	// CodemodeMode is how the Kernel's codemode presents tools: kernel.CodemodeOnly, else kernel.CodemodeOn.
+	CodemodeMode string `json:"codemodeMode,omitempty"`
+	// ModelContextWindows are the context windows set for the Kernel's models, in tokens, by ModelKey: each takes the
+	// place of the one its Model Source lists, which is also where the Kernel compacts. Replace the map, do not
+	// change it in place: Get's copies share it.
+	ModelContextWindows map[string]int `json:"modelContextWindows,omitempty"`
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the

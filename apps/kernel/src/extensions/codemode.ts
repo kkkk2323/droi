@@ -5,8 +5,10 @@ import type {
   HookApi,
   NestedToolSlot,
   NestedToolExecutionResult,
+  RegistrySnapshot,
   ToolExecutionResult,
   ToolHookCall,
+  ToolRegistration,
 } from '@earendil-works/pi-durable'
 import {
   CODEMODE_TOOL_NAME,
@@ -35,6 +37,49 @@ const ARGS_PREVIEW_CHARS = 200
 
 /** Pi's prefix of the tools behind `models.*` (pi-durable codemode's CODEMODE_INTERNAL_PREFIX). */
 const INTERNAL_PREFIX = 'pi.codemode.'
+
+/**
+ * How codemode presents tools, as pi-coding-agent's `codemode.mode` setting: `on` offers the model every tool and
+ * codemode beside them; `only` offers it codemode and the tools a script cannot call (`callers: ['model']`, such as
+ * `ask_user`), so every other tool is reached from a script.
+ */
+export type CodemodeMode = 'on' | 'only'
+
+export function isCodemodeMode(value: unknown): value is CodemodeMode {
+  return value === 'on' || value === 'only'
+}
+
+/**
+ * `base`, the codemode extension, in `mode` over the tools installed in `snapshot`. In `only` it wraps each tool both
+ * the model and scripts may call so only scripts may: a wrap applies where codemode is selected, so a conversation that
+ * turned codemode off keeps its tools. The wraps follow the installed tools, so the caller installs this again whenever
+ * the registry changes (an MCP server connects); {@link codemodeKey} tells whether anything changed.
+ */
+export function codemodeInMode(
+  base: Extension,
+  snapshot: RegistrySnapshot,
+  mode: CodemodeMode,
+): Extension {
+  if (mode === 'on') return base
+  const names = new Set<string>()
+  for (const { extension, tool } of snapshot.tools()) {
+    if (extension.name === base.name) continue
+    const callers = tool.callers ?? ['model', 'tools']
+    if (callers.includes('model') && callers.includes('tools')) names.add(tool.name)
+  }
+  return {
+    ...base,
+    wraps: [...names].sort().map((name) => ({
+      tool: name,
+      wrap: (tool: ToolRegistration) => ({ ...tool, callers: ['tools'] as const }),
+    })),
+  }
+}
+
+/** What {@link codemodeInMode} made: the tools its wraps hide, so an unchanged one is not installed again. */
+export function codemodeKey(extension: Extension): string {
+  return (extension.wraps ?? []).map((wrap) => ('tool' in wrap ? wrap.tool : '')).join('\n')
+}
 
 /**
  * Codemode (design/m3-kernel.md §6): the `codemode` tool, which runs a model-written script that calls the

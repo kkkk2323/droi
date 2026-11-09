@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/v2/internal/slash"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/compaction"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
@@ -156,15 +158,29 @@ func (v *sessionView) send(s *sessionview.Snapshot, text string, images []attach
 // to a child Session, which this Client tags as the continuation and shows.
 func (v *sessionView) compact(instructions string) {
 	a := v.a
-	// The Kernel compacts in place, as a task of its own: the transcript shows the summary once it is written.
+	// The Kernel compacts in place, as a task of its own. The window waits for it, so the sidebar and the composer say
+	// it runs, and the footer says how it ended: one that found nothing to summarize is said, not silence.
 	if conv, ok := a.kernelID(v.id); ok && a.onKernel() {
+		v.a.cfg.Update(func() { v.SetCompacting(true) })
+		a.compactions.Start(v.id)
+		defer a.cfg.Update(func() { v.SetCompacting(false) })
 		c, err := a.kernel.client()
+		var res kernel.CompactResult
 		if err == nil {
-			_, err = c.Compact(a.ctx, kernel.CompactParams{ID: conv, Instructions: strings.TrimSpace(instructions)})
+			res, err = c.Compact(a.ctx, kernel.CompactParams{ID: conv, Instructions: strings.TrimSpace(instructions), Wait: true})
+		}
+		switch {
+		case err == nil && res.Outcome == kernel.CompactFailed:
+			err = errors.New(L("The compaction failed: %s", cmp.Or(res.Error, L("no reason given"))))
+		case err == nil && res.Outcome == kernel.CompactAborted:
+			err = errors.New(L("The compaction was stopped."))
 		}
 		if err != nil {
+			a.compactions.Fail(v.id)
 			v.Fail(err)
+			return
 		}
+		a.compactions.FinishDone(v.id, v.id, compaction.Done{FinishedAt: time.Now().UnixMilli(), Kernel: true, Nothing: res.Outcome == kernel.CompactNothing})
 		return
 	}
 	v.a.cfg.Update(func() { v.SetCompacting(true) })
@@ -743,12 +759,22 @@ func (v *sessionView) footer(c *ui.Context, s *sessionview.Snapshot, workspace s
 		if done, ok := a.compactions.Snapshot().Finished[v.id]; ok && done.NoticeShown(time.Now().UnixMilli()) {
 			c.After(time.Second)
 			ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(4)).MinWidth(0).Children(func() {
-				k.Icon(c, "check", 12, t.Success)
 				compacted := L("Compacted, %d messages summarised", done.RemovedCount)
-				if done.RemovedCount == 1 {
+				switch {
+				case done.Nothing:
+					compacted = L("Nothing to compact yet: the newest 20,000 tokens are kept as they are")
+				case done.Kernel:
+					compacted = L("Compacted, older messages summarised")
+				case done.RemovedCount == 1:
 					compacted = L("Compacted, %d message summarised", done.RemovedCount)
 				}
-				k.Text(c, compacted, 12, 16).TextColor(t.Success).SingleLine()
+				color := t.Success
+				icon := "check"
+				if done.Nothing {
+					color, icon = t.MutedForeground, "info"
+				}
+				k.Icon(c, icon, 12, color)
+				k.Text(c, compacted, 12, 16).TextColor(color).SingleLine()
 			})
 		}
 		ui.Spacer(c)

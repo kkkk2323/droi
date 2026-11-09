@@ -408,7 +408,7 @@ whether this build implements the method; `false` means `-32009 unsupported`.
 | Method                 | Params                                                                        | Result                                                                            | Capability      | M1  |
 | ---------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------- | --- |
 | `harness.info`         | —                                                                             | `{version, kernel, capabilities, providers, models, extensions, policy?, agent?}` | —               | yes |
-| `harness.configure`    | `{providers?, memoryDir?, section?, agent?}`                                  | `{}`                                                                              | —               | no  |
+| `harness.configure`    | `{providers?, memoryDir?, section?, agent?, codemode?}`                       | `{}`                                                                              | —               | no  |
 | `conversation.create`  | `{agent?, cwd?, instructions?, kind?, requestId?}`                            | `{conversationId, view}`                                                          | `conversations` | yes |
 | `conversation.list`    | `{kind?, archived?, workspace?, repoRoot?, parent?, query?, cursor?, limit?}` | `{items[], cursor?}`                                                              | `conversations` | yes |
 | `conversation.open`    | `{id, window?, subscribe?, seen?}`                                            | `{view, policy?, pending[]?}`                                                     | `conversations` | yes |
@@ -442,7 +442,7 @@ Three qualifications a client that reads a range needs:
 
 | `submission.abort` | `{id, submissionId}` | `{status}` | `conversations` | yes |
 | `conversation.configure` | `{id, change}` | `{agent}` | `conversations` | yes |
-| `conversation.compact` | `{id, instructions?}` | `{taskId}` | `compaction` | yes |
+| `conversation.compact` | `{id, instructions?, wait?}` | `{taskId, outcome?, error?}` | `compaction` | yes |
 | `conversation.fork` | `{id, at}` | `{conversationId, view}` | `fork` | yes |
 | `conversation.import` | `{id?, key?, entries, agent?, cwd?, kind?, title?, createdAt?, archived?, instructions?}` | `{conversationId, entryIds, replayed?}` | `import` | yes |
 | `conversation.entries` | `{id, query?, limit?, cursor?}` | `{items[], cursor?}` | `conversations` | yes |
@@ -467,6 +467,11 @@ Every M3 method is built (`processes`, `mcp`, `skills`, `resources` and `codemod
 answer for a method a build leaves out, with the capability that would bring it. `model.complete` is built: it reports
 `capabilities.models: true` and is the call a Host makes for a name or a Memory
 summary of its own (ADR 0042).
+
+`conversation.compact {wait: true}` answers once the compaction ended: `outcome` is `compacted` (the summary is
+written, or placed at the next boundary of a run under way), `nothing` (the whole context is within the newest part
+a summary keeps verbatim, about 20,000 tokens, so there was nothing to summarize), `failed` with `error`, or `aborted`.
+Without `wait` it answers `{taskId}` at once.
 
 ### Background processes: `bash_background`, `process.list`, `process.stop`
 
@@ -871,8 +876,9 @@ provider names the environment variable its key is read from. `section`, a strin
 the app's prompt section (below) from each conversation's next turn. `agent`, `{model: {provider, modelId},
 thinkingLevel?}` or `null`, is what a new conversation starts with when its create names no model: the Session
 defaults' model, which every client then starts with, a phone included. The model must be one the kernel offers;
-`harness.info` reports it as `agent` while one is set. Every connection hears `harness.changed {}`. A read-only
-kernel refuses it.
+`harness.info` reports it as `agent` while one is set. `codemode`, `{mode: 'on' | 'only'}`, is how codemode presents
+tools (below), from every conversation's next request; `harness.info` reports it as `codemode`. Every connection hears
+`harness.changed {}`. A read-only kernel refuses it.
 
 ### The brand's app (ADR 0041)
 
@@ -896,6 +902,12 @@ Every conversation is offered the `codemode` tool unless its extensions say othe
 its own, so a script that computes never holds up the kernel; Pi journals each result, so a script cut off by a
 restart starts again from where it was. `conversation.configure {id, change: {extensions: {remove:
 ['codemode']}}}` takes it away from one conversation, for good.
+
+Its mode, as pi-coding-agent's `codemode.mode` setting, is the kernel's, not a conversation's: `DROI_KERNEL_CODEMODE`
+(or the config file's `codemode.mode`) at launch, and `harness.configure {codemode: {mode}}` while it runs. `on`, the
+default, offers the model every tool and `codemode` beside them. `only` offers it `codemode` and the tools a script
+cannot call (`callers: ['model']`: `ask_user`, the Memory tools); every other tool, an MCP server's included, is reached
+from a script. A conversation that took `codemode` away keeps all its tools in either mode.
 
 Each call the script makes is a tool call of its own: the approval policy judges it as it would the model's
 (an `ask` level asks for the script, then for each call it makes), and `pi.live.nestedTools` shows it while it

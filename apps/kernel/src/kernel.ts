@@ -15,7 +15,7 @@ import { backgroundExtension } from './extensions/background.ts'
 import { Background } from './processes/background.ts'
 import { McpServers } from './mcp/servers.ts'
 import type { CodemodeNamespace } from '@earendil-works/pi-durable/codemode'
-import { codemodeExtension } from './extensions/codemode.ts'
+import { codemodeExtension, codemodeInMode, codemodeKey } from './extensions/codemode.ts'
 import { memoryExtension } from './extensions/memory.ts'
 import { codemodeSandbox } from './codemode/sandbox.ts'
 import { McpAuth } from './mcp/oauth.ts'
@@ -158,6 +158,19 @@ export async function startKernel(
     registry.install(codemode)
     registry.install(memory)
     for (const extension of options.extensions ?? []) registry.install(extension)
+    // Codemode as config says now: in `only` its wraps hide each tool a script can call from the model. They name the
+    // tools installed, so every change of the registry (a server that connects) makes them again; one that hides the
+    // same tools installs nothing, which is also what ends the change its own install publishes.
+    let codemodeShown = ''
+    const syncCodemode = (): void => {
+      const next = codemodeInMode(codemode, registry.snapshot(), config.codemodeMode ?? 'on')
+      const key = `${config.codemodeMode ?? 'on'}\n${codemodeKey(next)}`
+      if (key === codemodeShown) return
+      codemodeShown = key
+      registry.install(next)
+    }
+    registry.subscribe(syncCodemode)
+    syncCodemode()
 
     // A tool shell runs detached, outside the Kernel's own process group: this is what remembers it.
     tools = createToolProcesses({
@@ -334,6 +347,7 @@ export async function startKernel(
       registry,
       disabledSkills,
       tools: [...coding.names, 'bash_background'],
+      syncCodemode,
       version: VERSION,
       piVersion: PI_VERSION,
       capabilities: CAPABILITIES,

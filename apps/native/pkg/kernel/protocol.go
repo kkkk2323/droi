@@ -111,6 +111,9 @@ const (
 // Memory tools and no Memory in its prompt (ADR 0042).
 const MemoryDirEnv = "DROI_MEMORY_DIR"
 
+// CodemodeEnv is codemode's mode a Kernel is started with, CodemodeOn or CodemodeOnly; without it, CodemodeOn.
+const CodemodeEnv = "DROI_KERNEL_CODEMODE"
+
 // AppAgentEnv carries what a brand's app gives every conversation, an AppAgent as JSON (ADR 0041).
 const AppAgentEnv = "DROI_KERNEL_AGENT"
 

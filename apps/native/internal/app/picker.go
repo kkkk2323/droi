@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
@@ -19,6 +20,15 @@ type pickerState = settingsview.PickerState
 
 // pickerToolMode is the picker's Tools row, for a Session about to start.
 type pickerToolMode = settingsview.ToolModeChoice
+
+// pickerTools is the picker's Tools row for the Daemon's Script or Direct. The Kernel has none: its codemode mode is
+// the Host's, in Settings → Session defaults.
+func (a *App) pickerTools(value defaults.ToolMode, onChange func(defaults.ToolMode)) *pickerToolMode {
+	if a.onKernel() {
+		return nil
+	}
+	return &pickerToolMode{Value: value, OnChange: onChange}
+}
 
 // settingsBar is the SessionSettingsBar: the model with its reasoning
 // effort, and the autonomy level.
