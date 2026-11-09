@@ -97,6 +97,20 @@ describe('model.complete', () => {
     expect((await c.call('model.complete', params()))['text']).toBe('still here')
   })
 
+  test('JSON in a Markdown code fence is the JSON', async () => {
+    const c = await open()
+    const fenced = '```json\n{"title":"Kernel protocol fixtures"}\n```'
+    faux.faux.setResponses([fauxAssistantMessage(fenced)])
+    const answer = await c.call(
+      'model.complete',
+      params({
+        schema: { type: 'object', required: ['title'], properties: { title: { type: 'string' } } },
+      }),
+    )
+    expect(answer['json']).toEqual({ title: 'Kernel protocol fixtures' })
+    expect(answer['text']).toBe(fenced)
+  })
+
   test('an answer that is not JSON is -32014 too, not a parse error', async () => {
     const c = await open()
     faux.faux.setResponses([fauxAssistantMessage('not json at all')])

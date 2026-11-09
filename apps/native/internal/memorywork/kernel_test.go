@@ -191,7 +191,7 @@ func TestAKernelConversationIsSummarizedThroughModelComplete(t *testing.T) {
 	}
 	eq(t, len(k.calls), 2)
 	s := k.calls[0]
-	schema, _ := json.Marshal(SessionSummarySchema)
+	schema, _ := json.Marshal(map[string]any{"type": "object", "properties": SessionSummarySchema["properties"]})
 	eq(t, []any{s.Model, s.System, s.ThinkingLevel, string(s.Schema)}, []any{kernel.ModelRef{Provider: "factory", ModelID: "flash"}, "S", "low", string(schema)})
 	in := s.Input.(string)
 	if !strings.Contains(in, "User: Fix the login bug\nDroid: done: Fix the login bug\n[tool call] Execute {\"command\":\"pnpm test\"}\n[tool result] ok\nUser: 不对，用 pnpm\n") ||
@@ -230,6 +230,54 @@ func TestAKernelConversationIsSummarizedThroughModelComplete(t *testing.T) {
 		}
 	}
 	eq(t, summaries, []string{"session_summaries/2026-10-27T11-30-00-7-fix-login.md"})
+}
+
+// Model.complete offers no constrained output, so a summary with a field more than asked, or no slug, is kept:
+// the Kernel is sent no required field and none refused, and Memory needs only the summary.
+func TestAKernelSummaryWithAnExtraFieldOrNoSlugIsKept(t *testing.T) {
+	f := newFixture(t)
+	k := newFakeKernel(f)
+	k.conversation(f, 7, "chat", 7*time.Hour, "Fix the login bug")
+	f.summary = func(Request) (string, error) {
+		return `{"summary":"# Task: fix login","markdown":"# Task: fix login"}`, nil
+	}
+	if err := f.kernelWork(k).Pass(context.Background(), MinIdle, false); err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	_ = json.Unmarshal(k.calls[0].Schema, &schema)
+	eq(t, []any{schema["required"], schema["additionalProperties"]}, []any{nil, nil})
+	st := memory.LoadState(f.dir)
+	eq(t, st.Runs[len(st.Runs)-1].Error, "")
+	eq(t, f.read("session_summaries/2026-10-27T05-00-00-7.md"), "session_id: 7\nupdated_at: 2026-10-27T05:00:00Z\nworkspace: "+f.root+"\ntitle: Conversation 7\n\n# Task: fix login\n")
+}
+
+// A conversation imported from droid holds droid's Session, which Memory summarized or left out before: it is
+// summarized once it goes on in Droi, not for being imported.
+func TestAnImportedConversationIsSummarizedOnlyOnceItGoesOn(t *testing.T) {
+	f := newFixture(t)
+	k := newFakeKernel(f)
+	k.conversation(f, 1, "chat", 7*time.Hour, "mine")
+	k.conversation(f, 2, "chat", 8*time.Hour, "imported")
+	w := f.kernelWork(k)
+	w.Imported = map[int64]int64{2: f.now.Add(-time.Hour).UnixMilli()}
+	if err := w.Pass(context.Background(), MinIdle, false); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, k.summarized(), []string{"1"})
+	if _, ok := memory.LoadState(f.dir).Sessions["2"]; ok {
+		t.Error("an imported conversation not gone on with is in the state")
+	}
+
+	k.reset()
+	k.touch(2, f.now.Add(-30*time.Minute))
+	f.now = f.now.Add(7 * time.Hour)
+	w = f.kernelWork(k)
+	w.Imported = map[int64]int64{2: f.now.Add(-8 * time.Hour).UnixMilli()}
+	if err := w.Pass(context.Background(), MinIdle, false); err != nil {
+		t.Fatal(err)
+	}
+	eq(t, k.summarized(), []string{"2"})
 }
 
 // Runs, Memory's own work and subagents are no user's; a conversation still going on, one too old, and one with

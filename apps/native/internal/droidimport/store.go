@@ -26,6 +26,9 @@ func (r Record) Current(src Source) bool {
 	return r.Size == src.Size && r.ModTime == src.ModTime.UnixMilli()
 }
 
+// StoreFile is the records' file in the Host's user data folder.
+const StoreFile = "droid-imports.json"
+
 // Store keeps the records of the imports, by droid's session id, in one JSON file.
 type Store struct {
 	path string
@@ -51,6 +54,17 @@ func (s *Store) Get(id string) (Record, bool) {
 	defer s.mu.Unlock()
 	r, ok := s.m[id]
 	return r, ok
+}
+
+// Imported is when each imported conversation's import ended, in epoch milliseconds.
+func (s *Store) Imported() map[int64]int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[int64]int64, len(s.m))
+	for _, r := range s.m {
+		out[int64(r.Conversation)] = r.At
+	}
+	return out
 }
 
 // Put keeps the record of droid's session id, and writes the file.

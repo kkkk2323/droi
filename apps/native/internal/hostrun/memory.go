@@ -3,10 +3,12 @@ package hostrun
 import (
 	"context"
 	"log"
+	"path/filepath"
 	"sync"
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
+	"github.com/kkkk2323/droi/apps/native/v2/internal/droidimport"
 	"github.com/kkkk2323/droi/apps/native/v2/internal/memorywork"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
@@ -63,7 +65,11 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 			st := h.Settings.Get()
 			return memorywork.Models{SessionSummary: st.MemoryModelOrDefault(), MemorySummary: st.MemorySummaryModelOrDefault()}
 		},
-		Kernel:   kernelOf,
+		Kernel: kernelOf,
+		// Read at each pass: the window imports while Memory runs.
+		Imported: func() map[int64]int64 {
+			return droidimport.OpenStore(filepath.Join(h.UserData(), droidimport.StoreFile)).Imported()
+		},
 		OnChange: changed,
 		Log:      func(s string) { log.Println("[memory]", s) },
 		Home:     home,

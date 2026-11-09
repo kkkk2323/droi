@@ -259,7 +259,7 @@ function parseAnswer(
 ): unknown {
   let parsed: unknown
   try {
-    parsed = JSON.parse(text)
+    parsed = JSON.parse(unfenced(text))
   } catch {
     throw new RpcError(Code.modelOutputInvalid, "the model's answer is not JSON", {
       issues: [{ path: '', message: 'the answer is not JSON' }],
@@ -275,6 +275,15 @@ function parseAnswer(
     )
   }
   return parsed
+}
+
+/**
+ * The answer without the Markdown code fence a model often puts around JSON it was asked for (```json … ```):
+ * the JSON is the same, and a summary thrown away for its wrapping is a model call paid for nothing.
+ */
+function unfenced(text: string): string {
+  const fenced = /^```[a-zA-Z]*\s*\n([\s\S]*?)\n?```$/.exec(text.trim())
+  return fenced?.[1] ?? text
 }
 
 /** The answer's text blocks, joined. A model that answered only by thinking leaves this empty. */

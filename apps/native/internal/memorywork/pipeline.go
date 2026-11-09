@@ -85,8 +85,11 @@ type Work struct {
 	// Kernel, when the Host runs one, is where the conversations to summarize
 	// are listed and read; nil leaves only the droid Sessions the hook recorded.
 	Kernel Kernel
-	Now    func() time.Time
-	Log    func(string)
+	// Imported are the Kernel conversations imported from droid, each with when its import ended (epoch
+	// milliseconds). One not gone on with since is not summarized: its droid Session was, or was left out, before.
+	Imported map[int64]int64
+	Now      func() time.Time
+	Log      func(string)
 }
 
 func (w Work) now() time.Time {
@@ -391,7 +394,8 @@ type sessionSummaryReply struct {
 
 func checkSessionSummary(b json.RawMessage) string {
 	var r sessionSummaryReply
-	if json.Unmarshal(b, &r) != nil || r.Summary == nil || r.Slug == nil {
+	// A missing slug only leaves the file name without one (summarized): the summary is what Memory needs.
+	if json.Unmarshal(b, &r) != nil || r.Summary == nil {
 		return "The reply did not match the schema."
 	}
 	return ""
@@ -462,7 +466,11 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 	var r sessionSummaryReply
 	_ = json.Unmarshal(reply.JSON, &r)
 	summary := clipBytes(memory.RedactSecrets(strings.TrimSpace(*r.Summary)), memory.SessionSummaryMaxBytes)
-	finish(func(rec *memory.SessionRecord) { p.summarized(rec, c, now, summary, *r.Slug, workspace, title) })
+	slug := ""
+	if r.Slug != nil {
+		slug = *r.Slug
+	}
+	finish(func(rec *memory.SessionRecord) { p.summarized(rec, c, now, summary, slug, workspace, title) })
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
