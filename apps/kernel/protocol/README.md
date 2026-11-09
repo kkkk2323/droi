@@ -76,10 +76,10 @@ A client says what it wants when it subscribes, because the two clients are not
 alike: the window sits on the machine that runs the kernel, and the phone
 reaches it over the Relay, on someone else's network.
 
-| `subscribe`        | A `conversation.view` carries                                                | Who uses it                 |
-| ------------------ | ---------------------------------------------------------------------------- | --------------------------- |
-| `"view"` (default) | `{id, kind: "value", value, ops, retired}` — the window over entries, whole  | The window on this computer |
-| `"delta"`          | `{id, kind: "value", value: null, ops, retired}` — Pi's incremental ops only | The phone over the Relay    |
+| `subscribe`        | A `conversation.view` carries                                                | Who uses it                  |
+| ------------------ | ---------------------------------------------------------------------------- | ---------------------------- |
+| `"view"` (default) | `{id, kind: "value", value, ops, retired}` — the window over entries, whole  | A client that keeps no state |
+| `"delta"`          | `{id, kind: "value", value: null, ops, retired}` — Pi's incremental ops only | The phone and the window     |
 
 A `"delta"` subscription, as a client asks for it:
 
