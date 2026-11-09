@@ -106,6 +106,7 @@ func TestAWorkstreamRowSaysWhatItsAgentsDo(t *testing.T) {
 
 // With no Workstream the group offers to start one, and so does its title.
 func TestAnEmptyWorkstreamsGroupOffersTheFirst(t *testing.T) {
+	keepOnDaemon(t, untilWorkstreams)
 	h := workstreamsHarness(t, &fakeWorkstreams{}, func(cfg *Config) {})
 	h.a.workstreams.list = []gateway.Workstream{}
 	sc := fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Fix the login race", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{{Role: "user", Text: "Go on"}}}}}

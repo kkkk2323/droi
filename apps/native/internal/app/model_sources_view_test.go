@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
+
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
@@ -24,6 +26,21 @@ func TestOnKernelNoFactoryAccountIsAsked(t *testing.T) {
 	h.until("Settings", func() bool { return h.hasButton("Advanced") })
 	if h.hasButton("Account") || h.hasText("Factory API key") {
 		t.Fatalf("Settings offers the Factory account on the Kernel: %q", h.tt.Texts())
+	}
+}
+
+// TestOnKernelTheSidebarHasNoWorkstreams: Workstreams still run on the Daemon, so a window on the Kernel neither lists
+// them nor offers to start one.
+func TestOnKernelTheSidebarHasNoWorkstreams(t *testing.T) {
+	sc := fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Fix the login race", Cwd: "/Users/dev/acme-web", Messages: []fakedaemon.Message{{Role: "user", Text: "Go on"}}}}}
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{}, nil)
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	if h.hasText("Workstreams") || h.finds("New Workstream") {
+		t.Fatalf("the sidebar offers Workstreams on the Kernel: %q", h.tt.Texts())
 	}
 }
 

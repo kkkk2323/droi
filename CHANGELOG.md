@@ -13,6 +13,7 @@
 ### Fixed
 
 - On the Kernel, the Key Pool could not be used while `FACTORY_API_BASE_URL` was set, and Settings had no Usage tab to add a key. The Kernel's models always go through the Key Pool now, and the Usage tab is always there.
+- On the Kernel, the sidebar showed Workstreams, which still run on the Daemon. It no longer shows them there.
 - On the Kernel with no models, the New session page offered the Daemon's models, which no session could run. It now offers none and says how to get some.
 
 ## 1.92.0 - 2026-11-06
