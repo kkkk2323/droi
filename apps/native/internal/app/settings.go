@@ -386,6 +386,9 @@ func (a *App) advancedTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	st := h.Settings.Get()
+	if a.onKernel() {
+		a.modelSourcesGroup(c)
+	}
 	a.settingGroup(c, L("Daemon"), "",
 		func() {
 			ok, label, detail := daemonStatusText(h.Daemon.State())
@@ -433,6 +436,8 @@ func (a *App) advancedTab(c *ui.Context) {
 			inherited = a.cfg.Env("FACTORY_API_BASE_URL")
 		}
 		switch {
+		case a.onKernel():
+			desc = L("Only the Daemon uses this. Droi's own models go through the Key Pool to Factory, whatever it says.")
 		case st.FactoryAPIBaseURL != nil:
 			desc = L("The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy.")
 		case inherited != "":
@@ -460,15 +465,23 @@ func (a *App) magpieGroup(c *ui.Context) {
 	h := a.cfg.Host
 	s := &a.settings
 	st := h.Settings.Get()
+	// On the Kernel a change reaches it as it runs (Changed, then the Model Sources): no Daemon starts again.
+	kernel := a.onKernel()
 	rows := []func(){
 		func() {
 			on := st.MagpieEnabled
-			a.settingRow(c, L("Offer Magpie's models"),
-				L("Changing this restarts the Daemon. Sessions using a Magpie model fall back to another model; reselect their model after the restart."),
+			desc := L("Changing this restarts the Daemon. Sessions using a Magpie model fall back to another model; reselect their model after the restart.")
+			if kernel {
+				desc = L("Its models are offered beside Factory's. Working Sessions keep running when you change this.")
+			}
+			a.settingRow(c, L("Offer Magpie's models"), desc,
 				func() {
 					if a.toggle(c, L("Offer Magpie's models"), on, false) {
 						next := !on
 						a.hostUpdate(false, func(st *host.Settings) { st.MagpieEnabled = next })
+						if kernel {
+							return
+						}
 						go func() {
 							if next {
 								h.RefreshMagpie()
@@ -482,6 +495,9 @@ func (a *App) magpieGroup(c *ui.Context) {
 			a.settingRow(c, L("Gateway"), L("Leave empty for %s, or set MAGPIE_BASE_URL.", host.DefaultMagpieBaseURL), nil,
 				a.saveRow(c, &s.magpieURL, L("Magpie base URL"), host.DefaultMagpieBaseURL, L("Save URL"), true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.MagpieBaseURL = host.OptString(v) })
+					if kernel {
+						return
+					}
 					go func() {
 						h.RefreshMagpie()
 						if h.Settings.Get().MagpieEnabled {
@@ -502,6 +518,9 @@ func (a *App) magpieGroup(c *ui.Context) {
 				ok, label = true, L("Running, no models")
 			}
 			desc := L("Loaded when the Daemon starts. Refresh reloads the list and restarts the Daemon if it changed, which interrupts working Sessions.")
+			if kernel {
+				desc = L("Refresh reloads the list. Working Sessions keep running.")
+			}
 			if cat.Err != "" {
 				desc = L("Could not read the model list at %s. Make sure Magpie is running, then refresh.", h.MagpieBaseURL())
 			}
@@ -509,7 +528,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 				a.statusPill(c, ok, label)
 				if a.smallButton(c, kit.Outline, L("Refresh"), "refresh-cw", false).Clicked() {
 					go func() {
-						if h.RefreshMagpie() {
+						if h.RefreshMagpie() && !kernel {
 							h.RestartDaemon()
 						}
 					}()

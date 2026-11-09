@@ -18,6 +18,16 @@ import (
 // the Daemon runs, and the Key Pool its LLM requests are sent with.
 func (a *App) droiDroidGroup(c *ui.Context) {
 	h := a.cfg.Host
+	// On Kernel the Key Pool serves Kernel's models through its own proxy: no droid to fetch, no Daemon to restart.
+	if a.onKernel() {
+		p := h.DroiDroidState()
+		rows := []func(){func() { a.keyPoolRow(c, p) }}
+		if a.cfg.MenuBar != nil {
+			rows = append(rows, func() { a.menuBarRow(c) })
+		}
+		a.settingGroup(c, L("Key Pool"), "", rows...)
+		return
+	}
 	h.RefreshDroiDroid()
 	p := h.DroiDroidState()
 	rows := []func(){func() { a.droiDroidRow(c, p) }}
@@ -162,7 +172,10 @@ func (a *App) keyPoolRow(c *ui.Context, p host.DroiDroid) {
 	k, t := a.kit, a.kit.T
 	st := a.poolState()
 	desc := L("Add and switch keys, and see their quota, on the Usage tab.")
-	if len(st.Keys) == 0 {
+	switch {
+	case len(st.Keys) == 0 && a.onKernel():
+		desc = L("The Key Pool has no key yet. Droi's models are there once you add one on the Usage tab.")
+	case len(st.Keys) == 0:
 		desc = L("The Key Pool has no key yet. The Daemon starts once you add one on the Usage tab.")
 	}
 	a.settingRow(c, L("Keys"), desc, func() {

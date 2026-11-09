@@ -34,7 +34,11 @@ func oneSession() fakedaemon.Scenario {
 		Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}}}
 }
 
+// The Factory sign-in and accounts are the Daemon's: on the Kernel no Factory account runs a model (ADR 0044).
+const daemonAccount = "the Factory account is the Daemon's; on the Kernel the Model Sources run the models"
+
 func TestSignInPageUntilThereIsACredential(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h0 := testHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
@@ -52,6 +56,7 @@ func TestSignInPageUntilThereIsACredential(t *testing.T) {
 }
 
 func TestSignInPageKeepsSettingsReachable(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
 	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
 	h.click("Settings")

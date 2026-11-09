@@ -58,3 +58,42 @@ func TestTheSessionDefaultsModelIsTheKernelsDefault(t *testing.T) {
 		return err == nil && info.Agent != nil && info.Agent.Model == want
 	})
 }
+
+// TestOnKernelWithNoModelsANewSessionSaysToAddAKey: a Kernel the Host gave no models (its Key Pool has no key) runs
+// no conversation. The New session page offers none of the Daemon's models in their place, which no conversation
+// could run, says where a key is added, and starts nothing.
+func TestOnKernelWithNoModelsANewSessionSaysToAddAKey(t *testing.T) {
+	h := kernelHarness(t)
+	h.until("the Kernel's models", func() bool { return len(h.a.kernelModelIDs()) > 0 })
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := h.testConn().HarnessConfigure(ctx, kernel.HarnessConfigureParams{Providers: json.RawMessage("[]")}); err != nil {
+		t.Fatal(err)
+	}
+	h.until("no models", func() bool { return len(h.a.kernelModelIDs()) == 0 })
+	listed := len(h.a.listedNow())
+	h.openStartPage()
+	h.until("the notice", func() bool { return h.hasText(h.a.noKernelModels()) })
+	if dv := h.a.sessionDefaults(); dv != nil {
+		for _, m := range dv.Models {
+			if m.Label != "" && h.hasText(m.Label) {
+				t.Errorf("the page offers the Daemon's model %q", m.Label)
+			}
+		}
+	}
+	h.start("hello")
+	h.frame()
+	h.a.newPage.mu.Lock()
+	creating := h.a.newPage.creating
+	h.a.newPage.mu.Unlock()
+	if creating {
+		t.Fatal("the page started a conversation the Kernel cannot run")
+	}
+	got, err := h.testConn().List(ctx, kernel.ListParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Items) != listed || len(h.a.listedNow()) != listed {
+		t.Errorf("a conversation was made: %d listed, %d before", len(got.Items), listed)
+	}
+}

@@ -18,6 +18,10 @@ const workstreamsSectionKey = "droi:workstreams"
 // its orchestrator's Session, under a title that folds them and starts a
 // new one. Their agents are in the page of the Workstream.
 func (a *App) workstreamsSection(c *ui.Context, listed []sessions.Summary, selected string, busy map[string]activity.Activity) {
+	// Workstreams run on the Daemon and have not moved to the Kernel yet: a window on the Kernel offers none.
+	if a.kernelMode() {
+		return
+	}
 	live := a.liveOrchestrators(listed)
 	if (a.cfg.Gateway == nil || a.workstreams.older) && len(live) == 0 {
 		return

@@ -15,7 +15,6 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
 )
 
@@ -32,6 +31,9 @@ const (
 	kernelLLMTokenEnv = "DROI_KERNEL_LLM_TOKEN"
 	// kernelProvidersEnv carries the providers, as the Kernel reads them (apps/kernel/src/config.ts).
 	kernelProvidersEnv = "DROI_KERNEL_PROVIDERS"
+	// kernelMagpieKeyEnv is the Magpie provider's apiKeyEnv. A launch always sets it, so Magpie turned on later
+	// reaches a running Kernel with its key already there.
+	kernelMagpieKeyEnv = "DROI_KERNEL_MAGPIE_KEY"
 )
 
 // kernelHost is the Host's Kernel: the Supervisor, the token the proxy knows the Kernel by, and who hears its state.
@@ -43,10 +45,9 @@ type kernelHost struct {
 	runs int
 	// llmToken is the token of the latest launch; each launch has its own.
 	llmToken string
-	// base is the proxy the latest launch's models point at, "" when it got none. waitingForKey says it got none
-	// because the Key Pool had no key yet.
-	base          string
-	waitingForKey bool
+	// given is the providers the Kernel was last given, as JSON, and sources how each Model Source stood then.
+	given   string
+	sources []ModelSourceStatus
 	// memoryOn is whether the latest launch was given the Memory folder.
 	memoryOn bool
 	// section is the prompt section the Kernel has, as the latest launch or harness.configure gave it.
@@ -175,7 +176,7 @@ func (h *Host) stopKernel() {
 	sup := k.sup
 	k.sup = nil
 	k.runs++
-	k.llmToken, k.base, k.waitingForKey = "", "", false
+	k.llmToken, k.given, k.sources = "", "", nil
 	h.KeyPool().SetKernelToken("")
 	link, unhear := k.link, k.unhearLink
 	k.link, k.unhearLink = nil, nil
@@ -272,22 +273,20 @@ func (h *Host) kernelSectionChanged() {
 	h.restartKernel(sup, runs)
 }
 
-// kernelEnv is what a Kernel launch gets: Factory's models on the Key Pool's proxy, and a token of this launch's
-// that their requests carry. A pool that cannot start (no key yet) gives the Kernel no models; it starts all the same,
-// its conversations stay readable, and it is started again once a key is added (kernelPoolChanged).
+// kernelEnv is what a Kernel launch gets: the models of every Model Source, and a token of this launch's that the
+// Factory requests carry. With no source able to give any (no key yet, Magpie off) the Kernel starts all the same,
+// its conversations stay readable, and it gets models once a source has some (kernelModelsChanged).
 func (h *Host) kernelEnv() []string {
 	k := &h.kernel
 	k.mu.Lock()
 	runs := k.runs
-	// The proxy may stop and start again below; this launch is not the one it moved from under.
-	k.base, k.waitingForKey = "", false
 	k.mu.Unlock()
 	token, err := kernel.NewToken()
 	if err != nil {
 		log.Println("droi: kernel: no token for its model requests:", err)
 		return nil
 	}
-	env := []string{kernelLLMTokenEnv + "=" + token}
+	env := []string{kernelLLMTokenEnv + "=" + token, kernelMagpieKeyEnv + "=" + magpieKey}
 	memoryOn := h.Settings.Get().MemoryEnabled
 	if memoryOn {
 		env = append(env, kernel.MemoryDirEnv+"="+h.MemoryDir())
@@ -302,87 +301,13 @@ func (h *Host) kernelEnv() []string {
 	k.memoryOn = memoryOn
 	k.section = agent.Section
 	k.mu.Unlock()
-	pool := h.KeyPool()
-	if conflict := h.baseURLConflict(); conflict != "" {
-		log.Println("droi: kernel: no Factory models:", conflict)
+	// Stopped, or started again, while this launch was preparing: the proxy does not take its token.
+	providers, _, ok := h.loadModelSources(token, runs, true)
+	// The Kernel refuses an empty list in its environment; no providers is no variable.
+	if !ok || string(providers) == "[]" {
 		return env
 	}
-	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
-	base, err := pool.Start()
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	// Stopped, or started again, while this launch was preparing: the proxy must not take its token.
-	if k.sup == nil || k.runs != runs {
-		return env
-	}
-	k.llmToken, k.base, k.waitingForKey = token, "", errors.Is(err, keypool.ErrNoKeys)
-	if err != nil {
-		log.Println("droi: kernel: no Factory models:", err)
-		return env
-	}
-	k.base = base
-	pool.SetKernelToken(token)
-	return append(env, kernelProvidersEnv+"="+kernelProviders(base))
-}
-
-// kernelPoolChanged gives the running Kernel new models when the Key Pool moved from under it: the proxy its models
-// point at stopped or moved, or the first key arrived after it started with none. The Kernel keeps running, and so do
-// its runs; only a Kernel that cannot take the change is started again.
-func (h *Host) kernelPoolChanged() {
-	k := &h.kernel
-	k.configuring.Lock()
-	defer k.configuring.Unlock()
-	pool := h.KeyPool()
-	running, keys := pool.BaseURL(), pool.Len()
-	k.mu.Lock()
-	sup := k.sup
-	moved := k.base != "" && running != k.base
-	keyed := k.waitingForKey && keys > 0
-	if sup == nil || !moved && !keyed {
-		k.mu.Unlock()
-		return
-	}
-	k.base, k.waitingForKey = "", false
-	token, runs := k.llmToken, k.runs
-	k.mu.Unlock()
-	if providers, ok := h.kernelProvidersNow(token, runs); ok {
-		err := h.configureKernel(kernel.HarnessConfigureParams{Providers: providers})
-		if err == nil {
-			log.Println("droi: kernel: the Key Pool's proxy changed; the Kernel has its models on it")
-			return
-		}
-		log.Println("droi: kernel: the Kernel did not take its new models:", err)
-	}
-	log.Println("droi: kernel: the Key Pool's proxy changed; starting the Kernel again")
-	h.restartKernel(sup, runs)
-}
-
-// kernelProvidersNow starts the Key Pool's proxy again for the running Kernel, whose model requests keep the token
-// it was launched with, and answers its models on it: none while the pool has no key. ok is false when the proxy
-// cannot serve it, or the Kernel stopped or was started again meanwhile.
-func (h *Host) kernelProvidersNow(token string, runs int) (providers json.RawMessage, ok bool) {
-	if token == "" || h.baseURLConflict() != "" {
-		return nil, false
-	}
-	pool := h.KeyPool()
-	pool.Configure(h.keyPoolUpstream(), h.FactoryHome())
-	base, err := pool.Start()
-	k := &h.kernel
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	if k.sup == nil || k.runs != runs || k.llmToken != token {
-		return nil, false
-	}
-	if errors.Is(err, keypool.ErrNoKeys) {
-		k.waitingForKey = true
-		return json.RawMessage("[]"), true
-	}
-	if err != nil {
-		return nil, false
-	}
-	k.base = base
-	pool.SetKernelToken(token)
-	return json.RawMessage(kernelProviders(base)), true
+	return append(env, kernelProvidersEnv+"="+string(providers))
 }
 
 // kernelMemoryChanged turns Memory on or off in the running Kernel when it was turned on or off since: each
@@ -543,9 +468,9 @@ type kernelCompat struct {
 // and max as high, and off as effort "none" on Responses, which a model without it refuses.
 var piThinkingLevels = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
-// kernelProviders are Factory's models on the proxy at base, one provider per wire, as JSON. A model droid's registry
-// gives no limits stays out: the Kernel needs them.
-func kernelProviders(base string) string {
+// factoryProviders are Factory's models on the proxy at base, one provider per wire. A model droid's registry gives no
+// limits stays out: the Kernel needs them.
+func factoryProviders(base string) []kernelProvider {
 	base = strings.TrimRight(base, "/")
 	wires := []struct {
 		wire factory.Wire
@@ -572,8 +497,7 @@ func kernelProviders(base string) string {
 			out = append(out, p)
 		}
 	}
-	b, _ := json.Marshal(out)
-	return string(b)
+	return out
 }
 
 // kernelModelOf is a Factory model in the Kernel's words: Factory's effort "none" is pi's thinking level "off".
@@ -582,7 +506,18 @@ func kernelModelOf(m factory.Model) kernelModel {
 	if m.Images {
 		km.Input = append(km.Input, "image")
 	}
-	for _, e := range m.Efforts {
+	km.thinkWith(m.Efforts)
+	// Every Claude model Factory offers the Kernel is 4.6 or later, which thinks adaptively: pi-ai budgets Claude's
+	// thinking unless told so, and Haiku 5.5 and Opus 4.7 and later refuse a budget with a 400.
+	if m.Wire == factory.WireAnthropic && strings.HasPrefix(m.ID, "claude-") && !strings.HasPrefix(m.ID, "claude-haiku-4-5") {
+		km.Compat = &kernelCompat{ForceAdaptiveThinking: true}
+	}
+	return km
+}
+
+// thinkWith gives the model the efforts its provider takes, as pi's thinking levels: effort "none" is pi's "off".
+func (km *kernelModel) thinkWith(efforts []string) {
+	for _, e := range efforts {
 		if e == "none" {
 			km.Thinking = append(km.Thinking, "off")
 			continue
@@ -590,24 +525,19 @@ func kernelModelOf(m factory.Model) kernelModel {
 		km.Thinking = append(km.Thinking, e)
 		km.Reasoning = true
 	}
-	if km.Reasoning {
-		km.ThinkingLevelMap = map[string]*string{}
-		for _, level := range piThinkingLevels {
-			effort := level
-			if level == "off" {
-				effort = "none"
-			}
-			if slices.Contains(m.Efforts, effort) {
-				km.ThinkingLevelMap[level] = &effort
-			} else {
-				km.ThinkingLevelMap[level] = nil
-			}
+	if !km.Reasoning {
+		return
+	}
+	km.ThinkingLevelMap = map[string]*string{}
+	for _, level := range piThinkingLevels {
+		effort := level
+		if level == "off" {
+			effort = "none"
+		}
+		if slices.Contains(efforts, effort) {
+			km.ThinkingLevelMap[level] = &effort
+		} else {
+			km.ThinkingLevelMap[level] = nil
 		}
 	}
-	// Every Claude model Factory offers the Kernel is 4.6 or later, which thinks adaptively: pi-ai budgets Claude's
-	// thinking unless told so, and Haiku 5.5 and Opus 4.7 and later refuse a budget with a 400.
-	if m.Wire == factory.WireAnthropic && strings.HasPrefix(m.ID, "claude-") && !strings.HasPrefix(m.ID, "claude-haiku-4-5") {
-		km.Compat = &kernelCompat{ForceAdaptiveThinking: true}
-	}
-	return km
 }

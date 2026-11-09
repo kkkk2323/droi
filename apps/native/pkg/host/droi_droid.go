@@ -88,7 +88,7 @@ func (h *Host) droi() *droiDroidState {
 			Sessions: daemonSessions{h},
 			OnChange: func() {
 				// Off the pool's own goroutine: the Kernel's check reads the pool.
-				go h.kernelPoolChanged()
+				go h.kernelModelsChanged()
 				h.changed()
 			},
 			ScriptModels: h.cfg.ScriptModels,

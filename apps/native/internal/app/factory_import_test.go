@@ -35,8 +35,8 @@ func kernelHostWithFactory(t *testing.T) (*host.Host, string) {
 func TestSettingsImportsFromDroidAgain(t *testing.T) {
 	h0, home := kernelHostWithFactory(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
-	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
-	h.click("Settings")
+	h.until("the Session list", func() bool { return h.hasText("One") })
+	h.openSettingsTab("advanced")
 	h.until("the import", func() bool { return h.hasText("Import from droid") })
 	h.click("Import from ~/.factory")
 	h.until("the import's answer", func() bool { return h.hasText("Imported 1 skill.") })
@@ -56,8 +56,7 @@ func TestSettingsImportsFromDroidAgain(t *testing.T) {
 // Without a Kernel, nothing reads Droi's own folder, and Settings does not offer the import.
 func TestSettingsOffersNoImportWithoutAKernel(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
-	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
-	h.click("Settings")
+	h.openSettingsTab("advanced")
 	h.until("Settings", func() bool { return h.hasText("droid executable") })
 	if h.hasText("Import from droid") {
 		t.Fatal("Settings offers the import without a Kernel")

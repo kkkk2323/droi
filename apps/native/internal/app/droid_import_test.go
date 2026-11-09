@@ -87,8 +87,8 @@ func droidImportHarness(t *testing.T) (*harness, *host.Host) {
 	if h.kernel == nil {
 		t.Skip("no Kernel for the window")
 	}
-	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
-	h.click("Settings")
+	h.until("the Session list", func() bool { return h.hasText("One") })
+	h.openSettingsTab("advanced")
 	h.until("the import", func() bool { return h.hasText("droid sessions") })
 	h.click("Find droid sessions")
 	h.until("the sessions", func() bool { return h.hasText("Fix the flaky upload test") })
