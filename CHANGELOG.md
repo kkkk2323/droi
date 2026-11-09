@@ -18,6 +18,7 @@
 - On the Kernel, an answer appeared all at once when the model finished. It now appears as the model writes it.
 - On the Kernel, the window waited for the Daemon before it showed anything, and said "Starting the Daemon" when droid was missing. It now waits only for the Kernel.
 - On the Kernel, /compact asked the Daemon and did nothing. It now compacts the session in the Kernel.
+- On the Kernel, Settings → Worktrees said "Failed to load worktrees." when a session worked in a folder that is no git repository. It now lists the repositories' worktrees and skips such folders.
 - On the Kernel, the sidebar showed Workstreams, which still run on the Daemon. It no longer shows them there.
 - On the Kernel with no models, the New session page offered the Daemon's models, which no session could run. It now offers none and says how to get some.
 

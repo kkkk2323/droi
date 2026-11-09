@@ -15,6 +15,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // The Host's own git on Kernel (M4 4N): a conversation's changes, new worktrees and Settings → Worktrees, with git
@@ -338,4 +339,36 @@ func TestOnKernelWorktreesGoInDroisFolder(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// The Kernel names a folder that is no repository as its own repoRoot (it groups conversations by it): Settings →
+// Worktrees lists what the real repositories have and says nothing failed.
+func TestHereWorktreesSkipAFolderThatIsNoRepository(t *testing.T) {
+	repo := gitRepo(t)
+	tree := filepath.Join(t.TempDir(), "trees", "fix-login")
+	if err := gitutil.AddWorktree(context.Background(), gitutil.AddOptions{Repo: repo, Path: tree, Branch: "droi/fix-login"}); err != nil {
+		t.Fatal(err)
+	}
+	plain, gone := t.TempDir(), filepath.Join(t.TempDir(), "deleted")
+	ctx := context.Background()
+	got, err := readHereWorktrees(ctx, []sessions.Summary{{Cwd: plain, RepoRoot: plain}, {Cwd: gone, RepoRoot: gone}})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("no repository: %v, %v", got, err)
+	}
+	got, err = readHereWorktrees(ctx, []sessions.Summary{{Cwd: plain, RepoRoot: plain}, {Cwd: tree, RepoRoot: repo}})
+	if err != nil || len(got) != 1 || !inFolder(got[0].Path, tree) {
+		t.Fatalf("with a repository: %v, %v", got, err)
+	}
+}
+
+func TestOnKernelSettingsWorktreesWithOnlyAPlainFolderSaysNone(t *testing.T) {
+	h := kernelHarness(t)
+	h.kernelConversationIn(t.TempDir(), "Plain chat")
+	h.until("the conversation", func() bool { return h.hasText("Plain chat") })
+	h.click("Settings")
+	h.click("Worktrees")
+	h.until("the list read", func() bool { return h.hasText("No worktrees.") || h.hasText("Failed to load worktrees.") })
+	if h.hasText("Failed to load worktrees.") {
+		t.Fatal("a folder that is no repository failed the list")
+	}
 }

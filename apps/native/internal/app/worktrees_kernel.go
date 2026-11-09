@@ -161,6 +161,10 @@ func readHereWorktrees(ctx context.Context, listed []sessions.Summary) ([]hereWo
 	for _, repo := range repos {
 		list, err := gitutil.Worktrees(ctx, repo)
 		if err != nil {
+			// The Kernel's repoRoot of a folder that is no repository (or no longer there) is the folder itself.
+			if !gitutil.IsRepo(ctx, repo) {
+				continue
+			}
 			firstErr = cmpErr(firstErr, err)
 			continue
 		}
