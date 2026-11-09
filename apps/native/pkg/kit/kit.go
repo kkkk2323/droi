@@ -10,8 +10,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/icons"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/icons"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/theme"
 )
 
 // Kit is what the controls draw with: the tokens of the theme shown and

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 func TestDraftTextIsStoredAndImagesStayInMemory(t *testing.T) {

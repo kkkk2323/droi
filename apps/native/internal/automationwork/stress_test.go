@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
 )
 
 // Run with -race: every entry point at once, then every run ended, and no

@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/mcpserver"
 )
 
 // Command is the subcommand of the app's executable that serves one tool

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // ErrNotFound is a Gateway that does not serve the endpoint asked: it has no

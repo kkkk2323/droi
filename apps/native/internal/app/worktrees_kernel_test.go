@@ -5,14 +5,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gitutil"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // The Host's own git on Kernel (M4 4N): a conversation's changes, new worktrees and Settings → Worktrees, with git
@@ -65,6 +66,9 @@ func (h *harness) kernelConversationIn(dir, title string) kernel.ID {
 		h.t.Fatal(err)
 	}
 	h.a.reloadList()
+	// What reads the list (Settings → Worktrees, say) reads it once a while: the conversation must be in it first.
+	want := h.a.sessionIDOf(res.ConversationID)
+	h.until("the conversation listed", func() bool { return slices.Contains(h.listedIDs(), want) })
 	return res.ConversationID
 }
 

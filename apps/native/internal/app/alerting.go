@@ -4,8 +4,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/alerts"
-	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/compaction"
 )
 
 // Alert is what the window asks the desktop for when a Session finishes or

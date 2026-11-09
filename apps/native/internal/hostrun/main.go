@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
 )
 
 const usageText = `usage: %[1]s host [--port N]

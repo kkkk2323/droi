@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/relay"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/relay"
 )
 
 const testRelayID = "abcdefghijklmnopqrstuvwx"

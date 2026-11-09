@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // Store is the Session Times of one computer. Its methods are safe from

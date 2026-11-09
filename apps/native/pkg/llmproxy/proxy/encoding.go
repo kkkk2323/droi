@@ -3,7 +3,7 @@ package proxy
 import (
 	"io"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/contentenc"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/contentenc"
 )
 
 // Requests are forwarded with the client's own Accept-Encoding (droid, on Bun,

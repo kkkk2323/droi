@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // A Session the user hands off (/handoff) goes on in a new Session: droid

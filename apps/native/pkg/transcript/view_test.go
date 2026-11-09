@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
 )
 
 // The tests in this file cover the Kernel's transcript: Pi entries in, the blocks the window draws out.

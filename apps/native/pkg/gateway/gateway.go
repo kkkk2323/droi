@@ -26,7 +26,7 @@ import (
 	"github.com/coder/websocket"
 	droid "github.com/kkkk2323/droid-sdk-go"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // The Gateway contract the Clients share (packages/daemon-layer/src/gateway.ts).

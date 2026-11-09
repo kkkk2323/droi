@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
 )
 
 func TestTheSidebarSwitchesComputersFromItsTopLeft(t *testing.T) {

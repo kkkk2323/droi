@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel/fakekernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel/fakekernel"
 )
 
 // TestAKernelPageShowsAndChangesItsModel: the picker on the Kernel path reads the conversation's agent from its

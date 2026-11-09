@@ -21,10 +21,10 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
-	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automationwork"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hostsession"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // Config is what a Coordinator needs from the Host.

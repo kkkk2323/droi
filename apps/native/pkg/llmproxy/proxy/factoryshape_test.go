@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/factory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
 )
 
 // recorded is what the upstream got: the proxy must hand it a request opened

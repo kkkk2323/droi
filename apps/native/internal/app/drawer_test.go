@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 func TestANarrowWindowPutsTheSidebarInADrawer(t *testing.T) {

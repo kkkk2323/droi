@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 // RunwayDays is how far ahead the runway looks.

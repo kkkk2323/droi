@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
 )
 
 func TestParseUsageResponse_StandardOnly(t *testing.T) {

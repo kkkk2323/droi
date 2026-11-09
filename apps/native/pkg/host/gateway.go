@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
 )
 
 // SystemPromptAddition is Settings' System Prompt Addition, then the app's

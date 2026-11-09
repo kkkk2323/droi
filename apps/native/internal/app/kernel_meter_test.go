@@ -9,8 +9,8 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/internal/app/testsupport"
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/app/testsupport"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // kernelMeter is the meter's figures for Session id as Kernel's conversation.usage has them now.

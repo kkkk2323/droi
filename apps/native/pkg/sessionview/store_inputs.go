@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // The inputs the window holds on Kernel's behalf, per conversation: what Stop took back from Kernel and kept here as

@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
 )
 
 // longPaste is a log of 31 lines, long enough to paste as a card.

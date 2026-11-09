@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // transcript writes a droid transcript of lines into dir/<folder>/<id>.jsonl and answers its path.

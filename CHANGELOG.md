@@ -1,3 +1,9 @@
+## Unreleased
+
+### Changed
+
+- For apps built on Droi (ADR 0041): the Go module is now `github.com/kkkk2323/droi/apps/native/v2`, and its tags are `apps/native/v2.x.y`. Change every import of `github.com/kkkk2323/droi/apps/native/...` to `github.com/kkkk2323/droi/apps/native/v2/...` and require the module at a v2 tag. The packages and their names stay the same.
+
 ## 1.92.0 - 2026-11-06
 
 ### Added

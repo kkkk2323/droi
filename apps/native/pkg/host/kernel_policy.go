@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // The Kernel's approval policy is the Host's to keep (design/m3-kernel.md §2.5): the Kernel holds a copy, which is

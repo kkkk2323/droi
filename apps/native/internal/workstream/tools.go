@@ -11,9 +11,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
-	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // ServerName is the tool server of Workstream Sessions, carried through the

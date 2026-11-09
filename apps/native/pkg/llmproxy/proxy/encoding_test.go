@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/andybalholm/brotli"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 	"github.com/klauspost/compress/zstd"
 )
 

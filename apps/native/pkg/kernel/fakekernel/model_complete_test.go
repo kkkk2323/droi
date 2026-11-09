@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // TestModelCompleteSendsItsHeader proves the Kernel marks a `model.complete` request, which is the only

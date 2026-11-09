@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
 )
 
 // firstLine bounds the session_start line.

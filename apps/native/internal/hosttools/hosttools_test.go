@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/mcpserver"
 )
 
 // mcp is a tool server run by serveMain, spoken to as the Daemon does.
