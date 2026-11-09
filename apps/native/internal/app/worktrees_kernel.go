@@ -13,10 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
@@ -26,9 +29,12 @@ func (a *App) worktreesHere() bool {
 	return a.onKernel() && !a.following()
 }
 
-// worktreeRoot is the folder the Host makes worktrees in: Settings → Worktrees' directory, else the worktrees
-// folder of the Factory folder, as the droid CLI makes them.
+// worktreeRoot is the folder the Host makes worktrees in: Settings → Worktrees' directory, else the worktrees folder
+// of Droi's own folder (host.WorktreeRoot). A window with no Host of its own goes by the Session defaults.
 func (a *App) worktreeRoot() (string, error) {
+	if h := a.cfg.Host; h != nil {
+		return h.WorktreeRoot(), nil
+	}
 	base := ""
 	if dv := a.sessionDefaults(); dv != nil {
 		// A folder that is no full path would put worktrees wherever Droi runs from.
@@ -42,9 +48,41 @@ func (a *App) worktreeRoot() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		base = filepath.Join(home, ".factory")
+		base = brand.UserFolder(home)
 	}
 	return filepath.Join(base, "worktrees"), nil
+}
+
+// hereWorktreeSettings is Settings → Worktrees' folder for the Host's own worktrees, kept in Droi's settings rather
+// than droid's.
+func (a *App) hereWorktreeSettings(c *ui.Context) {
+	h := a.cfg.Host
+	dir := derefOr(h.Settings.Get().WorktreeDirectory)
+	const custom = "custom…"
+	opts := []kit.Option{{Value: "", Label: L("Default (%s)", h.DefaultWorktreeRoot())}}
+	if dir != "" {
+		opts = append(opts, kit.Option{Value: dir, Label: L("Custom: %s", dir)})
+	}
+	opts = append(opts, kit.Option{Value: custom, Label: L("Custom…")})
+	save := func(v string) {
+		a.hostUpdate(false, func(st *host.Settings) { st.WorktreeDirectory = host.OptString(v) })
+	}
+	a.settingGroup(c, L("Worktree settings"), "", func() {
+		a.settingRow(c, L("Worktree directory"), L("Choose a custom parent directory for local worktrees."), func() {
+			next, ok := a.fieldSelect(c, L("Worktree directory"), dir, opts, false)
+			switch {
+			case !ok:
+			case next == custom:
+				go func() {
+					if picked := a.pickFolder(L("Choose a worktree directory")); picked != "" {
+						a.cfg.Update(func() { save(picked) })
+					}
+				}()
+			default:
+				save(next)
+			}
+		}, nil)
+	})
 }
 
 // addWorktree makes a worktree of workspace's repository on a new branch from base ("" for HEAD), and answers the

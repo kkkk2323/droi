@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
@@ -294,4 +295,47 @@ func TestAWorktreeMadeForAConversationThatFailedIsTakenAway(t *testing.T) {
 	if strings.Contains(gitIn(t, repo, "branch", "--list", "droi/x"), "droi/x") {
 		t.Error("its branch is still there")
 	}
+}
+
+// TestOnKernelWorktreesGoInDroisFolder: on the Kernel, Settings → Worktrees offers Droi's own folder as the default
+// without waiting for the Daemon, and a new Session's worktree is made in the folder Settings picks.
+func TestOnKernelWorktreesGoInDroisFolder(t *testing.T) {
+	home := t.TempDir()
+	h0 := host.New(host.Config{UserData: t.TempDir(), Home: home, Env: func(string) string { return "" }})
+	t.Cleanup(h0.Stop)
+	h := newHarnessWith(t, sessionsScenario(), "", func(cfg *Config) { cfg.Host = h0 })
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.openSettingsTab("worktrees")
+	want := filepath.Join(home, ".droi", "worktrees")
+	h.until("the default folder", func() bool { return h.hasText("Default (" + want + ")") })
+	if h.hasText("~/.factory/worktrees") || h.hasText("Loading worktree settings…") {
+		t.Fatalf("the Worktrees tab is the Daemon's: %q", h.tt.Texts())
+	}
+	root := filepath.Join(t.TempDir(), "trees")
+	if err := h0.Settings.Update(func(s *host.Settings) { s.WorktreeDirectory = host.OptString(root) }); err != nil {
+		t.Fatal(err)
+	}
+	repo := gitRepo(t)
+	h.click("Back")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.openStartPage()
+	h.a.newPage.pick, h.a.newPage.picked = repo, true
+	h.frame()
+	h.until("the worktree control", func() bool { return h.hasText("Work locally") })
+	h.click("Worktree")
+	h.click("main")
+	h.tt.Key(0, ui.KeyEscape)
+	h.frame()
+	h.start("Fix the flaky login test")
+	h.until("the conversation in a worktree", func() bool {
+		for _, s := range h.a.listedNow() {
+			if strings.HasPrefix(s.Cwd, root) {
+				return true
+			}
+		}
+		return false
+	})
 }

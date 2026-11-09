@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
@@ -106,6 +107,25 @@ func realPath(path string) string {
 
 // NewWorkspaces is the Gateway's Workspaces on this computer, making worktrees in root.
 func NewWorkspaces(root func() string) gateway.Workspaces { return workspaces{root: root} }
+
+// WorktreeRoot is the folder the Host makes a Kernel conversation's worktrees in: Settings' folder, else
+// DefaultWorktreeRoot.
+func (h *Host) WorktreeRoot() string {
+	if d := strings.TrimSpace(deref(h.Settings.Get().WorktreeDirectory)); filepath.IsAbs(d) {
+		return d
+	}
+	return h.DefaultWorktreeRoot()
+}
+
+// DefaultWorktreeRoot is the worktrees folder in the brand's own folder (~/.droi/worktrees): Droi's, apart from
+// Factory's ~/.factory/worktrees.
+func (h *Host) DefaultWorktreeRoot() string {
+	home := h.cfg.Home
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	return filepath.Join(brand.UserFolder(home), "worktrees")
+}
 
 // workspaces is the Gateway's Workspaces on this computer: the file system and git.
 type workspaces struct {
