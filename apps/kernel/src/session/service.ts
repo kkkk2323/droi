@@ -30,6 +30,7 @@ import { selectMemory } from '../memory/select.ts'
 import { isCodemodeMode, type CodemodeMode } from '../extensions/codemode.ts'
 import { isAbsolute } from 'node:path'
 import { info, warn } from '../log.ts'
+import { fingerprintOf, sameFingerprint } from '../fingerprint.ts'
 import {
   Code,
   RpcError,
@@ -695,7 +696,10 @@ export class Kernel implements Dispatcher {
       requestId === undefined ? undefined : await this.#options.indexer.byRequestId(requestId)
     if (existing !== undefined) {
       // The same key with different params is a conflict, not a silent answer with the first result.
-      if (existing.request_fingerprint !== null && existing.request_fingerprint !== fingerprint) {
+      if (
+        existing.request_fingerprint !== null &&
+        !sameFingerprint(existing.request_fingerprint, fingerprint)
+      ) {
         throw conflict(requestId!)
       }
       return { conversationId: existing.id, view: await this.#view(existing.id, DEFAULT_WINDOW) }
@@ -821,7 +825,7 @@ export class Kernel implements Dispatcher {
       const replay = await this.#options.indexer.importKey(key)
       if (replay !== undefined) {
         // The same key with other fields is a different conversation, not a silent answer with the first.
-        if (replay.fingerprint !== fingerprint) throw conflict(key)
+        if (!sameFingerprint(replay.fingerprint, fingerprint)) throw conflict(key)
         return { conversationId: replay.conversationId, entryIds: replay.entryIds, replayed: true }
       }
     }
@@ -1024,7 +1028,7 @@ export class Kernel implements Dispatcher {
         // Only an append memo replays here.
         if (data.scope !== 'append') continue // The same key with other entries is a different batch: answering with the old ids would silently
         // discard what the caller asked to append.
-        if (data.fingerprint !== fingerprint) throw conflict(key)
+        if (!sameFingerprint(data.fingerprint as string, fingerprint)) throw conflict(key)
         return data.entryIds as number[]
       }
       cursor = page.next as never
@@ -1195,7 +1199,7 @@ export class Kernel implements Dispatcher {
     if (requestId !== undefined) {
       const known = await this.#requestMemo(id, requestId)
       if (known !== undefined) {
-        if (known.fingerprint !== fingerprint) throw conflict(requestId)
+        if (!sameFingerprint(known.fingerprint, fingerprint)) throw conflict(requestId)
         if (known.submissionId !== undefined) return { submissionId: known.submissionId }
       }
     }
@@ -2017,30 +2021,7 @@ function defaultsAsChange(defaults: AgentDefaults | undefined): AgentChange {
   }
 }
 
-/** A stable string for "the same request": key order does not matter, so a client may resend freely. */
-export function fingerprintOf(value: unknown): string {
-  return JSON.stringify(normalize(value))
-}
-
-function normalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalize)
-  if (typeof value !== 'object' || value === null) return value
-  const record = value as Record<string, unknown>
-  // A null prototype and `defineProperty`: an own `__proto__` in imported data is a field like any other, and
-  // assigning it would set the prototype instead — losing it from the fingerprint so two different payloads
-  // look like the same request.
-  const out = Object.create(null) as Record<string, unknown>
-  for (const key of Object.keys(record).sort()) {
-    if (record[key] === undefined) continue
-    Object.defineProperty(out, key, {
-      value: normalize(record[key]),
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    })
-  }
-  return out
-}
+export { fingerprintOf }
 /**
  * Every method of the contract this build does not implement, and the capability that says so.
  *
