@@ -1,3 +1,9 @@
+## Unreleased
+
+### Fixed
+
+- A long session no longer slows Droi down or keeps its memory. Read back to its start, a session of 27,000 messages took 20 seconds to load and then cost 17 MB of work on every frame, 170 ms for every tool call its agent made, and 220 ms for every step of a scroll; it now loads in 2 seconds, a frame costs well under a millisecond, a tool call about 10 ms, and a scroll step about 12 ms. Once you scroll back to the latest messages or open another session, Droi lets go of the older messages it read: in the same test, 227 MB stayed in use after leaving the session, and now 12 MB does.
+
 ## 1.92.0 - 2026-11-06
 
 ### Added

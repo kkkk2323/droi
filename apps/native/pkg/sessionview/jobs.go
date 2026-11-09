@@ -25,8 +25,9 @@ const jobsRead = 2 * time.Second
 
 // jobsState is what a View knows of its Session's background jobs.
 type jobsState struct {
-	list []transcript.Job
-	byID map[string]int
+	reader transcript.JobReader
+	list   []transcript.Job
+	byID   map[string]int
 	// rev, count and at are the revision, message count and time list was
 	// read at: a job starts and ends with a new message, so a turn
 	// streaming into the last one reads them again only now and then.
@@ -63,10 +64,10 @@ func (v *View) Jobs() []transcript.Job {
 	}
 	js := &v.jobs
 	now := v.env.Now()
-	rev, count := v.env.Revisions.Load(v.id), s.MessageCount()
+	rev, count := v.env.Revisions.Messages(v.id), s.MessageCount()
 	if js.byID == nil || rev != js.rev && (count != js.count || now.Sub(js.at) >= jobsRead) {
 		js.rev, js.count, js.at = rev, count, now
-		js.list = transcript.Jobs(s.Messages())
+		s.ReadMessages(func(msgs []protocol.FactoryDroidMessage) { js.list = js.reader.Read(msgs) })
 		js.byID = make(map[string]int, len(js.list))
 		for i, j := range js.list {
 			js.byID[j.ID] = i

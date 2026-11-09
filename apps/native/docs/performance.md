@@ -82,6 +82,14 @@ copied per frame.
   and logs each frame's time and allocations; it fails over `frameBudget`. Add
   `-cpuprofile` or `-memprofile` (with `-memprofilerate 4096`) and read them with
   `go tool pprof`. The Fake Daemon does not start with more than about 5000 Sessions.
+- **A long Session in a test**: `TestALongTranscriptStaysCheap` (in `internal/app`, with
+  `-v`) loads all 8000 messages of a synthetic working Session and logs a frame's and a
+  new tool call's time and allocations; it fails over `transcriptFrameBudget` or
+  `liveCallBudget`. `TestALongSessionLetsGoOfWhatItRead` checks that what was read back
+  goes once the transcript follows its end again or the Session is left. To measure a
+  real Session, replay its `.jsonl` through the Fake Daemon in a local test of the same
+  shape (the Fake Daemon takes a scenario of more than about 1 MB from a file, as
+  `longTranscriptHarness` does).
 - **The running app**: `MYGO_FRAME_STATS=all` logs each frame's build, layout, paint and
   present; `DROI_PPROF=127.0.0.1:6061` serves Go's profiles
   (`/debug/pprof/profile?seconds=30`). Both need a restart, which ends the Sessions an

@@ -207,6 +207,9 @@ type App struct {
 
 	sidebar sidebarState
 	views   map[string]*sessionView
+	// shown is the Session whose view the last frame showed, and showing
+	// the one this frame shows.
+	shown, showing string
 	// recent are the Sessions whose view is kept, opened last at the end.
 	recent   []string
 	settings settingsState
@@ -361,7 +364,7 @@ func (a *App) Start() {
 	stats := openSessionStats(a.cfg.StatsFile)
 	a.ctl.Store().SetStatsSeed(stats.get)
 	a.unsubscribe = append(a.unsubscribe, a.ctl.Store().Subscribe(func(e session.Event) {
-		a.revs.Bump(e.SessionID)
+		a.revs.Note(e)
 		if e.Kind == session.EventStatsUpdated {
 			if s := a.ctl.Store().Session(e.SessionID); s != nil {
 				stats.put(e.SessionID, s.Stats())
@@ -741,6 +744,22 @@ func (a *App) snapshot() (controller.Status, []sessions.Summary, map[string]stri
 	return a.status, a.listCopy, busy, a.listErr, a.listDone, a.listRev
 }
 
+// noteShown lets the view of the Session the page no longer shows go of
+// what it holds (View.Release), after the frame: a click in its own rows can
+// lead away from it while its list is being built.
+func (a *App) noteShown() {
+	left := a.shown
+	a.shown = a.showing
+	if left == "" || left == a.showing {
+		return
+	}
+	a.cfg.Update(func() {
+		if v := a.views[left]; v != nil && a.shown != left {
+			v.Release()
+		}
+	})
+}
+
 // Go shows another page.
 func (a *App) Go(r Route) {
 	if r.Name == "settings" && a.route.Name != "settings" {
@@ -781,6 +800,8 @@ func (a *App) Route() Route { return a.route }
 
 // View builds the window.
 func (a *App) View(c *ui.Context) {
+	a.showing = ""
+	defer a.noteShown()
 	c.SetTheme(a.kit.UITheme(c.Theme()))
 	if a.copyText != "" {
 		c.WriteClipboard(a.copyText)

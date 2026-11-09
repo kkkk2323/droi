@@ -2,6 +2,8 @@ package transcript
 
 import (
 	"encoding/json"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -81,4 +83,37 @@ func TestJobsIgnoreOtherAnswers(t *testing.T) {
 		msg("tool", resultOf("e1", "Background process started is what it printed")),
 	}
 	eq(t, len(Jobs(msgs)), 0)
+}
+
+// A JobReader kept across reads tells what Jobs tells of each list, while
+// messages come one by one, a record of an end comes later, and a message
+// changes under its id.
+func TestAJobReaderReadsWhatJobsReads(t *testing.T) {
+	running := []map[string]any{{"type": "text", "text": "[Script running · 30.0 s elapsed · 1 pending call]"}, {"type": "text", "text": `{"toolCallId":"s2","status":"running"}`}}
+	b, _ := json.Marshal([]map[string]any{{"type": "text", "text": `Script s2 reached its terminal state with result {"toolCallId":"s2","status":"completed","result":null}. This is a new asynchronous lifecycle event.`}})
+	msgs := []protocol.FactoryDroidMessage{
+		msg("assistant", `[{"type":"tool_use","id":"s1-1","name":"Execute","input":{"summary":"Release Droi 1.57.1","command":"cd /repo && scripts/release.sh 1.57.1","fireAndForget":true}}]`, withID("a1")),
+		msg("user", resultOf("s1-1", started), at(1000), withID("u1")),
+		msg("assistant", `[{"type":"tool_use","id":"s2","name":"Script","input":{"script":"await tools.Execute({}); await tools.Read({})"}}]`, withID("a2")),
+		msg("tool", resultOf("s2", running), at(2000), withID("t2")),
+		msg("assistant", `[{"type":"tool_use","id":"w1","name":"WaitForScript","input":{"toolCallId":"s2"}}]`, withID("a3")),
+		msg("tool", resultOf("w1", []map[string]any{{"type": "text", "text": `{"toolCallId":"s2","status":"failed","error":"boom"}`}}), at(3000), withID("t3")),
+		msg("user", `[]`, withID("execute-completion:s1-1"), at(5000)),
+		msg("user", string(b), withID("script-completion:sess:s2:s2"), at(6000)),
+		// An answer before its call finds no call.
+		msg("user", resultOf("late", started), at(7000), withID("u4")),
+		msg("assistant", `[{"type":"tool_use","id":"late","name":"Execute","input":{"summary":"Late"}}]`, withID("a4")),
+	}
+	var r JobReader
+	for k := 1; k <= len(msgs); k++ {
+		eq(t, r.Read(msgs[:k]), Jobs(msgs[:k]))
+	}
+	// The command's answer changes under its id: it is read again.
+	changed := slices.Clone(msgs)
+	changed[1] = msg("user", resultOf("s1-1", strings.Replace(started, "97178", "11111", 1)), at(1000), withID("u1"))
+	eq(t, r.Read(changed), Jobs(changed))
+	eq(t, r.Read(changed)[0].PID, 11111)
+	// Messages gone are forgotten.
+	eq(t, r.Read(changed[2:]), Jobs(changed[2:]))
+	eq(t, len(r.seen), len(changed[2:]))
 }

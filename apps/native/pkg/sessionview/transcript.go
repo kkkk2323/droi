@@ -47,7 +47,6 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	if ws == string(protocol.DroidWorkingStateStreamingAssistantMessage) && len(entries) > 0 && !entries[len(entries)-1].User {
 		streamingID = entries[len(entries)-1].ID
 	}
-	ends := transcript.TurnEnds(entries, running)
 	activity := transcript.WorkingLabel(ws)
 	// The status can outlive a turn that ended without progress, so it only
 	// shows while one runs.
@@ -56,7 +55,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	}
 	v.links = v.subagentLinks(listed)
 	v.streamingID = streamingID
-	rows := v.rows(entries, streamingID, ends)
+	rows := v.cachedRows(entries, streamingID, running)
 	v.frameRows = rows
 
 	// Row 0 is the lead, then the entries' rows, then the activity row.
@@ -104,6 +103,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 		if first, _ := v.list.Visible(); first == 0 && hasOlder {
 			v.loadOlder()
 		}
+		v.trimAtEnd(s)
 		if !v.list.AtEnd() {
 			tip := l10n.L("Scroll to latest")
 			if v.env.ScrollShortcut != "" {
@@ -361,6 +361,7 @@ func (v *View) cluster(c *ui.Context, b transcript.Block) {
 		})
 		if tr.Clicked() {
 			*open = !*open
+			v.rowsGen++
 			v.hold()
 		}
 	})
@@ -1034,7 +1035,9 @@ func (v *View) subagentProgress(id string) *subagentProgress {
 		return p
 	}
 	p := &subagentProgress{rev: rev}
-	call, n := transcript.LatestTool(s.Messages())
+	var call *transcript.ToolCall
+	var n int
+	s.ReadMessages(func(msgs []protocol.FactoryDroidMessage) { call, n = transcript.LatestTool(msgs) })
 	p.count = n
 	if call != nil {
 		_, p.tool = transcript.ToolName(call.Use.Name)

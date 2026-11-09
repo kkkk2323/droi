@@ -55,90 +55,191 @@ type transcriptRow struct {
 	turn []*transcript.Entry
 }
 
-// rows cuts the entries into the list's rows, in px before Kit.Px.
-func (v *View) rows(entries []*transcript.Entry, streamingID string, ends map[string]transcript.TurnEnd) []transcriptRow {
-	var rows []transcriptRow
-	turnStart := 0
-	for i, e := range entries {
+// rowCache keeps the transcript's rows from frame to frame. Cutting every
+// entry again on each frame made a frame of a long Session cost what its
+// whole history holds: 17 MB of garbage a frame at 27,000 messages. An
+// entry's rows depend only on it, the next entry (whether its turn ends
+// there), the turn before it, whether the Session runs and which entry
+// streams, so a change cuts again only from the entry before the first one
+// that changed.
+type rowCache struct {
+	entries     []*transcript.Entry
+	streamingID string
+	// streamingAt is the index of the entry that streamed, -1 for none.
+	streamingAt int
+	running     bool
+	// gen is View.rowsGen the rows were cut at: a fold opened or closed.
+	gen  uint64
+	rows []transcriptRow
+	// starts[i] is the first row of entries[i] and turns[i] the turn's
+	// state before it, to go on cutting from there.
+	starts []int
+	turns  []turnState
+}
+
+// turnState is where the entries cut so far left the turn.
+type turnState struct {
+	// first is the index of the turn's user entry, for a turn end's Copy.
+	first int
+	// startedAt is when the turn's first user entry since the last turn
+	// end came, as TurnEnds reads it.
+	startedAt float64
+	hasStart  bool
+}
+
+// cachedRows are the transcript's rows for entries, cut again only from
+// where they changed since the last call.
+func (v *View) cachedRows(entries []*transcript.Entry, streamingID string, running bool) []transcriptRow {
+	return v.cutRows(&v.rowCache, entries, streamingID, running)
+}
+
+// cutRows brings rc's rows up to date with entries and returns them, in px
+// before Kit.Px. A zero rowCache cuts every entry.
+func (v *View) cutRows(rc *rowCache, entries []*transcript.Entry, streamingID string, running bool) []transcriptRow {
+	from := 0
+	if rc.gen == v.rowsGen && len(rc.starts) == len(rc.entries) {
+		n := min(len(rc.entries), len(entries))
+		from = n
+		for i := range n {
+			if rc.entries[i] != entries[i] {
+				from = i
+				break
+			}
+		}
+		if from < len(rc.entries) || len(entries) != len(rc.entries) || streamingID != rc.streamingID || running != rc.running {
+			// The entry before a change may end its turn there or no longer,
+			// and the last one ends it while nothing runs.
+			from = max(0, min(from, len(rc.entries))-1)
+		}
+		if streamingID != rc.streamingID && rc.streamingAt >= 0 {
+			from = min(from, rc.streamingAt)
+		}
+		if from == len(entries) && from == len(rc.entries) {
+			return rc.rows
+		}
+	}
+	var st turnState
+	if from < len(rc.starts) {
+		st = rc.turns[from]
+		rc.rows = rc.rows[:rc.starts[from]]
+		rc.starts, rc.turns = rc.starts[:from], rc.turns[:from]
+	} else {
+		from = 0
+		rc.rows, rc.starts, rc.turns = rc.rows[:0], rc.starts[:0], rc.turns[:0]
+		rc.streamingAt = -1
+	}
+	if rc.streamingAt >= from {
+		rc.streamingAt = -1
+	}
+	rows := rc.rows
+	for i := from; i < len(entries); i++ {
+		e := entries[i]
+		if e.ID == streamingID {
+			rc.streamingAt = i
+		}
+		rc.starts = append(rc.starts, len(rows))
+		rc.turns = append(rc.turns, st)
 		if e.User {
+			if !st.hasStart {
+				st.startedAt, st.hasStart = e.CreatedAt, true
+			}
+			st.first = i
 			rows = append(rows, transcriptRow{kind: rowUser, key: e.ID, e: e})
-			turnStart = i
 			continue
 		}
-		start := len(rows)
-		pending, started := float32(0), false
-		add := func(r transcriptRow, top, bottom float32) {
-			if started {
-				r.top = max(pending, top)
-			} else {
-				r.top = top
-			}
-			r.e = e
-			rows = append(rows, r)
-			started, pending = true, bottom
+		replied := len(e.Blocks) > 0 && e.Blocks[len(e.Blocks)-1].Kind == transcript.Text
+		closes := !running
+		if i+1 < len(entries) {
+			closes = entries[i+1].User && replied
 		}
-		for i, b := range e.Blocks {
-			key := e.ID + "/" + strconv.Itoa(i)
-			switch b.Kind {
-			case transcript.Text:
-				last := e.ID == streamingID && i == len(e.Blocks)-1
-				add(transcriptRow{kind: rowBlock, key: key, block: i, streaming: last}, 8, 8)
-			case transcript.Tools:
-				if v.lifted(b) {
-					// Only the Workstream's own calls: their rows stand at the
-					// top, without a "Used N tools" over them.
-					first := true
-					for _, run := range transcript.WorkstreamRuns(transcript.LeafCalls(b.Calls)) {
-						label, grouped := transcript.WorkstreamGroup(run)
-						if grouped {
-							r := transcriptRow{kind: rowGroup, lifted: true, key: key + "/" + run[0].Use.ID + "/group", block: i, call: run[0], label: label, first: first}
-							if first {
-								add(r, 8, 8)
-							} else {
-								r.e = e
-								rows = append(rows, r)
-							}
-							first = false
-						}
-						for _, call := range run {
-							r := transcriptRow{kind: rowCall, lifted: true, key: key + "/" + call.Use.ID, block: i, call: call, first: first, grouped: grouped}
-							if first {
-								add(r, 8, 8)
-							} else {
-								r.e = e
-								rows = append(rows, r)
-							}
-							first = false
-						}
-					}
-					continue
-				}
-				add(transcriptRow{kind: rowCluster, key: key, block: i}, 8, 8)
-				if !*v.flag("cluster:"+b.ID, true) {
-					continue
-				}
-				j := 0
-				for _, call := range b.Calls {
-					rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0})
-					j++
-					for k, inner := range call.Nested {
-						rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: k == 0})
-					}
-				}
-			default:
-				add(transcriptRow{kind: rowBlock, key: key, block: i}, 8, 8)
-			}
+		var end transcript.TurnEnd
+		if closes {
+			end = transcript.TurnEnd{EndedAt: e.CreatedAt, StartedAt: st.startedAt, HasStart: st.hasStart}
+			st.hasStart = false
 		}
-		if end, closes := ends[e.ID]; closes && end.EndedAt > 0 {
-			add(transcriptRow{kind: rowTurnEnd, key: e.ID + "/end", end: end, turn: entries[turnStart : i+1]}, 8, 0)
-		}
-		if len(rows) == start {
-			rows = append(rows, transcriptRow{kind: rowBlock, key: e.ID, e: e, block: -1})
-			pending = 0
-		}
-		rows[start].top += 12
-		rows[len(rows)-1].bottom = pending + 12
+		rows = v.cutEntry(rows, entries, i, st.first, streamingID, end, closes)
 	}
+	rc.rows, rc.entries, rc.streamingID, rc.running, rc.gen = rows, entries, streamingID, running, v.rowsGen
+	return rows
+}
+
+// cutEntry appends the rows of the assistant's entries[i] to rows; turnStart
+// is the index of its turn's user entry, end its turn's end if it closes one.
+func (v *View) cutEntry(rows []transcriptRow, entries []*transcript.Entry, i, turnStart int, streamingID string, end transcript.TurnEnd, closes bool) []transcriptRow {
+	e := entries[i]
+	start := len(rows)
+	pending, started := float32(0), false
+	add := func(r transcriptRow, top, bottom float32) {
+		if started {
+			r.top = max(pending, top)
+		} else {
+			r.top = top
+		}
+		r.e = e
+		rows = append(rows, r)
+		started, pending = true, bottom
+	}
+	for i, b := range e.Blocks {
+		key := e.ID + "/" + strconv.Itoa(i)
+		switch b.Kind {
+		case transcript.Text:
+			last := e.ID == streamingID && i == len(e.Blocks)-1
+			add(transcriptRow{kind: rowBlock, key: key, block: i, streaming: last}, 8, 8)
+		case transcript.Tools:
+			if v.lifted(b) {
+				// Only the Workstream's own calls: their rows stand at the
+				// top, without a "Used N tools" over them.
+				first := true
+				for _, run := range transcript.WorkstreamRuns(transcript.LeafCalls(b.Calls)) {
+					label, grouped := transcript.WorkstreamGroup(run)
+					if grouped {
+						r := transcriptRow{kind: rowGroup, lifted: true, key: key + "/" + run[0].Use.ID + "/group", block: i, call: run[0], label: label, first: first}
+						if first {
+							add(r, 8, 8)
+						} else {
+							r.e = e
+							rows = append(rows, r)
+						}
+						first = false
+					}
+					for _, call := range run {
+						r := transcriptRow{kind: rowCall, lifted: true, key: key + "/" + call.Use.ID, block: i, call: call, first: first, grouped: grouped}
+						if first {
+							add(r, 8, 8)
+						} else {
+							r.e = e
+							rows = append(rows, r)
+						}
+						first = false
+					}
+				}
+				continue
+			}
+			add(transcriptRow{kind: rowCluster, key: key, block: i}, 8, 8)
+			if !*v.flag("cluster:"+b.ID, true) {
+				continue
+			}
+			j := 0
+			for _, call := range b.Calls {
+				rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0})
+				j++
+				for k, inner := range call.Nested {
+					rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: k == 0})
+				}
+			}
+		default:
+			add(transcriptRow{kind: rowBlock, key: key, block: i}, 8, 8)
+		}
+	}
+	if closes && end.EndedAt > 0 {
+		add(transcriptRow{kind: rowTurnEnd, key: e.ID + "/end", end: end, turn: entries[turnStart : i+1]}, 8, 0)
+	}
+	if len(rows) == start {
+		rows = append(rows, transcriptRow{kind: rowBlock, key: e.ID, e: e, block: -1})
+		pending = 0
+	}
+	rows[start].top += 12
+	rows[len(rows)-1].bottom = pending + 12
 	return rows
 }
 

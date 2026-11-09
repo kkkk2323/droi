@@ -5,8 +5,10 @@ import (
 	"cmp"
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
@@ -78,69 +80,225 @@ var (
 // are a Session's stored ones, unfiltered: the records of a job's end are
 // for the model only.
 func Jobs(messages []protocol.FactoryDroidMessage) []Job {
-	uses := map[string]protocol.ToolUse{}
+	var r JobReader
+	return r.Read(messages)
+}
+
+// JobReader reads a Session's jobs again and again as its messages change,
+// reading each message once: Jobs decoded every tool call of the Session
+// each time a message came, which was most of what a long Session's
+// window spent while its agent worked.
+type JobReader struct {
+	seen map[string]*jobMessage
+	gen  uint64
+	// last are the messages the last Read read, in order: mostly the same
+	// ones stand in the same places, found without a lookup.
+	last, spare []*jobMessage
+}
+
+// jobMessage is what one message says about jobs, kept while its blocks
+// stay the same.
+type jobMessage struct {
+	id     string
+	gen    uint64
+	blocks []rawRef
+	// end is set for the record of a job's end: the job's id and how it ended.
+	end *jobEnd
+	// steps are its tool calls and the answers that start or end a job, in order.
+	steps []jobStep
+}
+
+type jobEnd struct {
+	id string
+	// script: a Script's run ended, with status; else a command, with exitCode.
+	script   bool
+	exitCode *int
+	status   string
+}
+
+// jobStep is a tool call (use set) or an answer about a job (started or run set).
+type jobStep struct {
+	use *protocol.ToolUse
+	// tools is what a Script call calls, read once it is asked for.
+	tools     *string
+	toolUseID string
+	started   *Job
+	run       string
+	status    string
+}
+
+// scriptTools is what the Script call s calls.
+func (s *jobStep) scriptTools() string {
+	if s.tools == nil {
+		t := scriptTools(*s.use)
+		s.tools = &t
+	}
+	return *s.tools
+}
+
+// rawRef is a block as the Store holds it: the same bytes in the same place.
+type rawRef struct {
+	typ  string
+	data *byte
+	n    int
+}
+
+func refOf(b protocol.ContentBlock) rawRef {
+	return rawRef{typ: b.Type, data: unsafe.SliceData(b.Raw), n: len(b.Raw)}
+}
+
+// sameBlocks reports whether content is what refs were made from. The Store
+// replaces a block it changes, so the same bytes in the same place are the
+// same block.
+func sameBlocks(refs []rawRef, content []protocol.ContentBlock) bool {
+	if len(refs) != len(content) {
+		return false
+	}
+	for i, b := range content {
+		if refs[i] != refOf(b) {
+			return false
+		}
+	}
+	return true
+}
+
+func readJobMessage(m protocol.FactoryDroidMessage) *jobMessage {
+	jm := &jobMessage{id: m.ID, blocks: make([]rawRef, len(m.Content))}
+	for i, b := range m.Content {
+		jm.blocks[i] = refOf(b)
+	}
+	switch {
+	case strings.HasPrefix(m.ID, executeCompletion):
+		jm.end = &jobEnd{id: strings.TrimPrefix(m.ID, executeCompletion)}
+		if c := exitCode.FindStringSubmatch(messageText(m)); c != nil {
+			n, _ := strconv.Atoi(c[1])
+			jm.end.exitCode = &n
+		}
+		return jm
+	case strings.HasPrefix(m.ID, scriptCompletion):
+		// script-completion:<session>:<run>:<tool use>
+		jm.end = &jobEnd{id: m.ID[strings.LastIndexByte(m.ID, ':')+1:], script: true, status: terminalStatus(messageText(m))}
+		return jm
+	}
+	for _, b := range m.Content {
+		switch b.Type {
+		case protocol.ContentBlockTypeToolUse:
+			if use, ok := decode[protocol.ToolUse](b); ok {
+				use = sharedUse(b, use)
+				jm.steps = append(jm.steps, jobStep{use: &use})
+			}
+		case protocol.ContentBlockTypeToolResult:
+			if !bytes.Contains(b.Raw, []byte(backgroundStarted)) && !bytes.Contains(b.Raw, []byte("toolCallId")) {
+				continue
+			}
+			r, ok := decode[protocol.ToolResult](b)
+			if !ok {
+				continue
+			}
+			if j := startedJob(&r, protocol.ToolUse{}, m.CreatedAt); j != nil {
+				jm.steps = append(jm.steps, jobStep{toolUseID: r.ToolUseID, started: j})
+				continue
+			}
+			if run, status := runAnswer(&r); run != "" {
+				jm.steps = append(jm.steps, jobStep{toolUseID: r.ToolUseID, run: run, status: status})
+			}
+		}
+	}
+	return jm
+}
+
+// Read is Jobs(messages), reading again only the messages that changed
+// since the last Read.
+func (jr *JobReader) Read(messages []protocol.FactoryDroidMessage) []Job {
+	if jr.seen == nil {
+		jr.seen = map[string]*jobMessage{}
+	}
+	jr.gen++
+	read := slices.Grow(jr.spare[:0], len(messages))[:len(messages)]
+	wanted := map[string]bool{}
+	kept := 0
+	for i, m := range messages {
+		var jm *jobMessage
+		if i < len(jr.last) && jr.last[i].id == m.ID && m.ID != "" {
+			jm = jr.last[i]
+		} else {
+			jm = jr.seen[m.ID]
+		}
+		// A message without an id, or with one twice in a list, is read anew.
+		if m.ID == "" || jm == nil || jm.gen == jr.gen || !sameBlocks(jm.blocks, m.Content) {
+			fresh := readJobMessage(m)
+			if m.ID != "" && (jm == nil || jm.gen != jr.gen) {
+				jr.seen[m.ID] = fresh
+				kept++
+			}
+			jm = fresh
+		} else {
+			kept++
+		}
+		jm.gen = jr.gen
+		read[i] = jm
+		for _, s := range jm.steps {
+			if s.use == nil {
+				wanted[s.toolUseID] = true
+			}
+		}
+	}
+	if len(jr.seen) > kept {
+		for id, jm := range jr.seen {
+			if jm.gen != jr.gen {
+				delete(jr.seen, id)
+			}
+		}
+	}
+	jr.last, jr.spare = read, jr.last
+
+	// As Jobs did: an answer finds the calls that came before it.
+	uses := map[string]*jobStep{}
 	byID := map[string]*Job{}
 	var order []string
 	ends := map[string]func(*Job){}
-	for _, m := range messages {
-		switch {
-		case strings.HasPrefix(m.ID, executeCompletion):
-			text := messageText(m)
-			at := m.CreatedAt
-			ends[strings.TrimPrefix(m.ID, executeCompletion)] = func(j *Job) {
+	for i, jm := range read {
+		at := messages[i].CreatedAt
+		if e := jm.end; e != nil {
+			ends[e.id] = func(j *Job) {
 				j.Done, j.EndedAt = true, at
-				if c := exitCode.FindStringSubmatch(text); c != nil {
-					n, _ := strconv.Atoi(c[1])
-					j.ExitCode = &n
+				if e.exitCode != nil {
+					j.ExitCode = e.exitCode
 				}
-			}
-			continue
-		case strings.HasPrefix(m.ID, scriptCompletion):
-			// script-completion:<session>:<run>:<tool use>
-			id := m.ID[strings.LastIndexByte(m.ID, ':')+1:]
-			status := terminalStatus(messageText(m))
-			at := m.CreatedAt
-			ends[id] = func(j *Job) {
-				j.Done, j.EndedAt = true, at
-				if status != "" {
-					j.Status = status
+				if e.script && e.status != "" {
+					j.Status = e.status
 				}
 			}
 			continue
 		}
-		for _, b := range m.Content {
-			switch b.Type {
-			case protocol.ContentBlockTypeToolUse:
-				if use, ok := decode[protocol.ToolUse](b); ok {
-					uses[use.ID] = use
+		for k, s := range jm.steps {
+			switch {
+			case s.use != nil:
+				if wanted[s.use.ID] {
+					uses[s.use.ID] = &jm.steps[k]
 				}
-			case protocol.ContentBlockTypeToolResult:
-				if !bytes.Contains(b.Raw, []byte(backgroundStarted)) && !bytes.Contains(b.Raw, []byte("toolCallId")) {
-					continue
-				}
-				r, ok := decode[protocol.ToolResult](b)
-				if !ok {
-					continue
-				}
-				if j := startedJob(&r, uses[r.ToolUseID], m.CreatedAt); j != nil {
-					if byID[j.ID] == nil {
-						byID[j.ID] = j
-						order = append(order, j.ID)
+			case s.started != nil:
+				if byID[s.started.ID] == nil {
+					j := *s.started
+					if use := uses[s.toolUseID]; use != nil {
+						j.withUse(*use.use)
 					}
-					continue
+					byID[j.ID] = &j
+					order = append(order, j.ID)
 				}
-				run, status := runAnswer(&r)
-				if run == "" {
-					continue
+			default:
+				use := uses[s.toolUseID]
+				name := ""
+				if use != nil {
+					name = use.use.Name
 				}
-				use := uses[r.ToolUseID]
 				switch {
-				case status == "running" && use.Name == ScriptTool && byID[run] == nil:
-					byID[run] = &Job{ID: run, Script: true, Summary: scriptTools(use), StartedAt: m.CreatedAt}
-					order = append(order, run)
-				case status != "running" && status != "stalled" && use.Name == WaitForScriptTool:
-					at := m.CreatedAt
-					ends[run] = func(j *Job) { j.Done, j.EndedAt, j.Status = true, at, status }
+				case s.status == "running" && name == ScriptTool && byID[s.run] == nil:
+					byID[s.run] = &Job{ID: s.run, Script: true, Summary: use.scriptTools(), StartedAt: at}
+					order = append(order, s.run)
+				case s.status != "running" && s.status != "stalled" && name == WaitForScriptTool:
+					status := s.status
+					ends[s.run] = func(j *Job) { j.Done, j.EndedAt, j.Status = true, at, status }
 				}
 			}
 		}
@@ -174,6 +332,12 @@ func startedJob(r *protocol.ToolResult, use protocol.ToolUse, at float64) *Job {
 			j.OutputFile = v
 		}
 	}
+	j.withUse(use)
+	return j
+}
+
+// withUse takes the job's summary and command from the call that started it.
+func (j *Job) withUse(use protocol.ToolUse) {
 	input := decodeInput(use.Input)
 	if s, _ := input["summary"].(string); strings.TrimSpace(s) != "" {
 		j.Summary = firstLine(s, 120)
@@ -183,7 +347,6 @@ func startedJob(r *protocol.ToolResult, use protocol.ToolUse, at float64) *Job {
 	if c, _ := input["command"].(string); c != "" {
 		j.Command = c
 	}
-	return j
 }
 
 // runAnswer is the run a Script or WaitForScript answer is about and the
