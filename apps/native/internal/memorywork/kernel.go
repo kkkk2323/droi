@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
@@ -76,10 +77,50 @@ func NewKernelRunner(k Kernel) Run {
 			if err := kernelError(ctx, err); errors.Is(err, ErrKernelGone) {
 				return Reply{}, err
 			}
+			if answer, ok := plainAnswer(err, r.Schema); ok {
+				return Reply{JSON: answer, Model: ref.ModelID, Started: true}, nil
+			}
 			return Reply{Model: ref.ModelID, Started: true}, err
 		}
 		return Reply{JSON: res.JSON, Model: res.Model.ModelID, Started: true}, nil
 	}
+}
+
+// plainAnswer is an answer the model wrote as the text itself rather than as JSON: a Memory Summary or a Session
+// Summary in Markdown, without the {"memory_summary": …} around it. model.complete offers no constrained output,
+// and a ten-kilobyte document is what a model is least likely to escape into a JSON string. The text stands for
+// the schema's first required field when that field is a string; Memory's own checks (checkSessionSummary,
+// checkMemorySummaryShape) still decide whether it is one. An answer that is JSON but does not fit stays a failure.
+func plainAnswer(err error, schema map[string]any) (json.RawMessage, bool) {
+	var rpc *kernel.RPCError
+	if !errors.As(err, &rpc) || rpc.Code != kernel.CodeModelInvalid {
+		return nil, false
+	}
+	var data struct {
+		Issues []struct {
+			Path    string `json:"path"`
+			Message string `json:"message"`
+		} `json:"issues"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(rpc.Data, &data) != nil || strings.TrimSpace(data.Text) == "" ||
+		len(data.Issues) != 1 || data.Issues[0].Message != "the answer is not JSON" {
+		return nil, false
+	}
+	required, _ := schema["required"].([]string)
+	properties, _ := schema["properties"].(map[string]any)
+	if len(required) == 0 {
+		return nil, false
+	}
+	field, _ := properties[required[0]].(map[string]any)
+	if field["type"] != "string" {
+		return nil, false
+	}
+	answer, jerr := json.Marshal(map[string]string{required[0]: data.Text})
+	if jerr != nil {
+		return nil, false
+	}
+	return answer, true
 }
 
 // lenient is schema with no field required and none refused: model.complete offers the model no constrained
