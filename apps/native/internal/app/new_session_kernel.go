@@ -13,7 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
@@ -124,4 +126,32 @@ func usableDir(path string) (string, error) {
 		return "", errors.New(L("%s is not a usable directory.", path))
 	}
 	return abs, nil
+}
+
+// kernelDefaults are the Session defaults of a window on its own Host's Kernel: the Host keeps them, and a Session
+// picks from the models the Kernel offers.
+func (a *App) kernelDefaults() defaults.View {
+	d := a.cfg.Host.KernelSessionDefaults()
+	return defaults.View{
+		ModelID:                 d.Model,
+		ReasoningEffort:         d.ReasoningEffort,
+		AutonomyLevel:           d.AutonomyLevel,
+		Models:                  a.kernelChoices(),
+		AvailableAutonomyLevels: []string{"off", "low", "medium", "high"},
+	}
+}
+
+// saveKernelDefaults keeps what p changes of the Session defaults; the rest of a Patch is the Daemon's.
+func (a *App) saveKernelDefaults(p defaults.Patch) error {
+	return a.cfg.Host.SetKernelSessionDefaults(func(d *host.SessionDefaults) {
+		if p.ModelID != nil {
+			d.Model = *p.ModelID
+		}
+		if p.ReasoningEffort != nil {
+			d.ReasoningEffort = *p.ReasoningEffort
+		}
+		if p.AutonomyLevel != nil {
+			d.AutonomyLevel = *p.AutonomyLevel
+		}
+	})
 }

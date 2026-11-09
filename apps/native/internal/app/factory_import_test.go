@@ -62,3 +62,32 @@ func TestSettingsOffersNoImportWithoutAKernel(t *testing.T) {
 		t.Fatal("Settings offers the import without a Kernel")
 	}
 }
+
+// On its own Host's Kernel, the window keeps the Session defaults in Droi's settings, taken first from droid's, and
+// offers the Kernel's models for them: no Daemon runs to ask.
+func TestOnAKernelHostTheSessionDefaultsAreDrois(t *testing.T) {
+	h0, home := kernelHostWithFactory(t)
+	body := `{"sessionDefaultSettings": {"model": "fake-1", "autonomyLevel": "medium"}}`
+	if err := os.WriteFile(filepath.Join(home, ".factory", "settings.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
+	h.tt.SetSize(refW, 2000)
+	h.until("the Session list", func() bool { return h.hasText("One") })
+	h.openSettingsTab("defaults")
+	h.until("droid's autonomy, taken over", func() bool { return h.hasText("Medium autonomy") })
+	h.click("Default autonomy level")
+	h.click("High autonomy")
+	h.until("the change kept by the Host", func() bool { return h0.KernelSessionDefaults().AutonomyLevel == "high" })
+	if b, _ := os.ReadFile(filepath.Join(home, ".factory", "settings.json")); string(b) != body {
+		t.Fatalf("droid's settings changed: %s", b)
+	}
+	if !h.a.onKernel() {
+		return
+	}
+	h.click("Default model")
+	h.settle()
+	if h.hasText("GPT-5") {
+		t.Fatalf("the picker offers the Daemon's models: %q", h.tt.Texts())
+	}
+}

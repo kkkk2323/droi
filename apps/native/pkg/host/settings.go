@@ -72,6 +72,9 @@ type Settings struct {
 	// place of the one its Model Source lists, which is also where the Kernel compacts. Replace the map, do not
 	// change it in place: Get's copies share it.
 	ModelContextWindows map[string]int `json:"modelContextWindows,omitempty"`
+	// SessionDefaults are what a new Kernel conversation starts with; nil until set or taken from droid's
+	// (KernelSessionDefaults).
+	SessionDefaults *SessionDefaults `json:"sessionDefaults,omitempty"`
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the

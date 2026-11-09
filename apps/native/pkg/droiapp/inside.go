@@ -25,14 +25,18 @@ type inside struct {
 	link   *host.KernelLink
 }
 
-// start starts the App and keeps its Controller connected, and its Kernel connection when this computer's Host runs
-// one. A window that follows another computer stays on that computer's Daemon.
+// start starts the App and keeps its Kernel connection when this computer's Host runs one, its Controller connected
+// otherwise. A window that follows another computer stays on that computer's Daemon.
 func (in *inside) start(h *host.Host) {
 	in.app.Start()
 	ctx, cancel := context.WithCancel(context.Background())
 	in.stop = cancel
-	go connectWhenSignedIn(ctx, in.ctl, h, in.following)
-	if !in.following && h.KernelEnabled() {
+	onKernel := !in.following && h.KernelEnabled()
+	if !onKernel {
+		// A Host on the Kernel runs no Daemon to connect to.
+		go connectWhenSignedIn(ctx, in.ctl, h, in.following)
+	}
+	if onKernel {
 		in.link = host.NewKernelLink(host.KernelLinkOptions{
 			Client:   "window",
 			Token:    h.KernelToken,

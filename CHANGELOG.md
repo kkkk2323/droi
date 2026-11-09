@@ -10,6 +10,8 @@
 - For apps built on Droi (ADR 0041): the Go module is now `github.com/kkkk2323/droi/apps/native/v2`, and its tags are `apps/native/v2.x.y`. Change every import of `github.com/kkkk2323/droi/apps/native/...` to `github.com/kkkk2323/droi/apps/native/v2/...` and require the module at a v2 tag. The packages and their names stay the same.
 - On the Kernel, Droi no longer asks you to sign in with Factory, and Settings has no Account tab: no Factory account runs a model there. An app built on Droi still shows its own sign-in page.
 - On the Kernel, Settings and the window leave out what only droid used. Advanced has a Kernel row (its status and Restart Kernel) instead of the Daemon, the droid executable and the Factory API base URL. Session defaults have no Spec mode, compaction or subagent settings, and tool calls are Script or Direct. The sidebar shows no other account's sessions, Automations shows no Factory automations, droid's update cards are gone, and /loop is not offered. Turning Memory on or off restarts nothing.
+- On the Kernel, Droi runs no droid Daemon: the Kernel runs every Session. The Session defaults (model, reasoning level, autonomy) are kept in Droi's settings, taken once from droid's, and the model list is the Kernel's.
+- `scripts/install-next.sh droi` installs this checkout's Droi on its Kernel as Droi itself, in place of a released Droi, with no update feed; it backs up the released Droi first.
 - On the Kernel, worktrees go in Droi's own folder (`~/.droi/worktrees`; `~/.droi-next/worktrees` for Droi Next) instead of `~/.factory/worktrees`. The folder you pick in Settings → Worktrees is kept in Droi's settings.
 
 ### Fixed

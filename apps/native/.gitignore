@@ -6,3 +6,8 @@ mygo_windows_*.syso
 /next/resources
 /next/build/
 /next/.mygo/
+# The local build's (Droi from this checkout, installed as Droi), which scripts/install-next.sh droi writes.
+/local/mygo.json
+/local/resources
+/local/build/
+/local/.mygo/

@@ -346,6 +346,9 @@ func New(cfg Config) *App {
 		a.redraw()
 	}))
 	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update, Changed: a.defaultsChanged}
+	if h := cfg.Host; h != nil && cfg.Computer == nil && h.KernelEnabled() {
+		a.defaults.Local = &settingsview.LocalDefaults{Load: a.kernelDefaults, Save: a.saveKernelDefaults}
+	}
 	pickFolder := a.pickFolder
 	if cfg.Computer != nil {
 		// Another computer's Daemon cannot use a folder picked on this one.
