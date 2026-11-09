@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # A release pins its `droid`, and the Host updates itself when idle
+
+_There is no Pinned Droid: the Kernel is Droi's own binary and ships with the app, so the version agreement this ADR wanted comes for free._
 
 > The Pinned Droid is not built yet: ADR 0018 asks for a Minimum Droid instead until it is needed.
 > ADR 0027's Patched Droid downloads Factory's build the same way, but it is opt-in and follows the

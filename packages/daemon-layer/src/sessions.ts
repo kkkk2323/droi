@@ -1,13 +1,12 @@
-// Session list and Workspace grouping. The list is a collection fetched from
-// the Daemon on demand, so it lives in TanStack Query; the open Session's
-// transcript lives in the SDK state manager (see use-session.ts).
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
-import type { DaemonSessionController } from '@factory/droid-sdk'
-import { useConnectionState, useDaemonConnection } from './connection-context'
-import { SESSION_EVENT } from './sdk-enums'
+// Session list and Workspace grouping. The list is the Kernel's conversation.list, a
+// collection fetched on demand, so it lives in TanStack Query; index.changed keeps its
+// rows current. The open Session's transcript lives in kernel-conversations.ts.
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
+import { useConnectionState, useKernelConnection } from './connection-context'
 import type { SessionTimes } from './gateway'
-import { isMemorySession } from './memory-session'
+import { kernelStore } from './kernel-state'
+import { sessionIdOf, type ListItem } from './kernel-wire'
 import type { SessionWorktree } from './worktree'
 
 export interface SessionSummary {
@@ -18,17 +17,25 @@ export interface SessionSummary {
   repoRoot: string | null
   /** The Daemon-managed worktree the Session runs in; null for a checkout, or once it is removed. */
   worktree: SessionWorktree | null
-  /** Unix epoch seconds. */
+  /** Unix epoch seconds: when it last did something. */
   updatedAt: number
+  /** When it last did something, in ms. */
+  activityAt: number
+  /** When a person last saw it, in ms; null asks for the dot. */
+  viewedAt: number | null
+  /** The Kernel's label: chat, scratch, automation, … */
+  kind: string | null
   messagesCount: number | null
   archivedAt: string | null
   tags: SessionTag[]
-  /** The Session this one continues after a compaction (see use-compact.ts). */
+  /** The Session this one continues after a compaction, from a droid session's tags. */
   parentId: string | null
-  /** For a subagent: the Session whose Task tool call started it (see subagents.ts). */
-  callingSessionId: string | null
-  /** For a subagent: that Task tool call's id in the calling Session. */
-  callingToolUseId: string | null
+}
+
+/** A Session as a link names it. */
+export interface SessionRef {
+  sessionId: string
+  title: string
 }
 
 export interface SessionTag {
@@ -53,16 +60,6 @@ export function continuationTags(parentId: string, inherited: readonly SessionTa
     ...inherited.filter((t) => t.name !== CONTINUES_TAG),
     { name: CONTINUES_TAG, metadata: { parent: parentId } },
   ]
-}
-
-/**
- * Tag of a Draft Session (see use-draft-session.ts). It lives in the session
- * file, so every Client and every later launch leaves the draft unlisted.
- */
-export const DRAFT_TAG = 'droi.draft'
-
-export function isDraft(tags: readonly SessionTag[] | undefined): boolean {
-  return tags?.some((t) => t.name === DRAFT_TAG) ?? false
 }
 
 /**
@@ -130,84 +127,111 @@ export interface WorkspaceGroup {
 
 export const SESSIONS_QUERY_KEY = ['sessions'] as const
 
-/** Sessions per page, the Daemon's maximum; the Factory App pages by 50. */
-export const SESSION_PAGE = 100
+/** Conversations per page, the Kernel's most. */
+export const SESSION_PAGE = 200
 
 export interface SessionList {
   /** Every Session fetched so far, newest first; undefined before the first page. */
   data: SessionSummary[] | undefined
   isPending: boolean
   error: Error | null
-  /** The Daemon has Sessions older than the last page. */
+  /** The computer has Sessions older than the last page. */
   hasMore: boolean
   isLoadingMore: boolean
   loadMore(): void
 }
 
+/** A list cursor and which list it pages: the live conversations, then the archived. */
+interface PageParam {
+  archived: boolean
+  cursor: unknown
+}
+
+interface Page {
+  sessions: SessionSummary[]
+  next: PageParam | null
+}
+
+/** Conversations the Host runs for itself, which no list shows. */
+const HIDDEN_KINDS = new Set(['memory'])
+
 /**
- * The Daemon lists Sessions newest first, a page at a time, with an
- * `endBefore` cursor (the last row's `updatedAt`). The first page comes with
- * the connection; the rest on request, since a computer can hold thousands.
+ * The computer's Sessions, newest activity first, a page at a time. With archived ones,
+ * the archive follows the live list.
  */
 export function useSessionList(options: { includeArchived?: boolean } = {}): SessionList {
   const includeArchived = options.includeArchived ?? false
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   // Read through the hook, not connection.getState(): the compiler memoizes
   // the options on `connection`, which never changes identity.
   const connected = useConnectionState().status === 'connected'
   const queryClient = useQueryClient()
+  const generation = connected ? connection.generation() : -1
 
-  // A Session's place comes from the Session Times (session-times.ts), not from the
-  // Daemon's date, so a working Session needs no date of its own here.
   useEffect(() => {
-    const invalidate = () => void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
-    connection.controller.on('connected', invalidate)
-    connection.controller.on('sessionTitleUpdated', invalidate)
-    connection.controller.on('sessionArchiveStateChanged', invalidate)
-    // A removed worktree leaves its Sessions in the main checkout; a branch change relabels the row.
-    connection.controller.on('worktreeRemoved', invalidate)
-    connection.controller.on('worktreeBranchChanged', invalidate)
-    // A subagent starting or finishing: its Session is new to the list, or has news.
-    const unsubscribe = connection.sessionState.subscribeToSessionEvents(
-      [SESSION_EVENT.subagentInvocationSummaryUpdated],
-      invalidate,
-    )
-    return () => {
-      connection.controller.off('connected', invalidate)
-      connection.controller.off('sessionTitleUpdated', invalidate)
-      connection.controller.off('sessionArchiveStateChanged', invalidate)
-      connection.controller.off('worktreeRemoved', invalidate)
-      connection.controller.off('worktreeBranchChanged', invalidate)
-      unsubscribe()
-    }
+    return connection.onNotification(({ method, params }) => {
+      if (method !== 'index.changed') return
+      const id = sessionIdOf(params['id'] as number)
+      let known = false
+      let moved = false
+      queryClient.setQueriesData<InfiniteData<Page>>({ queryKey: SESSIONS_QUERY_KEY }, (data) => {
+        if (!data) return data
+        return {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            sessions: page.sessions.map((s) => {
+              if (s.sessionId !== id) return s
+              known = true
+              const changed = withIndexChange(s, params)
+              if (changed.archivedAt !== s.archivedAt) moved = true
+              return changed
+            }),
+          })),
+        }
+      })
+      // A new conversation, or one that moved between the live list and the archive.
+      if (!known || moved) void queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
+    })
   }, [connection, queryClient])
 
   const query = useInfiniteQuery({
-    queryKey: [...SESSIONS_QUERY_KEY, { includeArchived }],
-    initialPageParam: null as number | null,
-    queryFn: async ({ pageParam }) => {
-      const result = await connection.controller.listAvailableSessions({
-        limit: SESSION_PAGE,
-        includeArchived,
-        ...(pageParam !== null ? { endBefore: pageParam } : {}),
-      })
+    queryKey: [...SESSIONS_QUERY_KEY, { includeArchived, generation }],
+    initialPageParam: { archived: false, cursor: null } as PageParam,
+    queryFn: async ({ pageParam }): Promise<Page> => {
+      const read = async (param: PageParam) => {
+        const result = await connection.call<{ items: ListItem[]; cursor?: unknown }>(
+          'conversation.list',
+          {
+            limit: SESSION_PAGE,
+            ...(param.archived ? { archived: true } : {}),
+            ...(param.cursor ? { cursor: param.cursor } : {}),
+          },
+        )
+        kernelStore(connection).listed(result.items)
+        return result
+      }
+      let result = await read(pageParam)
+      let archived = pageParam.archived
+      let items = result.items
+      // The live list's end is where the archive starts: it comes with that page, not behind
+      // "Load older sessions".
+      if (!result.cursor && includeArchived && !archived) {
+        archived = true
+        result = await read({ archived, cursor: null })
+        items = [...items, ...result.items]
+      }
       return {
-        sessions: result.sessions
-          .filter((s) => !isDraft(s.tags) && !isMemorySession(s.tags))
-          .map(summaryOf),
-        nextCursor: result.hasMore ? (result.nextCursor ?? null) : null,
+        sessions: items.filter((item) => !HIDDEN_KINDS.has(item.kind ?? '')).map(summaryOf),
+        next: result.cursor ? { archived, cursor: result.cursor } : null,
       }
     },
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    getNextPageParam: (last) => last.next ?? undefined,
     enabled: connected,
     staleTime: 10_000,
   })
-  const announced = useAnnouncedSubagents()
   const pages = query.data?.pages
-  const data = useMemo(() => {
-    const listed = pages?.flatMap((page) => page.sessions)
-    return listed && withAnnouncedSubagents(listed, announced)
-  }, [pages, announced])
+  const data = useMemo(() => pages?.flatMap((page) => page.sessions), [pages])
   const { fetchNextPage } = query
   return {
     data,
@@ -219,136 +243,57 @@ export function useSessionList(options: { includeArchived?: boolean } = {}): Ses
   }
 }
 
-/**
- * A subagent the Daemon has announced (`child_session_available`) to a Session
- * this Client follows. The Daemon lists a Session only once its file is on
- * disk, which comes after the announcement, and the list is next read when
- * the run ends; until then the Client knows the subagent only from this.
- */
-export interface AnnouncedSubagent {
-  sessionId: string
-  callingSessionId: string
-  callingToolUseId: string
-  subagentType: string
-  description: string
-  cwd: string | null
-  /** Unix epoch seconds, when this Client heard of it. */
-  announcedAt: number
-}
+/** The automation a run of Droi's Automations belongs to is named in its title. */
+const AUTOMATION_PREFIX = '[Automation] '
 
-/** `explorer` → `Explorer`, the way the Daemon titles the subagent's Session. */
-export function subagentName(subagentType: string): string {
-  return subagentType ? subagentType.charAt(0).toUpperCase() + subagentType.slice(1) : 'Subagent'
-}
-
-/** The listed Sessions, with a row first for each announced subagent the list lacks. */
-export function withAnnouncedSubagents(
-  listed: SessionSummary[],
-  announced: readonly AnnouncedSubagent[],
-): SessionSummary[] {
-  const byId = new Map(listed.map((s) => [s.sessionId, s]))
-  const missing = announced.filter((a) => !byId.has(a.sessionId))
-  if (missing.length === 0) return listed
-  const rows = missing.map((a): SessionSummary => {
-    const caller = byId.get(a.callingSessionId)
-    const name = subagentName(a.subagentType)
-    return {
-      sessionId: a.sessionId,
-      title: a.description ? `${name}: ${a.description}` : name,
-      cwd: a.cwd ?? caller?.cwd ?? null,
-      repoRoot: caller?.repoRoot ?? null,
-      worktree: caller?.worktree ?? null,
-      updatedAt: a.announcedAt,
-      messagesCount: null,
-      archivedAt: null,
-      tags: [],
-      parentId: null,
-      callingSessionId: a.callingSessionId,
-      callingToolUseId: a.callingToolUseId,
-    }
-  })
-  return [...rows, ...listed]
-}
-
-const NO_ANNOUNCED: readonly AnnouncedSubagent[] = []
-
-/** The subagents the SDK has linked to their calling Session (see AnnouncedSubagent). */
-function useAnnouncedSubagents(): readonly AnnouncedSubagent[] {
-  const { sessionState } = useDaemonConnection()
-  const announcedAt = useRef(new Map<string, number>())
-  const snapshot = useRef({ key: '', value: NO_ANNOUNCED })
-
-  const subscribe = useCallback(
-    (listener: () => void) =>
-      sessionState.subscribeToSessionEvents(
-        [
-          SESSION_EVENT.subagentInvocationSummaryUpdated,
-          SESSION_EVENT.loadStateChanged,
-          SESSION_EVENT.workingStateChanged,
-        ],
-        listener,
-      ),
-    [sessionState],
-  )
-
-  const getSnapshot = useCallback(() => {
-    const announced: AnnouncedSubagent[] = []
-    for (const [callingSessionId, children] of sessionState.getSubagentSessionIdsByParent()) {
-      for (const [callingToolUseId, sessionId] of children) {
-        let at = announcedAt.current.get(sessionId)
-        if (at === undefined) {
-          at = Math.floor(Date.now() / 1000)
-          announcedAt.current.set(sessionId, at)
-        }
-        const summary = sessionState.getSubagentInvocationSummary(sessionId)
-        announced.push({
-          sessionId,
-          callingSessionId,
-          callingToolUseId,
-          subagentType: summary?.subagentType ?? '',
-          description: summary?.description ?? '',
-          cwd: sessionState.getSessionManager(sessionId)?.getStore().getCwd() ?? null,
-          announcedAt: at,
-        })
-      }
-    }
-    const key = JSON.stringify(announced)
-    if (key !== snapshot.current.key) {
-      snapshot.current = { key, value: announced.length > 0 ? announced : NO_ANNOUNCED }
-    }
-    return snapshot.current.value
-  }, [sessionState])
-
-  return useSyncExternalStore(subscribe, getSnapshot, () => NO_ANNOUNCED)
-}
-
-type ListedSession = Awaited<
-  ReturnType<DaemonSessionController['listAvailableSessions']>
->['sessions'][number]
-
-function summaryOf(s: ListedSession): SessionSummary {
-  return {
-    sessionId: s.sessionId,
-    title: s.title?.trim() || 'Untitled session',
-    cwd: s.cwd ?? null,
-    repoRoot: s.repoRoot ?? null,
-    worktree:
-      s.worktree?.path && s.worktree.branch
-        ? {
-            path: s.worktree.path,
-            branch: s.worktree.branch,
-            lifecycle: s.worktree.lifecycle ?? null,
-            repoRoot: s.worktree.repoRoot,
-          }
-        : null,
-    updatedAt: s.updatedAt,
-    messagesCount: s.messagesCount ?? null,
-    archivedAt: s.archivedAt ?? null,
-    tags: s.tags ?? [],
-    parentId: continuationParent(s.tags),
-    callingSessionId: s.callingSessionId ?? null,
-    callingToolUseId: s.callingToolUseId ?? null,
+export function summaryOf(item: ListItem): SessionSummary {
+  const tags: SessionTag[] = []
+  if (item.kind === 'scratch') tags.push({ name: SCRATCH_TAG })
+  if (item.kind === 'automation') {
+    const sessionId = sessionIdOf(item.id)
+    tags.push({
+      name: DROI_AUTOMATION_TAG,
+      metadata: {
+        automationId: `run:${sessionId}`,
+        automationName: (item.title ?? '').replace(AUTOMATION_PREFIX, ''),
+      },
+    })
   }
+  const archivedAt = item.archived ? new Date(item.lastActivityAt).toISOString() : null
+  return {
+    sessionId: sessionIdOf(item.id),
+    title: item.title?.trim() || 'Untitled session',
+    cwd: item.workspace ?? null,
+    repoRoot: item.repoRoot ?? null,
+    worktree: null,
+    updatedAt: Math.floor(item.lastActivityAt / 1000),
+    activityAt: item.lastActivityAt,
+    viewedAt: item.viewedAt ?? null,
+    kind: item.kind ?? null,
+    messagesCount: null,
+    archivedAt,
+    tags,
+    parentId: null,
+  }
+}
+
+/** A row with what an index.changed says of it. */
+export function withIndexChange(
+  s: SessionSummary,
+  change: Record<string, unknown>,
+): SessionSummary {
+  const next = { ...s }
+  if (typeof change['title'] === 'string') next.title = change['title'].trim() || 'Untitled session'
+  if (typeof change['lastActivityAt'] === 'number') {
+    next.activityAt = change['lastActivityAt']
+    next.updatedAt = Math.floor(change['lastActivityAt'] / 1000)
+  }
+  if ('viewedAt' in change)
+    next.viewedAt = typeof change['viewedAt'] === 'number' ? change['viewedAt'] : null
+  if (typeof change['archived'] === 'boolean') {
+    next.archivedAt = change['archived'] ? (s.archivedAt ?? new Date().toISOString()) : null
+  }
+  return next
 }
 
 export interface Pins {

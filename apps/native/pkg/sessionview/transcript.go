@@ -13,11 +13,11 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/subagents"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
 )
 
 const resultPreviewLines = 40
@@ -25,7 +25,7 @@ const resultPreviewLines = 40
 // transcriptView is the MessageList: the entries in a list that follows
 // its end, the lead above them (previous messages), the activity row
 // below them, and the button back to the latest.
-func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessions.Summary) {
+func (v *View) transcriptView(c *ui.Context, s *Snapshot, listed []sessions.Summary) {
 	k, t := v.look()
 	ws := string(s.WorkingState())
 	if v.compacting {
@@ -33,13 +33,13 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 	}
 	running := ws != string(protocol.DroidWorkingStateIdle)
 	entries := v.entries
-	hasOlder := s.HasOlderMessages()
+	hasOlder := s.HasOlder
 	if len(entries) == 0 && !hasOlder {
 		if v.env.Empty != nil && v.env.Empty(c) {
 			return
 		}
 		ui.Box(c).Fill().Center().Children(func() {
-			k.Text(c, l10n.L("What should Droid work on?"), 14, 20).TextColor(t.MutedForeground)
+			k.Text(c, l10n.L("What should Droi work on?"), 14, 20).TextColor(t.MutedForeground)
 		})
 		return
 	}
@@ -151,11 +151,11 @@ func (v *View) column(c *ui.Context) ui.Element { return Column(c, v.kit()) }
 
 // lead is the ListHeader: 12px of room, then the button for previous
 // messages while there are some.
-func (v *View) lead(c *ui.Context, s *session.Session) {
+func (v *View) lead(c *ui.Context, s *Snapshot) {
 	k, t := v.look()
 	ui.Column(c).FillWidth().Children(func() {
 		ui.Box(c).Height(k.Px(12))
-		if !s.HasOlderMessages() {
+		if !s.HasOlder {
 			return
 		}
 		v.mu.Lock()
@@ -444,6 +444,16 @@ func (v *View) toolRow(c *ui.Context, call *transcript.ToolCall) {
 					k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 					return
 				}
+				if res.Interrupted {
+					// The turn was stopped before this call answered: it is not running and it did not fail.
+					k.Icon(c, "circle-slash", 14, t.MutedForeground).Label(l10n.L("Interrupted"))
+					return
+				}
+				if res.Blocked {
+					// A rule or a person refused the call: it never ran, and that is not a failure either.
+					k.Icon(c, "shield-alert", 14, t.MutedForeground).Label(l10n.L("Blocked"))
+					return
+				}
 				if j, ok := v.job(call.Use.ID); ok && (j.Done || !j.Script) {
 					v.jobMark(c, j)
 				} else if res.IsError {
@@ -533,6 +543,11 @@ func (v *View) toolDetail(c *ui.Context, call *transcript.ToolCall, res transcri
 						}
 						mono(transcript.TruncateLines(res.Text, resultPreviewLines), color)
 					}
+					if res.Notes != "" && !output {
+						// After the output, which is cut at its first lines: a truncation or the path of the full
+						// output is what a long result most needs to say.
+						mono(res.Notes, t.MutedForeground.Alpha(0.8)).Margin(k.Px(6), 0, 0, 0)
+					}
 				})
 			})
 			if output {
@@ -597,7 +612,12 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 	failed := run.Status == "failed" || run.Status == "cancelled"
 	open := v.flag("script:"+call.Use.ID, false)
 	ui.Column(c.Key(call.Use.ID)).Children(func() {
-		p := v.rowTrigger(c, open, call.Use.Name+": "+summary)
+		name := call.Use.Name
+		if name == transcript.CodemodeTool {
+			// Kernel's codemode is the Daemon's Script: one card, one name.
+			name = transcript.ScriptTool
+		}
+		p := v.rowTrigger(c, open, name+": "+summary)
 		hover := p.Trigger.Hovered() || p.Trigger.Focused()
 		p.Trigger.Children(func() {
 			fg, iconColor := t.Foreground, t.MutedForeground
@@ -608,7 +628,7 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			k.Text(c, l10n.L("Script"), 12.5, 18.75).FontWeight(500).TextColor(fg).Shrink(0)
 			k.Text(c, summary, 11.5, 17.25).Font(k.Mono).TextColor(t.MutedForeground).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 			switch {
-			case call.Result == nil:
+			case transcript.Pending(call):
 				k.Spinner(c, 14, t.MutedForeground).Role(ui.RoleStatus).Label(l10n.L("Running"))
 			case run.Status == "running":
 				if j, ok := v.job(call.Use.ID); ok && j.Done {
@@ -627,7 +647,7 @@ func (v *View) scriptGroup(c *ui.Context, call *transcript.ToolCall) {
 			default:
 				k.Icon(c, "check", 14, t.Success).Label(l10n.L("Succeeded"))
 			}
-			if call.Result != nil {
+			if !transcript.Pending(call) {
 				ch := k.Icon(c, "chevron-right", 14, t.MutedForeground).Rotate(90 * p.Progress())
 				if !hover && !*open && p.Progress() == 0 {
 					ch.Opacity(0)
@@ -787,7 +807,12 @@ var complexityLabels = map[string]string{
 // Session, and the prompt and report folded.
 func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *subagents.Links) {
 	k, t := v.look()
-	link := subagents.LinkFor(call, links)
+	var link subagents.Link
+	if call.Subagent != nil {
+		link = v.kernelLink(call)
+	} else {
+		link = subagents.LinkFor(call, links)
+	}
 	name := subagents.SubagentName(link.Request.SubagentType)
 	if link.Request.Resume != "" {
 		name = l10n.L("Resume %s", name)
@@ -844,8 +869,8 @@ func (v *View) subagentCard(c *ui.Context, call *transcript.ToolCall, links *sub
 					})
 				}
 			})
-			if running && link.SessionID != "" && v.env.Controller != nil && StopSubagentButton(c, k) {
-				StopSubagent(v.env.Ctx, v.env.Controller, link.SessionID)
+			if running && link.SessionID != "" && v.canStopSubagent(call) && StopSubagentButton(c, k) {
+				v.stopSubagent(call, link.SessionID)
 			}
 			if link.SessionID != "" && v.env.OpenSession != nil {
 				b := ui.ButtonBase(c).Label(l10n.L("Open subagent session")).Height(k.Px(28)).Gap(k.Px(4)).PaddingX(k.Px(8)).Radius(k.Px(8)).Shrink(0).Cursor(ui.CursorPointer)

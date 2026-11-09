@@ -1,0 +1,29 @@
+{
+  "kind": "error",
+  "method": "conversation.submit",
+  "error": {
+    "code": -32001,
+    "name": "conversation busy"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "13",
+    "method": "conversation.submit",
+    "params": {
+      "id": 7,
+      "input": "hi",
+      "whenBusy": "reject"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "13",
+    "error": {
+      "code": -32001,
+      "message": "conversation is busy",
+      "data": {
+        "conversationId": 7
+      }
+    }
+  }
+}

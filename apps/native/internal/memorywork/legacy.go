@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
 )
 
 // The Memory before ADR 0031 kept entries in memory.sqlite. They are brought

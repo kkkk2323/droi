@@ -8,7 +8,6 @@ package app
 import (
 	"context"
 	"math"
-	"slices"
 	"sync"
 	"time"
 
@@ -17,22 +16,25 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/internal/updates"
-	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/titles"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/compaction"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/drafts"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/theme"
 )
 
 // LoadedMessageLimit is how many of a Session's latest messages a load
@@ -120,6 +122,13 @@ type Config struct {
 	// itself (a development build); Relaunch starts the installed one.
 	Updater  *updates.Updater
 	Relaunch func()
+	// KernelID resolves a Session the window names to the Kernel conversation that holds it; nil, or false, for
+	// a Session the Daemon still holds. Pages of the Sessions it resolves draw from the Kernel the Host hands over
+	// with UseKernel.
+	KernelID func(id string) (kernel.ID, bool)
+	// KernelSession is KernelID's inverse: the Session the window names a conversation by, for what Kernel says
+	// of a conversation by its id alone (that it finished, say).
+	KernelSession func(id kernel.ID) (string, bool)
 	// Memory is the Host's Memory; nil without a Host.
 	Memory Memory
 	// SessionList, optional, hears the Workspace order the window shows for
@@ -200,10 +209,20 @@ type App struct {
 	dirty    bool
 	// times are the Session Times the window follows.
 	times timesState
+	// seen are the "seen" times on their way to Kernel.
+	seen seenWrites
 	// unlisted are the Sessions that started working before the list had
 	// them, a run of an Automation or a subagent, that readUntilListed reads
 	// the list for.
 	unlisted map[string]bool
+	// asked are the Kernel conversations the list was read for because Kernel named one it did not have; each is
+	// read for once until the list is read whole again.
+	asked map[string]bool
+	// reading are the reads of the list still out, by listGen, each with the indexSeq it started at; indexLog are
+	// the index changes applied since the oldest of them began (list_kernel.go).
+	reading  map[uint64]uint64
+	indexSeq uint64
+	indexLog []indexEvent
 
 	sidebar sidebarState
 	views   map[string]*sessionView
@@ -249,6 +268,7 @@ type App struct {
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
+	droids          droidsState
 	automations     automationsState
 	workstreams     workstreamsState
 	usage           usageState
@@ -259,6 +279,23 @@ type App struct {
 	// revs counts each Session's changes in the Store, for its view to
 	// build again.
 	revs sessionview.Revisions
+	// kernel is the Kernel connection UseKernel hands over; sessions are the conversations the pages have open on
+	// it.
+	kernel   kernelConn
+	sessions *sessionview.Store
+	// updateReadyAt is when RelaunchIfIdle first found an installed update, which it waits on for the Sessions to
+	// be idle; zero while there is none.
+	updateReadyAt time.Time
+	// kernelAlerts follows the busy and idle of Kernel's conversations, as watchAlerts follows the Daemon's
+	// working states.
+	kernelAlerts *alerts.Tracker
+	// approvals are the requests each Kernel Session waits on, by Session id, for its mark and alert. Guarded by mu.
+	approvals map[string]map[string]bool
+	// policy is the approval policy as the window gives it to Kernel.
+	policy policyState
+	// titles names the conversations a person started once their first round ends. It belongs with the Host,
+	// and moves there when the Host holds the Kernel connection itself.
+	titles *titles.Manager
 	// loops are the Daemon's loops. Guarded by mu.
 	loops loopsState
 	// worktreeAsk asks before a worktree is deleted. Main thread only.
@@ -298,11 +335,21 @@ func New(cfg Config) *App {
 		busy:   map[string]string{},
 		views:  map[string]*sessionView{},
 
-		drafts:      drafts.New(cfg.Prefs),
-		notesMD:     sessionview.Markdown{Own: true},
-		compactions: compaction.NewLog(),
+		drafts:       drafts.New(cfg.Prefs),
+		notesMD:      sessionview.Markdown{Own: true},
+		compactions:  compaction.NewLog(),
+		sessions:     sessionview.NewStore(keptViews),
+		kernelAlerts: alerts.NewTracker(),
 	}
-	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update}
+	a.titles = titles.New(titles.Config{Source: &a.kernel, TitleSource: a.titleSource})
+	a.unsubscribe = append(a.unsubscribe, a.sessions.Subscribe(func(id kernel.ID) {
+		a.heardApprovals(id)
+		a.redraw()
+	}))
+	a.defaults = &settingsview.Defaults{Controller: cfg.Controller, Ctx: ctx, Update: cfg.Update, Changed: a.defaultsChanged}
+	if h := cfg.Host; h != nil && cfg.Computer == nil && h.KernelEnabled() {
+		a.defaults.Local = &settingsview.LocalDefaults{Load: a.kernelDefaults, Save: a.saveKernelDefaults}
+	}
 	pickFolder := a.pickFolder
 	if cfg.Computer != nil {
 		// Another computer's Daemon cannot use a folder picked on this one.
@@ -315,6 +362,7 @@ func New(cfg Config) *App {
 		Defaults:   a.defaults,
 		Failed:     func(msg string) { a.settings.err = msg },
 		PickFolder: pickFolder,
+		OnKernel:   a.kernelMode,
 	})
 	a.applyPrefs()
 	if cfg.Updater != nil {
@@ -403,6 +451,7 @@ func (a *App) Start() {
 // Controller no more and the calls it makes end. The Controller is the
 // caller's to close, after this. Main thread only.
 func (a *App) Close() {
+	a.flushSeen()
 	a.cancel()
 	for _, fn := range a.unsubscribe {
 		fn()
@@ -497,248 +546,6 @@ func (a *App) onEvent(e controller.Event) {
 		}
 	}
 	a.redraw()
-}
-
-type olderState int
-
-const (
-	olderUnread olderState = iota
-	olderReading
-	olderRead
-)
-
-// olderPages are the pages a read of the first page leaves: the cursor
-// after it, and edge, its oldest Session's date in Unix seconds.
-type olderPages struct {
-	gen    uint64
-	cursor float64
-	edge   int64
-}
-
-// refreshList reads the first page of Sessions again and keeps the older
-// ones read before. The first time, or once reloadList made them stale,
-// it reads every page after it as well, which can take a while.
-func (a *App) refreshList() {
-	cl, err := a.ctl.Client()
-	if err != nil {
-		return
-	}
-	gen := a.startList()
-	limit := float64(sessionPage)
-	show := prefs.ShowArchived.Get(a.prefs)
-	res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show})
-	if p := a.setList(gen, res, err); p != nil {
-		a.readOlder(*p, show)
-	}
-}
-
-// unlistedReads are the waits between reads of the list for a Session
-// that works before the Daemon lists it, the last one repeated: the Daemon
-// announces a run of an Automation before it is on disk.
-var unlistedReads = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 15 * time.Second}
-
-// readUntilListed reads the list until it has the Session id, the Session
-// stops working, or the connection is gone.
-func (a *App) readUntilListed(id string) {
-	defer func() {
-		a.mu.Lock()
-		delete(a.unlisted, id)
-		a.mu.Unlock()
-	}()
-	for i := 0; ; i++ {
-		if _, err := a.ctl.Client(); err != nil {
-			return
-		}
-		a.refreshList()
-		a.mu.Lock()
-		done := a.busy[id] == "idle" || findSummary(a.listed, id) != nil
-		a.mu.Unlock()
-		if done {
-			return
-		}
-		select {
-		case <-a.ctx.Done():
-			return
-		case <-time.After(unlistedReads[min(i, len(unlistedReads)-1)]):
-		}
-	}
-}
-
-// reloadList reads every page again, for a change the first page may not
-// show: an older Session archived or renamed, another connection.
-func (a *App) reloadList() {
-	a.mu.Lock()
-	a.older = olderUnread
-	a.olderGen++
-	a.mu.Unlock()
-	a.refreshList()
-}
-
-// startList counts a read of the first page, which setList then takes.
-func (a *App) startList() uint64 {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.listGen++
-	return a.listGen
-}
-
-// setList takes the first page of read gen, unless a newer read started,
-// with the older Sessions kept. It returns the pages left to read, if
-// they are to be read.
-func (a *App) setList(gen uint64, res *protocol.ListAvailableSessionsResult, err error) *olderPages {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if gen != a.listGen {
-		return nil
-	}
-	a.listDone = true
-	if err != nil {
-		a.listErr = err.Error()
-		return nil
-	}
-	a.listErr = ""
-	go a.redraw()
-	page := summariesOf(res.Sessions)
-	a.pageIDs = make(map[string]bool, len(page))
-	for _, s := range page {
-		a.pageIDs[s.SessionID] = true
-	}
-	a.listRev++
-	if !res.HasMore || res.NextCursor == nil || len(res.Sessions) == 0 {
-		a.listed = page
-		a.older = olderRead
-		a.olderGen++
-		a.keepList()
-		return nil
-	}
-	edge := int64(res.Sessions[0].UpdatedAt)
-	for _, s := range res.Sessions {
-		edge = min(edge, int64(s.UpdatedAt))
-	}
-	list := page
-	for _, s := range a.listed {
-		if !a.pageIDs[s.SessionID] && s.UpdatedAt <= edge {
-			list = append(list, s)
-		}
-	}
-	a.listed = list
-	if a.older != olderUnread {
-		return nil
-	}
-	a.older = olderReading
-	a.olderGen++
-	return &olderPages{gen: a.olderGen, cursor: *res.NextCursor, edge: edge}
-}
-
-// readOlder reads the pages p leaves, then puts them in place of the
-// older Sessions kept until then.
-func (a *App) readOlder(p olderPages, show bool) {
-	failed := func() {
-		a.mu.Lock()
-		if a.olderGen == p.gen {
-			a.older = olderUnread
-		}
-		a.mu.Unlock()
-	}
-	cl, err := a.ctl.Client()
-	if err != nil {
-		failed()
-		return
-	}
-	var read []protocol.DaemonAvailableSessionInfo
-	limit, cursor := float64(sessionPage), p.cursor
-	for {
-		res, err := cl.ListAvailableSessions(a.ctx, protocol.ListAvailableSessionsParams{Limit: &limit, IncludeArchived: &show, EndBefore: &cursor})
-		if err != nil {
-			failed()
-			return
-		}
-		a.mu.Lock()
-		stale := a.olderGen != p.gen
-		a.mu.Unlock()
-		if stale {
-			return
-		}
-		read = append(read, res.Sessions...)
-		if !res.HasMore || res.NextCursor == nil || *res.NextCursor == cursor {
-			break
-		}
-		cursor = *res.NextCursor
-	}
-	older := summariesOf(read)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.olderGen != p.gen {
-		return
-	}
-	var list []sessions.Summary
-	kept := map[string]bool{}
-	for _, s := range a.listed {
-		if a.pageIDs[s.SessionID] || s.UpdatedAt >= p.edge {
-			list = append(list, s)
-			kept[s.SessionID] = true
-		}
-	}
-	for _, s := range older {
-		if !kept[s.SessionID] {
-			list = append(list, s)
-		}
-	}
-	a.listed = list
-	a.listRev++
-	a.older = olderRead
-	a.keepList()
-	go a.redraw()
-}
-
-func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary {
-	out := make([]sessions.Summary, 0, len(list))
-	for _, s := range list {
-		tags := make([]sessions.Tag, len(s.Tags))
-		for i, t := range s.Tags {
-			tags[i] = sessions.Tag{Name: t.Name, Metadata: t.Metadata}
-		}
-		if sessions.IsDraft(tags) || sessions.IsMemory(tags) {
-			continue
-		}
-		sum := sessions.Summary{
-			SessionID:        s.SessionID,
-			Title:            trimOr(s.Title, L("Untitled session")),
-			Cwd:              s.Cwd,
-			RepoRoot:         s.RepoRoot,
-			UpdatedAt:        int64(s.UpdatedAt),
-			ArchivedAt:       s.ArchivedAt,
-			Tags:             tags,
-			ParentID:         sessions.ContinuationParent(tags),
-			CallingSessionID: s.CallingSessionID,
-			CallingToolUseID: s.CallingToolUseID,
-			OrganizationID:   s.OrganizationID,
-		}
-		if s.MessagesCount != nil {
-			n := int(*s.MessagesCount)
-			sum.MessagesCount = &n
-		}
-		if w := s.Worktree; w != nil && w.RemovedAt == "" && w.Path != "" {
-			sum.Worktree = &sessions.Worktree{Path: w.Path, Branch: w.Branch, RepoRoot: w.RepoRoot, Lifecycle: string(w.Lifecycle)}
-		}
-		out = append(out, sum)
-	}
-	return out
-}
-
-// snapshot copies what other goroutines write, for one frame.
-func (a *App) snapshot() (controller.Status, []sessions.Summary, map[string]string, string, bool, uint64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	busy := make(map[string]string, len(a.busy))
-	for k, v := range a.busy {
-		busy[k] = v
-	}
-	if a.listCopy == nil || a.listCopyRev != a.listRev {
-		// Clipped, so that a reader's append makes a new array.
-		a.listCopy, a.listCopyRev = slices.Clip(slices.Clone(a.listed)), a.listRev
-	}
-	return a.status, a.listCopy, busy, a.listErr, a.listDone, a.listRev
 }
 
 // Go shows another page.
@@ -847,8 +654,13 @@ func (a *App) View(c *ui.Context) {
 		a.mu.Lock()
 		starting := startingUp(status, a.everConnected)
 		a.mu.Unlock()
+		// On the Kernel the window is up once it has the Kernel: the Daemon's connection says nothing of it.
+		kernel := a.kernelMode()
+		if kernel {
+			starting = !a.onKernel()
+		}
 		main.Children(func() {
-			if !starting {
+			if !starting && !kernel {
 				a.banner(c, status)
 			}
 			switch {
@@ -865,6 +677,8 @@ func (a *App) View(c *ui.Context) {
 				a.extensionPageView(c, a.extensionPage(a.route.Page))
 			case starting && a.following():
 				a.followingStartView(c, status)
+			case starting && kernel:
+				a.kernelStartingView(c)
 			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():
 				// Home with nothing to show yet; the New session page would flash.
 				a.startingUpView(c, status)
@@ -1004,9 +818,9 @@ func (a *App) banner(c *ui.Context, status controller.Status) {
 		return
 	}
 	t, k := a.kit.T, a.kit
-	text := L("Reconnecting to Droid…")
+	text := L("Reconnecting to Droi…")
 	if !status.Reconnecting && status.Failure != nil {
-		text = L("Not connected to Droid: %s", failureText(status.Failure))
+		text = L("Not connected to Droi: %s", failureText(status.Failure))
 	}
 	ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(8)).Padding(k.Px(6), k.Px(16)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).
 		Background(t.Attention.Alpha(0.1)).Children(func() {

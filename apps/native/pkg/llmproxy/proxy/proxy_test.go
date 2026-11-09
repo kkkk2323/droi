@@ -1,15 +1,18 @@
 package proxy
 
 import (
+	"bufio"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 func poolUsage(key string, stdPct, corePct float64) *keys.KeyUsage {
@@ -246,4 +249,197 @@ func TestProxyRecordsAStreamThatFailed(t *testing.T) {
 	if len(recs) != 1 || recs[0].Error != "stream_failed" || recs[0].ErrorDetail != "response.failed" {
 		t.Fatalf("record = %+v", recs)
 	}
+}
+
+// Droi's own request headers say which of Droi's parts a request came from
+// (X-Droi-Call: model.complete, say). They never reach an upstream: Factory
+// and every other provider see a client's request, not Droi's. A request that
+// carries one is forwarded as it would be without it.
+func TestProxy_StripsDroisOwnRequestHeaders(t *testing.T) {
+	var mu sync.Mutex
+	var seen []http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Header.Clone())
+		mu.Unlock()
+		io.WriteString(w, `{"usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	for _, tc := range []struct {
+		method, path, body string
+	}{
+		{"POST", "/api/llm/o/v1/chat/completions", `{"model":"deepseek-v4.1-flash-1017","messages":[{"role":"user","content":"hi"}]}`},
+		{"POST", "/api/llm/a/v1/messages", `{"model":"claude-opus-5-5","messages":[{"role":"user","content":"hi"}]}`},
+		{"GET", "/api/cli/whoami", ""},
+	} {
+		req, err := http.NewRequest(tc.method, px.BaseURL()+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer fk-a")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Droi-Call", "model.complete")
+		req.Header.Set("X-Droi-Session", "s-1")
+		req.Header.Set("x-droi-lower", "still dropped")
+		// A header that is not Droi's goes on, so the rule is Droi's prefix
+		// and nothing wider.
+		req.Header.Set("X-Message-Call-Type", "session-title-generation")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 3 {
+		t.Fatalf("the upstream saw %d requests, want 3", len(seen))
+	}
+	for i, h := range seen {
+		for name := range h {
+			if strings.HasPrefix(strings.ToLower(name), "x-droi-") {
+				t.Fatalf("request %d carried %s: %v", i, name, h)
+			}
+		}
+		if h.Get("X-Message-Call-Type") != "session-title-generation" {
+			t.Fatalf("request %d lost the headers that are not Droi's: %v", i, h)
+		}
+	}
+}
+
+// A client that leaves once it has the last frame ends the copy: Go cancels
+// the request's context, the read of the upstream body fails with
+// context.Canceled, and the record must not call that a failed request. The
+// Kernel closes a stream exactly so, after Factory's [DONE].
+func TestProxy_DoesNotRecordAClientThatHungUp(t *testing.T) {
+	release := make(chan struct{})
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, f := range []string{
+			`{"choices":[{"delta":{"content":"hello"}}]}`,
+			`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}`,
+			`[DONE]`,
+		} {
+			_, _ = w.Write([]byte("data: " + f + "\n\n"))
+		}
+		w.(http.Flusher).Flush()
+		// Factory keeps the connection until the client leaves.
+		<-release
+	}))
+	defer upstream.Close()
+	defer free()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	req, _ := http.NewRequest("POST", px.BaseURL()+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"m-test","stream":true}`))
+	req.Header.Set("Authorization", "Bearer fk-a")
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := bufio.NewReader(resp.Body)
+	var got []string
+	for {
+		line, err := body.ReadString('\n')
+		if err != nil {
+			t.Fatalf("the stream ended before [DONE]: %v, frames %v", err, got)
+		}
+		if strings.HasPrefix(line, "data: ") {
+			got = append(got, strings.TrimSpace(strings.TrimPrefix(line, "data: ")))
+			if strings.Contains(line, "[DONE]") {
+				break
+			}
+		}
+	}
+	resp.Body.Close() // the client leaves, as the Kernel does
+
+	if want := 3; len(got) != want {
+		t.Fatalf("read %d frames, want %d: %v", len(got), want, got)
+	}
+	rec := waitRecord(t, px)
+	if rec.Error != "" || rec.ErrorDetail != "" {
+		t.Fatalf("a client that left was recorded as a failure: %q %q", rec.Error, rec.ErrorDetail)
+	}
+	if rec.Bytes == 0 || rec.Usage == nil || rec.Usage.Output != 2 {
+		t.Fatalf("the record lost what the stream carried: %+v", rec)
+	}
+}
+
+// A client that stops in the middle of a stream leaves on purpose (the user
+// pressed stop): the copy ends the same way, and the record stays clean.
+func TestProxy_DoesNotRecordAClientThatStopsHalfway(t *testing.T) {
+	release := make(chan struct{})
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"first"}}]}` + "\n\n"))
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	defer upstream.Close()
+	defer free()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	req, _ := http.NewRequest("POST", px.BaseURL()+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"m-test","stream":true}`))
+	req.Header.Set("Authorization", "Bearer fk-a")
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bufio.NewReader(resp.Body).ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	if rec := waitRecord(t, px); rec.Error != "" || rec.ErrorDetail != "" {
+		t.Fatalf("a client that stopped was recorded as a failure: %q %q", rec.Error, rec.ErrorDetail)
+	}
+}
+
+// A stream the upstream cuts short did lose bytes, and the record must say
+// so, with what happened.
+func TestProxy_RecordsAStreamTheUpstreamCutShort(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"choices":[{"delta":{"content":"half"}}]}` + "\n\n"))
+		w.(http.Flusher).Flush()
+		panic(http.ErrAbortHandler) // the connection drops mid-stream
+	}))
+	defer upstream.Close()
+	px := startSwitchProxy(t, upstream.URL, &switches{ok: true}, poolUsage("fk-a", 0, 0))
+
+	req, _ := http.NewRequest("POST", px.BaseURL()+"/api/llm/a/v1/messages", strings.NewReader(`{"model":"m-test","stream":true}`))
+	req.Header.Set("Authorization", "Bearer fk-a")
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
+	rec := waitRecord(t, px)
+	if rec.Error != "response_copy_error" {
+		t.Fatalf("error %q, want response_copy_error", rec.Error)
+	}
+	if rec.ErrorDetail == "" {
+		t.Fatal("the record should say what the copy met")
+	}
+}
+
+// waitRecord answers the one request the proxy recorded, once it has.
+func waitRecord(t *testing.T, px *Proxy) diag.RequestRecord {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+		if recs := px.Recorder().Requests(); len(recs) == 1 {
+			return recs[0]
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("the proxy recorded %d requests, want 1", len(px.Recorder().Requests()))
+	return diag.RequestRecord{}
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/attachments"
 )
 
 // Send sends a message with its images, or queues it with placement while a
@@ -17,6 +17,16 @@ import (
 // message. It scrolls the transcript to its end, and a failure shows as
 // the composer's error.
 func (v *View) Send(text string, images []attachments.Image, placement protocol.QueuePlacement) {
+	if id, ok := v.kernelID(); ok {
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" && len(images) == 0 {
+			return
+		}
+		v.err = ""
+		v.ScrollToLatest()
+		v.submit(id, trimmed, images, placement)
+		return
+	}
 	ctl := v.env.Controller
 	trimmed := strings.TrimSpace(text)
 	if ctl == nil || trimmed == "" && len(images) == 0 {
@@ -73,6 +83,10 @@ func (v *View) SetErr(msg string) { v.err = msg }
 
 // Interrupt stops the Session's running turn.
 func (v *View) Interrupt() {
+	if id, ok := v.kernelID(); ok {
+		v.interruptKernel(id)
+		return
+	}
 	ctl := v.env.Controller
 	if ctl == nil {
 		return

@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
@@ -65,6 +66,70 @@ func ParseDiff(text string) *Diff {
 	return d
 }
 
+// ParsePiDiff reads the diff Pi's edit tool keeps in its details: one line each, a sign ('+' added, '-' removed,
+// ' ' unchanged), the line's number right-aligned (the new file's for an added line, the old file's otherwise), a
+// space, and the line; a line of only "..." after the sign and padding marks unchanged lines left out. Pi numbers
+// an unchanged line by the old file, so its new number follows from the lines added and removed before it. ""
+// or anything else is nil.
+func ParsePiDiff(text string) *Diff {
+	if text == "" {
+		return nil
+	}
+	d := &Diff{Lines: []DiffLine{}}
+	shift := 0 // new line number minus old, after the lines so far
+	for _, line := range strings.Split(text, "\n") {
+		if line == "" {
+			continue
+		}
+		sign, rest := line[0], line[1:]
+		if sign != '+' && sign != '-' && sign != ' ' {
+			return nil
+		}
+		trimmed := strings.TrimLeft(rest, " ")
+		if trimmed == "..." {
+			d.Lines = append(d.Lines, DiffLine{Type: "unchanged", Content: "…"})
+			continue
+		}
+		digits := 0
+		for digits < len(trimmed) && trimmed[digits] >= '0' && trimmed[digits] <= '9' {
+			digits++
+		}
+		if digits == 0 {
+			return nil
+		}
+		n, _ := strconv.Atoi(trimmed[:digits])
+		content := strings.TrimPrefix(trimmed[digits:], " ")
+		switch sign {
+		case '+':
+			d.add(DiffLine{Type: "added", Content: content, New: n})
+			shift++
+		case '-':
+			d.add(DiffLine{Type: "removed", Content: content, Old: n})
+			shift--
+		default:
+			d.add(DiffLine{Type: "unchanged", Content: content, Old: n, New: n + shift})
+		}
+	}
+	if len(d.Lines) == 0 {
+		return nil
+	}
+	return d
+}
+
+// piDetailsDiff is the diff in a Kernel edit's details, nil for any other result.
+func piDetailsDiff(details json.RawMessage) *Diff {
+	if len(details) == 0 || !bytes.Contains(details, []byte(`"diff"`)) {
+		return nil
+	}
+	var d struct {
+		Diff string `json:"diff"`
+	}
+	if json.Unmarshal(details, &d) != nil {
+		return nil
+	}
+	return ParsePiDiff(d.Diff)
+}
+
 func (d *Diff) add(l DiffLine) {
 	d.Lines = append(d.Lines, l)
 	switch l.Type {
@@ -117,7 +182,8 @@ func ParseStatus(text string) *Status {
 // as all-added lines: Create answers with a bare status.
 func CreatedFileDiff(c *ToolCall) *Diff {
 	content, ok := c.Input["content"].(string)
-	if c.Use.Name != "Create" || !ok {
+	// The Kernel's write is the Daemon's Create.
+	if (c.Use.Name != "Create" && c.Use.Name != "write") || !ok {
 		return nil
 	}
 	content = strings.TrimSuffix(content, "\n")
@@ -311,7 +377,7 @@ func ParseScriptPermission(details json.RawMessage) *ScriptPermission {
 func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 	leaves := LeafCalls(calls)
 	for _, c := range append(append([]*ToolCall{}, calls...), leaves...) {
-		if c.Result == nil {
+		if callPending(c) {
 			pending = true
 		}
 	}
@@ -335,24 +401,65 @@ func ClusterLabel(calls []*ToolCall) (label string, pending bool) {
 	return l10n.L("Used %s", name), false
 }
 
+// callPending says whether a call is still to be answered.
+//
+// Two shapes carry a call's result: the Daemon attaches it to the call (Result), and the Kernel hands it over as
+// its own entry, which BuildView reads into ResultView. A reader that looked only at Result called every Kernel
+// call unfinished, so a cluster said "Running read" long after the result had arrived.
+func callPending(c *ToolCall) bool { return Pending(c) }
+
+// Pending says whether a call, the Daemon's or Kernel's, is still to be answered.
+func Pending(c *ToolCall) bool {
+	if c.ResultView != nil {
+		return c.ResultView.Pending
+	}
+	return c.Result == nil
+}
+
 // ToolResultView is the result's text and how it reads, for the row and its detail.
 type ToolResultView struct {
 	Text    string
 	Images  []Image
 	Pending bool
 	IsError bool
-	Diff    *Diff
-	Status  *Status
+	// Interrupted says the turn was stopped before this call answered: it will not run again, and it did not
+	// fail. A row that showed it as running would promise an answer that is never coming.
+	Interrupted bool
+	// Blocked says a rule or a person refused the call before it ran: it did not fail either.
+	Blocked bool
+	// Notes are the harness's sentences about the result, one a line: a truncation, where the full output is, an
+	// exit code, why the call did not run. They are drawn after the output and never cut with it.
+	Notes  string
+	Diff   *Diff
+	Status *Status
+	// Background is the job a background codemode script runs as; nil for any other call.
+	Background *BackgroundJob
+}
+
+// BackgroundJob is a codemode script that runs on in the background: the job's id, and whether it has ended, its
+// result then in the call's.
+type BackgroundJob struct {
+	ID   int64
+	Done bool
 }
 
 func ReadResult(c *ToolCall) ToolResultView {
-	v := ToolResultView{
-		Text:    ResultText(c.Result),
-		Images:  ResultImages(c.Result),
-		Pending: c.Result == nil,
-		IsError: c.Result != nil && c.Result.IsError != nil && *c.Result.IsError,
+	// The Kernel hands a result over as its own entry, which BuildView already read; the Daemon's path hands
+	// over a tool message the call was attached to, which is read here.
+	var v ToolResultView
+	if c.ResultView != nil {
+		v = *c.ResultView
+	} else {
+		v = ToolResultView{
+			Text:    ResultText(c.Result),
+			Images:  ResultImages(c.Result),
+			Pending: c.Result == nil,
+			IsError: c.Result != nil && c.Result.IsError != nil && *c.Result.IsError,
+		}
 	}
-	v.Diff = ParseDiff(v.Text)
+	if v.Diff == nil {
+		v.Diff = ParseDiff(v.Text)
+	}
 	if v.Diff == nil && !v.IsError {
 		v.Diff = CreatedFileDiff(c)
 	}
@@ -397,6 +504,9 @@ var (
 )
 
 func ReadScriptRun(c *ToolCall) ScriptRun {
+	if c.ResultView != nil {
+		return kernelScriptRun(*c.ResultView)
+	}
 	run := ScriptRun{Images: ResultImages(c.Result)}
 	parts := textParts(c.Result)
 	if len(parts) == 0 {
@@ -433,6 +543,23 @@ func ReadScriptRun(c *ToolCall) ScriptRun {
 		}
 	}
 	run.Output = strings.Join(parts, "\n")
+	return run
+}
+
+// kernelScriptRun is a codemode call's run: Kernel's result is the text the model read, and how the call ended.
+func kernelScriptRun(v ToolResultView) ScriptRun {
+	run := ScriptRun{Images: v.Images}
+	switch {
+	case v.Pending, v.Background != nil && !v.Background.Done:
+		run.Status = "running"
+		run.Output = v.Text
+	case v.Interrupted:
+		run.Status, run.Output = "cancelled", v.Text
+	case v.IsError || v.Blocked:
+		run.Status, run.Error = "failed", joinLine(v.Text, "\n", v.Notes)
+	default:
+		run.Status, run.Output = "completed", v.Text
+	}
 	return run
 }
 
@@ -494,6 +621,10 @@ type ScriptInput struct{ Name, Text string }
 // ScriptSource is the program a Script runs and the long literals it reads
 // as `inputs.<name>`.
 func ScriptSource(c *ToolCall) (script string, inputs []ScriptInput, ok bool) {
+	if c.Use.Name == CodemodeTool {
+		script, ok = c.Input["code"].(string)
+		return script, []ScriptInput{}, ok
+	}
 	if c.Use.Name != ScriptTool {
 		return "", nil, false
 	}

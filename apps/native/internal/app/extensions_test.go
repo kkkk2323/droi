@@ -5,9 +5,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 )
 
 // An app's own page is a sidebar row under Automations that opens it in
@@ -58,7 +58,7 @@ func TestAnExtensionsSettingsTabShowsInItsGroup(t *testing.T) {
 	for i, tab := range tabs {
 		at[tab.id] = i
 	}
-	if at["x"] != at["worktrees"]+1 || at["y"] != len(tabs)-1 {
+	if at["x"] != at["droids"]+1 || at["y"] != len(tabs)-1 {
 		t.Errorf("order %v", at)
 	}
 }

@@ -13,9 +13,9 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // otherComputer is a second Host for the window to follow: a Gateway in front
@@ -214,7 +214,12 @@ func TestFollowingAnotherComputerHidesWhatBelongsToThisHost(t *testing.T) {
 func TestThisComputersSettingsTabsAreThereWhenFollowingNothing(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t); cfg.Remote = &fakeRemote{} })
 	h.openSettingsTab("computer")
-	for _, shown := range []string{"Account", "Memory", "Remote Access", "Advanced", "Computer"} {
+	shown := []string{"Memory", "Remote Access", "Advanced", "Computer"}
+	// The Factory account is the Daemon's: a window on the Kernel has no Account tab.
+	if h.kernel == nil {
+		shown = append(shown, "Account")
+	}
+	for _, shown := range shown {
 		if !h.hasButton(shown) {
 			t.Errorf("no %s tab", shown)
 		}

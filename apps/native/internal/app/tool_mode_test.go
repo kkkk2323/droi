@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
 )
 
 func TestTheNewSessionPageStartsASessionWithTheToolModePicked(t *testing.T) {
+	keepOnDaemon(t, untilCodemode)
 	h := newHarness(t, sessionsScenario(), "")
 	defaults.SetDefaultToolMode(h.a.prefs, defaults.DirectOnly)
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })

@@ -9,14 +9,14 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/droiapp"
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/mcpserver"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droiapp"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/mcpserver"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // acmeKey signs the person in with Acme's identity provider and asks Acme's
@@ -41,6 +41,19 @@ func ExampleRun() {
 			return host.OverlayOptions{MCPServers: servers, BlockOnMCPLoad: true}
 		},
 		SystemPrompt: func() string { return "Use acme-db's query tool for questions about orders." },
+		// The same for the Kernel: its servers, the tools that run without
+		// asking (as ToolViews names them), and the section.
+		Agent: func(h *host.Host) extension.Agent {
+			servers := []extension.AgentMCPServer{{Name: "acme-db", URL: "https://mcp.acme.internal/db"}}
+			if exe := h.Executable(); exe != "" {
+				servers = append(servers, extension.AgentMCPServer{Name: tools, Command: exe, Args: []string{tools}, BlockOnLoad: true})
+			}
+			return extension.Agent{
+				MCPServers:  servers,
+				AlwaysAllow: []string{"acme-db___query", tools + "___ping"},
+				Section:     "Use acme-db's query tool for questions about orders.",
+			}
+		},
 		Commands: map[string]func([]string) int{
 			tools: func([]string) int {
 				err := mcpserver.Serve(os.Stdin, os.Stdout, mcpserver.Server{

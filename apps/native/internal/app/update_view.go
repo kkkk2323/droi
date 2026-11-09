@@ -2,14 +2,15 @@ package app
 
 import (
 	"context"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
-	"github.com/kkkk2323/droi/apps/native/internal/updates"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // mdNotes is how the release notes read.
@@ -41,17 +42,34 @@ func (a *App) relaunch() {
 	}
 }
 
+// updateWaitLimit is how long an installed update waits for the Sessions on a Kernel to be idle before it restarts
+// anyway (ADR 0038): the Kernel resumes the runs a restart interrupts, and a computer whose Automations always work
+// would otherwise never update. On the Daemon it waits as long as it takes: a Session the Daemon is stopped in
+// may not come back.
+const updateWaitLimit = 3 * time.Hour
+
 // RelaunchIfIdle starts the installed update when updates are automatic
 // and nobody would notice: no Session is working or waiting for an answer
 // and the window is in the background. Drafts are saved as they are typed,
-// so none is lost. Otherwise the user restarts from the card or About.
+// so none is lost. On a Kernel, an update that has waited updateWaitLimit
+// for that no longer waits for the Sessions. Otherwise the user restarts
+// from the card or About.
 func (a *App) RelaunchIfIdle() bool {
 	u := a.cfg.Updater
-	if u == nil || !u.Automatic() || u.State().Status != updates.Ready || a.focused() {
+	if u == nil || u.State().Status != updates.Ready {
+		a.updateReadyAt = time.Time{}
+		return false
+	}
+	now := a.cfg.Now()
+	if a.updateReadyAt.IsZero() {
+		a.updateReadyAt = now
+	}
+	if !u.Automatic() || a.focused() {
 		return false
 	}
 	_, _, reported, _, _, _ := a.snapshot()
-	if len(a.activity(reported)) > 0 {
+	waitedLong := a.onKernel() && now.Sub(a.updateReadyAt) >= updateWaitLimit
+	if len(a.activity(reported)) > 0 && !waitedLong {
 		return false
 	}
 	a.relaunch()

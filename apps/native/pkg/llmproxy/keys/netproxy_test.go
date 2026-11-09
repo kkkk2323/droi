@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo/netproxy"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
 )
 
 // The Key Pool reads its keys' usage through the proxy set in the system's

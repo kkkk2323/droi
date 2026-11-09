@@ -9,7 +9,7 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
 )
 
 // Defaults are the Daemon's Session Defaults as the app last read them.
@@ -22,6 +22,10 @@ type Defaults struct {
 	// Update runs fn on the UI thread and draws; it is called from any
 	// goroutine.
 	Update func(fn func())
+	// Changed, optional, hears the defaults each time a read or a save changes them, from any goroutine.
+	Changed func(defaults.View)
+	// Local, when set, keeps the defaults in place of the Daemon: a window on the Kernel, which runs none.
+	Local *LocalDefaults
 
 	mu     sync.Mutex
 	view   *defaults.View
@@ -38,9 +42,21 @@ func (d *Defaults) ctx() context.Context {
 	return d.Ctx
 }
 
+// LocalDefaults are Session defaults the app keeps itself.
+type LocalDefaults struct {
+	// Load answers the defaults as they are now, with the models a Session may pick; it is called every frame.
+	Load func() defaults.View
+	// Save keeps p.
+	Save func(p defaults.Patch) error
+}
+
 // Get is the defaults read last, nil until the first read answers. It reads
 // them again a minute after they were, and draws once they come.
 func (d *Defaults) Get() *defaults.View {
+	if d.Local != nil {
+		v := d.Local.Load()
+		return &v
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	// Before the connection is up the Daemon would refuse the request.
@@ -68,10 +84,14 @@ func (d *Defaults) Get() *defaults.View {
 			_ = json.Unmarshal(b, &raw)
 			view := defaults.ToSessionDefaults(raw)
 			d.mu.Lock()
-			if d.saves == saves && d.saving == 0 {
+			took := d.saves == saves && d.saving == 0
+			if took {
 				d.view = &view
 			}
 			d.mu.Unlock()
+			if took && d.Changed != nil {
+				d.Changed(view)
+			}
 			d.Update(func() {})
 		}()
 	}
@@ -92,11 +112,26 @@ func (d *Defaults) Reload() {
 // hears why it did not, on the UI thread. The next Get reads them again.
 func (d *Defaults) Save(dv defaults.View, p defaults.Patch, failed func(error)) {
 	view := defaults.ApplyPatch(dv, p)
+	if d.Local != nil {
+		err := d.Local.Save(p)
+		if err == nil && d.Changed != nil {
+			d.Changed(view)
+		}
+		d.Update(func() {
+			if err != nil && failed != nil {
+				failed(err)
+			}
+		})
+		return
+	}
 	d.mu.Lock()
 	d.view = &view
 	d.saves++
 	d.saving++
 	d.mu.Unlock()
+	if d.Changed != nil {
+		d.Changed(view)
+	}
 	go func() {
 		cl, err := d.Controller.Client()
 		if err == nil {

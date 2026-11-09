@@ -9,14 +9,13 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // sessionView is the state of one Session's page, kept while the window
@@ -56,7 +55,9 @@ type sessionView struct {
 	// narrowBar: the page is too narrow for the composer's bar in words, so
 	// its settings show icons.
 	narrowBar bool
-	chrome    func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav)
+	chrome    func(c *ui.Context, s *sessionview.Snapshot, loaded bool, workspace string, nav subagentNav)
+	// speedWhy is the last reason the window's log was given for no speed under the composer.
+	speedWhy string
 }
 
 func (a *App) view(id string) *sessionView {
@@ -65,12 +66,17 @@ func (a *App) view(id string) *sessionView {
 		v = &sessionView{a: a, id: id, attached: map[string]*ui.Bitmap{}, rail: railState{preview: -1}}
 		v.View = sessionview.New(id, sessionview.Env{
 			Controller:  a.ctl,
+			Kernel:      &a.kernel,
+			Sessions:    a.sessions,
+			ConvID:      a.kernelID,
+			Models:      a.kernel.offered,
 			Ctx:         a.ctx,
 			Kit:         func() *kit.Kit { return a.kit },
 			Update:      a.cfg.Update,
 			Now:         a.cfg.Now,
 			Revisions:   &a.revs,
 			OpenSession: func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			SessionOf:   a.sessionIDOf,
 			Agent:       a.agentInfo,
 			OpenAgents: func() {
 				if v.ws != nil {
@@ -164,14 +170,14 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 		title, workspace = sel.Title, sel.Cwd
 	}
 	if s != nil {
-		if st := s.Title(); st != "" {
-			title = st
+		if s.Title != "" {
+			title = s.Title
 		}
-		if cwd := s.Cwd(); cwd != "" {
-			workspace = cwd
+		if s.Cwd != "" {
+			workspace = s.Cwd
 		}
 	}
-	loaded := s != nil && s.LoadState() == session.Loaded
+	loaded := s != nil && s.Loaded
 
 	ui.Column(c).Role(ui.RoleGroup).Label(title).Fill().Children(func() {
 		nav := a.subagentNavOf(listed, sel, v.id)
@@ -188,7 +194,7 @@ func (v *sessionView) build(c *ui.Context, a *App, sel *sessions.Summary, listed
 
 // header is the PageHeader: the title with its actions menu, and the
 // open-in controls. It drags the window.
-func (v *sessionView) header(c *ui.Context, s *session.Session, sel *sessions.Summary, loaded bool, title, workspace string, nav subagentNav) {
+func (v *sessionView) header(c *ui.Context, s *sessionview.Snapshot, sel *sessions.Summary, loaded bool, title, workspace string, nav subagentNav) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	// The web Client's leading spacer, always there, so the header's gap

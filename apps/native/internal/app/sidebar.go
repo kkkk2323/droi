@@ -10,13 +10,14 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/activity"
-	"github.com/kkkk2323/droi/apps/native/internal/archive"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/subagents"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/activity"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/archive"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/subagents"
 )
 
 // Folded like a Workspace group, in the same preference; no Workspace key has
@@ -232,6 +233,10 @@ type listMemo struct {
 	timesGen  uint64
 	unread    map[string]bool
 	unreadGen uint64
+	// kernelUnread and kernelUnreadRev are the rows of the list of that revision a person has not seen, on
+	// Kernel.
+	kernelUnread    map[string]bool
+	kernelUnreadRev uint64
 	// firstSeen is decoded from firstSeenRaw, the stored sessionsFirstSeen,
 	// which holds every Session ever listed: decoding it takes about a
 	// millisecond with thousands of them.
@@ -242,6 +247,8 @@ type listMemo struct {
 	notedRev uint64
 	notedRaw string
 	noted    bool
+	// busyAt is Order.BusyAt: each busy Session's time as its turn was first seen.
+	busyAt map[string]int64
 	// navKey names the list and the Session nav was found for, without its
 	// runs, which change without the list.
 	navKey string
@@ -392,14 +399,35 @@ func (a *App) sortOrder(listed []sessions.Summary, busy map[string]activity.Acti
 	o.Manual = a.manualWorkspaces().Get(a.prefs)
 	o.FirstSeen = seen
 	o.Times, _, _ = a.sessionTimes()
-	o.Unread = a.unreadSessions()
+	o.Unread = a.unreadSessions(listed, busy)
 	if len(busy) > 0 {
 		o.Busy = make(map[string]bool, len(busy))
 		for id, doing := range busy {
 			o.Busy[id] = doing != ""
 		}
 	}
+	o.BusyAt = a.busyAt(listed, o)
 	return o
+}
+
+// busyAt is each busy Session's time as its turn was first seen running, kept until the turn ends: a Session at
+// work keeps its place while the Kernel dates it anew at each step. A Session busy but not in listed (a view of
+// part of the list) keeps the time it has.
+func (a *App) busyAt(listed []sessions.Summary, o sessions.Order) map[string]int64 {
+	m := &a.listMemo
+	next := make(map[string]int64, len(o.Busy))
+	for id, busy := range o.Busy {
+		if at, ok := m.busyAt[id]; busy && ok {
+			next[id] = at
+		}
+	}
+	for _, s := range listed {
+		if _, ok := next[s.SessionID]; !ok && o.Busy[s.SessionID] {
+			next[s.SessionID] = sessions.UsedAt(s, o.Times)
+		}
+	}
+	m.busyAt = next
+	return next
 }
 
 // holdOrder holds the rows' places while the pointer is over the list, as
@@ -878,6 +906,7 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 					k.Icon(c, "message-square", 12, t.MutedForeground)
 					k.Text(c, plural(*s.MessagesCount, L("message"), L("messages")), k.Dense(10, 11), k.Dense(15, 16.5)).TextColor(t.SidebarMutedForeground).SingleLine()
 				})
+
 			}
 			ui.Spacer(c)
 			if n <= 9 && c.Modifiers() == ui.Cmd {
@@ -903,6 +932,13 @@ func (a *App) sessionRow(c *ui.Context, s sessions.Summary, flat, selected bool,
 		})
 		return
 	}
+	a.sessionMenu(c, b, s, pinned)
+}
+
+// sessionMenu is a row's menu: what a person does to a Session from the sidebar, and the two copies of what
+// it is. It is a method of its own so that a row's drawing and a row's actions can change apart: the drawing
+// follows what a Session is doing, the actions belong to the list.
+func (a *App) sessionMenu(c *ui.Context, b ui.Element, s sessions.Summary, pinned bool) {
 	b.ContextMenu(func(m *ui.Menu) {
 		if m.Item(L("Rename")).Chosen() {
 			a.sidebar.renaming, a.sidebar.rename = s.SessionID, s.Title
@@ -959,6 +995,13 @@ func (a *App) renameField(c *ui.Context, s sessions.Summary, flat bool) {
 }
 
 func (a *App) renameSession(id, title string) {
+	if c, err := a.kernel.client(); err == nil {
+		// A title a person gives is a chosen one, which no generated name replaces. index.changed moves the row.
+		if conv, ok := a.kernelID(id); ok {
+			_ = c.UpdateIndex(a.ctx, kernel.IndexUpdateParams{ID: conv, Title: kernel.TitleText(title)})
+		}
+		return
+	}
 	cl, err := a.ctl.Client()
 	if err != nil {
 		return
@@ -973,10 +1016,13 @@ func (a *App) toggleArchive(s sessions.Summary) { _ = a.archive(s) }
 // archive archives the Session, or unarchives an archived one. A Scratch
 // Session's conversation goes with its folder, through the Gateway.
 func (a *App) archive(s sessions.Summary) error {
-	cl, err := a.ctl.Client()
-	if err != nil {
+	var cl archive.Controller
+	if c, err := a.kernel.client(); err == nil {
+		cl = kernelArchive{a: a, c: c}
+	} else if cl, err = a.ctl.Client(); err != nil {
 		return err
 	}
+	var err error
 	a.mu.Lock()
 	listed := append([]sessions.Summary(nil), a.listed...)
 	a.mu.Unlock()
@@ -999,6 +1045,28 @@ func (a *App) archive(s sessions.Summary) error {
 	}
 	a.reloadList()
 	return err
+}
+
+// kernelArchive archives on Kernel: a conversation's index row says it is archived.
+type kernelArchive struct {
+	a *App
+	c *kernel.Client
+}
+
+func (k kernelArchive) set(ctx context.Context, id string, archived bool) error {
+	conv, ok := k.a.kernelID(id)
+	if !ok {
+		return fmt.Errorf("no Kernel conversation holds %s", id)
+	}
+	return k.c.UpdateIndex(ctx, kernel.IndexUpdateParams{ID: conv, Archived: &archived})
+}
+
+func (k kernelArchive) ArchiveSession(ctx context.Context, p protocol.ArchiveSessionParams) (*protocol.ArchiveSessionResult, error) {
+	return &protocol.ArchiveSessionResult{}, k.set(ctx, p.SessionID, true)
+}
+
+func (k kernelArchive) UnarchiveSession(ctx context.Context, p protocol.UnarchiveSessionParams) (*protocol.UnarchiveSessionResult, error) {
+	return &protocol.UnarchiveSessionResult{}, k.set(ctx, p.SessionID, false)
 }
 
 // noScratch is a window without a Gateway: it has no folders to move.

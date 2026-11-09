@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // TestTheDaemonGetsTheHostsToolServers starts a Host as Run does, on the

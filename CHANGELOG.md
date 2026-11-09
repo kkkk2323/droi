@@ -1,3 +1,29 @@
+## Unreleased
+
+### Added
+
+- On the Kernel, Magpie's models are offered beside Factory's (ADR 0044). Turn Magpie on in Settings → Advanced: its models appear in the model picker without a restart, and working sessions keep running. With Magpie, Droi runs sessions with no Factory key at all.
+- Settings → Advanced lists where Droi's models come from (Factory and Magpie) and how each stands. When there is no model, the New session page says what each source needs.
+
+### Changed
+
+- For apps built on Droi (ADR 0041): the Go module is now `github.com/kkkk2323/droi/apps/native/v2`, and its tags are `apps/native/v2.x.y`. Change every import of `github.com/kkkk2323/droi/apps/native/...` to `github.com/kkkk2323/droi/apps/native/v2/...` and require the module at a v2 tag. The packages and their names stay the same.
+- On the Kernel, Droi no longer asks you to sign in with Factory, and Settings has no Account tab: no Factory account runs a model there. An app built on Droi still shows its own sign-in page.
+- On the Kernel, Settings and the window leave out what only droid used. Advanced has a Kernel row (its status and Restart Kernel) instead of the Daemon, the droid executable and the Factory API base URL. Session defaults have no Spec mode, compaction or subagent settings, and tool calls are Script or Direct. The sidebar shows no other account's sessions, Automations shows no Factory automations, droid's update cards are gone, and /loop is not offered. Turning Memory on or off restarts nothing.
+- On the Kernel, Droi runs no droid Daemon: the Kernel runs every Session. The Session defaults (model, reasoning level, autonomy) are kept in Droi's settings, taken once from droid's, and the model list is the Kernel's.
+- `scripts/install-next.sh droi` installs this checkout's Droi on its Kernel as Droi itself, in place of a released Droi, with no update feed; it backs up the released Droi first.
+- On the Kernel, worktrees go in Droi's own folder (`~/.droi/worktrees`; `~/.droi-next/worktrees` for Droi Next) instead of `~/.factory/worktrees`. The folder you pick in Settings → Worktrees is kept in Droi's settings.
+
+### Fixed
+
+- On the Kernel, the Key Pool could not be used while `FACTORY_API_BASE_URL` was set, and Settings had no Usage tab to add a key. The Kernel's models always go through the Key Pool now, and the Usage tab is always there.
+- On the Kernel, an answer appeared all at once when the model finished. It now appears as the model writes it.
+- On the Kernel, the window waited for the Daemon before it showed anything, and said "Starting the Daemon" when droid was missing. It now waits only for the Kernel.
+- On the Kernel, /compact asked the Daemon and did nothing. It now compacts the session in the Kernel.
+- On the Kernel, Settings → Worktrees said "Failed to load worktrees." when a session worked in a folder that is no git repository. It now lists the repositories' worktrees and skips such folders.
+- On the Kernel, the sidebar showed Workstreams, which still run on the Daemon. It no longer shows them there.
+- On the Kernel with no models, the New session page offered the Daemon's models, which no session could run. It now offers none and says how to get some.
+
 ## 1.92.0 - 2026-11-06
 
 ### Added

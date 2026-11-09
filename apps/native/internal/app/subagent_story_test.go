@@ -79,6 +79,7 @@ func (h *harness) finishChild() {
 // disk, so the list has no row for it until the run ends; every view tells
 // it running, and done once it ends.
 func TestABackgroundSubagentNotListedYetTellsOneStory(t *testing.T) {
+	keepOnDaemon(t, untilSubagents)
 	h := newHarness(t, backgroundScenario(map[string]any{"sessionId": bgChild, "unwritten": true}), "")
 	h.openSession("Fix the login race")
 	h.until("the Task card", func() bool { return h.hasText("Translate the strings") })
@@ -91,6 +92,7 @@ func TestABackgroundSubagentNotListedYetTellsOneStory(t *testing.T) {
 // Once on disk the Daemon may list the subagent before it says whose it is;
 // it is still the caller's subagent, not a Session in the sidebar.
 func TestASubagentListedWithoutItsCallerTellsOneStory(t *testing.T) {
+	keepOnDaemon(t, untilSubagents)
 	h := newHarness(t, backgroundScenario(map[string]any{"sessionId": bgChild}), "")
 	h.openSession("Fix the login race")
 	h.until("the Task card", func() bool { return h.hasText("Translate the strings") })

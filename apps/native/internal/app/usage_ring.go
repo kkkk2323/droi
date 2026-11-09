@@ -3,8 +3,8 @@ package app
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
 )
 
 // keyPoolRing sits beside Settings while the Key Pool serves the Daemon: a

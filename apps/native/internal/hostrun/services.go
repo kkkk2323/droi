@@ -12,14 +12,15 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
-	"github.com/kkkk2323/droi/apps/native/internal/hostsession"
-	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
-	"github.com/kkkk2323/droi/apps/native/internal/keepawake"
-	"github.com/kkkk2323/droi/apps/native/internal/workstream"
-	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automationwork"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hostsession"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/keepawake"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/workstream"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // Services are the Host's own features beside Memory, which the app and
@@ -174,7 +175,10 @@ func (s *Services) takeAutomations(ctx context.Context, h *host.Host, dir string
 		return false
 	}
 	logf := func(m string) { log.Println("[automations]", m) }
-	starter := automationwork.NewSessionStarter(s.Sessions, logf)
+	var starter runStarter = automationwork.NewSessionStarter(s.Sessions, logf)
+	if h.KernelEnabled() {
+		starter = kernelStarter(h, logf)
+	}
 	sched := automationwork.New(automationwork.Config{
 		Dir:     dir,
 		Starter: starter,
@@ -213,6 +217,49 @@ func (s *Services) takeAutomations(ctx context.Context, h *host.Host, dir string
 	}, nil)
 	go sched.Run(ctx)
 	return true
+}
+
+// runStarter is the Starter of a Host's Automations, the Daemon's or the Kernel's.
+type runStarter interface {
+	automationwork.Starter
+	Attach(s *automationwork.Scheduler)
+	Close()
+}
+
+// kernelRunStarter is a KernelStarter on a connection of its own, as the Host's.
+type kernelRunStarter struct {
+	*automationwork.KernelStarter
+	link   *host.KernelLink
+	unhear func()
+}
+
+func (k kernelRunStarter) Close() {
+	k.KernelStarter.Close()
+	k.unhear()
+	k.link.Close()
+}
+
+// kernelStarter runs the Automations as Kernel conversations (M4 4L). While a run works its approval level is stored
+// with the conversation policies the Host keeps, so a Kernel that starts again gets it back.
+func kernelStarter(h *host.Host, logf func(string)) runStarter {
+	link := host.NewKernelLink(host.KernelLinkOptions{
+		Client: kernel.ClientHost,
+		Token:  h.KernelToken,
+		Log:    func(s string) { logf("kernel: " + s) },
+	})
+	ks := &automationwork.KernelStarter{
+		Client: func() (automationwork.KernelRuns, error) {
+			if c, _ := link.Current(); c != nil {
+				return c, nil
+			}
+			return nil, errors.New("Droi is not connected to the Kernel")
+		},
+		KeepPolicy: func(id kernel.ID, autonomy string) error {
+			return h.SetConversationPolicy(id, host.ConversationPolicy{Autonomy: autonomy})
+		},
+		Log: logf,
+	}
+	return kernelRunStarter{KernelStarter: ks, link: link, unhear: h.OnKernelState(link.Use)}
 }
 
 // Scheduler runs the Host's Automations (ADR 0035); nil while another Droi

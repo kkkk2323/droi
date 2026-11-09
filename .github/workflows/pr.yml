@@ -65,11 +65,12 @@ jobs:
           done
 
   # The view tests run App.View against the Fake Daemon, which needs Node, and
-  # only macOS draws a frame as a Release does. They take most of the run, so
-  # two shards split them, each in a runner of its own: shards of one runner
-  # only queue behind each other, as each draws its frames on that runner's one
-  # GPU. The same tests also run on one CPU, where one that races the Fake
-  # Daemon's answers fails, not in a Release.
+  # draw a scenario's Sessions from a Fake Kernel beside it, which needs the
+  # host Kernel; only macOS draws a frame as a Release does. They take most of
+  # the run, so two shards split them, each in a runner of its own: shards of
+  # one runner only queue behind each other, as each draws its frames on that
+  # runner's one GPU. The same tests also run on one CPU, where one that races
+  # the Fake Daemon's answers fails, not in a Release.
   native:
     name: native (${{ matrix.run.name }}, shard ${{ matrix.shard }} of 2)
     runs-on: macos-latest
@@ -96,6 +97,27 @@ jobs:
           go-version-file: apps/native/go.mod
           cache-dependency-path: apps/native/go.sum
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/native/assets/kernel
+          key: kernel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/kernel/src/**', 'packages/**') }}
+
+      - name: Build the host Kernel for the Fake Kernel
+        run: |
+          pnpm install --frozen-lockfile
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64) platform=darwin-arm64 ;;
+            Darwin-x86_64) platform=darwin-x64 ;;
+            *) echo "::error::unsupported host: $(uname -s)-$(uname -m)"; exit 1 ;;
+          esac
+          (cd apps/kernel && bun run build.ts "$platform")
+
       - name: Build the view tests
         run: go test -c -o "$RUNNER_TEMP/app.test" ./apps/native/internal/app
 
@@ -104,6 +126,7 @@ jobs:
         env:
           ARGS: ${{ matrix.run.args }}
           SHARD: ${{ matrix.shard }}
+          DROI_FAKEKERNEL_REQUIRED: '1'
         run: |
           tests="$("$RUNNER_TEMP/app.test" -test.list '^Test')"
           test -n "$tests" || { echo "::error::no view test was listed"; exit 1; }
@@ -133,7 +156,32 @@ jobs:
           go-version-file: apps/native/go.mod
           cache-dependency-path: apps/native/go.sum
 
+      # The Fake Kernel starts a real Kernel binary, so this job builds the host one. Without it the
+      # package's tests skip, and a package whose tests all skip is a package with no tests.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/native/assets/kernel
+          key: kernel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/kernel/src/**', 'packages/**') }}
+
+      - name: Build the host Kernel for the Fake Kernel tests
+        run: |
+          pnpm install --frozen-lockfile
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64) platform=darwin-arm64 ;;
+            Darwin-x86_64) platform=darwin-x64 ;;
+            *) echo "::error::unsupported host: $(uname -s)-$(uname -m)"; exit 1 ;;
+          esac
+          (cd apps/kernel && bun run build.ts "$platform")
+
       - name: The other packages' tests
+        env:
+          DROI_FAKEKERNEL_REQUIRED: '1'
         run: go test $(go list ./apps/native/... | grep -v '/internal/app$')
 
   # Droi's droid and its Key Hook, the Key Pool and its LLM Proxy on Windows,
@@ -153,6 +201,9 @@ jobs:
 
       - run: go test ./apps/native/pkg/host -run 'TestTheDaemonSeesItsAnchorGo|TestTheDaemonAnchorEndsWhenItsInputCloses'
 
+  # The Phone App's web build against a Fake Kernel: the Kernel this pull request builds, behind the
+  # real Gateway (apps/native/internal/phonegateway, which the suite builds with Go), with a scripted
+  # model. The built binary rather than the source, as that is what ships.
   phone-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -166,7 +217,24 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
       - run: pnpm install --frozen-lockfile
+
+      - uses: actions/cache@v4
+        with:
+          path: apps/native/assets/kernel
+          key: kernel-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'apps/kernel/src/**', 'packages/**') }}
+
+      - name: Build the Kernel for the Fake Kernel
+        run: (cd apps/kernel && bun run build.ts linux-x64)
 
       # Chromium is a download of its own, so keep it until Playwright's version
       # changes; on a hit only its system packages are needed. apt stalls on a
@@ -181,7 +249,9 @@ jobs:
           sudo sh -c 'echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/99retries'
           pnpm -C tests exec playwright install --with-deps chromium
 
-      - name: Phone App web build against the Fake Daemon
+      - name: Phone App web build against the Fake Kernel
+        env:
+          DROI_KERNEL_BIN: ${{ github.workspace }}/apps/native/assets/kernel/linux-x64/kernel
         run: pnpm test:e2e:phone
 
       - uses: actions/upload-artifact@v7
@@ -190,3 +260,79 @@ jobs:
           name: playwright-report-phone
           path: tests/test-results
           retention-days: 7
+
+  # The kernel: its own tests under Bun (they open real SQLite files and a faux model), then a
+  # cross-compiled binary that must still process an image. `bun build --compile` keeps Photon's
+  # WebAssembly but used to lose the way to it in a cross build, so a native build is no evidence:
+  # this job builds for Linux and Windows from Ubuntu, runs the Linux one, and hands the Windows one
+  # to `kernel-windows` to run on a real Windows runner.
+  kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Kernel tests
+        run: pnpm test:kernel
+
+      - name: Build the kernel for Linux and Windows, staged as a release stages it
+        run: |
+          cd apps/kernel
+          bun run build.ts --stage linux-x64 windows-x64
+
+      - name: The cross-compiled Linux binary still reads an image
+        working-directory: apps/kernel
+        run: bun run smoke.ts "$GITHUB_WORKSPACE/apps/native/resources/linux-amd64/kernel"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: kernel-windows
+          path: apps/native/assets/kernel/windows-x64/
+          retention-days: 3
+
+  # The Windows binary above was cross-compiled on Ubuntu. Run it on Windows and make it read a PNG:
+  # the whole point is that this combination, and only this one, was broken before.
+  kernel-windows:
+    needs: kernel
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: kernel-windows
+          path: kernel-windows
+
+      - name: The cross-compiled Windows binary still reads an image
+        working-directory: apps/kernel
+        run: bun run smoke.ts "${{ github.workspace }}/kernel-windows/kernel.exe"
+
+      - name: The Windows tool layer chooses PowerShell, not WSL
+        run: pnpm -C apps/kernel exec bun test test/platform.test.ts

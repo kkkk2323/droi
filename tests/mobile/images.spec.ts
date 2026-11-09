@@ -1,11 +1,5 @@
-import { assistantMessage, session, userMessage } from '@droi/fake-daemon/scenario'
-import { streamedReply } from '@droi/fake-daemon/turns'
+import { exchange } from './fake-kernel/history'
 import { expect, pairPhone, pickSession, presetStandIns, standIns, test } from './fixtures'
-
-const chat = session('Chat', '/Users/dev/acme-web', [
-  userMessage('hello'),
-  assistantMessage('Hi! How can I help?'),
-])
 
 // A 1x1 PNG.
 const PNG =
@@ -13,24 +7,25 @@ const PNG =
 
 test.use({
   scenario: {
-    sessions: [chat],
-    handlers: {
-      'daemon.add_user_message': streamedReply({ deltas: ['Nice photo.'], delayMs: 50 }),
-    },
+    sessions: [
+      { title: 'Chat', cwd: 'acme-web', entries: exchange('hello', 'Hi! How can I help?') },
+    ],
   },
 })
 
 test('a picked image is shown, can be removed, and goes out with the message', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
+  fakeKernel.model.push({ match: 'What is this?', text: 'Nice photo.' })
   await presetStandIns(page, {
     nextImages: [
       { name: 'first.png', mediaType: 'image/png', data: PNG },
       { name: 'second.png', mediaType: 'image/png', data: PNG },
     ],
   })
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Chat/)
   await page.getByRole('button', { name: 'Add image' }).click()
   await page.getByRole('menuitem', { name: 'Photo library' }).click()
@@ -48,24 +43,26 @@ test('a picked image is shown, can be removed, and goes out with the message', a
   await expect(send).toBeEnabled()
   await page.getByRole('textbox', { name: 'Message' }).fill('What is this?')
   await send.click()
-  const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-  expect(sent.params).toMatchObject({
-    text: 'What is this?',
-    images: [{ type: 'base64', mediaType: 'image/png', data: PNG }],
-  })
+  const submitted = await phoneWire.waitForCall('conversation.submit')
+  expect(JSON.stringify(submitted)).toContain(PNG)
   await expect(attachments).toHaveCount(0)
   const you = page.getByRole('log', { name: 'Transcript' }).getByRole('article', { name: 'You' })
   await expect(
     you.filter({ hasText: 'What is this?' }).getByRole('img', { name: 'Attached image' }),
   ).toBeVisible()
+  // The model was shown the picture.
+  const turn = await fakeKernel.model.waitForTurn('What is this?')
+  const asked = turn.messages.filter((m) => m.role === 'user').at(-1)!
+  expect(JSON.stringify(asked.content)).toContain(`data:image/png;base64,${PNG}`)
+  await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Nice photo.')
   expect((await standIns(page)).picked).toEqual(['library'])
 })
 
 test('the camera and the clipboard attach the same way; an empty clipboard says so', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Chat/)
   await page.getByRole('button', { name: 'Add image' }).click()
   await page.getByRole('menuitem', { name: 'Paste image' }).click()

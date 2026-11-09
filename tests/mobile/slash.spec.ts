@@ -1,30 +1,34 @@
-import { session, userMessage } from '@droi/fake-daemon/scenario'
-import { streamedReply } from '@droi/fake-daemon/turns'
+import { userEntry } from './fake-kernel/history'
 import { expect, pairPhone, pickSession, test } from './fixtures'
-
-const chat = session('Chat', '/Users/dev/acme-web', [userMessage('hi')])
 
 test.use({
   scenario: {
-    sessions: [chat],
-    commands: [
-      { name: 'opsx-propose', description: 'Propose a change', argumentHint: 'command arguments' },
+    sessions: [{ title: 'Chat', cwd: 'acme-web', entries: [userEntry('hi')] }],
+    prompts: [
+      {
+        name: 'opsx-propose',
+        description: 'Propose a change',
+        body: 'Propose this change: $ARGUMENTS',
+      },
     ],
     skills: [
-      { name: 'handoff', description: 'Compact the conversation' },
-      { name: 'hidden-helper', description: 'Not for users', userInvocable: false },
+      { name: 'handoff', description: 'Compact the conversation', body: 'Write a handoff note.' },
+      { name: 'switched-off', description: 'Turned off on the computer' },
     ],
-    handlers: {
-      'daemon.add_user_message': streamedReply({ deltas: ['Skill "handoff" activated'] }),
-    },
   },
 })
 
-test('"/" offers commands and skills, filters as you type, and inserts the pick', async ({
+test.beforeEach(async ({ fakeKernel }) => {
+  await fakeKernel.kernel.call('skills.setDisabled', { name: 'switched-off', disabled: true })
+})
+
+test('"/" offers commands and skills, filters as you type, and the Kernel runs the pick', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  fakeKernel.model.push({ match: 'next session is for tests', text: 'Handoff written.' })
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Chat/)
   const input = page.getByRole('textbox', { name: 'Message' })
   await input.fill('/')
@@ -45,22 +49,27 @@ test('"/" offers commands and skills, filters as you type, and inserts the pick'
 
   await input.pressSequentially('next session is for tests')
   await page.getByRole('button', { name: 'Send' }).click()
-  const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-  expect(sent.params).toMatchObject({ text: '/handoff next session is for tests' })
+  expect(await phoneWire.waitForCall('conversation.submit')).toMatchObject({
+    input: '/handoff next session is for tests',
+  })
+  // The Kernel put the skill in the prompt.
+  const turn = await fakeKernel.model.waitForTurn('next session is for tests')
+  expect(JSON.stringify(turn.messages)).toContain('Write a handoff note.')
+  await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Handoff written.')
 })
 
 test('a typed name becomes a tag; Backspace or its remove button drops it', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Chat/)
   const input = page.getByRole('textbox', { name: 'Message' })
   await expect(input).toBeEditable()
   await input.pressSequentially('/opsx-propose ')
   const tag = page.getByRole('group', { name: 'Command opsx-propose' })
   await expect(tag).toBeVisible()
-  await expect(input).toHaveAttribute('placeholder', 'command arguments')
   await input.press('Backspace')
   await expect(tag).toHaveCount(0)
 
@@ -69,6 +78,5 @@ test('a typed name becomes a tag; Backspace or its remove button drops it', asyn
   await expect(page.getByRole('group', { name: 'Skill handoff' })).toHaveCount(0)
   await expect(input).toHaveValue('tidy up')
   await page.getByRole('button', { name: 'Send' }).click()
-  const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-  expect(sent.params).toMatchObject({ text: 'tidy up' })
+  expect(await phoneWire.waitForCall('conversation.submit')).toMatchObject({ input: 'tidy up' })
 })

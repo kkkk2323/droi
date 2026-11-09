@@ -37,6 +37,10 @@ const (
 	// magpieDefaultOutput is the output limit of a model whose entry does not
 	// say one.
 	magpieDefaultOutput = 8192
+	// magpieDefaultContext is the context window of a model whose entry does not say one: the Kernel needs one.
+	magpieDefaultContext = 128000
+	// magpieKernelAPI is the pi-ai API the Kernel speaks to the gateway, which takes it to every model's own.
+	magpieKernelAPI = "openai-completions"
 )
 
 // MagpieModalities is the shape of a model's modalities.
@@ -51,6 +55,10 @@ type MagpieModel struct {
 	Name            string           `json:"display_name"`
 	MaxOutputTokens int              `json:"max_output_tokens"`
 	Modalities      MagpieModalities `json:"modalities"`
+	ContextWindow   int              `json:"context_window"`
+	ContextLength   int              `json:"context_length"`
+	// ReasoningLevels are the efforts the model takes, as OpenAI's reasoning_effort says them.
+	ReasoningLevels []string `json:"reasoning_levels"`
 }
 
 // Images reports that the model takes images.
@@ -154,6 +162,7 @@ func (h *Host) RefreshMagpie() bool {
 	defer h.magpieReadMu.Unlock()
 	h.readMagpie()
 	h.changed()
+	go h.kernelModelsChanged()
 	return !sameMagpieModels(h.magpieGiven(), h.magpieCached())
 }
 
@@ -188,6 +197,7 @@ func (h *Host) refreshIfStale() {
 	}
 	h.readMagpie()
 	h.changed()
+	go h.kernelModelsChanged()
 }
 
 // readMagpie reads the list and keeps it, success or failure; magpieReadMu is
@@ -282,6 +292,40 @@ func MagpieCustomModels(c MagpieCatalog) []any {
 		out = append(out, entry)
 	}
 	return out
+}
+
+// magpieProvider is the catalog's models as the Kernel's Magpie provider, on the gateway's OpenAI endpoint; false
+// when it has none. A model keeps the gateway's own id: the Kernel names a model by its provider and id, so nothing
+// else can take it.
+func magpieProvider(c MagpieCatalog) (kernelProvider, bool) {
+	models := append([]MagpieModel(nil), c.Models...)
+	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
+	p := kernelProvider{
+		ID: SourceMagpie, Name: "Magpie", BaseURL: strings.TrimSuffix(c.BaseURL, "/") + "/v1",
+		API: magpieKernelAPI, APIKeyEnv: kernelMagpieKeyEnv,
+	}
+	for _, m := range models {
+		if strings.TrimSpace(m.ID) == "" {
+			continue
+		}
+		km := kernelModel{ID: m.ID, Name: MagpieDisplayName(m), ContextWindow: magpieContext(m), MaxTokens: magpieOutput(m), Input: []string{"text"}}
+		if m.Images() {
+			km.Input = append(km.Input, "image")
+		}
+		km.thinkWith(m.ReasoningLevels)
+		p.Models = append(p.Models, km)
+	}
+	return p, len(p.Models) > 0
+}
+
+func magpieContext(m MagpieModel) int {
+	switch {
+	case m.ContextWindow > 0:
+		return m.ContextWindow
+	case m.ContextLength > 0:
+		return m.ContextLength
+	}
+	return magpieDefaultContext
 }
 
 // MagpieModelID is the droid id of a Magpie model. It has to start with

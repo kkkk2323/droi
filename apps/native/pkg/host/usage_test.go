@@ -194,3 +194,18 @@ func TestUsageRenewsTheLoginOfAnAccountNotInUse(t *testing.T) {
 		t.Fatalf("%+v, renewals %d", st, s.renewals)
 	}
 }
+
+// droid reads windowEnd with new Date, so epoch milliseconds name a window's end as well as an ISO time does.
+func TestUsageReadsTheWindowEndsDroidReads(t *testing.T) {
+	u, err := parseUsage([]byte(`{"limits":{"standard":{"fiveHour":{"usedPercent":42,"windowEnd":1791763200000},"weekly":{"usedPercent":10,"windowEnd":"1793000000000"},"monthly":{"usedPercent":1,"windowEnd":null}},"core":{}},"extraUsageBalanceCents":1250}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !u.Standard.FiveHour.Ends.Equal(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)) ||
+		!u.Standard.Weekly.Ends.Equal(time.Date(2026, 10, 26, 7, 33, 20, 0, time.UTC)) || !u.Standard.Monthly.Ends.IsZero() {
+		t.Fatalf("%+v", u.Standard)
+	}
+	if u.ExtraCents != 1250 {
+		t.Fatalf("extra %d", u.ExtraCents)
+	}
+}

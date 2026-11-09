@@ -14,7 +14,7 @@ import (
 
 	"github.com/egoist/mygo/netproxy"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // "Sign in with Factory": the OAuth device flow the droid CLI uses (WorkOS

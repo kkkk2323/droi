@@ -459,6 +459,7 @@ func TestMetaDescribesTheShellWithoutSecrets(t *testing.T) {
 		"name":         "Studio Mac",
 		"computerId":   "c0ffee00-0000-4000-8000-000000000000",
 		"relay":        "",
+		"kernel":       false,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatal(string(body))

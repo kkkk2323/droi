@@ -10,9 +10,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/loops"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/loops"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // loopCommand is `/loop <interval> <prompt>`, `/loop <prompt> every
@@ -210,7 +210,7 @@ func loopErr(err error) string {
 
 // loop runs `/loop args`, true once it started: a loop of this Session, or
 // `stop`, which deletes them.
-func (v *sessionView) loop(s *session.Session, args string) bool {
+func (v *sessionView) loop(s *sessionview.Snapshot, args string) bool {
 	a := v.a
 	cmd, err := loops.ParseCommand(args)
 	if err != nil {
@@ -229,7 +229,7 @@ func (v *sessionView) loop(s *session.Session, args string) bool {
 		}
 		return true
 	}
-	cwd := s.Cwd()
+	cwd := s.Cwd
 	if cwd == "" {
 		a.mu.Lock()
 		if sum := findSummary(a.listed, v.id); sum != nil {

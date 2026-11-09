@@ -7,10 +7,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
 )
 
 // The transcript's list builds only the rows in view, so an entry is cut
@@ -260,7 +260,7 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 					kit.Pulse(cursor, k.Px(2), func(w float32) ui.Color { return t.Foreground.Alpha(0.6 * (0.5 + 0.5*w)) })
 				}
 			case transcript.Picture:
-				v.picture(c, b.ID, b.Image, 288, l10n.L("Image from Droid"))
+				v.picture(c, b.ID, b.Image, 288, l10n.L("Image from Droi"))
 			case transcript.Thinking:
 				v.thinking(c, b, r.e.ID == v.streamingID)
 			case transcript.Subagent:

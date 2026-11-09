@@ -13,14 +13,14 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/activity"
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/activity"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // The Host's Automations come through the Gateway (ADR 0035). This
@@ -624,7 +624,7 @@ func (a *App) automationList(c *ui.Context) {
 				a.Go(Route{Name: "automations", Tab: newAutomationTab})
 			}
 		})
-		k.Text(c, L("Prompts Droid runs on a schedule, on this computer, while Droi is open."), 13, 20).TextColor(t.MutedForeground)
+		k.Text(c, L("Prompts Droi runs on a schedule, on this computer, while Droi is open."), 13, 20).TextColor(t.MutedForeground)
 	})
 	a.automationNotice(c)
 	switch {
@@ -842,7 +842,8 @@ func (a *App) automationRow(c *ui.Context, e gateway.Automation) {
 func (a *App) factorySection(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
-	if len(s.factory) == 0 {
+	// The Daemon runs Factory's automations: on the Kernel there is none of it to show.
+	if len(s.factory) == 0 || a.kernelMode() {
 		return
 	}
 	title := L("Factory automations on this computer")

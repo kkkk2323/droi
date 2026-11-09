@@ -1,0 +1,35 @@
+{
+  "kind": "method",
+  "method": "harness.configure",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "40",
+    "method": "harness.configure",
+    "params": {
+      "providers": [
+        {
+          "id": "factory",
+          "name": "Factory",
+          "baseUrl": "http://127.0.0.1:51234/api/llm/a",
+          "api": "anthropic-messages",
+          "apiKeyEnv": "DROI_KERNEL_LLM_TOKEN",
+          "models": [
+            {
+              "id": "claude-sonnet-4-5",
+              "name": "Claude Sonnet 4.5",
+              "contextWindow": 200000,
+              "maxTokens": 64000
+            }
+          ]
+        }
+      ],
+      "memoryDir": "/Users/dev/Library/Application Support/Droi/memory",
+      "section": "Answer in the language the user writes in."
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "40",
+    "result": {}
+  }
+}

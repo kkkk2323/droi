@@ -12,9 +12,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 func daemonUp(context.Context) (string, error) { return "ws://127.0.0.1:1", nil }

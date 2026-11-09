@@ -26,12 +26,13 @@ function summary(overrides: Partial<SessionSummary>): SessionSummary {
     repoRoot: null,
     worktree: null,
     updatedAt: 0,
+    activityAt: 0,
+    viewedAt: 0,
+    kind: 'chat',
     messagesCount: null,
     archivedAt: null,
     tags: [],
     parentId: null,
-    callingSessionId: null,
-    callingToolUseId: null,
     ...overrides,
   }
 }

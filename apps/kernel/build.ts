@@ -1,0 +1,142 @@
+import { $ } from 'bun'
+import { thirdPartyNotices } from './notices.ts'
+import { chmodSync, cpSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
+
+/**
+ * Build the kernel for every platform Droi ships, into `apps/native/assets/kernel/<platform>/`.
+ *
+ * The targets are written out, never inferred: `release.yml` builds the Windows and Linux packages on
+ * Ubuntu, so "build where you are" would produce a Linux binary for a Windows installer. `--target` is
+ * what makes a cross build possible at all, and Bun does not cross-compile on its own.
+ *
+ * `--compile` embeds the source and the vendored Photon wasm beside the executable (`import … with {
+ * type: 'file' }` gives its path at runtime). A cross build is where that bites: `createNodePhotonImages()`
+ * cannot resolve its package inside a single-file binary, so images fail only in a cross product. The
+ * image smoke in `test/images.test.ts` is what catches that, and `smoke.ts` runs the same check against a
+ * built binary.
+ */
+const targets = [
+  { target: 'bun-darwin-arm64', platform: 'darwin-arm64', goPlatform: 'darwin-arm64' },
+  { target: 'bun-darwin-x64', platform: 'darwin-x64', goPlatform: 'darwin-amd64' },
+  {
+    target: 'bun-windows-x64',
+    platform: 'windows-x64',
+    goPlatform: 'windows-amd64',
+    executable: 'kernel.exe',
+  },
+  { target: 'bun-linux-x64', platform: 'linux-x64', goPlatform: 'linux-amd64' },
+  { target: 'bun-linux-arm64', platform: 'linux-arm64', goPlatform: 'linux-arm64' },
+] as const
+
+/**
+ * Four targets, as the design fixes them: the macOS universal build takes arm64, Windows x64, and the
+ * two Linux architectures the headless `droi host` needs.
+ */
+export const releaseTargets = targets
+
+const root = new URL('.', import.meta.url).pathname
+const entry = join(root, 'src/main.ts')
+/** Codemode's worker thread: a second entrypoint, the only way a compiled binary can start it (src/codemode/sandbox.ts). */
+const worker = join(root, 'src/codemode-worker.ts')
+const outRoot = join(root, '..', '..', 'apps', 'native', 'assets', 'kernel')
+/**
+ * The native app's resources: MyGo ships `resources/<GOOS>-<GOARCH>/` with that platform's app only, next to the
+ * executable (in a macOS bundle, in Contents/Resources), which is where the Host looks for the Kernel. A universal
+ * macOS build joins darwin-arm64's and darwin-amd64's into one file.
+ */
+const resourcesRoot = join(root, '..', '..', 'apps', 'native', 'resources')
+/** What a release that ships the Kernel must carry with it: the notices of the WebAssembly it embeds. */
+const notices = ['NOTICE.md', 'LICENSE-photon.txt', 'LICENSE-photon.md', 'LICENSE-quickjs-wasi.txt']
+
+export type BuildOptions = {
+  /** Which targets: all of `releaseTargets` unless narrowed. */
+  targets?: readonly (typeof targets)[number][]
+  /** Where the executables go. */
+  out?: string
+  minify?: boolean
+}
+
+export async function build(
+  options: BuildOptions = {},
+): Promise<{ platform: string; path: string; bytes: number }[]> {
+  const selected = options.targets ?? targets
+  const out = options.out ?? outRoot
+  const built: { platform: string; path: string; bytes: number }[] = []
+  for (const entryTarget of selected) {
+    const dir = join(out, entryTarget.platform)
+    mkdirSync(dir, { recursive: true })
+    const executable = join(dir, 'executable' in entryTarget ? entryTarget.executable : 'kernel')
+    await $`bun build --compile --target=${entryTarget.target} ${options.minify === false ? '' : '--minify'} --outfile ${executable} ${entry} ${worker}`.quiet()
+    // The wasm lands beside the executable; keep it in the same directory the binary looks in.
+    for (const file of readdirSync(dir)) {
+      if (file.endsWith('.wasm')) continue
+    }
+    built.push({
+      platform: entryTarget.platform,
+      path: executable,
+      bytes: statSync(executable).size,
+    })
+  }
+  return built
+}
+
+/**
+ * Put built executables where `mygo build` takes them, with the notices beside them in `kernel-licenses/`: the
+ * WebAssembly's, and THIRD-PARTY-NOTICES.md for Bun and every package in the bundle (notices.ts). The staged
+ * folders are not committed (.gitignore); a release stages the platforms it builds right before it.
+ */
+export async function stage(
+  built: { platform: string; path: string }[],
+  into: string = resourcesRoot,
+  thirdParty?: string,
+): Promise<string[]> {
+  thirdParty ??= await thirdPartyNotices()
+  const staged: string[] = []
+  for (const artifact of built) {
+    const entryTarget = targets.find((each) => each.platform === artifact.platform)
+    if (entryTarget === undefined) throw new Error(`no Go platform for ${artifact.platform}`)
+    const dir = join(into, entryTarget.goPlatform)
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(join(dir, 'kernel-licenses'), { recursive: true })
+    const executable = join(dir, basename(artifact.path))
+    cpSync(artifact.path, executable)
+    chmodSync(executable, 0o755)
+    for (const notice of notices) {
+      cpSync(join(root, 'src', 'vendor', notice), join(dir, 'kernel-licenses', notice))
+    }
+    writeFileSync(join(dir, 'kernel-licenses', 'THIRD-PARTY-NOTICES.md'), thirdParty)
+    staged.push(executable)
+  }
+  return staged
+}
+
+if (import.meta.main) {
+  const args = process.argv.slice(2)
+  const staging = args.includes('--stage')
+  const only = args.filter((arg) => arg !== '--stage')
+  const selected =
+    only.length === 0
+      ? targets
+      : targets.filter(
+          (entryTarget) => only.includes(entryTarget.platform) || only.includes(entryTarget.target),
+        )
+  if (selected.length === 0) {
+    process.stderr.write(
+      `unknown target: ${only.join(', ')}\nknown: ${targets.map((t) => t.platform).join(', ')}\n`,
+    )
+    process.exit(2)
+  }
+  rmSync(join(outRoot, '.tmp'), { recursive: true, force: true })
+  const built = await build({ targets: selected })
+  for (const artifact of built) {
+    process.stdout.write(
+      `${artifact.platform}  ${(artifact.bytes / 1_000_000).toFixed(1)} MB  ${artifact.path}\n`,
+    )
+  }
+  if (staging) {
+    for (const path of await stage(built)) process.stdout.write(`staged  ${path}\n`)
+  }
+}
+
+export { cpSync }

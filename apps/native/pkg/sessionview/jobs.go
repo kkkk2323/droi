@@ -12,8 +12,9 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
 )
 
 // JobOutputLines is how much of a background command's output its preview shows.
@@ -40,6 +41,9 @@ type jobsState struct {
 	tails   map[string]*jobTail
 	// stopping are the jobs StopJob waits on the Daemon to stop.
 	stopping map[string]bool
+	// kernel is the state and revision list was built from for a conversation Kernel drives.
+	kernel    *State
+	kernelRev int64
 }
 
 type jobTail struct {
@@ -53,6 +57,9 @@ func (v *View) local() bool { return v.env.Local != nil && v.env.Local() }
 // Jobs are the Session's background jobs, oldest first: commands an Execute
 // left running and Scripts still going after their first answer.
 func (v *View) Jobs() []transcript.Job {
+	if _, ok := v.kernelID(); ok {
+		return v.kernelJobs()
+	}
 	ctl := v.env.Controller
 	if ctl == nil {
 		return nil
@@ -91,6 +98,33 @@ func (v *View) Jobs() []transcript.Job {
 	return withProcesses(js.list, js.byID, js.gone, s.BackgroundProcesses())
 }
 
+// kernelJobs are Jobs for a conversation Kernel drives: its bash_background processes, as process.list answered.
+func (v *View) kernelJobs() []transcript.Job {
+	js := &v.jobs
+	state := v.kernelState()
+	if state == nil {
+		return js.list
+	}
+	if rev := state.Revision(); state != js.kernel || rev != js.kernelRev || js.byID == nil {
+		js.kernel, js.kernelRev = state, rev
+		procs := state.Processes()
+		js.list = make([]transcript.Job, 0, len(procs))
+		js.byID = make(map[string]int, len(procs))
+		for _, p := range procs {
+			j := transcript.KernelProcessJob(p)
+			js.byID[j.ID] = len(js.list)
+			js.list = append(js.list, j)
+		}
+	}
+	out := slices.Clone(js.list)
+	for i := range out {
+		if js.gone[out[i].ID] {
+			out[i].Done, out[i].ProcessID = true, ""
+		}
+	}
+	return out
+}
+
 // withProcesses are jobs with the Daemon's list of the Session's background
 // processes: a job it lists can be stopped, and one whose start is not among
 // the messages read (a load brings only the last ones) is added.
@@ -115,17 +149,25 @@ func withProcesses(jobs []transcript.Job, byID map[string]int, gone map[string]b
 	return out
 }
 
-// StopJob asks the Daemon to stop a background command it lists. UI thread.
+// StopJob asks the Daemon, or Kernel, to stop a background command it lists. UI thread.
 func (v *View) StopJob(j transcript.Job) {
 	ctl := v.env.Controller
 	js := &v.jobs
-	if ctl == nil || j.ProcessID == "" || js.stopping[j.ID] {
+	_, kernelPath := v.kernelID()
+	if ctl == nil && !kernelPath || j.ProcessID == "" || js.stopping[j.ID] {
 		return
 	}
 	if js.stopping == nil {
 		js.stopping = map[string]bool{}
 	}
 	js.stopping[j.ID] = true
+	if id, ok := v.kernelID(); ok {
+		go func() {
+			_, err := v.env.Kernel.StopProcess(v.env.Ctx, kernel.StopProcessParams{ID: id, ProcessID: j.ProcessID})
+			v.stopped(j, err)
+		}()
+		return
+	}
 	go func() {
 		cl, err := ctl.Client()
 		var res *protocol.KillBackgroundProcessResult
@@ -135,20 +177,25 @@ func (v *View) StopJob(j transcript.Job) {
 		if err == nil && !res.Killed {
 			err = errors.New(l10n.L("it is not running, or droid could not signal it"))
 		}
-		v.env.Update(func() {
-			delete(js.stopping, j.ID)
-			if err != nil {
-				v.err = l10n.L("Could not stop %s: %s", j.Summary, err.Error())
-				return
-			}
-			// The Daemon tells the end as the process exits; until then
-			// the job reads as ended, so it is not stopped twice.
-			if js.gone == nil {
-				js.gone = map[string]bool{}
-			}
-			js.gone[j.ID] = true
-		})
+		v.stopped(j, err)
 	}()
+}
+
+// stopped takes the answer to StopJob's request.
+func (v *View) stopped(j transcript.Job, err error) {
+	js := &v.jobs
+	v.env.Update(func() {
+		delete(js.stopping, j.ID)
+		if err != nil {
+			v.err = l10n.L("Could not stop %s: %s", j.Summary, err.Error())
+			return
+		}
+		// The end is told as the process exits; until then the job reads as ended, so it is not stopped twice.
+		if js.gone == nil {
+			js.gone = map[string]bool{}
+		}
+		js.gone[j.ID] = true
+	})
 }
 
 // Stopping is whether StopJob waits on the Daemon for j.
@@ -189,6 +236,8 @@ func (v *View) JobState(j transcript.Job) string {
 		state = l10n.L("Failed")
 	case j.Status == "cancelled":
 		state = l10n.L("Cancelled")
+	case j.Status == "stopped":
+		state = l10n.L("Stopped")
 	default:
 		state = l10n.L("Finished")
 	}

@@ -1,0 +1,225 @@
+package transcript_test
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
+)
+
+// A Kernel codemode call is a script card: its program, and the calls its script made hanging under it, each with
+// what it answered — from the result's details once it finished, from pi.live while it runs.
+
+func codemodeCall(t *testing.T) kernel.Entry {
+	return entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 2000, "toolUse",
+		map[string]any{"type": "toolCall", "id": "cm", "name": "codemode", "arguments": map[string]any{
+			"code": `const a = await tools.read({ path: "a.txt" }); await tools.bash({ command: "false" })`}},
+	), nil)
+}
+
+func TestACodemodeResultHangsItsCallsUnderTheScript(t *testing.T) {
+	result := []map[string]any{{
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Script completed\nOutput:\nhi")},
+		"details": map[string]any{"calls": []map[string]any{
+			{"id": 1, "name": "read", "args": `{"path":"a.txt"}`, "status": "ok", "output": "hello\n"},
+			{"id": 2, "name": "bash", "args": `{"command":"false"}`, "status": "error", "error": "exit 1", "output": "exit 1", "truncated": true},
+		}},
+	}}
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		codemodeCall(t),
+		entry(t, 3, kernel.EntryToolResult, result, nil),
+	)
+	call := transcript.BuildView(v)[1].Blocks[0].Calls[0]
+	if !call.Lifecycle || len(call.Nested) != 2 {
+		t.Fatalf("the script's calls: lifecycle %v, %d nested", call.Lifecycle, len(call.Nested))
+	}
+	read, bash := call.Nested[0], call.Nested[1]
+	if read.Use.ID != "cm/c1" || read.Use.Name != "read" || read.Input["path"] != "a.txt" {
+		t.Errorf("the first call is %+v %v", read.Use, read.Input)
+	}
+	if r := transcript.ReadResult(read); r.Text != "hello" || r.IsError || r.Pending {
+		t.Errorf("read answered %+v", r)
+	}
+	if r := transcript.ReadResult(bash); !r.IsError || r.Text != "exit 1" || r.Notes == "" {
+		t.Errorf("bash answered %+v", r)
+	}
+	if label, pending := transcript.ClusterLabel([]*transcript.ToolCall{call}); pending || label != "Used 2 tools" {
+		t.Errorf("the cluster says %q, pending %v", label, pending)
+	}
+	run := transcript.ReadScriptRun(call)
+	if run.Status != "completed" || run.Output == "" {
+		t.Errorf("the run is %+v", run)
+	}
+	if script, _, ok := transcript.ScriptSource(call); !ok || script == "" {
+		t.Errorf("the source is %q %v", script, ok)
+	}
+	if got := transcript.ScriptSummary(call); got != "read · bash" {
+		t.Errorf("the summary is %q", got)
+	}
+}
+
+func TestARunningCodemodeShowsTheCallsItIsMaking(t *testing.T) {
+	live, err := json.Marshal(map[string]any{
+		"run": map[string]any{"taskId": 1, "inputs": []any{}, "turns": 1},
+		"nestedTools": []map[string]any{{
+			"parentCallId": "cm", "parentTaskId": 5, "taskId": 6, "callId": "cm/c1", "name": "read",
+			"arguments": map[string]any{"path": "a.txt"}, "status": "running", "output": "partial",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := viewOf(entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil), codemodeCall(t))
+	v.Docs = map[string]json.RawMessage{"pi.live": live}
+	call := transcript.BuildView(v)[1].Blocks[0].Calls[0]
+	if len(call.Nested) != 1 || call.Nested[0].Use.ID != "cm/c1" {
+		t.Fatalf("the running script's calls: %+v", call.Nested)
+	}
+	if r := transcript.ReadResult(call.Nested[0]); !r.Pending || r.Text != "partial" {
+		t.Errorf("the running call reads %+v", r)
+	}
+	if !transcript.Pending(call) {
+		t.Error("the script is not running")
+	}
+	if _, pending := transcript.ClusterLabel([]*transcript.ToolCall{call}); !pending {
+		t.Error("the cluster is not running")
+	}
+
+	// Before its first call, the card is still a script's.
+	v.Docs = nil
+	if call := transcript.BuildView(v)[1].Blocks[0].Calls[0]; call.Nested == nil {
+		t.Error("a script with no calls yet is not a script card")
+	}
+}
+
+func TestAScriptCallShowsTheWholeArgumentsNotPisPreview(t *testing.T) {
+	long := "echo " + strings.Repeat("z", 300)
+	preview := `{"command":"echo ` + strings.Repeat("z", 180) + `...`
+	result := []map[string]any{{
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Script completed")},
+		"details": map[string]any{"calls": []map[string]any{
+			{"id": 1, "name": "bash", "args": preview, "arguments": map[string]any{"command": long}, "status": "ok"},
+			{"id": 2, "name": "bash", "args": preview, "status": "cancelled"},
+		}},
+	}}
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		codemodeCall(t),
+		entry(t, 3, kernel.EntryToolResult, result, nil),
+	)
+	call := transcript.BuildView(v)[1].Blocks[0].Calls[0]
+	if len(call.Nested) != 2 {
+		t.Fatalf("%d nested", len(call.Nested))
+	}
+	if got := call.Nested[0].Input["command"]; got != long {
+		t.Errorf("the call's command is %q", got)
+	}
+	// A result without Kernel's arguments: Pi's preview is no JSON, and shows as the text it is.
+	if raw := string(call.Nested[1].RawInput); !strings.Contains(raw, "zzz...") {
+		t.Errorf("the preview shows as %q", raw)
+	}
+	if r := transcript.ReadResult(call.Nested[1]); !r.Interrupted {
+		t.Errorf("the cancelled call reads %+v", r)
+	}
+}
+
+// TestAKernelEditShowsItsDiff: Pi's edit answers one line of text and keeps what it changed in its details, both
+// for a call the model made and one a script made; the row shows the change as the Daemon's Edit did.
+func TestAKernelEditShowsItsDiff(t *testing.T) {
+	diff := "  1 one\n-2 two\n+2 zwei\n  3 three\n    ...\n+9 nine"
+	edit := entry(t, 2, kernel.EntryAssistant, assistantMessage(t, 2000, "toolUse",
+		map[string]any{"type": "toolCall", "id": "e1", "name": "edit", "arguments": map[string]any{"path": "a.txt"}},
+		map[string]any{"type": "toolCall", "id": "cm", "name": "codemode", "arguments": map[string]any{"code": "await tools.edit({})"}},
+	), nil)
+	results := []map[string]any{{
+		"role": "toolResult", "toolCallId": "e1", "toolName": "edit", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Successfully replaced 1 block(s) in a.txt.")},
+		"details": map[string]any{"diff": diff, "firstChangedLine": 2},
+	}, {
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Script completed")},
+		"details": map[string]any{"calls": []map[string]any{
+			{"id": 1, "name": "edit", "args": "{}", "status": "ok", "output": "Successfully replaced 1 block(s) in a.txt.", "diff": diff},
+		}},
+	}}
+	v := viewOf(
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		edit,
+		entry(t, 3, kernel.EntryToolResult, results, nil),
+	)
+	calls := transcript.BuildView(v)[1].Blocks[0].Calls
+	for _, c := range []*transcript.ToolCall{calls[0], calls[1].Nested[0]} {
+		d := transcript.ReadResult(c).Diff
+		if d == nil {
+			t.Fatalf("%s shows no diff", c.Use.ID)
+		}
+		if d.Added != 2 || d.Removed != 1 {
+			t.Errorf("%s: +%d -%d, want +2 -1", c.Use.ID, d.Added, d.Removed)
+		}
+		want := []transcript.DiffLine{
+			{Type: "unchanged", Content: "one", Old: 1, New: 1},
+			{Type: "removed", Content: "two", Old: 2},
+			{Type: "added", Content: "zwei", New: 2},
+			{Type: "unchanged", Content: "three", Old: 3, New: 3},
+			{Type: "unchanged", Content: "…"},
+			{Type: "added", Content: "nine", New: 9},
+		}
+		if len(d.Lines) != len(want) {
+			t.Fatalf("%s: %d lines, want %d: %+v", c.Use.ID, len(d.Lines), len(want), d.Lines)
+		}
+		for i := range want {
+			if d.Lines[i] != want[i] {
+				t.Errorf("%s line %d: %+v, want %+v", c.Use.ID, i, d.Lines[i], want[i])
+			}
+		}
+	}
+}
+
+// TestAKernelWriteShowsTheFileItWrote: the Kernel's write is the Daemon's Create, whose row shows the file.
+func TestAKernelWriteShowsTheFileItWrote(t *testing.T) {
+	c := &transcript.ToolCall{Input: map[string]any{"path": "b.txt", "content": "a\nb\n"}}
+	c.Use.Name = "write"
+	if d := transcript.CreatedFileDiff(c); d == nil || d.Added != 2 {
+		t.Fatalf("write's diff is %+v", d)
+	}
+}
+
+// TestABackgroundScriptRunsOnThenShowsItsResult: a background script's card says it is still running until its job
+// ends; then it shows the job's output and calls, and a note marks where it ended.
+func TestABackgroundScriptRunsOnThenShowsItsResult(t *testing.T) {
+	started := []map[string]any{{
+		"role": "toolResult", "toolCallId": "cm", "toolName": "codemode", "isError": false, "timestamp": 3000,
+		"content": []map[string]any{text("Started in the background as job 16.")},
+		"details": map[string]any{"calls": []any{}, "background": map[string]any{"jobId": 16}},
+	}}
+	base := []kernel.Entry{
+		entry(t, 1, kernel.EntryUser, userMessage(t, 1000, text("go")), nil),
+		codemodeCall(t),
+		entry(t, 3, kernel.EntryToolResult, started, nil),
+	}
+	call := transcript.BuildView(viewOf(base...))[1].Blocks[0].Calls[0]
+	if run := transcript.ReadScriptRun(call); run.Status != "running" {
+		t.Fatalf("a started job's run is %+v", run)
+	}
+	done := entry(t, 5, transcript.EntryCodemodeDone, nil, map[string]any{
+		"jobId": 16, "callId": "cm", "status": "completed", "output": "Script completed\nhi",
+		"details": map[string]any{"calls": []map[string]any{{"id": 1, "name": "read", "args": "{}", "status": "ok", "output": "hello"}}},
+	})
+	rows := transcript.BuildView(viewOf(append(base, done)...))
+	call = rows[1].Blocks[0].Calls[0]
+	if run := transcript.ReadScriptRun(call); run.Status != "completed" || !strings.Contains(run.Output, "hi") {
+		t.Fatalf("an ended job's run is %+v", run)
+	}
+	if len(call.Nested) != 1 || call.Nested[0].Use.Name != "read" {
+		t.Fatalf("an ended job's calls: %+v", call.Nested)
+	}
+	last := rows[len(rows)-1]
+	if !last.Note || !strings.Contains(last.Blocks[0].Text, "16") {
+		t.Fatalf("the last row is %+v", last)
+	}
+}

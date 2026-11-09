@@ -1,7 +1,8 @@
-// Package memorywork is the Host's side of Memory (ADR 0031): the Memory
-// Sessions that summarize a finished Session and keep the Memory Summary,
-// run on the Host's own Daemon in Sessions no Client lists (ADR 0011), and
-// what Settings → Memory shows.
+// Package memorywork is the Host's side of Memory (ADR 0031): the passes
+// that summarize a finished Session and keep the Memory Summary, and what
+// Settings → Memory shows. On the Kernel (ADR 0042, kernel.go) a pass reads
+// conversations and calls model.complete; on the Daemon it runs Memory
+// Sessions no Client lists (ADR 0011), which go when the Daemon does.
 package memorywork
 
 import (
@@ -12,8 +13,8 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // Request is one Memory Session.
@@ -40,7 +41,15 @@ type Reply struct {
 	JSON      json.RawMessage
 	SessionID string
 	Model     string
+	// Started says the model was asked: a failure after it counts against the
+	// Session, one before it does not.
+	Started bool
 }
+
+func (r Reply) started() bool { return r.Started || r.SessionID != "" }
+
+// gone says the Daemon or the Kernel went away during a call.
+func gone(err error) bool { return errors.Is(err, ErrDaemonGone) || errors.Is(err, ErrKernelGone) }
 
 // ErrDaemonGone is a Memory Session's failure when the Daemon went away
 // during its turn, as when the Host restarts it for another droid: nothing

@@ -5,8 +5,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // extensionEnv is what an app's own Page or Settings section draws with.
@@ -19,6 +20,10 @@ func (a *App) extensionEnv() extension.Env {
 		Ctx:         a.ctx,
 		Update:      a.cfg.Update,
 		OpenSession: a.OpenSession,
+		Kernel: func() *kernel.Client {
+			c, _ := a.kernel.client()
+			return c
+		},
 	}
 }
 
@@ -63,14 +68,19 @@ func (a *App) extensionTab(c *ui.Context, id string) {
 // settingHidden: the app leaves Droi's Settings section id out. About
 // always stays, so Settings is never empty.
 func (a *App) settingHidden(id string) bool {
+	// Droi's Account section is the Daemon's Factory sign-in; the Kernel's models need none (ADR 0044).
+	if id == "account" && a.kernelMode() {
+		return true
+	}
+	// Droids are the Kernel's subagents: the Daemon has its own.
+	if id == "droids" && !a.kernelMode() {
+		return true
+	}
 	return id != "about" && slices.Contains(a.cfg.HiddenSettings, id)
 }
 
 // droiSettingsTabs are Droi's Settings sections the app keeps.
 func (a *App) droiSettingsTabs() []settingsTab {
-	if len(a.cfg.HiddenSettings) == 0 {
-		return settingsTabs
-	}
 	var tabs []settingsTab
 	for _, tab := range settingsTabs {
 		if !a.settingHidden(tab.id) {

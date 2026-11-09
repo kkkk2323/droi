@@ -16,7 +16,7 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 func testJWT(claims map[string]any) string {
@@ -64,6 +64,7 @@ func accountsTestHost(t *testing.T) (*host.Host, string) {
 }
 
 func TestTheAccountTabSwitchesAndRemovesAccounts(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h0, data := accountsTestHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the Session list", func() bool { return h.hasText("One") })

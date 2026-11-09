@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/automations"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/automations"
 )
 
 func call(t *testing.T, h *harness, tool string, args map[string]any) (string, error) {

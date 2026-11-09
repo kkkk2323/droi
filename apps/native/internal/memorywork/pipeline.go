@@ -17,8 +17,9 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // What the Host does with Memory (ADR 0031), Codex's memory v2 in files.
@@ -69,6 +70,8 @@ type Models struct {
 	SessionSummary string
 	// MemorySummary updates the Memory Summary.
 	MemorySummary string
+	// SessionSummaryEffort and MemorySummaryEffort are their reasoning levels; "" for low and medium.
+	SessionSummaryEffort, MemorySummaryEffort string
 }
 
 // Work is what a pass runs with.
@@ -81,8 +84,14 @@ type Work struct {
 	SessionPrompt, MemoryPrompt string
 	// Home is where a Memory Session runs when its Workspace is gone.
 	Home string
-	Now  func() time.Time
-	Log  func(string)
+	// Kernel, when the Host runs one, is where the conversations to summarize
+	// are listed and read; nil leaves only the droid Sessions the hook recorded.
+	Kernel Kernel
+	// Imported are the Kernel conversations imported from droid, each with when its import ended (epoch
+	// milliseconds). One not gone on with since is not summarized: its droid Session was, or was left out, before.
+	Imported map[int64]int64
+	Now      func() time.Time
+	Log      func(string)
 }
 
 func (w Work) now() time.Time {
@@ -158,6 +167,7 @@ func (w Work) Pass(ctx context.Context, minIdle time.Duration, force bool) error
 		}
 	}
 	p.fold(w.now())
+	p.gatherKernel(ctx, w.now())
 	p.summarizeSessions(ctx, minIdle)
 	err := p.updateMemorySummary(ctx, force)
 	p.mu.Lock()
@@ -192,6 +202,10 @@ func (p *pass) fold(now time.Time) {
 		}
 	}
 	for id, rec := range p.st.Sessions {
+		if rec.Conversation != 0 {
+			// The conversation list keeps these (gatherKernel).
+			continue
+		}
 		info, err := os.Stat(rec.Transcript)
 		if err != nil || now.Sub(info.ModTime()) > MaxSessionAge {
 			delete(p.st.Sessions, id)
@@ -199,6 +213,19 @@ func (p *pass) fold(now time.Time) {
 		}
 	}
 	p.save()
+}
+
+// lastChange is when a Session last changed: its transcript's modification
+// time, or a conversation's last activity. ok is false when that is unknown.
+func lastChange(rec *memory.SessionRecord) (time.Time, bool) {
+	if rec.Conversation != 0 {
+		return time.UnixMilli(rec.ActivityAt), rec.ActivityAt != 0
+	}
+	info, err := os.Stat(rec.Transcript)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return info.ModTime(), true
 }
 
 // skippedTags are the tags of Sessions no user worked in.
@@ -212,8 +239,8 @@ func Waiting(st memory.State, now time.Time) int {
 		if rec.Skipped != "" {
 			continue
 		}
-		info, err := os.Stat(rec.Transcript)
-		if err == nil && info.ModTime().UnixMilli() != rec.SummarizedMtime && now.Sub(info.ModTime()) <= MaxSessionAge {
+		at, ok := lastChange(rec)
+		if ok && at.UnixMilli() != rec.SummarizedMtime && now.Sub(at) <= MaxSessionAge {
 			n++
 		}
 	}
@@ -234,21 +261,24 @@ func (p *pass) summarizeSessions(ctx context.Context, minIdle time.Duration) {
 		if rec.Skipped != "" {
 			continue
 		}
-		if i := slices.IndexFunc(memory.SessionTags(rec.Transcript), func(tag string) bool { return slices.Contains(skippedTags, tag) }); i >= 0 {
+		if rec.Conversation != 0 {
+			// Read through the Kernel, which a Host without one cannot.
+			if p.w.Kernel == nil {
+				continue
+			}
+		} else if i := slices.IndexFunc(memory.SessionTags(rec.Transcript), func(tag string) bool { return slices.Contains(skippedTags, tag) }); i >= 0 {
 			rec.Skipped = memory.SessionTags(rec.Transcript)[i]
 			continue
-		}
-		// A Workstream agent's work reaches its orchestrator in reports, and
-		// Memory has it from there (ADR 0036).
-		if md, ok := memory.SessionTagMetadata(rec.Transcript, sessions.WorkstreamTag); ok && md["role"] == sessions.WorkstreamAgent {
+		} else if md, ok := memory.SessionTagMetadata(rec.Transcript, sessions.WorkstreamTag); ok && md["role"] == sessions.WorkstreamAgent {
+			// A Workstream agent's work reaches its orchestrator in reports, and
+			// Memory has it from there (ADR 0036).
 			rec.Skipped = sessions.WorkstreamTag
 			continue
 		}
-		info, err := os.Stat(rec.Transcript)
-		if err != nil {
+		mtime, ok := lastChange(rec)
+		if !ok {
 			continue
 		}
-		mtime := info.ModTime()
 		if mtime.UnixMilli() == rec.SummarizedMtime || now.Sub(mtime) < minIdle || now.Before(parseTime(rec.RetryAt)) {
 			continue
 		}
@@ -366,16 +396,23 @@ type sessionSummaryReply struct {
 
 func checkSessionSummary(b json.RawMessage) string {
 	var r sessionSummaryReply
-	if json.Unmarshal(b, &r) != nil || r.Summary == nil || r.Slug == nil {
+	// A missing slug only leaves the file name without one (summarized): the summary is what Memory needs.
+	if json.Unmarshal(b, &r) != nil || r.Summary == nil {
 		return "The reply did not match the schema."
 	}
 	return ""
 }
 
 func (p *pass) summarizeSession(ctx context.Context, c candidate) {
-	t, err := memory.ReadTranscript(c.rec.Transcript, TranscriptBudget)
+	var t memory.Transcript
+	var err error
+	if c.rec.Conversation != 0 {
+		t, err = readKernel(ctx, p.w.Kernel, kernel.ID(c.rec.Conversation), TranscriptBudget)
+	} else {
+		t, err = memory.ReadTranscript(c.rec.Transcript, TranscriptBudget)
+	}
 	if err != nil {
-		p.w.log("reading " + c.rec.Transcript + " failed: " + err.Error())
+		p.w.log("reading Session " + c.id + " failed: " + err.Error())
 		return
 	}
 	finish := func(apply func(rec *memory.SessionRecord)) {
@@ -396,14 +433,15 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 		return
 	}
 	workspace := memory.WorkspaceOf(cmp.Or(t.Cwd, c.rec.Cwd))
-	title := oneLine(cmp.Or(t.Title, shortID(c.id)))
+	title := oneLine(cmp.Or(t.Title, c.rec.Title, shortID(c.id)))
 	reply, err := p.run(ctx, Request{
-		Title:   sessions.MemoryTitlePrefix + "summarize " + clipRunes(title, 60),
-		Cwd:     existingDir(workspace, p.w.Home),
-		ModelID: p.w.Models.SessionSummary,
-		Prompt:  p.w.SessionPrompt,
-		Input:   sessionInput(c.id, workspace, title, c.mtime, t),
-		Schema:  SessionSummarySchema,
+		Title:           sessions.MemoryTitlePrefix + "summarize " + clipRunes(title, 60),
+		Cwd:             existingDir(workspace, p.w.Home),
+		ModelID:         p.w.Models.SessionSummary,
+		Prompt:          p.w.SessionPrompt,
+		Input:           sessionInput(c.id, workspace, title, c.mtime, t),
+		Schema:          SessionSummarySchema,
+		ReasoningEffort: protocol.ReasoningEffort(p.w.Models.SessionSummaryEffort),
 	}, memory.RunSessionSummary, checkSessionSummary)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -411,10 +449,11 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 			return
 		}
 		finish(func(rec *memory.SessionRecord) {
-			if reply.SessionID == "" || errors.Is(err, ErrDaemonGone) {
-				// The Daemon did not start the Memory Session, as when it runs
-				// all the Sessions it can, or went away during it: nothing was
-				// learned of this one.
+			if !reply.started() || gone(err) {
+				// The model was never asked, as when the Daemon runs all the
+				// Sessions it can or no provider offers the model, or the Daemon
+				// or the Kernel went away during the call: nothing was learned of
+				// this one.
 				rec.RetryAt = iso(now.Add(RetryAfter))
 				return
 			}
@@ -430,7 +469,11 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 	var r sessionSummaryReply
 	_ = json.Unmarshal(reply.JSON, &r)
 	summary := clipBytes(memory.RedactSecrets(strings.TrimSpace(*r.Summary)), memory.SessionSummaryMaxBytes)
-	finish(func(rec *memory.SessionRecord) { p.summarized(rec, c, now, summary, *r.Slug, workspace, title) })
+	slug := ""
+	if r.Slug != nil {
+		slug = *r.Slug
+	}
+	finish(func(rec *memory.SessionRecord) { p.summarized(rec, c, now, summary, slug, workspace, title) })
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -720,7 +763,7 @@ func (p *pass) updateMemorySummary(ctx context.Context, force bool) error {
 			Prompt:          p.w.MemoryPrompt,
 			Input:           jsonText(input),
 			Schema:          MemorySummarySchema,
-			ReasoningEffort: protocol.ReasoningEffortMedium,
+			ReasoningEffort: protocol.ReasoningEffort(cmp.Or(p.w.Models.MemorySummaryEffort, string(protocol.ReasoningEffortMedium))),
 		}
 		// An answer too long is no failure: the size is dealt with below.
 		reply, err := p.run(ctx, req, memory.RunMemorySummary, checkMemorySummaryShape)
@@ -751,7 +794,7 @@ func (p *pass) updateMemorySummary(ctx context.Context, force bool) error {
 			// A Daemon that went away, as when the Host restarts it for another
 			// droid, is no fault of the batch: the pass its return starts tries
 			// again. Once only, so a Daemon that keeps going away waits the hour.
-			again := errors.Is(err, ErrDaemonGone) && p.st.Phase2.LastError != err.Error()
+			again := gone(err) && p.st.Phase2.LastError != err.Error()
 			p.st.Phase2.LastError, p.st.Phase2.LastErrorAt = err.Error(), iso(p.w.now())
 			p.st.Phase2.RetryAt = iso(p.w.now().Add(RetryAfter))
 			if again {

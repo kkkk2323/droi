@@ -1,0 +1,16 @@
+{
+  "kind": "method",
+  "method": "kernel.shutdown",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "26",
+    "method": "kernel.shutdown"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "26",
+    "result": {
+      "status": "closing"
+    }
+  }
+}

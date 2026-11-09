@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // After a switch, the Sessions of the account before stay in the sidebar,
 // marked as its; opening one offers to switch back, which droid needs to
 // open it.
 func TestAnotherAccountsSessionsStayListedAndOfferASwitch(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h0, data := accountsTestHost(t)
 	idx, _ := json.Marshal(map[string]any{"orgs": map[string][]sessions.Summary{
 		"org_side": {{SessionID: "side-1", Title: "Side project plan", Cwd: "/Users/dev/side", UpdatedAt: time.Now().Unix(), OrganizationID: "org_side"}},
@@ -41,6 +42,7 @@ func TestAnotherAccountsSessionsStayListedAndOfferASwitch(t *testing.T) {
 // Opening another account's Session moves it to the account in use, with no
 // switch: its transcript is stamped with that account's organization.
 func TestOpeningAnotherAccountsSessionMovesItHere(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h0, data := accountsTestHost(t)
 	idx, _ := json.Marshal(map[string]any{"orgs": map[string][]sessions.Summary{
 		"org_side": {{SessionID: "side-1", Title: "Side project plan", Cwd: "/Users/dev/side", UpdatedAt: time.Now().Unix(), OrganizationID: "org_side"}},
@@ -67,6 +69,7 @@ func TestOpeningAnotherAccountsSessionMovesItHere(t *testing.T) {
 
 // A Session that cannot be moved offers the switch to its account.
 func TestASessionThatCannotMoveOffersTheSwitch(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h0, data := accountsTestHost(t)
 	idx, _ := json.Marshal(map[string]any{"orgs": map[string][]sessions.Summary{
 		"org_side": {{SessionID: "side-1", Title: "Side project plan", UpdatedAt: time.Now().Unix(), OrganizationID: "org_side"}},

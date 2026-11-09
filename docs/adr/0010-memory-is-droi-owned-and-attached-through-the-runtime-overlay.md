@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038, ADR-0042
 ---
 
 # Memory is Droi's own capability, attached to its Daemon through the Runtime Overlay
+
+_Memory is still Droi's own and still attached to its own agent, but there is no Runtime Overlay: it is four tools and a prompt section inside the Kernel (ADR 0038), not an MCP Server child process. ADR 0042 then moved those tools into the Kernel's own process, made their injection a snapshot taken when a Conversation is created, and deleted the child process, the overlay entries, the start hook and the read log._
 
 _Partly superseded by ADR 0031: Memory is one folder of Session Summaries, Memory Notes and a Memory Summary, written by the Host from finished Sessions. There is no SQLite store, Project or Global Memory, category, size limit or consolidation; Droid writes only a Memory Note, when the user asks; and the only hook is SessionStart. Memory as Droi's own capability, attached to its Daemon alone through the Runtime Overlay, stands._
 

@@ -7,11 +7,11 @@ package settingsview
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/theme"
 )
 
 // Env is what the sections need from their app.
@@ -31,7 +31,13 @@ type Env struct {
 	// leaves the spec folder without its Custom… choice, as for another
 	// computer's Daemon, which cannot use a folder picked here.
 	PickFolder func(title string) string
+	// OnKernel reports that new Sessions run on the Kernel, which has no Spec mode, compacts and starts subagents its
+	// own way and offers Script to every model: the sections then leave out what only the Daemon reads. Nil is the
+	// Daemon's.
+	OnKernel func() bool
 }
+
+func (s *Settings) onKernel() bool { return s.env.OnKernel != nil && s.env.OnKernel() }
 
 // Settings is the sections' state, kept from frame to frame: which selects
 // are open, and the model picker's.

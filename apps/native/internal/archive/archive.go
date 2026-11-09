@@ -8,7 +8,7 @@ package archive
 import (
 	"context"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 

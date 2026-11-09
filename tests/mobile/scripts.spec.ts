@@ -1,56 +1,148 @@
-// Script runs on the phone: the calls a run made hang under its Script, a
-// WaitForScript picks the run up where it sits in the turn, the one-time
-// permission lists the calls by line, and a reply's <json-render> output is
-// drawn in place.
-import { session, userMessage } from '@droi/fake-daemon/scenario'
-import { scriptScenario } from '@droi/fake-daemon/scripts'
-import { scriptTurn } from '@droi/fake-daemon/turns'
-import { expect, pairPhone, pickSession, test } from './fixtures'
+// Script runs on the phone (the Kernel's codemode tool): the calls a run made hang under its Script and the row
+// opens to its source and output, a failed run says so, the one permission a reading script asks for lists the
+// tools it calls, and a reply's <json-render> output and TeX are drawn in place.
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { assistantEntry, userEntry } from './fake-kernel/history'
+import type { Step } from './fake-kernel/model'
+import { expect, pairPhone, pickSession, send, test, transcriptOf } from './fixtures'
 
-const { sessions } = scriptScenario()
+/** A script the model sends, then what it says once the script has run. */
+function scripted(prompt: string, code: string, reply: string): Step[] {
+  return [
+    { match: prompt, call: { name: 'codemode', arguments: { code } } },
+    { match: prompt, text: reply },
+  ]
+}
+
+const RELEASE_REPORT = {
+  root: 'card',
+  elements: {
+    card: {
+      type: 'Card',
+      props: { title: 'Release 1.26' },
+      children: ['status', 'table', 'progress', 'bars'],
+    },
+    status: {
+      type: 'StatusLine',
+      props: { text: 'All checks passed', status: 'success' },
+      children: [],
+    },
+    table: {
+      type: 'Table',
+      props: {
+        columns: [
+          { header: 'Package', key: 'name' },
+          { header: 'Version', key: 'version' },
+        ],
+        rows: [
+          { name: 'droi', version: '1.26.0' },
+          { name: '@droi/mobile', version: '0.4.0' },
+        ],
+      },
+      children: [],
+    },
+    progress: { type: 'ProgressBar', props: { progress: 0.75, label: 'Rollout' }, children: [] },
+    bars: {
+      type: 'BarChart',
+      props: {
+        data: [
+          { label: 'macOS', value: 60 },
+          { label: 'iPhone', value: 40 },
+        ],
+        showPercentage: true,
+      },
+      children: [],
+    },
+  },
+}
+
+const REPORT = [
+  'Here is where the release stands, drawn from a `<json-render>` tag.',
+  '',
+  `<json-render>${JSON.stringify(RELEASE_REPORT)}</json-render>`,
+  '',
+  'Ship once the last check is green.',
+  '',
+  'Rollout is $r = n / N$ of the devices:',
+  '',
+  '$$',
+  'r = \\frac{n}{N}',
+  '$$',
+  '',
+  '```html',
+  '<json-render>{"root":"quoted"}</json-render>',
+  '```',
+].join('\n')
 
 test.describe('Script runs', () => {
-  test.use({ scenario: { sessions } })
+  test.use({
+    scenario: {
+      sessions: [
+        { title: 'Audit the build', cwd: 'acme-web', entries: [userEntry('hi')] },
+        {
+          title: 'Release report',
+          cwd: 'acme-web',
+          entries: [userEntry('Summarize the release'), assistantEntry(REPORT)],
+        },
+      ],
+    },
+  })
 
   test('a Script lists its calls under it and opens to its source and output', async ({
     page,
-    fakeDaemon,
+    fakeKernel,
   }) => {
-    await pairPhone(page, fakeDaemon)
+    writeFileSync(join(fakeKernel.folder('acme-web'), 'build.log'), 'build ok\n')
+    fakeKernel.model.push(
+      ...scripted(
+        'Check the build',
+        "const log = await tools.read({ path: 'build.log' })\nconst run = await tools.bash({ command: 'echo tests pass' })\ntext(log)\ntext(run)",
+        'The build is fine.',
+      ),
+    )
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Audit the build/)
-    const transcript = page.getByRole('log', { name: 'Transcript' })
-    await expect(transcript.getByRole('button', { name: 'Used 2 tools' })).toBeVisible()
-    const script = transcript.getByRole('button', { name: 'Script: Read · Execute' })
-    await expect(script.getByRole('img', { name: 'Still running' })).toBeVisible()
-    // The phone's list runs newest first in the DOM; find each group by what it holds.
-    const calls = transcript.getByRole('group', { name: 'Calls made by Script' })
-    await expect(calls.filter({ hasText: 'Run the tests' }).getByRole('button')).toHaveText([
-      /Read/,
-      /Execute.*Run the tests/,
-    ])
+    await send(page, 'Check the build')
+    const transcript = transcriptOf(page)
+    await expect(transcript).toContainText('The build is fine.')
 
+    const script = transcript.getByRole('button', { name: 'Script: read · bash' })
+    await expect(script.getByRole('img', { name: 'Succeeded' })).toBeVisible()
+    await expect(
+      transcript.getByRole('group', { name: 'Calls made by Script' }).getByRole('button'),
+    ).toHaveText([/read.*build\.log/, /bash.*echo tests pass/])
     await script.click()
     await expect(transcript.getByRole('region', { name: 'Source' })).toContainText(
-      "summary: 'Build the app'",
+      "tools.bash({ command: 'echo tests pass' })",
     )
-    const wait = transcript.getByRole('button', { name: 'WaitForScript: continued' })
-    await expect(calls.filter({ hasText: 'Build the app' }).getByRole('button')).toHaveText([
-      /Execute.*Build the app/,
-    ])
-    await wait.click()
     const output = transcript.getByRole('region', { name: 'Output' })
     await expect(output).toContainText('build ok')
-    await expect(output).not.toContainText('toolCallId')
-    await expect(transcript).toContainText('3 calls · 120 B in sandbox')
-
-    const broken = transcript.getByRole('button', { name: 'Script: Read', exact: true })
-    await expect(broken.getByRole('img', { name: 'Failed' })).toBeVisible()
+    await expect(output).toContainText('tests pass')
+    await expect(transcript).toContainText('2 calls')
   })
 
-  test('a reply draws its <json-render> output in place', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('a Script that fails says so', async ({ page, fakeKernel }) => {
+    fakeKernel.model.push(
+      ...scripted(
+        'Read the notes',
+        "text(await tools.read({ path: 'missing.md' }))",
+        'There are no notes.',
+      ),
+    )
+    await pairPhone(page, fakeKernel)
+    await pickSession(page, /Audit the build/)
+    await send(page, 'Read the notes')
+    const transcript = transcriptOf(page)
+    await expect(transcript).toContainText('There are no notes.')
+    const script = transcript.getByRole('button', { name: 'Script: read', exact: true })
+    await expect(script.getByRole('img', { name: 'Failed' })).toBeVisible()
+  })
+
+  test('a reply draws its <json-render> output in place', async ({ page, fakeKernel }) => {
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Release report/)
-    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const transcript = transcriptOf(page)
     const card = transcript.getByRole('region', { name: 'Release 1.26' })
     await expect(card).toContainText('All checks passed')
     await expect(card.getByRole('columnheader')).toHaveText(['Package', 'Version'])
@@ -63,10 +155,10 @@ test.describe('Script runs', () => {
     await expect(transcript).not.toContainText('"elements"')
   })
 
-  test('a reply typesets its TeX', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('a reply typesets its TeX', async ({ page, fakeKernel }) => {
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Release report/)
-    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const transcript = transcriptOf(page)
     await expect(transcript.getByRole('img', { name: 'r = n / N' })).toBeVisible()
     await expect(transcript.getByRole('img', { name: 'r = \\frac{n}{N}' })).toBeVisible()
     await expect(transcript).not.toContainText('$$')
@@ -74,32 +166,52 @@ test.describe('Script runs', () => {
 })
 
 test.describe('Script permission', () => {
+  // Low autonomy: a script asks to run; the files it only reads do not ask again.
   test.use({
     scenario: {
-      sessions: [session('Checks', '/Users/dev/acme-web', [userMessage('hi')])],
-      handlers: { 'daemon.add_user_message': scriptTurn({ reply: 'Tests and lint pass.' }) },
+      autonomy: 'edits',
+      sessions: [{ title: 'Checks', cwd: 'acme-web', entries: [userEntry('hi')] }],
     },
   })
 
-  test('lists the calls by line and runs once allowed', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('lists the tools it calls, shows its source, and runs once allowed', async ({
+    page,
+    fakeKernel,
+  }) => {
+    writeFileSync(join(fakeKernel.folder('acme-web'), 'build.log'), 'build ok\n')
+    fakeKernel.model.push(
+      ...scripted(
+        'Read the log',
+        "text(await tools.read({ path: 'build.log' }))",
+        'The log says the build is ok.',
+      ),
+    )
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Checks/)
-    await page.getByRole('textbox', { name: 'Message' }).fill('Run the checks')
-    await page.getByRole('button', { name: 'Send' }).click()
+    await send(page, 'Read the log')
 
-    const card = page.getByRole('group', { name: 'Permission request: Script' })
-    const calls = card.getByRole('list', { name: 'Calls in the Script' }).getByRole('listitem')
-    await expect(calls).toHaveCount(2)
-    await expect(calls.first()).toHaveAccessibleName('Line 1, Execute: $ pnpm test, low')
+    const card = page.getByRole('group', { name: 'Permission request: codemode' })
+    await expect(
+      card.getByRole('list', { name: 'Tools the script calls' }).getByRole('listitem'),
+    ).toHaveText(['read'])
     await card.getByRole('button', { name: 'Show source' }).click()
-    await expect(card.getByRole('group', { name: 'Script source' })).toContainText("'pnpm lint'")
+    await expect(card.getByRole('group', { name: 'Script source' })).toContainText(
+      "tools.read({ path: 'build.log' })",
+    )
 
-    await card.getByRole('button', { name: 'Yes, allow all' }).click()
+    await card.getByRole('button', { name: 'Allow once' }).click()
     await expect(card).toHaveCount(0)
-    const transcript = page.getByRole('log', { name: 'Transcript' })
+    const transcript = transcriptOf(page)
+    await expect(transcript).toContainText('The log says the build is ok.')
     await expect(
       transcript.getByRole('group', { name: 'Calls made by Script' }).getByRole('button'),
-    ).toHaveText([/Execute.*Run the tests/, /Execute.*Lint/])
-    await expect(transcript).toContainText('Tests and lint pass.')
+    ).toHaveText([/read/])
+    expect(
+      fakeKernel.model
+        .turns()
+        .flatMap((r) => r.messages.filter((m) => m.role === 'tool'))
+        .map((m) => JSON.stringify(m.content))
+        .join(),
+    ).toContain('build ok')
   })
 })

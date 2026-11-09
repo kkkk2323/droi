@@ -10,9 +10,9 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/transcript"
 )
 
 // askState is what the user picked and typed on an AskUser card so far.
@@ -193,7 +193,7 @@ func (v *View) permissionCard(c *ui.Context, p controller.Permission) {
 		if header.Clicked() {
 			*folded = !*folded
 		}
-		heading := k.Text(c, l10n.L("Droid wants to run %s", title), 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
+		heading := k.Text(c, l10n.L("Droi wants to run %s", title), 13, 18).FontWeight(500).Margin(k.Px(6), 0, 0, 0)
 		if *folded {
 			heading.SingleLine()
 			return
@@ -363,9 +363,9 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 			v.answerFailed(v.env.Controller.RespondToAskUser(v.env.Ctx, id, protocol.AskUserResult{Answers: answers}))
 		}()
 	}
-	label, dismiss := l10n.L("Droid has a question"), l10n.L("Cancel")
+	label, dismiss := l10n.L("Droi has a question"), l10n.L("Cancel")
 	if q.Queued {
-		label, dismiss = l10n.L("Droid has a queued question"), l10n.L("Dismiss")
+		label, dismiss = l10n.L("Droi has a queued question"), l10n.L("Dismiss")
 	}
 	v.promptCard(c, q.RequestID, label, func() {
 		// Escape stops the turn past a queued set, as without it.
@@ -387,7 +387,7 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 				k.Text(c, question.Topic, 11, 16.5).FontWeight(600).TextColor(t.MutedForeground)
 			})
 			if q.Queued {
-				ui.Row(c).Height(k.Px(18)).PaddingX(k.Px(6)).Radius(k.Px(5)).Background(t.Muted).Tooltip(l10n.L("Droid keeps working and reads your answer later")).Children(func() {
+				ui.Row(c).Height(k.Px(18)).PaddingX(k.Px(6)).Radius(k.Px(5)).Background(t.Muted).Tooltip(l10n.L("Droi keeps working and reads your answer later")).Children(func() {
 					k.Text(c, l10n.L("Not blocking"), 10, 15).FontWeight(500).TextColor(t.MutedForeground)
 				})
 			}

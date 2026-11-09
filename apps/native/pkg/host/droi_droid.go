@@ -13,10 +13,10 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/proxy"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/proxy"
 )
 
 // DroidDroi is Settings.DroidKind for Droi's droid (ADR 0033).
@@ -83,10 +83,14 @@ func (h *Host) droi() *droiDroidState {
 			h.droiDroid.store.LatestURL = droidhook.LatestURLFor(h.cfg.DroidDownloads)
 		}
 		h.droiDroid.pool = keypool.Open(keypool.Options{
-			Dir:          filepath.Join(h.cfg.UserData, "llm"),
-			Upstream:     h.keyPoolUpstream(),
-			Sessions:     daemonSessions{h},
-			OnChange:     h.changed,
+			Dir:      filepath.Join(h.cfg.UserData, "llm"),
+			Upstream: h.keyPoolUpstream(),
+			Sessions: daemonSessions{h},
+			OnChange: func() {
+				// Off the pool's own goroutine: the Kernel's check reads the pool.
+				go h.kernelModelsChanged()
+				h.changed()
+			},
 			ScriptModels: h.cfg.ScriptModels,
 		})
 	})
@@ -158,7 +162,7 @@ func (h *Host) DisableDroiDroid() {
 	h.changed()
 	go func() {
 		h.RestartDaemon()
-		h.KeyPool().Stop()
+		h.releaseKeyPool()
 	}()
 }
 

@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 // The key opener starts the Standard months of queued keys (see

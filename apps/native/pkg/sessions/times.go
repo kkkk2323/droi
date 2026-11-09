@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // Times are what Droi keeps of a Session itself, apart from what the
@@ -84,6 +84,9 @@ func (o Order) LiveKey(s Summary) Key {
 	switch {
 	case o.Busy[s.SessionID]:
 		k.Rank = RankBusy
+		if at, ok := o.BusyAt[s.SessionID]; ok {
+			k.At = at
+		}
 	case o.Unread[s.SessionID]:
 		k.Rank = RankUnread
 	}

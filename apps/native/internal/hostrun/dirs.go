@@ -3,7 +3,7 @@ package hostrun
 import (
 	"path/filepath"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
 )
 
 // ConfigDir holds the Host's settings, Memory and logs: $XDG_CONFIG_HOME/<the

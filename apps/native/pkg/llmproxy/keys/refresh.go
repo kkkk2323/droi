@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
 )
 
 // Only Droi spends the Key Pool, so a key's usage moves only when droid sent

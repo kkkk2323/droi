@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
 )
 
 // ObserveMetric is what the trend and the heat map count.

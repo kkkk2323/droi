@@ -7,11 +7,11 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // SessionDefaults is Settings' Session defaults section: what a new
@@ -22,8 +22,12 @@ import (
 func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 	k := s.env.Kit()
 	t := k.T
+	kernel := s.onKernel()
 	if note == "" {
 		note = l10n.L("Shared with the droid CLI and the Factory App on this computer. Existing Sessions keep their settings.")
+		if kernel {
+			note = l10n.L("What a new Session on this computer starts with. Existing Sessions keep their settings.")
+		}
 	}
 	k.Text(c, note, 13, 19.5).TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	if banner != nil {
@@ -55,38 +59,45 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 		}
 		return otherwise
 	}
-	k.SettingGroup(c, l10n.L("Model and autonomy"), "",
+	// The Kernel has no Spec mode: a conversation plans in plan mode instead.
+	interaction := func() {
+		modes := make([]kit.Option, len(defaults.InteractionModes))
+		for i, m := range defaults.InteractionModes {
+			modes[i] = kit.Option{Value: m.Value, Label: m.Label}
+		}
+		k.SettingRow(c, l10n.L("Interaction mode"), l10n.L("Auto starts working right away; Spec plans with you before it changes anything."), func() {
+			if next, ok := s.Select(c, l10n.N("Default interaction mode"), dv.InteractionMode, modes, locked("interactionMode")); ok {
+				save(defaults.Patch{InteractionMode: str(next)})
+			}
+		}, nil)
+	}
+	if kernel {
+		interaction = nil
+	}
+	rows := []func(){
 		func() {
-			k.SettingRow(c, l10n.L("Model"), descIf("modelId", ""), func() {
-				ModelField(c, k, s.env.Prefs, l10n.L("Default model"), locked("modelId"), s.Flag("model:default"), &s.picker,
-					defaults.PickableModels(dv.Models, true), dv.ModelID, func(next string) {
+			// The chat's own picker: the model and its reasoning level in one panel.
+			desc := descIf("modelId", "")
+			if desc == "" {
+				desc = descIf("reasoningEffort", "")
+			}
+			k.SettingRow(c, l10n.L("Model"), desc, func() {
+				ModelEffortField(c, k, s.env.Prefs, l10n.L("Default model"), "", locked("modelId"), s.Flag("model:default"), &s.picker,
+					defaults.PickableModels(dv.Models, true), dv.ModelID, dv.ReasoningEffort, func(next string) {
 						p := defaults.Patch{ModelID: str(next)}
 						// A level the new model lacks would be refused; start from its first.
 						if sup := defaults.ReasoningChoices(dv.Models, next, ""); len(sup) > 0 && !slices.Contains(sup, dv.ReasoningEffort) {
 							p.ReasoningEffort = str(sup[0])
 						}
 						save(p)
+					}, func(next string) {
+						if !locked("reasoningEffort") {
+							save(defaults.Patch{ReasoningEffort: str(next)})
+						}
 					})
 			}, nil)
 		},
-		func() {
-			k.SettingRow(c, l10n.L("Reasoning level"), descIf("reasoningEffort", ""), func() {
-				if next, ok := s.Select(c, l10n.N("Default reasoning level"), dv.ReasoningEffort, efforts(dv.ModelID, dv.ReasoningEffort), locked("reasoningEffort")); ok {
-					save(defaults.Patch{ReasoningEffort: str(next)})
-				}
-			}, nil)
-		},
-		func() {
-			modes := make([]kit.Option, len(defaults.InteractionModes))
-			for i, m := range defaults.InteractionModes {
-				modes[i] = kit.Option{Value: m.Value, Label: m.Label}
-			}
-			k.SettingRow(c, l10n.L("Interaction mode"), l10n.L("Auto starts working right away; Spec plans with you before it changes anything."), func() {
-				if next, ok := s.Select(c, l10n.N("Default interaction mode"), dv.InteractionMode, modes, locked("interactionMode")); ok {
-					save(defaults.Patch{InteractionMode: str(next)})
-				}
-			}, nil)
-		},
+		interaction,
 		func() {
 			level := dv.AutonomyLevel
 			if level == "" {
@@ -94,7 +105,7 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 			}
 			desc := l10n.T(defaults.AutonomyDescriptions[level])
 			if desc == "" {
-				desc = l10n.L("How much Droid may do without asking for approval.")
+				desc = l10n.L("How much Droi may do without asking for approval.")
 			}
 			k.SettingRow(c, l10n.L("Autonomy level"), desc, func() {
 				if next, ok := s.Select(c, l10n.N("Default autonomy level"), level, autonomy, locked("autonomyLevel")); ok {
@@ -102,7 +113,12 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 				}
 			}, nil)
 		},
-	)
+	}
+	k.SettingGroup(c, l10n.L("Model and autonomy"), "", slices.DeleteFunc(rows, func(r func()) bool { return r == nil })...)
+	// The Kernel's tool calls are codemode's, whose mode is the Host's to keep, not this device's: the app draws it.
+	if kernel {
+		return
+	}
 	k.SettingGroup(c, l10n.L("Tool calls"), "", func() {
 		const follow = "follow-droid"
 		opts := []kit.Option{{Value: follow, Label: l10n.L("Follow droid settings")}}

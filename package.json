@@ -2,8 +2,9 @@
   "name": "droi-workspace",
   "private": true,
   "description": "Native Mac, Windows and iPhone app for Factory Droid: your droid Sessions in one window and on your phone, built with Go (MyGo) and Expo",
+  "license": "MIT",
+  "author": "kkkk2323",
   "type": "module",
-  "packageManager": "pnpm@10.26.2",
   "scripts": {
     "install:phone": "scripts/install-phone.sh",
     "test": "vitest run",
@@ -12,20 +13,24 @@
     "typecheck:root": "tsc --noEmit -p tsconfig.json",
     "typecheck:mobile": "pnpm -C apps/mobile typecheck",
     "typecheck:tests": "pnpm -C tests typecheck",
-    "typecheck": "pnpm typecheck:root && pnpm typecheck:mobile && pnpm typecheck:tests",
+    "typecheck": "pnpm typecheck:root && pnpm typecheck:kernel && pnpm typecheck:mobile && pnpm typecheck:tests",
     "lint": "oxlint apps packages tests",
     "lint:fix": "oxlint --fix apps packages tests",
     "format": "oxfmt --write apps packages tests",
     "format:check": "oxfmt --check apps packages tests",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck",
+    "test:kernel": "pnpm -C apps/kernel test",
+    "typecheck:kernel": "pnpm -C apps/kernel typecheck",
+    "build:kernel": "pnpm -C apps/kernel build",
+    "smoke:kernel": "pnpm -C apps/kernel smoke",
+    "lint:kernel": "oxlint apps/kernel"
   },
-  "author": "kkkk2323",
-  "license": "MIT",
   "devDependencies": {
     "@types/node": "^26.6.2",
     "oxfmt": "^0.68.0",
     "oxlint": "^1.83.0",
     "typescript": "~7.0.2",
     "vitest": "^5.0.1"
-  }
+  },
+  "packageManager": "pnpm@10.26.2"
 }

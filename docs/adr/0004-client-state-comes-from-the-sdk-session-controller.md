@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # Client state comes from the SDK's DaemonSessionController, not the connectToDaemon facade
+
+_Client state comes from the Kernel's `conversation.view`; there is no `DaemonSessionController`, no `@factory/droid-sdk` and no `connectToDaemon`._
 
 The plan behind ADR 0001 assumed the Client would use `connectToDaemon()` and layer TanStack Query plus a small Zustand store on top. While building the connection layer we found that facade too thin for a Client: `ConnectedDroid` exposes no connection-status events (so no reconnecting banner), and `ConnectedDroidSession` only yields a Session's events to the caller of `stream()`, so a Client that merely has a Session open, which is exactly the phone in ADR 0003, would see nothing. The facade is a wrapper over `DaemonSessionController` and `MultiSessionStateManager`, both exported, and those two are what Factory's own surfaces use.
 

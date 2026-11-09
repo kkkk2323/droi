@@ -4,8 +4,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/alerts"
-	"github.com/kkkk2323/droi/apps/native/pkg/compaction"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/compaction"
 )
 
 // Alert is what the window asks the desktop for when a Session finishes or
@@ -96,9 +96,9 @@ func (a *App) raise(id, title string, ev alerts.Event) {
 	title = trimOr(title, L("Untitled session"))
 	switch {
 	case ev == alerts.Completion && p.NotifyOnComplete:
-		a.cfg.Notify(Alert{SessionID: id, Title: L("Droid finished"), Body: title})
+		a.cfg.Notify(Alert{SessionID: id, Title: L("Droi finished"), Body: title})
 	case ev == alerts.AwaitingInput && p.NotifyOnWaitingForInput:
-		a.cfg.Notify(Alert{SessionID: id, Title: L("Droid needs input"), Body: L("%s — waiting for your answer", title)})
+		a.cfg.Notify(Alert{SessionID: id, Title: L("Droi needs input"), Body: L("%s — waiting for your answer", title)})
 	}
 }
 

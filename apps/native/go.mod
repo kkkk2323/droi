@@ -1,4 +1,4 @@
-module github.com/kkkk2323/droi/apps/native
+module github.com/kkkk2323/droi/apps/native/v2
 
 go 1.27.3
 

@@ -1,27 +1,25 @@
-// Create a Session in a Workspace. Recent Workspaces come from the Sessions the
-// Daemon already knows; a typed path is validated by the Daemon before use.
-import { LOCAL_MACHINE_ID } from '@factory/droid-sdk'
-import { GATEWAY_API_KEY_PLACEHOLDER } from './gateway'
+// Create a Session in a Workspace. Recent Workspaces come from the Sessions the computer
+// lists; a typed path is checked by the computer (the Gateway's `/workspace`) before use. A
+// worktree is made by the Gateway with git on the computer, and the conversation works in it.
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
-import { isToolMode, type ToolMode } from './tool-mode'
-import { uuid } from './uuid'
-import {
-  WORKTREE_INIT_TIMEOUT_MS,
-  worktreeParams,
-  type SessionWorktree,
-  type WorktreeRequest,
-} from './worktree'
-import type { DaemonConnection } from './connection'
-import { useDaemonConnection } from './connection-context'
+import { clientAutonomy, kernelAutonomy } from './autonomy'
+import type { KernelConnection } from './connection'
+import { useKernelConnection } from './connection-context'
+import { kernelStore } from './kernel-state'
+import { sessionIdOf, type ModelInfo } from './kernel-wire'
 import {
   SESSIONS_QUERY_KEY,
+  isScratch,
   isScratchSession,
   workspaceLabel,
   workspaceOf,
   type SessionSummary,
   type SessionTag,
 } from './sessions'
+import type { ToolMode } from './tool-mode'
+import { uuid } from './uuid'
+import type { SessionWorktree, WorktreeRequest } from './worktree'
 
 export interface RecentWorkspace {
   path: string
@@ -48,12 +46,12 @@ export interface NewSessionSettings {
   modelId: string | null
   reasoningEffort: string | null
   autonomyLevel: string | null
-  /** Fixed for the Session's lifetime; null or absent leaves it to droid. */
+  /** `direct_only` takes the scripts (the codemode extension) away; null keeps them. */
   toolExecutionMode?: ToolMode | null
 }
 
 export interface NewSessionActions {
-  /** Resolves to the Session's id and, for a worktree, the checkout the Daemon made. */
+  /** Resolves to the Session's id and, for a worktree, the checkout the computer made. */
   create(
     path: string,
     settings?: NewSessionSettings,
@@ -64,78 +62,87 @@ export interface NewSessionActions {
   error: string | null
 }
 
-type Connection = Pick<DaemonConnection, 'controller' | 'sessionState'>
+/** The extension that offers a conversation's model scripts, on by default. */
+const CODEMODE = 'codemode'
+
+/** The agent a new conversation asks for: a model the Kernel offers, with a thinking level it takes. */
+export function agentFor(
+  models: readonly ModelInfo[],
+  settings: NewSessionSettings | undefined,
+): Record<string, unknown> | null {
+  const agent: Record<string, unknown> = {}
+  const model = settings?.modelId ? models.find((m) => m.id === settings.modelId) : undefined
+  if (model) {
+    agent['model'] = { provider: model.provider, modelId: model.id }
+    const effort = settings?.reasoningEffort
+    if (effort && model.thinking?.includes(effort)) agent['thinkingLevel'] = effort
+  }
+  if (settings?.toolExecutionMode === 'direct_only') agent['extensions'] = { remove: [CODEMODE] }
+  return Object.keys(agent).length > 0 ? agent : null
+}
 
 /**
- * Validates the directory and asks the Daemon for a Session there. Resolves
- * to the Session id and the tool mode the Daemon gave it, or to the message
- * to show when the directory is unusable.
+ * Checks the folder, makes the worktree asked for, and creates the conversation there.
+ * Resolves to the Session and its worktree, or to the message to show when the folder is
+ * unusable.
  */
 export async function openSession(
-  { controller, sessionState }: Connection,
+  connection: Pick<KernelConnection, 'call' | 'workspaces'>,
   path: string,
   options: {
     settings?: NewSessionSettings
     tags?: SessionTag[]
     worktree?: WorktreeRequest
+    models?: readonly ModelInfo[]
+    /** The autonomy new conversations have by default, in the Client's words. */
+    defaultAutonomy?: string | null
   } = {},
-): Promise<
-  | { sessionId: string; toolExecutionMode: ToolMode | null; worktree: SessionWorktree | null }
-  | { error: string }
-> {
-  const check = await controller.validateWorkingDirectory(path)
-  if (!check.isValid) return { error: check.error ?? `${path} is not a usable directory.` }
-  const { settings, tags, worktree } = options
-  // The SDK wants the Session registered as loading before it asks the
-  // Daemon to create it, so the id is chosen here.
-  const sessionId = uuid()
-  sessionState.markSessionLoading(sessionId, LOCAL_MACHINE_ID)
+): Promise<{ sessionId: string; worktree: SessionWorktree | null } | { error: string }> {
+  let found
   try {
-    const result = await controller.initializeSession(
-      {
-        sessionId,
-        machineId: LOCAL_MACHINE_ID,
-        // Spawn credential; the Gateway swaps the placeholder for the real key.
-        token: GATEWAY_API_KEY_PLACEHOLDER,
-        cwd: check.resolvedPath ?? path,
-        sessionOriginHint: undefined,
-        sessionSource: undefined,
-        ...(settings?.modelId ? { modelId: settings.modelId } : {}),
-        ...(settings?.reasoningEffort
-          ? { reasoningEffort: settings.reasoningEffort as never }
-          : {}),
-        ...(settings?.autonomyLevel ? { autonomyLevel: settings.autonomyLevel as never } : {}),
-        ...(settings?.toolExecutionMode
-          ? { toolExecutionMode: settings.toolExecutionMode as never }
-          : {}),
-        ...(tags ? { tags } : {}),
-        ...(worktree ? worktreeParams(worktree) : {}),
-      },
-      worktree ? { timeout: WORKTREE_INIT_TIMEOUT_MS } : undefined,
-    )
-    const mode: unknown = result.settings?.toolExecutionMode
-    const made = result.worktree
-    return {
-      sessionId: result.sessionId,
-      toolExecutionMode: isToolMode(mode) ? mode : null,
-      // The Daemon ignores the request outside a Git repository.
-      worktree: made
-        ? {
-            path: made.path,
-            branch: made.branch,
-            lifecycle: made.lifecycle ?? worktree?.lifecycle ?? null,
-            repoRoot: made.repoRoot ?? check.resolvedPath ?? path,
-          }
-        : null,
-    }
+    found = await connection.workspaces.inspect(path)
   } catch (cause) {
-    sessionState.removeSession(sessionId)
-    throw cause
+    return { error: cause instanceof Error ? cause.message : String(cause) }
   }
+  const { settings, tags, worktree } = options
+  const scratch = isScratch(tags)
+  let cwd = found.path
+  let made: SessionWorktree | null = null
+  if (worktree && found.isGitRepository && !scratch) {
+    const added = await connection.workspaces.addWorktree(
+      cwd,
+      worktree.baseBranch ?? '',
+      worktree.promptSlug?.trim() ?? '',
+    )
+    cwd = added.path
+    made = {
+      path: added.path,
+      branch: added.branch,
+      lifecycle: worktree.lifecycle,
+      repoRoot: added.repoRoot,
+    }
+  }
+  const agent = agentFor(options.models ?? [], settings)
+  const created = await connection.call<{ conversationId: number }>('conversation.create', {
+    cwd,
+    kind: scratch ? 'scratch' : 'chat',
+    requestId: uuid(),
+    ...(agent ? { agent } : {}),
+  })
+  // A level picked on the page is the conversation's own, set before its first message can run
+  // a tool; the default's is left to follow the default.
+  const level = settings?.autonomyLevel
+  if (level && level !== options.defaultAutonomy) {
+    await connection.call('policy.set', {
+      id: created.conversationId,
+      policy: { autonomy: kernelAutonomy(level) },
+    })
+  }
+  return { sessionId: sessionIdOf(created.conversationId), worktree: made }
 }
 
 export function useNewSession(): NewSessionActions {
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   const queryClient = useQueryClient()
   const [isCreating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -155,17 +162,20 @@ export function useNewSession(): NewSessionActions {
       setCreating(true)
       setError(null)
       try {
+        const kernel = kernelStore(connection).snapshot()
         const opened = await openSession(connection, trimmed, {
           ...(settings ? { settings } : {}),
           ...(tags?.length ? { tags } : {}),
           ...(worktree ? { worktree } : {}),
+          models: kernel.info?.models ?? [],
+          defaultAutonomy: clientAutonomy(kernel.policies.get(null)?.autonomy),
         })
         if ('error' in opened) {
           setError(opened.error)
           return null
         }
         await queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY })
-        return { sessionId: opened.sessionId, worktree: opened.worktree }
+        return opened
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause))
         return null

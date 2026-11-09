@@ -14,9 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // ErrHostRunning is returned when a Droi Host already answers on this
@@ -39,6 +40,8 @@ type Options struct {
 	// host.Config's fields of the same names, Overlay given the Host.
 	Overlay            func(h *host.Host) host.OverlayOptions
 	AppendSystemPrompt func() string
+	// KernelAgent is the app's part of every Kernel conversation: host.Config's field of the same name.
+	KernelAgent func(h *host.Host) kernel.AppAgent
 	// Start, optional, is called once the Host has started, with Run's ctx;
 	// it returns at once and leaves its work to goroutines of its own.
 	Start func(ctx context.Context, h *host.Host)
@@ -79,6 +82,7 @@ func Run(ctx context.Context, o Options) error {
 		Executable: o.Executable,
 
 		AppendSystemPrompt: o.AppendSystemPrompt,
+		KernelAgent:        o.KernelAgent,
 	}
 	if o.OwnFactoryHome {
 		cfg.FactoryRoot = filepath.Join(cfg.UserData, "factory")
@@ -94,7 +98,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	cfg.ClientHiddenTools = func() []string { return svc.ClientHiddenTools() }
 	h = host.New(cfg)
-	if err := checkDroid(h); err != nil {
+	if err := checkDroid(h); err != nil && !h.KernelEnabled() {
 		return err
 	}
 	svc = StartServices(h)
@@ -139,14 +143,18 @@ func Run(ctx context.Context, o Options) error {
 		o.Start(ctx, h)
 	}
 
-	if !h.HasCredential() {
+	// The Kernel runs every Session with its Model Sources: no droid, no Daemon and no Factory login.
+	daemon := !h.KernelEnabled()
+	if daemon && !h.HasCredential() {
 		fmt.Fprintln(out, "Warning: no login. Run `droid login` on this computer, or set FACTORY_API_KEY, then restart.")
 	}
 	// The Gateway listens whether or not the Daemon is up, so the link comes
 	// first: a Daemon that takes long to start must not hide it.
 	announce(out, o.Terminal, gw, h, o.Version)
-	if err := waitForDaemon(ctx, h); err != nil {
-		fmt.Fprintf(out, "Warning: the Daemon is not running yet: %s\n", err)
+	if daemon {
+		if err := waitForDaemon(ctx, h); err != nil {
+			fmt.Fprintf(out, "Warning: the Daemon is not running yet: %s\n", err)
+		}
 	}
 	<-ctx.Done()
 	return nil

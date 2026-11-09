@@ -1,6 +1,8 @@
 package app
 
 import (
+	"cmp"
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -8,10 +10,11 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // The lifecycles a new worktree can have, as the Factory App words them.
@@ -54,7 +57,8 @@ const noProfile = "none"
 // of the page; nil until it answers.
 func (a *App) repoOf(path string) *repoInfo {
 	s := &a.newPage
-	if path == "" || path == scratchPick || a.ctl == nil {
+	here := a.worktreesHere()
+	if path == "" || path == scratchPick || a.ctl == nil && !here {
 		return nil
 	}
 	s.mu.Lock()
@@ -68,11 +72,26 @@ func (a *App) repoOf(path string) *repoInfo {
 		}
 		return info
 	}
-	if !a.ctl.Status().Connected {
+	if !here && !a.ctl.Status().Connected {
 		return nil
 	}
 	info := &repoInfo{}
 	s.repos[path] = info
+	if here {
+		go func() {
+			ctx, cancel := context.WithTimeout(a.ctx, time.Minute)
+			defer cancel()
+			next := repoInfo{loaded: true}
+			if b, ok, err := gitutil.ListBranches(ctx, path); ok && err == nil {
+				next.git, next.current, next.branches = true, b.Current, b.Names
+			}
+			s.mu.Lock()
+			*info = next
+			s.mu.Unlock()
+			a.redraw()
+		}()
+		return nil
+	}
 	go func() {
 		cl, err := a.ctl.Client()
 		if err != nil {
@@ -164,7 +183,12 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 		label, icon = L("New worktree"), "git-fork"
 	}
 	tr := k.QuietTrigger(c, L("Worktree"), s.worktreeOpen).Role(ui.RoleComboBox).Gap(k.Px(4)).Margin(0, 0, 0, -k.Px(8))
-	if ch.On {
+	// The Host's own worktrees have no lifecycle: none is deleted but by a person.
+	here := a.worktreesHere()
+	switch {
+	case ch.On && here:
+		tr.Tooltip(L("New worktree from %s", cmp.Or(ch.Base, "HEAD")))
+	case ch.On:
 		tr.Tooltip(L("%s worktree from %s", lifecycleLabel(ch.Lifecycle), ch.Base))
 	}
 	fg := t.MutedForeground
@@ -200,17 +224,19 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 					ui.Box(c).Height(1).Background(t.Border).Margin(k.Px(4), -k.Px(4))
 					k.Text(c, text, 11, 16.5).FontWeight(500).TextColor(t.MutedForeground).Padding(k.Px(4), k.Px(8))
 				}
-				caption(L("Lifecycle"))
-				ui.Column(c).Role(ui.RoleGroup).Label(L("Lifecycle")).Children(func() {
-					for _, l := range worktreeLifecycles {
-						if a.choiceRow(c, "lifecycle:"+l.value, "", l10n.T(l.label), l10n.T(l.description), ch.On && ch.Lifecycle == l.value) {
-							pick(func() {
-								s.lifecycle = l.value
-								prefs.WorktreeLifecycle.Set(a.prefs, l.value)
-							})
+				if !here {
+					caption(L("Lifecycle"))
+					ui.Column(c).Role(ui.RoleGroup).Label(L("Lifecycle")).Children(func() {
+						for _, l := range worktreeLifecycles {
+							if a.choiceRow(c, "lifecycle:"+l.value, "", l10n.T(l.label), l10n.T(l.description), ch.On && ch.Lifecycle == l.value) {
+								pick(func() {
+									s.lifecycle = l.value
+									prefs.WorktreeLifecycle.Set(a.prefs, l.value)
+								})
+							}
 						}
-					}
-				})
+					})
+				}
 				if len(repo.branches) > 0 {
 					caption(L("Base branch"))
 					ui.Scroll(c).MaxHeight(k.Px(150)).Children(func() {
@@ -309,6 +335,15 @@ type worktreeDialog struct {
 	deleteLocal, deleteRemote bool
 	busy                      bool
 	err                       string
+
+	// repo is the repository of one of the Host's own worktrees (worktreesHere), "" for the Daemon's; archive are
+	// the Sessions that work in it, and ignored the files .gitignore hides in it, which go with it too.
+	repo    string
+	archive []sessions.Summary
+	ignored int
+	// locked is git's reason a worktree of the Host's is locked; gone says its folder is not there.
+	locked string
+	gone   bool
 }
 
 // askArchive opens the dialog for archiving a Session in an ephemeral worktree.
@@ -392,6 +427,9 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 			switch {
 			case !d.checked:
 				k.Text(c, L("Checking current git status..."), 13, 20).Role(ui.RoleStatus).TextColor(t.MutedForeground)
+			case d.inspectErr != "" && d.repo != "":
+				// The Host's own delete is forced: it deletes nothing nobody was shown.
+				warn(L("Could not check this worktree for unsaved work, so Droi does not delete it. Remove it with git worktree remove once you checked it."))
 			case d.inspectErr != "":
 				warn(L("Could not check this worktree for unsaved work. Anything it holds will be deleted with it."))
 			case in != nil:
@@ -405,10 +443,19 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 				if in.LocalOnlyCommits != nil && *in.LocalOnlyCommits > 0 {
 					parts = append(parts, plural(int(*in.LocalOnlyCommits), L("commit on no remote"), L("commits on no remote")))
 				}
+				if d.ignored > 0 {
+					parts = append(parts, plural(d.ignored, L("ignored file, such as .env or node_modules"), L("ignored files, such as .env or node_modules")))
+				}
+				if d.locked != "" {
+					warn(L("This worktree is locked (%s); deleting it removes the lock.", d.locked))
+				}
+				if d.gone {
+					k.Text(c, L("Its folder is gone; deleting it takes it off git's list."), 13, 20).TextColor(t.MutedForeground)
+				}
 				if len(parts) > 0 {
 					warn(L("Warning: this worktree has %s.", strings.Join(parts, ", ")))
 					if archive && in.ChangedFiles+in.UntrackedFiles > 0 {
-						k.Text(c, L("Droid keeps a worktree with uncommitted changes; delete it in Settings → Worktrees."), 12, 18).TextColor(t.MutedForeground)
+						k.Text(c, L("Droi keeps a worktree with uncommitted changes; delete it in Settings → Worktrees."), 12, 18).TextColor(t.MutedForeground)
 					}
 				}
 				if pr := in.PullRequest; pr != nil {
@@ -444,13 +491,16 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 				if a.smallButton(c, kit.Outline, L("Cancel"), "", d.busy).Clicked() || c.Shortcut(0, ui.KeyEscape) {
 					d.open = false
 				}
-				go_ := a.dangerButton(c, action, d.busy || !d.checked)
+				go_ := a.dangerButton(c, action, d.busy || !d.checked || d.repo != "" && d.inspectErr != "")
 				if go_.Clicked() {
 					d.busy, d.err = true, ""
-					if archive {
+					switch {
+					case archive:
 						s := *d.session
 						go a.archiveConfirmed(s)
-					} else {
+					case d.repo != "":
+						go a.deleteHere(*d)
+					default:
 						go a.deleteWorktree(d.path, d.deleteLocal, d.deleteRemote, d.unsaved())
 					}
 				}
@@ -556,8 +606,10 @@ type managedWorktrees struct {
 	readAt  time.Time
 	loading bool
 	list    []protocol.DaemonManagedWorktree
-	err     string
-	notice  string
+	// here are the Host's own worktrees, when worktreesHere; nil until read.
+	here   []hereWorktree
+	err    string
+	notice string
 
 	directoryOpen bool
 }
@@ -589,7 +641,15 @@ func (a *App) loadManagedWorktrees() {
 // how many ephemeral ones it keeps, and the ones it manages.
 func (a *App) worktreesTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
-	k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droid makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer."), 13, 19.5).
+	// The Host's own worktrees: their folder is Droi's setting, not the Daemon's, so nothing here waits for it.
+	if a.worktreesHere() && a.cfg.Host != nil {
+		k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droi makes them, and deletes one only when you do."), 13, 19.5).
+			TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+		a.hereWorktreeSettings(c)
+		a.hereWorktreesGroup(c)
+		return
+	}
+	k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droi makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer."), 13, 19.5).
 		TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	dv := a.sessionDefaults()
 	if dv == nil {
@@ -602,7 +662,8 @@ func (a *App) worktreesTab(c *ui.Context) {
 		base = dv.UserFactoryDir
 	}
 	defaultDir := strings.TrimSuffix(base, "/") + "/worktrees"
-	a.settingGroup(c, L("Worktree settings"), "",
+	here := a.worktreesHere()
+	settingRows := []func(){
 		func() {
 			const custom = "custom…"
 			opts := []kit.Option{{Value: "", Label: L("Default (%s)", defaultDir)}}
@@ -627,7 +688,10 @@ func (a *App) worktreesTab(c *ui.Context) {
 				}
 			}, nil)
 		},
-		func() {
+	}
+	// The Host deletes no worktree on its own: there is no limit to keep to.
+	if !here {
+		settingRows = append(settingRows, func() {
 			limit := dv.WorktreeAutoDeleteLimit
 			if limit == 0 {
 				limit = defaultWorktreeLimit
@@ -640,14 +704,19 @@ func (a *App) worktreesTab(c *ui.Context) {
 				}
 				opts = append(opts, kit.Option{Value: strconv.Itoa(n), Label: L("%d worktrees", n)})
 			}
-			a.settingRow(c, L("Ephemeral worktrees limit"), L("Droid deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch."), func() {
+			a.settingRow(c, L("Ephemeral worktrees limit"), L("Droi deletes old ephemeral worktrees to stay within this limit. It keeps one that is in use, holds uncommitted changes or unpublished commits, or has an open pull request, and never deletes the local branch."), func() {
 				if next, ok := a.fieldSelect(c, L("Ephemeral worktrees limit"), strconv.Itoa(limit), opts, false); ok {
 					n, _ := strconv.Atoi(next)
 					save(defaultsPatch{WorktreeAutoDeleteLimit: &n})
 				}
 			}, nil)
-		},
-	)
+		})
+	}
+	a.settingGroup(c, L("Worktree settings"), "", settingRows...)
+	if here {
+		a.hereWorktreesGroup(c)
+		return
+	}
 	a.loadManagedWorktrees()
 	m := &a.settings.worktrees
 	var ephemeral, persistent int
@@ -703,3 +772,48 @@ func (a *App) worktreesTab(c *ui.Context) {
 
 // defaultWorktreeLimit is the Daemon's worktreeAutoDeleteLimit when unset.
 const defaultWorktreeLimit = 15
+
+// hereWorktreesGroup is Settings → Worktrees' list of the Host's own worktrees: those of the repositories the listed
+// Sessions work in.
+func (a *App) hereWorktreesGroup(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	a.loadHereWorktrees()
+	m := &a.settings.worktrees
+	rows := []func(){}
+	switch {
+	case m.err != "" && m.here == nil:
+		rows = append(rows, func() { a.settingRow(c, l10n.T(m.err), "", nil, nil) })
+	case m.here == nil:
+		rows = append(rows, func() { a.settingRow(c, L("Loading worktrees…"), "", nil, nil) })
+	case len(m.here) == 0:
+		rows = append(rows, func() { a.settingRow(c, L("No worktrees."), "", nil, nil) })
+	}
+	for _, w := range m.here {
+		rows = append(rows, func() {
+			title := w.Branch
+			if title == "" {
+				title = sessions.WorkspaceLabel(w.Path)
+			}
+			desc := sessions.WorkspaceLabel(w.Repo) + " · " + plural(len(w.Sessions), L("session"), L("sessions"))
+			if w.Prunable != "" {
+				desc += L(" · folder missing")
+			}
+			a.settingRowWith(c, func() {
+				ui.Row(c).Gap(k.Px(6)).Children(func() {
+					k.Icon(c, "git-branch", 14, t.MutedForeground)
+					k.Text(c, title, 14, 20).Role(ui.RoleHeading).FontWeight(500).SingleLine().Shrink(1)
+				})
+			}, desc, func() {
+				if a.smallButton(c, kit.Ghost, L("Delete"), "trash", false).Label(L("Delete worktree %s", title)).Clicked() {
+					a.askDeleteHere(w)
+				}
+			}, func() {
+				k.Text(c, w.Path, 12, 18).Font(k.Mono).TextColor(t.MutedForeground).Selectable()
+			})
+		})
+	}
+	if m.notice != "" {
+		k.Text(c, m.notice, 13, 20).Role(ui.RoleStatus).TextColor(t.AttentionForeground)
+	}
+	a.settingGroup(c, L("Worktrees"), L("Worktrees of the repositories your sessions work in. Droi deletes none on its own."), rows...)
+}

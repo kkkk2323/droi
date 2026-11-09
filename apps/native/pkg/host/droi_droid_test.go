@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
 )
 
 // fakeDroid is a made-up droid that writes its environment to out and, like

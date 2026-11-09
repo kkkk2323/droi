@@ -1,0 +1,17 @@
+{
+  "kind": "method",
+  "method": "mcp.authorize.cancel",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "23",
+    "method": "mcp.authorize.cancel",
+    "params": {
+      "name": "anlan"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "23",
+    "result": {}
+  }
+}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // Brand names the app.
@@ -73,4 +73,13 @@ func ShortName() string {
 // names a folder: ~/.<ID>/chats.
 func ScratchFolder(home string) string {
 	return filepath.Join(home, "."+current.Load().ID, "chats")
+}
+
+// UserFolder is the app's own directory under home: the personal skills, the
+// global mcp.json and the global AGENTS.md all live here, which is what the
+// Kernel is told as DROI_USER_DIR. It is not the droid CLI's ~/.factory: that
+// folder belongs to another program, and the first copy (host.CopyFactoryHome)
+// is the one time its contents come over.
+func UserFolder(home string) string {
+	return filepath.Join(home, "."+current.Load().ID)
 }

@@ -3,7 +3,7 @@ package llmusage
 import (
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // Credits are Factory's billable tokens, what the quota windows count:
@@ -53,7 +53,9 @@ type TokenWeight struct {
 // running promotion on top, which this table leaves out, and a model that is
 // not here is counted as unpriced.
 var StandardTokenWeights = []TokenWeight{
+	{"Opus 5.5 Fast Mode", "claude-opus-5-5-fast", 3.2, 16, 0.16, false},
 	{"Opus 5.5", "claude-opus-5-5", 1.6, 8, 0.08, true},
+	{"Opus 5 Fast Mode", "claude-opus-5-fast", 4, 20, 0.4, false},
 	{"Opus 5", "claude-opus-5", 2, 10, 0.2, false},
 	{"Fable 5.1", "claude-fable-5.1", 4, 20, 0.1, true},
 	{"Sonnet 5.5", "claude-sonnet-5-5", 0.8, 4, 0.04, true},

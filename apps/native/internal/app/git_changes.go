@@ -1,13 +1,16 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
+
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // gitChanges is the Session's branch and what it has not committed, as the
@@ -46,7 +49,7 @@ func (v *sessionView) gitStale() {
 
 // loadGit reads the changes when they are due; c.After brings the frame
 // of the next periodic read.
-func (v *sessionView) loadGit(c *ui.Context, s *session.Session, loaded bool) *gitChanges {
+func (v *sessionView) loadGit(c *ui.Context, s *sessionview.Snapshot, loaded bool) *gitChanges {
 	g := &v.git
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -55,7 +58,8 @@ func (v *sessionView) loadGit(c *ui.Context, s *session.Session, loaded bool) *g
 		g.stale = true
 	}
 	g.wasBusy = busy
-	if !loaded || v.a.ctl == nil {
+	here := v.gitHere()
+	if !loaded || v.a.ctl == nil && !here {
 		return g.changes
 	}
 	since := time.Since(g.readAt)
@@ -65,9 +69,13 @@ func (v *sessionView) loadGit(c *ui.Context, s *session.Session, loaded bool) *g
 		return g.changes
 	}
 	g.reading, g.stale = true, false
+	cwd := ""
+	if here {
+		cwd = v.sessionCwd(s)
+	}
 	go func() {
 		defer v.a.redraw()
-		next, ok := v.readGit()
+		next, ok := v.readGit(here, cwd)
 		g.mu.Lock()
 		defer g.mu.Unlock()
 		g.reading, g.readAt = false, time.Now()
@@ -78,9 +86,36 @@ func (v *sessionView) loadGit(c *ui.Context, s *session.Session, loaded bool) *g
 	return g.changes
 }
 
-// readGit asks the Daemon; ok is false when the read itself failed, which
-// keeps what was shown.
-func (v *sessionView) readGit() (*gitChanges, bool) {
+// gitHere reports that the Session's changes are read with git on this computer: a Kernel conversation of this
+// computer's, whose folder the Host can read. Another computer's are its Daemon's to report.
+func (v *sessionView) gitHere() bool {
+	if v.a.following() {
+		return false
+	}
+	_, ok := v.a.kernelID(v.id)
+	return ok
+}
+
+// sessionCwd is the Session's folder: its snapshot's, else the list's.
+func (v *sessionView) sessionCwd(s *sessionview.Snapshot) string {
+	if s != nil && s.Cwd != "" {
+		return s.Cwd
+	}
+	a := v.a
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if sum := findSummary(a.listed, v.id); sum != nil {
+		return sum.Cwd
+	}
+	return ""
+}
+
+// readGit asks git on this computer (here) or the Daemon; ok is false when the read itself failed, which keeps what
+// was shown.
+func (v *sessionView) readGit(here bool, cwd string) (*gitChanges, bool) {
+	if here {
+		return readGitHere(v.a.ctx, cwd)
+	}
 	cl, err := v.a.ctl.Client()
 	if err != nil {
 		return nil, false
@@ -112,14 +147,36 @@ func (v *sessionView) readGit() (*gitChanges, bool) {
 	return g, true
 }
 
+// readGitHere reads the working tree at cwd against HEAD, as get_git_diff reports it.
+func readGitHere(ctx context.Context, cwd string) (*gitChanges, bool) {
+	if cwd == "" {
+		return nil, false
+	}
+	ch, isRepo, err := gitutil.Status(ctx, cwd)
+	if err != nil {
+		return nil, false
+	}
+	if !isRepo {
+		return nil, true
+	}
+	g := &gitChanges{branch: ch.Branch, additions: ch.Additions, deletions: ch.Deletions}
+	if ch.Detached {
+		g.branch = "detached HEAD"
+	}
+	for _, f := range ch.Files {
+		g.files = append(g.files, protocol.DaemonGetGitDiffFile{Path: f.Path, Status: f.Status, Additions: float64(f.Additions), Deletions: float64(f.Deletions)})
+	}
+	return g, true
+}
+
 var gitStatusLetters = map[string]string{
-	"added": "A", "modified": "M", "deleted": "D", "renamed": "R", "copied": "C", "untracked": "A",
+	"added": "A", "modified": "M", "deleted": "D", "renamed": "R", "copied": "C", "untracked": "A", "conflicted": "U",
 }
 
 // gitButton is the GitChangesButton: the branch and the line counts at
 // the header's right, opening the changed files. Absent outside a Git
 // repository.
-func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) {
+func (v *sessionView) gitButton(c *ui.Context, s *sessionview.Snapshot, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	g := v.loadGit(c, s, loaded)

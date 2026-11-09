@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # Skills and MCP Servers are managed through the open Session's Daemon calls
+
+_Skills and MCP Servers are the Kernel's extensions, listed and switched through `skills.*` and `mcp.*`; that they are managed from the open Session stands, and the `daemon.*` calls behind it go._
 
 Users wanted to turn skills off and manage MCP Servers from Droi, as the Factory App's Skills and MCP windows and the droid CLI's `/mcp` allow.
 

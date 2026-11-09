@@ -6,9 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
-	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
 )
 
 // longPaste is a log of 31 lines, long enough to paste as a card.
@@ -48,7 +47,7 @@ func TestPastingALongTextMakesACard(t *testing.T) {
 
 	h.click("Send")
 	want := pasted.Join("see this", []pasted.Text{{Text: longPaste}})
-	h.sent(protocol.MethodAddUserMessage, func(p map[string]any) bool { return p["text"] == want })
+	h.sentText(want)
 	if len(v.composer.pasted) != 0 {
 		t.Fatal("the card stayed after the message went")
 	}

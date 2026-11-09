@@ -12,8 +12,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // The window is a Client of its own Host's Gateway (ADR 0019): the harness
@@ -118,6 +118,7 @@ func TestTheWindowReconnectsThroughTheGatewayWhenTheDaemonComesBack(t *testing.T
 }
 
 func TestAGatewayThatCannotListenShowsAnErrorInTheWindow(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	h0 := testHost(t)
 	h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-x") })
 	none := controller.New(controller.Config{

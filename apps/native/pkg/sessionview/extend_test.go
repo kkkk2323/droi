@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 )
 
 // A registered ToolView shows its tool's calls open, with its own content

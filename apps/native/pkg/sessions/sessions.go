@@ -10,7 +10,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // Tag is a Session tag.
@@ -42,7 +42,23 @@ type Summary struct {
 	// OrganizationID is the Factory organization the Session belongs to,
 	// "" for one from before droid kept it, which every organization lists.
 	OrganizationID string `json:",omitempty"`
+	// Kind is a Kernel conversation's own label: "chat", "scratch", "automation", "workstream", ...; "" for a
+	// Daemon Session.
+	Kind string `json:",omitempty"`
+	// Preview is the first line of a Kernel conversation's newest message, for the row's second line.
+	Preview string `json:",omitempty"`
+	// ViewedAt is when a person last saw a Kernel conversation, in Unix milliseconds; 0 for not yet.
+	ViewedAt int64 `json:",omitempty"`
+	// ActivityAt is a Kernel conversation's last activity, in Unix milliseconds.
+	ActivityAt int64 `json:",omitempty"`
+	// TitleSource is where a Kernel conversation's title came from: "auto" (its first line, or a generated
+	// name) or "chosen" (somebody named it); "" while it has none.
+	TitleSource string `json:",omitempty"`
 }
+
+// Unread reports whether a Kernel conversation moved after a person last saw it, or was never seen. A Daemon
+// Session is never: the Session Times say whether it is.
+func (s Summary) Unread() bool { return s.ActivityAt > s.ViewedAt }
 
 // Worktree is a Session's worktree: a checkout of RepoRoot at Path, on Branch.
 type Worktree struct {
@@ -254,6 +270,11 @@ type Order struct {
 	// included; Unread those with a result nobody has seen. Both rank a
 	// Session above the time order (LiveKey).
 	Busy, Unread map[string]bool
+	// BusyAt is when each busy Session was last used as its turn was first
+	// seen running: it is placed by that while the turn runs. The Kernel dates
+	// a conversation by its newest entry, which every step of a turn writes,
+	// so two Sessions at work swapped places at each step.
+	BusyAt map[string]int64
 	// Held are the Keys the Sessions keep while the pointer is over the
 	// list (HoldKeys).
 	Held map[string]Key

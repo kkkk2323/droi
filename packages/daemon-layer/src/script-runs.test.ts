@@ -6,142 +6,99 @@ import {
   scriptSummary,
   scriptToolNames,
 } from './script-runs'
-import type { ToolCall } from './transcript'
+import type { ToolCall, ToolResult } from './transcript'
 
-const call = (
-  name: string,
-  input: Record<string, unknown>,
-  content: unknown = null,
-  isError = false,
-): ToolCall =>
-  ({
-    use: { type: 'tool_use', id: 'run-1', name, input },
-    result: content === null ? null : { type: 'tool_result', toolUseId: 'run-1', content, isError },
-  }) as unknown as ToolCall
+const result = (extra: Partial<ToolResult> = {}): ToolResult => ({
+  text: '',
+  images: [],
+  isError: false,
+  interrupted: false,
+  blocked: false,
+  notes: '',
+  details: undefined,
+  ...extra,
+})
 
-const LOG = '/home/dev/.factory/artifacts/scripts/s1/run-1.log'
+const script = (
+  code: string,
+  done: Partial<ToolResult> | null = null,
+  nested: ToolCall[] = [],
+): ToolCall => ({
+  use: { id: 'run-1', name: 'codemode', input: { code } },
+  result: done === null ? null : result(done),
+  nested,
+})
+
+const leaf = (name: string): ToolCall => ({
+  use: { id: name, name, input: {} },
+  result: result({ text: 'ok' }),
+})
 
 describe('readScriptRun', () => {
-  test('splits what the model read from the closing line and the status', () => {
-    const run = readScriptRun(
-      call('WaitForScript', { toolCallId: 'run-1' }, [
-        { type: 'text', text: '# probe workspace\nline two\n\nslept' },
-        {
-          type: 'text',
-          text: `[Script completed · 3 calls · 86 B in sandbox · 33 B emitted (38%) · retained: r1 Read README.md, r2 Execute Sleep · log: ${LOG}]`,
-        },
-        { type: 'text', text: '{"toolCallId":"run-1","status":"completed","result":null}' },
-      ]),
+  test('a finished script says what it said, and how many calls it made', () => {
+    expect(readScriptRun(script('x', { text: 'two files' }, [leaf('read'), leaf('bash')]))).toEqual(
+      {
+        output: 'two files',
+        images: [],
+        status: 'completed',
+        error: null,
+        stats: '2 calls',
+        logPath: null,
+        value: null,
+      },
     )
-    expect(run).toEqual({
-      output: '# probe workspace\nline two\n\nslept',
-      images: [],
-      status: 'completed',
-      error: null,
-      stats: '3 calls · 86 B in sandbox · 33 B emitted (38%)',
-      logPath: LOG,
-      value: null,
-    })
   })
 
-  test('a run still going after the first minute answers with its status alone', () => {
-    const run = readScriptRun(
-      call('Script', { script: '' }, '{"toolCallId":"run-1","status":"running"}'),
-    )
-    expect(run).toMatchObject({ status: 'running', output: '', stats: null, logPath: null })
-  })
-
-  test('a failed run carries its error, a returned value is shown as JSON', () => {
+  test('a failed script carries its error; a stopped one was cancelled', () => {
     expect(
-      readScriptRun(
-        call('Script', { script: '' }, [
-          {
-            type: 'text',
-            text: '[Script failed at 2:5 · 1 call completed · 0 B emitted · log: /l]',
-          },
-          {
-            type: 'text',
-            text: '{"toolCallId":"run-1","status":"failed","error":"ReferenceError: x is not defined"}',
-          },
-        ]),
-      ),
+      readScriptRun(script('x', { isError: true, text: 'ReferenceError: x is not defined' })),
     ).toMatchObject({
       status: 'failed',
       error: 'ReferenceError: x is not defined',
-      stats: '1 call completed · 0 B emitted',
-      logPath: '/l',
     })
-    expect(
-      readScriptRun(
-        call('Script', { script: '' }, [
-          {
-            type: 'text',
-            text: '{"toolCallId":"run-1","status":"completed","result":{"files":2}}',
-          },
-        ]),
-      ).value,
-    ).toBe('{\n  "files": 2\n}')
-  })
-
-  test('a call the Daemon refused reads as a failure in its own words', () => {
-    expect(
-      readScriptRun(call('Script', { script: '' }, 'Script is not available', true)),
-    ).toMatchObject({ status: 'failed', error: 'Script is not available', output: '' })
+    expect(readScriptRun(script('x', { interrupted: true, text: 'partial' }))).toMatchObject({
+      status: 'cancelled',
+      output: 'partial',
+    })
+    expect(readScriptRun(script('x', { blocked: true, notes: 'Denied.' }))).toMatchObject({
+      status: 'failed',
+      error: 'Denied.',
+    })
   })
 
   test('no result yet', () => {
-    expect(readScriptRun(call('Script', { script: '' }))).toMatchObject({
-      status: null,
-      output: '',
-    })
+    expect(readScriptRun(script('x'))).toMatchObject({ status: null, output: '' })
   })
 })
 
 describe('scriptSource', () => {
-  test('the program and its named inputs', () => {
-    expect(
-      scriptSource(call('Script', { script: 'text(inputs.body)', inputs: { body: 'hi', n: 3 } })),
-    ).toEqual({ script: 'text(inputs.body)', inputs: [{ name: 'body', text: 'hi' }] })
-    expect(scriptSource(call('WaitForScript', { toolCallId: 'run-1' }))).toBeNull()
+  test("the script's code", () => {
+    expect(scriptSource(script('text("hi")'))).toEqual({ script: 'text("hi")', inputs: [] })
+    expect(scriptSource(leaf('read'))).toBeNull()
   })
 })
 
 describe('scriptToolNames', () => {
-  test('each tool once, in order, MCP tools by their own name', () => {
+  test('each tool once, in order, MCP tools by their whole name', () => {
     expect(
       scriptToolNames(
-        'const a = await tools.Read({})\nawait tools.Execute({})\nawait tools.memory.memory_search({})\nawait tools.Read({})',
+        'const a = await tools.read({})\nawait tools.bash({})\nawait tools.memory___memory_search({})\nawait tools.read({})',
       ),
-    ).toEqual(['Read', 'Execute', 'memory_search'])
+    ).toEqual(['read', 'bash', 'memory___memory_search'])
   })
 })
 
 describe('scriptSummary', () => {
-  test('a Script names its tools; a wait says it continues or stops the run', () => {
-    expect(
-      scriptSummary(call('Script', { script: 'await tools.Grep({}); await tools.Edit({})' })),
-    ).toBe('Grep · Edit')
-    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1' }))).toBe('continued')
-    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', kill: true }))).toBe(
-      'stopped',
-    )
-    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'kill' }))).toBe(
-      'stopped',
-    )
-    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'status' }))).toBe(
-      'checked',
-    )
-    expect(scriptSummary(call('WaitForScript', { toolCallId: 'run-1', action: 'wait' }))).toBe(
-      'continued',
-    )
+  test('a script names its tools', () => {
+    expect(scriptSummary(script('await tools.read({}); await tools.edit({})'))).toBe('read · edit')
+    expect(scriptSummary(leaf('read'))).toBe('')
   })
 })
 
 describe('leafCalls', () => {
-  test('a Script counts as the calls it made', () => {
-    const read = call('Read', {})
-    const script = { ...call('Script', { script: '' }), nested: [read, read] }
-    const grep = call('Grep', {})
-    expect(leafCalls([script, grep])).toEqual([read, read, grep])
+  test('a script counts as the calls it made', () => {
+    const read = leaf('read')
+    const grep = leaf('grep')
+    expect(leafCalls([script('', null, [read, read]), grep])).toEqual([read, read, grep])
   })
 })

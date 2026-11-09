@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: partly superseded by ADR-0038
 ---
 
 # The Phone App is a native Expo Client that shares the web Client's daemon layer
+
+_The Phone App still shares one layer with the window, and that layer now speaks the Kernel's protocol (`packages/daemon-layer/src/kernel/`) instead of the Daemon's._
 
 On an iPhone the Remote Client has so far been the web Client in Safari. We decided iOS gets its own native Client, the Phone App, built with Expo and React Native, and that it takes the browser's place there; the browser Remote Client stays for every other device. The Phone App offers what the web Client offers (pairing, Session list, transcript, composer, Prompts, New session, Git changes, Session management, settings) and nothing the desktop lacks, so no terminal. It still speaks only the Daemon protocol through the Gateway (ADR 0001) and reads conversation state from the SDK's session controller (ADR 0004).
 

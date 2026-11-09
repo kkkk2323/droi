@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { session, userMessage } from '@droi/fake-daemon/scenario'
+import { userEntry } from './fake-kernel/history'
 import {
   expect,
   openNewSession,
@@ -8,15 +8,14 @@ import {
   pairPhone,
   pasteLink,
   pickSession,
-  playTurn,
   relaunch,
   sessionList,
   test,
 } from './fixtures'
 
-const deploy = session('Deploy', '/Users/dev/acme-web', [userMessage('ship it')])
-
-test.use({ scenario: { sessions: [deploy] } })
+test.use({
+  scenario: { sessions: [{ title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] }] },
+})
 
 /** As if iOS sent the app to the background or brought it back. */
 async function setAppVisible(page: Page, visible: boolean) {
@@ -31,14 +30,14 @@ async function setAppVisible(page: Page, visible: boolean) {
 
 test('a reset Pairing Token says the computer is no longer paired; pairing again recovers it', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
-  fakeDaemon.resetToken()
+  await pairPhone(page, fakeKernel)
+  await fakeKernel.resetToken()
   await relaunch(page)
   await expect(page.getByRole('heading', { name: 'Test Mac is no longer paired' })).toBeVisible()
 
-  await pasteLink(page, pairingLink(fakeDaemon))
+  await pasteLink(page, pairingLink(fakeKernel))
   await expect(sessionList(page)).toBeVisible()
   await openSessionList(page)
   await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
@@ -48,122 +47,131 @@ test('a reset Pairing Token says the computer is no longer paired; pairing again
 
 test('an unreachable computer shows its address and what to check, then connects when back', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  await pairPhone(page, fakeDaemon)
-  fakeDaemon.goDown()
+  await pairPhone(page, fakeKernel)
+  await fakeKernel.goDown()
   await relaunch(page)
   await expect(page.getByRole('heading', { name: 'Can’t reach Test Mac' })).toBeVisible()
-  await expect(page.getByText(fakeDaemon.url, { exact: true })).toBeVisible()
+  await expect(page.getByText(fakeKernel.url, { exact: true })).toBeVisible()
   const checks = page.getByRole('list', { name: 'What to check' }).getByRole('listitem')
   await expect(checks.first()).toContainText('Remote Access')
   await expect(checks).toHaveCount(4)
   await expect(checks.nth(2)).toContainText('Set up a relay')
 
-  fakeDaemon.comeBack()
-  await expect(sessionList(page)).toBeVisible({
-    timeout: 10_000,
-  })
+  await fakeKernel.comeBack()
+  await expect(sessionList(page)).toBeVisible({ timeout: 10_000 })
   await expect(page.getByRole('heading', { name: /Can’t reach/ })).toHaveCount(0)
 })
 
-test('another Droi version on the computer shows a notice that can be dismissed', async ({
+test('a computer without a running Kernel says so, and connects once it runs one', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
 }) => {
-  fakeDaemon.meta = { ...fakeDaemon.meta, version: '0.9.0' }
-  await pairPhone(page, fakeDaemon)
-  const notice = page.getByRole('alert').filter({ hasText: 'runs Droi 0.9.0' })
-  await expect(notice).toBeVisible()
-  await notice.getByRole('button', { name: 'Dismiss' }).click()
-  await expect(notice).toHaveCount(0)
-  const list = await openSessionList(page)
-  await expect(list.getByRole('button', { name: /Deploy/ })).toBeVisible()
-
+  await pairPhone(page, fakeKernel)
+  await fakeKernel.withoutKernel()
   await relaunch(page)
-  await expect(sessionList(page)).toBeVisible()
-  await expect(page.getByRole('alert').filter({ hasText: 'runs Droi' })).toHaveCount(0)
+  await expect(
+    page.getByRole('heading', { name: 'Test Mac runs Droi without its Kernel' }),
+  ).toBeVisible()
+  await fakeKernel.withKernel()
+  await expect(sessionList(page)).toBeVisible({ timeout: 15_000 })
 })
 
-test('coming back to the foreground re-checks the pairing', async ({ page, fakeDaemon }) => {
-  await pairPhone(page, fakeDaemon)
+test.describe('on a computer running another Droi', () => {
+  test.use({
+    scenario: {
+      version: '0.9.0',
+      sessions: [{ title: 'Deploy', cwd: 'acme-web', entries: [userEntry('ship it')] }],
+    },
+  })
+
+  test('a notice says so and can be dismissed', async ({ page, fakeKernel }) => {
+    await pairPhone(page, fakeKernel)
+    const notice = page.getByRole('alert').filter({ hasText: 'runs Droi 0.9.0' })
+    await expect(notice).toBeVisible()
+    await notice.getByRole('button', { name: 'Dismiss' }).click()
+    await expect(notice).toHaveCount(0)
+    const list = await openSessionList(page)
+    await expect(list.getByRole('button', { name: /Deploy/ })).toBeVisible()
+
+    await relaunch(page)
+    await expect(sessionList(page)).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: 'runs Droi' })).toHaveCount(0)
+  })
+})
+
+test('coming back to the foreground re-checks the pairing', async ({ page, fakeKernel }) => {
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Deploy/)
   await setAppVisible(page, false)
-  fakeDaemon.resetToken()
+  await fakeKernel.resetToken()
   await setAppVisible(page, true)
   await expect(page.getByRole('heading', { name: 'Test Mac is no longer paired' })).toBeVisible()
 })
 
 test('the background lets the socket go; the foreground reconnects to the same screen', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
-  const loads = () => fakeDaemon.requests.filter((r) => r.method === 'daemon.load_session').length
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Deploy/)
-  await expect.poll(loads).toBe(1)
+  await expect.poll(() => phoneWire.count('conversation.open')).toBe(1)
   const composer = page.getByRole('textbox', { name: 'Message' })
   await composer.fill('half a thought')
   const transcript = page.getByRole('log', { name: 'Transcript' })
 
   await setAppVisible(page, false)
-  await expect.poll(() => fakeDaemon.connectionCount).toBe(0)
+  await expect.poll(() => phoneWire.open()).toBe(0)
   await expect(transcript.getByRole('article', { name: 'You' })).toHaveText('ship it')
 
   await setAppVisible(page, true)
-  await expect.poll(() => fakeDaemon.connectionCount).toBe(1)
-  await expect.poll(loads).toBe(2)
+  await expect.poll(() => phoneWire.open()).toBe(1)
+  await expect.poll(() => phoneWire.count('conversation.open')).toBe(2)
   await expect(page.getByRole('status', { name: 'Reconnecting' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
-  await expect(transcript.getByRole('article', { name: 'You' })).toHaveText('ship it')
+  await expect(transcript.getByRole('article', { name: 'You' }).first()).toHaveText('ship it')
   await expect(composer).toHaveValue('half a thought')
-  // Notifications flow again on the new socket.
-  playTurn(fakeDaemon, deploy.sessionId, 'status?', ['All ', 'green.'])
+  // The Kernel's news flows again on the new socket.
+  await fakeKernel.turn('Deploy', 'status?', { chunks: ['All ', 'green.'] })
   await expect(transcript).toContainText('All green.')
   await openSessionList(page)
   await expect(page.getByRole('status', { name: 'Connection' })).toHaveText('Connected')
 })
 
-test('the New session page comes back with its Draft Session and its text', async ({
-  page,
-  fakeDaemon,
-}) => {
-  const drafts = () =>
-    fakeDaemon.requests.filter((r) => r.method === 'daemon.initialize_session').length
-  await pairPhone(page, fakeDaemon)
+test('the New session page comes back with its text', async ({ page, fakeKernel, phoneWire }) => {
+  await pairPhone(page, fakeKernel)
   await openNewSession(page)
-  await expect.poll(drafts).toBe(1)
   const composer = page.getByRole('textbox', { name: 'Message' })
   await composer.fill('build a thing')
 
   await setAppVisible(page, false)
-  await expect.poll(() => fakeDaemon.connectionCount).toBe(0)
+  await expect.poll(() => phoneWire.open()).toBe(0)
   await setAppVisible(page, true)
-  await expect.poll(drafts).toBe(2)
+  await expect.poll(() => phoneWire.open()).toBe(1)
   await expect(page.getByRole('region', { name: 'New session' })).toBeVisible()
   await expect(composer).toHaveValue('build a thing')
   await expect(page.getByRole('button', { name: 'Start session' })).toBeEnabled()
+  expect(phoneWire.count('conversation.create')).toBe(0)
 })
 
 test('a dropped socket reconnects with a banner and keeps the open Session', async ({
   page,
-  fakeDaemon,
+  fakeKernel,
+  phoneWire,
 }) => {
-  await pairPhone(page, fakeDaemon)
+  await pairPhone(page, fakeKernel)
   await pickSession(page, /Deploy/)
-  await expect
-    .poll(() => fakeDaemon.requests.filter((r) => r.method === 'daemon.load_session').length)
-    .toBe(1)
-  fakeDaemon.goDown()
+  await expect.poll(() => phoneWire.count('conversation.open')).toBe(1)
+  await fakeKernel.goDown()
   await expect(page.getByRole('status', { name: 'Reconnecting' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
-  fakeDaemon.comeBack()
+  await fakeKernel.comeBack()
   await expect(page.getByRole('status', { name: 'Reconnecting' })).toHaveCount(0, {
     timeout: 15_000,
   })
   await expect(page.getByRole('heading', { name: 'Deploy' })).toBeVisible()
-  // The Session is loaded again on the new socket.
-  await expect
-    .poll(() => fakeDaemon.requests.filter((r) => r.method === 'daemon.load_session').length)
-    .toBe(2)
+  // The Session is opened again on the new socket.
+  await expect.poll(() => phoneWire.count('conversation.open')).toBe(2)
 })

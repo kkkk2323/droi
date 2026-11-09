@@ -112,20 +112,29 @@ describe('visibleModels', () => {
 })
 
 describe('multipliers', () => {
-  it('keeps Factory’s multiplier, and none for a custom model', () => {
-    const base = {
-      displayName: 'm',
-      shortDisplayName: 'm',
-      modelProvider: 'anthropic',
-      supportedReasoningEfforts: [],
-      defaultReasoningEffort: 'none',
-    }
+  it('the Kernel’s models carry their provider and thinking levels, and no multiplier', () => {
     const choices = toModelChoices([
-      { ...base, id: 'opus', isCustom: false, tokenMultiplier: 1.6 },
-      { ...base, id: 'mine', isCustom: true, tokenMultiplier: 1 },
-      { ...base, id: 'unpriced', isCustom: false },
-    ] as unknown as Parameters<typeof toModelChoices>[0])
-    expect(choices.map((c) => c.multiplier)).toEqual([1.6, null, null])
+      { provider: 'factory', id: 'opus', name: 'Opus', thinking: ['off', 'high'] },
+      { provider: 'openai', id: 'gpt-5' },
+    ])
+    expect(choices).toEqual([
+      {
+        id: 'opus',
+        label: 'Opus',
+        reasoningEfforts: ['off', 'high'],
+        disabled: false,
+        provider: 'factory',
+        multiplier: null,
+      },
+      {
+        id: 'gpt-5',
+        label: 'gpt-5',
+        reasoningEfforts: [],
+        disabled: false,
+        provider: 'openai',
+        multiplier: null,
+      },
+    ])
   })
 
   it('formats like Factory', () => {

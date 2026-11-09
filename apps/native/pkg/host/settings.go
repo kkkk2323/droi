@@ -39,13 +39,19 @@ type Settings struct {
 	MagpieBaseURL      *string `json:"magpieBaseUrl"`
 	AppendSystemPrompt *string `json:"appendSystemPrompt"`
 	ScratchFolder      *string `json:"scratchFolder"`
-	MemoryEnabled      bool    `json:"memoryEnabled"`
+	// WorktreeDirectory is where the Host makes a Kernel conversation's worktrees; nil for WorktreeRoot's default.
+	WorktreeDirectory *string `json:"worktreeDirectory,omitempty"`
+	MemoryEnabled     bool    `json:"memoryEnabled"`
 	// MemoryModel writes Session Summaries; MemorySummaryModel keeps the
 	// Memory Summary, and is MemoryModel's when unset (ADR 0031).
 	MemoryModel        *string `json:"memoryModel"`
 	MemorySummaryModel *string `json:"memorySummaryModel,omitempty"`
-	PairingToken       string  `json:"pairingToken"`
-	ComputerID         string  `json:"computerId"`
+	// MemoryModelEffort and MemorySummaryModelEffort are those models' reasoning levels; "" for Memory's own (low
+	// for Session Summaries, medium for the Memory Summary). Each goes with its model: a new model starts from it.
+	MemoryModelEffort        string `json:"memoryModelEffort,omitempty"`
+	MemorySummaryModelEffort string `json:"memorySummaryModelEffort,omitempty"`
+	PairingToken             string `json:"pairingToken"`
+	ComputerID               string `json:"computerId"`
 	// RelayURL is the Relay Remote Access also meets phones at (ADR 0034),
 	// RelayKey its registration key, and RelayID how phones address this
 	// computer there.
@@ -61,6 +67,24 @@ type Settings struct {
 	// VisibleOrgsAdded are the organization ids Droi put in droid's
 	// sessionVisibleOrganizationIds, the ones it may take out again.
 	VisibleOrgsAdded []string `json:"visibleOrgsAdded,omitempty"`
+	// ConversationPolicies are what Kernel conversations have of their own approval policy, by conversation id
+	// (kernel_policy.go).
+	ConversationPolicies map[string]ConversationPolicy `json:"conversationPolicies,omitempty"`
+	// CodemodeMode is how the Kernel's codemode presents tools: kernel.CodemodeOnly, else kernel.CodemodeOn.
+	CodemodeMode string `json:"codemodeMode,omitempty"`
+	// CompactionModel is the Kernel model, by ModelKey, that writes every compaction's summary; "" for each
+	// conversation's own.
+	CompactionModel string `json:"compactionModel,omitempty"`
+	// CompactionThinking is the compaction model's thinking level; "" for the model's default. It goes with the
+	// model: a new model starts from its default.
+	CompactionThinking string `json:"compactionThinking,omitempty"`
+	// ModelContextWindows are the context windows set for the Kernel's models, in tokens, by ModelKey: each takes the
+	// place of the one its Model Source lists, which is also where the Kernel compacts. Replace the map, do not
+	// change it in place: Get's copies share it.
+	ModelContextWindows map[string]int `json:"modelContextWindows,omitempty"`
+	// SessionDefaults are what a new Kernel conversation starts with; nil until set or taken from droid's
+	// (KernelSessionDefaults).
+	SessionDefaults *SessionDefaults `json:"sessionDefaults,omitempty"`
 }
 
 // SettingsStore keeps Settings in a JSON file created mode 0600; like the

@@ -12,8 +12,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
-	"github.com/kkkk2323/droi/apps/native/internal/alerts"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // testHost is a Host in throwaway folders: no login, no API key, no
@@ -34,7 +34,11 @@ func oneSession() fakedaemon.Scenario {
 		Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}}}
 }
 
+// The Factory sign-in and accounts are the Daemon's: on the Kernel no Factory account runs a model (ADR 0044).
+const daemonAccount = "the Factory account is the Daemon's; on the Kernel the Model Sources run the models"
+
 func TestSignInPageUntilThereIsACredential(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h0 := testHost(t)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
 	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
@@ -52,6 +56,7 @@ func TestSignInPageUntilThereIsACredential(t *testing.T) {
 }
 
 func TestSignInPageKeepsSettingsReachable(t *testing.T) {
+	keepOnDaemon(t, daemonAccount)
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
 	h.until("the sign-in page", func() bool { return h.hasText("Sign in to Droi") })
 	h.click("Settings")
@@ -72,6 +77,7 @@ func TestStartingUpWaitsForTheFirstConnection(t *testing.T) {
 }
 
 func TestStartingUpSaysWhyDroidIsMissing(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	h0 := testHost(t)
 	h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-x") })
 	idle := controller.New(controller.Config{ResolveURL: h0.WaitForDaemonURL})
@@ -90,6 +96,7 @@ func TestStartingUpSaysWhyDroidIsMissing(t *testing.T) {
 }
 
 func TestStartingUpOffersToUpdateAnOldDroid(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a shell")
 	}
@@ -117,6 +124,7 @@ func TestStartingUpOffersToUpdateAnOldDroid(t *testing.T) {
 }
 
 func TestStartingUpSaysWhyItCannotConnect(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	h0 := testHost(t)
 	h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-x") })
 	rejected := controller.New(controller.Config{

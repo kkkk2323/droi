@@ -1,5 +1,5 @@
 // Settings, in the desktop's order: the Paired Computers, appearance, the
-// Session list, Session defaults, alerts, and the app's version and signature.
+// Session list, alerts, and the app's version and signature.
 import { showArchivedSessions, usePreference } from '@droi/daemon-layer/local-preference'
 import { TEXT_SIZE_LABELS, TEXT_SIZES, textSize } from '@droi/daemon-layer/text-size'
 import { useQuery } from '@tanstack/react-query'
@@ -7,7 +7,7 @@ import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import { ScrollView, StyleSheet } from 'react-native'
 import { alertSwitches } from '../alerts/alert-preferences'
-import { pairedComputers, selectedComputer, selectedComputerId } from '../computers/store'
+import { pairedComputers } from '../computers/store'
 import { daysLeft } from '../lib/signature'
 import { signatureExpiry } from '../platform/signature'
 import { ListChoices, ListRow, ListSection, ListSwitch } from '../ui/list'
@@ -26,8 +26,6 @@ export function SettingsScreen() {
   const colors = useColors()
   const router = useRouter()
   const [computers] = usePreference(pairedComputers)
-  const [selectedId] = usePreference(selectedComputerId)
-  const computer = selectedComputer(computers, selectedId)
   const [showArchived, setShowArchived] = usePreference(showArchivedSessions)
   const [alerts, setAlerts] = usePreference(alertSwitches)
   const [theme, setTheme] = usePreference(themeChoice)
@@ -63,18 +61,6 @@ export function SettingsScreen() {
           onChange={setShowArchived}
         />
       </ListSection>
-      {computer ? (
-        <ListSection
-          title="New sessions"
-          footer="Model, autonomy, spec mode, compaction and subagents for new Sessions on this computer."
-        >
-          <ListRow
-            label="Session defaults"
-            value={computer.name}
-            onPress={() => router.push('/session-defaults')}
-          />
-        </ListSection>
-      ) : null}
       <ListSection
         title="Alerts"
         footer="Plays while the app is open for Sessions not currently on screen. Sounds respect Silent Mode."

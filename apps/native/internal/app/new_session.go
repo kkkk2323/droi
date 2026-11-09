@@ -14,19 +14,19 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/loops"
-	"github.com/kkkk2323/droi/apps/native/internal/slash"
-	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/drafts"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/loops"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/slash"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/drafts"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // newSessionState is the New session page's: the Workspace picked, the
@@ -133,6 +133,18 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 			autonomy = dv.AutonomyLevel
 		}
 	}
+	// On Kernel the picker offers Kernel's models only: the Daemon's are not ones a conversation can run, and
+	// with none of its own the page says so rather than offer them.
+	noModels := false
+	if a.onKernel() {
+		choices = a.kernelChoices()
+		noModels = a.kernel.noModels()
+		if len(choices) == 0 {
+			modelID, effort = "", ""
+		} else if !slices.ContainsFunc(choices, func(m models.Choice) bool { return m.ID == modelID }) {
+			modelID, effort = choices[0].ID, ""
+		}
+	}
 	shownMode, requestedMode := defaults.NewSessionToolMode(s.toolMode, defaults.DefaultToolMode(a.prefs), "")
 	s.mu.Lock()
 	creating := s.creating
@@ -172,7 +184,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 						case scratch:
 							h(L("What should we work on?")).Role(ui.RoleHeading)
 						default:
-							h(L("Where should Droid work?")).Role(ui.RoleHeading)
+							h(L("Where should Droi work?")).Role(ui.RoleHeading)
 							if len(listed) > 0 || status.Connected {
 								a.workspaceMenu(c, recent, "", L("Choose a workspace"))
 							}
@@ -180,6 +192,8 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 					})
 					if s.err != "" {
 						k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
+					} else if noModels {
+						k.Text(c, a.noKernelModels(), 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 					}
 				})
 				col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).PaddingX(k.Px(32)).Shrink(0)
@@ -433,13 +447,14 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode, fromDaemon []slash.Item) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
-	enabled := workspace != "" && !creating
+	// On Kernel a conversation runs only a model the Kernel has.
+	enabled := workspace != "" && !creating && (!a.onKernel() || len(choices) > 0)
 	interaction := s.interaction
 	if dv := a.sessionDefaults(); interaction == "" && dv != nil {
 		interaction = dv.InteractionMode
 	}
 	s.takeEdit(&s.text)
-	picked, rest, hasPick := s.splitTag(s.text, s.menu.items(s.text, slash.Starters, fromDaemon))
+	picked, rest, hasPick := s.splitTag(s.text, s.menu.items(s.text, a.slashBuiltins(slash.Starters), fromDaemon))
 	accept := func(item slash.Item) {
 		s.text = "/" + item.Name + " "
 		s.caretToEnd = true
@@ -600,11 +615,14 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 								}
 							}
 						}
-					}, func(e string) { s.effort = e }, &pickerToolMode{Value: shownMode, OnChange: func(m defaults.ToolMode) { s.toolMode = m }})
-					if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
-						s.interaction = string(protocol.DroidInteractionModeSpec)
-						if spec {
-							s.interaction = string(protocol.DroidInteractionModeAuto)
+					}, func(e string) { s.effort = e }, a.pickerTools(shownMode, func(m defaults.ToolMode) { s.toolMode = m }))
+					// Spec mode is the Daemon's; Kernel's plan mode is another thing, still to come.
+					if !a.onKernel() {
+						if spec := interaction == string(protocol.DroidInteractionModeSpec); specToggle(c, k, spec) {
+							s.interaction = string(protocol.DroidInteractionModeSpec)
+							if spec {
+								s.interaction = string(protocol.DroidInteractionModeAuto)
+							}
 						}
 					}
 					opts := make([]kit.Option, len(autonomyLevels))
@@ -648,12 +666,23 @@ func (a *App) startSession(workspace string, p protocol.InitializeSessionParams,
 	s.creating = true
 	s.mu.Unlock()
 	a.redraw()
+	id := ""
+	if c, err := a.kernel.client(); err == nil {
+		// A draft is the Daemon's, for its commands and skills: the conversation is Kernel's.
+		a.dropDraft()
+		if id, err = a.createConversation(c, workspace, p); err != nil {
+			fail(err.Error())
+			return
+		}
+	}
 	cl, err := a.ctl.Client()
-	if err != nil {
+	if id == "" && err != nil {
 		fail(err.Error())
 		return
 	}
-	id := a.takeDraft(workspace, p)
+	if id == "" {
+		id = a.takeDraft(workspace, p)
+	}
 	if id == "" {
 		var tags []protocol.SessionTag
 		if workspace == scratchPick {

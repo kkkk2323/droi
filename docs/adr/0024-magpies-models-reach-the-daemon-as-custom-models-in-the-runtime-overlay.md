@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0038
 ---
 
 # Magpie's models reach the Daemon as Custom Models in the Runtime Overlay
+
+_There is no Runtime Overlay and no `customModels`: a model that is not Factory's is a pi-ai provider now, and Magpie is registered as an OpenAI-compatible one whose model list is fetched (ADR 0038). One picker holding both stands._
 
 Magpie ([yetone/magpie](https://github.com/yetone/magpie)) is a local gateway on `127.0.0.1:3425` that runs coding agents on the models of many providers behind one endpoint: it speaks OpenAI Chat Completions and Responses, Anthropic Messages and Gemini, translates between them, and answers the model list at `/v1/models`. Droi could not use it. The Daemon calls Factory's API, which no gateway speaks unless it speaks Factory's protocol, and `FACTORY_API_BASE_URL` only moves that traffic (the droid-proxy case); pointing it at Magpie fails. A Magpie model was therefore invisible to every Droi Session, and to the model picker.
 

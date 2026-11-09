@@ -53,6 +53,10 @@ computer already runs a Host there. In a container, run it on the host's network
 (`docker run --network host ... /opt/droi/droi host`) so the link names an address other
 computers reach, or use a Relay (below).
 
+**The Kernel.** The archive carries the Kernel (`kernel`, with its notices in `kernel-licenses/`) beside
+`droi`. With `DROI_KERNEL=1` in its environment, `droi host` runs it as the desktop app does, for the
+Automations it runs; keep the two files together.
+
 Its settings (`settings.json`, mode 0600, with the Pairing Token), Memory and logs are in
 `$XDG_CONFIG_HOME/droi` (`~/.config/droi` by default). Scratch folders a Client trashes go to
 the freedesktop Trash in `$XDG_DATA_HOME/Trash`.

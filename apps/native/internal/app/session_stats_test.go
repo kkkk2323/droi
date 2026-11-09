@@ -17,6 +17,7 @@ func TestSpeedMeterShowsSavedStats(t *testing.T) {
 	if err := os.WriteFile(file, []byte(saved), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	keepOnDaemon(t, untilCallTiming)
 	h := newHarnessWith(t, fakedaemon.Scenario{
 		Sessions: []fakedaemon.SessionSpec{{Title: "Fast", Cwd: "/Users/dev/acme-web",
 			Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}, Extra: map[string]any{"sessionId": "s-speed"}}},

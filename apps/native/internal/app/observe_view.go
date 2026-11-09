@@ -5,10 +5,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
 
 // observeRefresh is how often the Observe page reads what the request log

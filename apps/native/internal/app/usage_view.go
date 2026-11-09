@@ -7,12 +7,12 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 // The Usage tab's pages, in the order of its segmented control.
@@ -101,10 +101,11 @@ type usageCard struct {
 	view       llmusage.KeyCardView
 }
 
-// usageTabShown: Settings has the Usage tab once Droi's droid runs the
-// Daemon, since only then does the Key Pool serve its requests.
+// usageTabShown: Settings has the Usage tab when the Key Pool serves model
+// requests: always on Kernel, whose models go through it, and on the Daemon
+// once Droi's droid runs it.
 func (a *App) usageTabShown() bool {
-	return a.cfg.Host != nil && !a.settingHidden("usage") && a.cfg.Host.DroiDroidState().Enabled
+	return a.cfg.Host != nil && !a.settingHidden("usage") && (a.onKernel() || a.cfg.Host.DroiDroidState().Enabled)
 }
 
 func (a *App) keyPool() *keypool.Pool {
@@ -382,7 +383,7 @@ func openingNote(st keypool.State) string {
 	}
 	note := L("%d of %d started today · %d waiting", int(o.OpenedToday), o.DailyOpens, len(o.Queue))
 	if st.ScheduledOpening && !o.Scheduled && len(o.Queue) > 0 {
-		note = L("%s · starts once droid sends a Haiku request", note)
+		note = L("%s · starts with the next Haiku request", note)
 	}
 	return note
 }

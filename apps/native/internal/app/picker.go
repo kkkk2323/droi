@@ -3,12 +3,13 @@ package app
 import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
-	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/models"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/models"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // autonomyLevels are the levels the composer offers, in order.
@@ -20,14 +21,26 @@ type pickerState = settingsview.PickerState
 // pickerToolMode is the picker's Tools row, for a Session about to start.
 type pickerToolMode = settingsview.ToolModeChoice
 
+// pickerTools is the picker's Tools row for the Daemon's Script or Direct. The Kernel has none: its codemode mode is
+// the Host's, in Settings → Session defaults.
+func (a *App) pickerTools(value defaults.ToolMode, onChange func(defaults.ToolMode)) *pickerToolMode {
+	if a.onKernel() {
+		return nil
+	}
+	return &pickerToolMode{Value: value, OnChange: onChange}
+}
+
 // settingsBar is the SessionSettingsBar: the model with its reasoning
 // effort, and the autonomy level.
-func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
+func (v *sessionView) settingsBar(c *ui.Context, s *sessionview.Snapshot) {
 	a := v.a
 	cs := &v.composer
 	set := s.Settings()
 	choices := models.ToChoices(s.AvailableModels())
 	update := func(p protocol.UpdateSessionSettingsParams) {
+		if v.Configure(p.ModelID, string(p.ReasoningEffort)) {
+			return
+		}
 		p.SessionID = v.id
 		go func() {
 			cl, err := a.ctl.Client()
@@ -48,6 +61,11 @@ func (v *sessionView) settingsBar(c *ui.Context, s *session.Session) {
 		func(e string) {
 			update(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(e)})
 		}, nil)
+	if s.State != nil {
+		// Spec mode is the Daemon's; Kernel's plan mode is another thing, still to come.
+		v.kernelAutonomy(c, s.State.ID())
+		return
+	}
 	// A Mission's Sessions have modes of their own.
 	if mode := set.InteractionMode; mode == "" || mode == protocol.DroidInteractionModeAuto || mode == protocol.DroidInteractionModeSpec {
 		spec := mode == protocol.DroidInteractionModeSpec

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
 )
 
 func TestTheScriptModelListIsDroidsCacheLessWhatSettingsAdded(t *testing.T) {

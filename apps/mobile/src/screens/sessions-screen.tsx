@@ -3,9 +3,9 @@
 // that lands here reopens the Session the app last showed, pushed over the
 // list so going back lands here.
 import { archiveConversation, unarchiveConversation } from '@droi/daemon-layer/archive'
-import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
+import { useKernelConnection } from '@droi/daemon-layer/connection-context'
+import { conversationIdOf } from '@droi/daemon-layer/kernel-wire'
 import { usePreference } from '@droi/daemon-layer/local-preference'
-import { runningSubagents } from '@droi/daemon-layer/subagents'
 import { Stack, useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { Settings, SquarePen } from 'lucide-react-native'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -31,10 +31,10 @@ function Sessions({
 }) {
   const colors = useColors()
   const router = useRouter()
-  const connection = useDaemonConnection()
+  const connection = useKernelConnection()
   const [computers] = usePreference(pairedComputers)
   const [switching, setSwitching] = useState(false)
-  const { computer, sessions, unread, runs } = connected
+  const { computer, sessions, unread } = connected
   useReopenLastSession(computer.id, (id) => connected.find(id) !== null)
   const computerTitle = (
     <ComputerTitle
@@ -72,7 +72,6 @@ function Sessions({
       <ConnectionGate computer={computer} keepWhenUnreachable>
         <SessionList
           sessions={sessions}
-          subagentsRunning={runningSubagents(sessions.sessions, runs)}
           unread={unread}
           onSelect={connected.open}
           onNewSessionIn={(workspace) =>
@@ -84,10 +83,12 @@ function Sessions({
           }
           onArchiveToggle={(session) => {
             const change = session.archivedAt ? unarchiveConversation : archiveConversation
-            void change(connection, sessions.sessions, session).catch(console.error)
+            void change(connection, session).catch(console.error)
           }}
           onRename={(session, title) =>
-            void connection.controller.renameSession(session.sessionId, title).catch(console.error)
+            void connection
+              .call('index.update', { id: conversationIdOf(session.sessionId), title })
+              .catch(console.error)
           }
         />
       </ConnectionGate>

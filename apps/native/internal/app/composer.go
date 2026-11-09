@@ -1,9 +1,13 @@
 package app
 
 import (
+	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"log"
 	"math"
 	"path/filepath"
 	"regexp"
@@ -20,14 +24,16 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
-	"github.com/kkkk2323/droi/apps/native/internal/slash"
-	"github.com/kkkk2323/droi/apps/native/pkg/attachments"
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/pasted"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/slash"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/attachments"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/compaction"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/pasted"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // compactCommand is `/compact [instructions]`, which the composer runs
@@ -52,17 +58,24 @@ type composerState struct {
 	mu      sync.Mutex
 	budget  *protocol.GetContextBreakdownResult
 	budgetM string // the model the budget is for
-	slash   []slash.Item
-	slashAt time.Time
-	skills  []protocol.SkillInfo
-	servers []protocol.MCPServerStatusInfo
-	toolsAt time.Time
+	// usageRead, usageFor and usageDoc: conversation.usage was asked for, about the conversation as they say.
+	usageRead bool
+	usageFor  usageFor
+	usageDoc  json.RawMessage
+	// usageCtx is the context the meter drew last, and usageUsed and usageLimit its figures.
+	usageCtx              json.RawMessage
+	usageUsed, usageLimit float64
+	slash                 []slash.Item
+	slashAt               time.Time
+	skills                []protocol.SkillInfo
+	servers               []protocol.MCPServerStatusInfo
+	toolsAt               time.Time
 }
 
 // composerArea is everything under the transcript: the shelf, the
 // composer or the Prompts standing in for it (queued question sets above
 // it), and the footer row.
-func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace string, loaded bool) {
+func (v *sessionView) composerArea(c *ui.Context, s *sessionview.Snapshot, workspace string, loaded bool) {
 	a := v.a
 	k := a.kit
 	if s == nil {
@@ -72,8 +85,15 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 		v.takePending(s)
 	}
 	perms, asks := a.ctl.PendingPermissions(v.id), a.ctl.PendingAskUsers(v.id)
-	waits := sessionview.WaitsOnUser(perms, asks)
-	running := s.WorkingState() != protocol.DroidWorkingStateIdle || v.Compacting()
+	var approvals, blocking, queued []kernel.PendingRequest
+	if s.State != nil {
+		approvals = s.State.Approvals()
+		questions := s.State.Asks()
+		blocking, queued = sessionview.BlockingAsks(questions), sessionview.QueuedAsks(questions)
+	}
+	prompts := sessionview.WaitsOnUser(perms, asks)
+	waits := prompts || len(approvals) > 0 || len(blocking) > 0
+	running := s.Running || v.Compacting()
 	if running && !waits && c.Shortcut(0, ui.KeyEscape) {
 		v.Interrupt()
 	}
@@ -83,12 +103,23 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 		if !waits && len(asks) > 0 {
 			ui.Box(c.Key("queued-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.Prompts(c, nil, asks) })
 		}
+		if !waits && len(queued) > 0 {
+			ui.Box(c.Key("queued-kernel-asks")).Margin(0, 0, k.Px(8), 0).Children(func() { v.KernelAskCards(c, queued) })
+		}
 		if v.ws != nil && !v.ws.agentShown {
 			a.workstreamBanners(c, v.ws)
 		}
 		v.shelf(c, s)
 		if waits {
-			v.Prompts(c, perms, asks)
+			if len(approvals) > 0 {
+				v.ApprovalCards(c, approvals)
+			}
+			if len(blocking)+len(queued) > 0 {
+				v.KernelAskCards(c, append(blocking, queued...))
+			}
+			if prompts {
+				v.Prompts(c, perms, asks)
+			}
 			// The prompt takes the focus; the composer gets it back after.
 			v.focused = false
 		} else {
@@ -100,7 +131,7 @@ func (v *sessionView) composerArea(c *ui.Context, s *session.Session, workspace 
 
 // takePending sends the message typed on the New session page once the
 // Session can take it.
-func (v *sessionView) takePending(s *session.Session) {
+func (v *sessionView) takePending(s *sessionview.Snapshot) {
 	if p, ok := v.a.pending.Take(v.id); ok {
 		v.send(s, p.Text, p.Images, "")
 	}
@@ -109,7 +140,7 @@ func (v *sessionView) takePending(s *session.Session) {
 // send sends a message, or queues it with placement while a turn runs;
 // `/compact` and `/loop` it runs itself. It reports whether it took the
 // message: a `/loop` it cannot run stays in the composer.
-func (v *sessionView) send(s *session.Session, text string, images []attachments.Image, placement protocol.QueuePlacement) bool {
+func (v *sessionView) send(s *sessionview.Snapshot, text string, images []attachments.Image, placement protocol.QueuePlacement) bool {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" && len(images) == 0 {
 		return false
@@ -118,7 +149,7 @@ func (v *sessionView) send(s *session.Session, text string, images []attachments
 		go v.compact(m[1])
 		return true
 	}
-	if m := loopCommand.FindStringSubmatch(trimmed); m != nil && len(images) == 0 {
+	if m := loopCommand.FindStringSubmatch(trimmed); m != nil && len(images) == 0 && !v.a.kernelMode() {
 		return v.loop(s, m[1])
 	}
 	v.Send(text, images, placement)
@@ -129,6 +160,31 @@ func (v *sessionView) send(s *session.Session, text string, images []attachments
 // to a child Session, which this Client tags as the continuation and shows.
 func (v *sessionView) compact(instructions string) {
 	a := v.a
+	// The Kernel compacts in place, as a task of its own. The window waits for it, so the sidebar and the composer say
+	// it runs, and the footer says how it ended: one that found nothing to summarize is said, not silence.
+	if conv, ok := a.kernelID(v.id); ok && a.onKernel() {
+		v.a.cfg.Update(func() { v.SetCompacting(true) })
+		a.compactions.Start(v.id)
+		defer a.cfg.Update(func() { v.SetCompacting(false) })
+		c, err := a.kernel.client()
+		var res kernel.CompactResult
+		if err == nil {
+			res, err = c.Compact(a.ctx, kernel.CompactParams{ID: conv, Instructions: strings.TrimSpace(instructions), Wait: true})
+		}
+		switch {
+		case err == nil && res.Outcome == kernel.CompactFailed:
+			err = errors.New(L("The compaction failed: %s", cmp.Or(res.Error, L("no reason given"))))
+		case err == nil && res.Outcome == kernel.CompactAborted:
+			err = errors.New(L("The compaction was stopped."))
+		}
+		if err != nil {
+			a.compactions.Fail(v.id)
+			v.Fail(err)
+			return
+		}
+		a.compactions.FinishDone(v.id, v.id, compaction.Done{FinishedAt: time.Now().UnixMilli(), Kernel: true, Nothing: res.Outcome == kernel.CompactNothing})
+		return
+	}
 	v.a.cfg.Update(func() { v.SetCompacting(true) })
 	a.compactions.Start(v.id)
 	defer a.cfg.Update(func() { v.SetCompacting(false) })
@@ -244,7 +300,7 @@ func (f *tagField) splitTag(text string, items []slash.Item) (picked slash.Item,
 // settings and the send button in its footer row. Enter sends,
 // Shift+Enter breaks the line; while a turn runs Enter queues and Cmd+Enter
 // hands the message to the running turn.
-func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loaded bool) {
+func (v *sessionView) inputBar(c *ui.Context, s *sessionview.Snapshot, running, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	cs := &v.composer
@@ -252,7 +308,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 		cs.menu.highlight = 0
 		v.saveDraft()
 	}
-	items := cs.menu.items(cs.text, slash.Builtins, v.slashItems(loaded))
+	items := cs.menu.items(cs.text, a.slashBuiltins(slash.Builtins), v.slashItems(loaded))
 	picked, rest, hasPick := cs.splitTag(cs.text, items)
 	ready := loaded || v.Ready()
 	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images)+len(cs.pasted) > 0)
@@ -692,7 +748,7 @@ func (a *App) suggestionList(c *ui.Context, card ui.Element, items []slash.Item,
 
 // footer is the row under the composer: the Workspace, a finished
 // `/compact`, the model's speed and the context meter.
-func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string, loaded bool) {
+func (v *sessionView) footer(c *ui.Context, s *sessionview.Snapshot, workspace string, loaded bool) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Height(k.Px(28)).Gap(k.Px(12)).PaddingX(k.Px(8)).Children(func() {
@@ -702,15 +758,27 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 				k.Text(c, workspaceName(workspace), 12, 16).TextColor(t.MutedForeground).SingleLine()
 			})
 		}
-		if done, ok := a.compactions.Snapshot().Finished[v.id]; ok && done.NoticeShown(time.Now().UnixMilli()) {
+		// A compaction on the Kernel that summarised is a row of the transcript, which says it once: the footer says only
+		// what that row cannot, that there was nothing to compact.
+		if done, ok := a.compactions.Snapshot().Finished[v.id]; ok && done.NoticeShown(time.Now().UnixMilli()) && (!done.Kernel || done.Nothing) {
 			c.After(time.Second)
 			ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(4)).MinWidth(0).Children(func() {
-				k.Icon(c, "check", 12, t.Success)
 				compacted := L("Compacted, %d messages summarised", done.RemovedCount)
-				if done.RemovedCount == 1 {
+				switch {
+				case done.Nothing:
+					compacted = L("Nothing to compact yet: the newest 20,000 tokens are kept as they are")
+				case done.Kernel:
+					compacted = L("Compacted, older messages summarised")
+				case done.RemovedCount == 1:
 					compacted = L("Compacted, %d message summarised", done.RemovedCount)
 				}
-				k.Text(c, compacted, 12, 16).TextColor(t.Success).SingleLine()
+				color := t.Success
+				icon := "check"
+				if done.Nothing {
+					color, icon = t.MutedForeground, "info"
+				}
+				k.Icon(c, icon, 12, color)
+				k.Text(c, compacted, 12, 16).TextColor(color).SingleLine()
 			})
 		}
 		ui.Spacer(c)
@@ -727,9 +795,12 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 // the last model call sent, over the budget of the model's breakdown.
 // The breakdown is read only while loaded: a call about a Session the
 // Daemon cleaned up loads it again.
-func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded bool) {
+func (v *sessionView) contextMeter(c *ui.Context, s *sessionview.Snapshot, loaded bool) {
 	a := v.a
-	k, t := a.kit, a.kit.T
+	if conv, ok := a.kernelID(v.id); ok && a.onKernel() {
+		v.kernelContextMeter(c, conv, s.Settings().ModelID)
+		return
+	}
 	cs := &v.composer
 	model := s.Settings().ModelID
 	cs.mu.Lock()
@@ -759,11 +830,80 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded boo
 	if last := s.Usage().LastCall; last != nil {
 		used = last.InputTokens + last.CacheReadTokens
 	}
-	ratio := 0.0
-	if budget.ContextBudget > 0 {
-		ratio = math.Min(1, used/budget.ContextBudget)
+	v.drawContextMeter(c, used, budget.ContextBudget)
+}
+
+// usageFor is what a conversation.usage answer depends on, besides pi.usage: the model, whose window is the limit;
+// the connection, since a reconnect may have missed what changed; and, while the conversation rests, its newest
+// entry, so a compaction or an entry written without a model call is counted.
+type usageFor struct {
+	model   string
+	gen     int64
+	settled kernel.ID
+}
+
+// kernelContextMeter is the meter of a Kernel conversation: conversation.usage's context, how much of model's
+// window the conversation fills now, compactions included. Kernel computes it from the conversation's current model
+// and messages, so it is read again when either moves: after each model call, which pi.usage counts, on another
+// model, on a new connection, and on what the conversation holds once it rests.
+func (v *sessionView) kernelContextMeter(c *ui.Context, conv kernel.ID, model string) {
+	a := v.a
+	state := a.sessions.State(conv)
+	if state == nil {
+		return
 	}
-	percent := int(math.Round(ratio * 100))
+	key := usageFor{model: model, gen: a.sessions.Generation()}
+	if !state.Busy() {
+		if entries := state.Entries(); len(entries) > 0 {
+			key.settled = entries[len(entries)-1].ID
+		}
+	}
+	doc := state.UsageDocument()
+	cs := &v.composer
+	cs.mu.Lock()
+	if !cs.usageRead || cs.usageFor != key || !bytes.Equal(cs.usageDoc, doc) {
+		cs.usageRead, cs.usageFor, cs.usageDoc = true, key, doc
+		go func() {
+			u, err := a.kernel.Usage(a.ctx, conv)
+			if err == nil && a.sessions.ApplyUsage(key.gen, conv, u) {
+				a.redraw()
+			}
+		}()
+	}
+	if window := state.UsageContext(); cs.usageCtx == nil || !bytes.Equal(cs.usageCtx, window) {
+		var figures struct {
+			Used  float64 `json:"used"`
+			Limit float64 `json:"limit"`
+		}
+		if json.Unmarshal(window, &figures) != nil {
+			figures.Used, figures.Limit = 0, 0
+		}
+		cs.usageCtx, cs.usageUsed, cs.usageLimit = window, figures.Used, figures.Limit
+	}
+	used, limit := cs.usageUsed, cs.usageLimit
+	cs.mu.Unlock()
+	if limit <= 0 {
+		return
+	}
+	v.drawContextMeter(c, used, limit)
+}
+
+// contextLabel is the meter's figures: used of budget tokens, and how full that is.
+func contextLabel(used, budget float64) string {
+	ratio := 0.0
+	if budget > 0 {
+		ratio = math.Min(1, used/budget)
+	}
+	return formatTokens(used) + " / " + formatTokens(budget) + " · " + strconv.Itoa(int(math.Round(ratio*100))) + "%"
+}
+
+// drawContextMeter is the meter: used of budget tokens, as a ring and figures.
+func (v *sessionView) drawContextMeter(c *ui.Context, used, budget float64) {
+	k, t := v.a.kit, v.a.kit.T
+	ratio := 0.0
+	if budget > 0 {
+		ratio = math.Min(1, used/budget)
+	}
 	color := t.Foreground.Alpha(0.6)
 	switch {
 	case ratio > 0.9:
@@ -771,8 +911,8 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded boo
 	case ratio > 0.7:
 		color = t.Attention
 	}
-	label := formatTokens(used) + " / " + formatTokens(budget.ContextBudget) + " · " + strconv.Itoa(percent) + "%"
-	ui.Row(c).Role(ui.RoleMeter).Label(L("Context used")).Tooltip(L("%s / %s tokens", groupDigits(used), groupDigits(budget.ContextBudget))).
+	label := contextLabel(used, budget)
+	ui.Row(c).Role(ui.RoleMeter).Label(L("Context used")).Tooltip(L("%s / %s tokens", groupDigits(used), groupDigits(budget))).
 		Gap(k.Px(6)).Shrink(0).Children(func() {
 		ring := ui.Box(c).Size(k.Px(14), k.Px(14))
 		ring.Draw(func(p *ui.Painter, r ui.Rect) {
@@ -788,21 +928,31 @@ func (v *sessionView) contextMeter(c *ui.Context, s *session.Session, loaded boo
 // it measured of each call; without, what the Session's notifications show:
 // that call's first token and output, and the Session's means and time in
 // the model and in tools.
-func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
+func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 	k, t := v.a.kit, v.a.kit.T
 	st := s.Stats()
 	calls, live, measured := v.a.modelCalls(v.id)
-	if (st.Calls == 0 || st.Last == nil) && !measured {
+	now := v.a.cfg.Now()
+	// On the Kernel, the answer streaming now as this window sees it; the Key Pool's figure wins where it has one.
+	var kernelRate float64
+	var kernelStreaming bool
+	if s.State != nil {
+		kernelRate, kernelStreaming = s.State.LiveRate(now)
+	}
+	if (st.Calls == 0 || st.Last == nil) && !measured && kernelRate == 0 {
+		v.logNoSpeed(s, st, measured)
 		return
 	}
-	now := v.a.cfg.Now()
-	if live != nil {
+	v.speedWhy = ""
+	if live != nil || kernelStreaming {
 		c.After(liveRefresh)
 	}
 	rate := st.TokensPerSecond()
 	switch {
 	case liveRate(live, now) > 0:
 		rate = liveRate(live, now)
+	case kernelRate > 0:
+		rate = kernelRate
 	case calls.TokensPerSecond() > 0:
 		rate = calls.TokensPerSecond()
 	}
@@ -823,8 +973,14 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 	if measured {
 		sections = speedSections(calls, live, st, now)
 	} else {
+		if kernelRate > 0 {
+			sections = append(sections, speedSection{L("Now"), []speedRow{{L("Speed"), "≈ " + formatRate(kernelRate) + " tok/s"}}})
+		}
+		if st.Last == nil {
+			st.Last = &session.CallStats{}
+		}
 		last := *st.Last
-		sections = []speedSection{
+		sections = append(sections, []speedSection{
 			{L("Last model call"), []speedRow{
 				{L("First token after"), formatSeconds(last.TTFTMs)},
 				{L("Speed"), formatRate(last.TokensPerSecond()) + " tok/s"},
@@ -837,7 +993,7 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 				{L("Time in the model"), formatSpan(st.ModelMs)},
 				{L("Time in tools"), formatSpan(st.ToolMs)},
 			}},
-		}
+		}...)
 	}
 	ui.PopoverBase(c, b, &v.speedOpen, func(p ui.Element) {
 		p.AttachTo(b, ui.AnchorTopRight, ui.AnchorBottomRight).Margin(0, 0, k.Px(6), 0).
@@ -871,6 +1027,26 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 			}
 		})
 	})
+}
+
+// logNoSpeed writes to the window's log why a Kernel conversation shows no speed under its composer, once for each
+// reason: the figure is drawn from the state's entries, and a window that shows none where the entries say there
+// is one needs the state's side of the story.
+func (v *sessionView) logNoSpeed(s *sessionview.Snapshot, st session.Stats, measured bool) {
+	conv, onKernel := v.a.kernelID(v.id)
+	if !onKernel {
+		return
+	}
+	why := "no state"
+	if s.State != nil {
+		why = s.State.SpeedReport()
+	}
+	why = fmt.Sprintf("calls %d, last %t, measured %t, session %t, %s", st.Calls, st.Last != nil, measured, s.Session != nil, why)
+	if why == v.speedWhy {
+		return
+	}
+	v.speedWhy = why
+	log.Printf("droi: speed: conversation %d (%s) shows no speed: %s", conv, v.id, why)
 }
 
 // formatSeconds is a latency: 0.8s, 12s; – when unknown.
@@ -920,7 +1096,7 @@ func groupDigits(f float64) string {
 // shelf is the ComposerShelf: the Session's loops, the task list under
 // way and the messages the Daemon holds, tucked against the composer's top
 // edge.
-func (v *sessionView) shelf(c *ui.Context, s *session.Session) {
+func (v *sessionView) shelf(c *ui.Context, s *sessionview.Snapshot) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	todos := s.Todos()
@@ -1081,7 +1257,7 @@ func isSteering(q session.QueuedMessage) bool {
 
 // queuedList is the messages waiting for the running turn: up to two as
 // a list, more folded behind the one that goes out first.
-func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []session.QueuedMessage) {
+func (v *sessionView) queuedList(c *ui.Context, s *sessionview.Snapshot, queued []session.QueuedMessage) {
 	a := v.a
 	k, t := a.kit, a.kit.T
 	icon := func(q session.QueuedMessage) {
@@ -1095,27 +1271,15 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 		}
 	}
 	remove := func(q session.QueuedMessage) {
-		if !q.Kind.DaemonBacked() {
-			s.ClearQueuedMessage(q.RequestID)
-			return
-		}
 		go func() {
-			cl, err := a.ctl.Client()
-			if err == nil {
-				raw, _ := json.Marshal(map[string]any{"sessionId": v.id, "requestId": q.RequestID, "action": "delete"})
-				_, err = cl.ResolveQueuedUserMessage(a.ctx, raw)
-			}
-			if err != nil {
+			if err := v.Withdraw(q); err != nil {
 				v.Fail(err)
-				return
 			}
-			// The Daemon sends no notification for a delete; the Client drops it.
-			s.ClearQueuedMessage(q.RequestID)
 		}()
 	}
 	// edit takes the message out of the queue and puts it back in the
-	// composer. One the Daemon holds comes back only once the Daemon has
-	// deleted it: had it gone out already, it would be sent twice.
+	// composer. One the Daemon or Kernel holds comes back only once it has
+	// been withdrawn there: had it gone out already, it would be sent twice.
 	edit := func(q session.QueuedMessage) {
 		text, images := queuedContent(q)
 		text, texts := pasted.Split(text)
@@ -1130,22 +1294,11 @@ func (v *sessionView) queuedList(c *ui.Context, s *session.Session, queued []ses
 			v.focused = false
 			v.saveDraft()
 		}
-		if !q.Kind.DaemonBacked() {
-			s.ClearQueuedMessage(q.RequestID)
-			restore()
-			return
-		}
 		go func() {
-			cl, err := a.ctl.Client()
-			if err == nil {
-				raw, _ := json.Marshal(map[string]any{"sessionId": v.id, "requestId": q.RequestID, "action": "delete"})
-				_, err = cl.ResolveQueuedUserMessage(a.ctx, raw)
-			}
-			if err != nil {
+			if err := v.Withdraw(q); err != nil {
 				v.Fail(err)
 				return
 			}
-			s.ClearQueuedMessage(q.RequestID)
 			a.cfg.Update(restore)
 		}()
 	}

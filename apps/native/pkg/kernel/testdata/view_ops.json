@@ -1,0 +1,3092 @@
+[
+  {
+    "name": "append streamed text",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      ["a", ["docs", "pi.live", "generation", "message", "content", 0, "text"], "lo, 世界 👋"]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello, 世界 👋"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "push an entry",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      [
+        "p",
+        ["entries"],
+        3,
+        0,
+        [
+          {
+            "id": 4,
+            "conversationId": 7,
+            "kind": "pi.assistant",
+            "model": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "four"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "usage": {
+                "input": 1794203798247,
+                "output": 2
+              }
+            }
+          }
+        ]
+      ]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 4,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "four"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "slide the window",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      ["p", ["entries"], 0, 1, []],
+      [
+        "p",
+        ["entries"],
+        2,
+        0,
+        [
+          {
+            "id": 4,
+            "conversationId": 7,
+            "kind": "pi.assistant",
+            "model": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "four"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "usage": {
+                "input": 1794203798247,
+                "output": 2
+              }
+            }
+          },
+          {
+            "id": 5,
+            "conversationId": 7,
+            "kind": "pi.assistant",
+            "model": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "five"
+                  }
+                ]
+              }
+            ],
+            "data": {
+              "usage": {
+                "input": 1794203798247,
+                "output": 2
+              }
+            }
+          }
+        ]
+      ]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 4,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "four"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 5,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "five"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "set a doc",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      [
+        "s",
+        ["docs", "pi.agent"],
+        {
+          "model": "glm",
+          "thinkingLevel": "high"
+        }
+      ]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        },
+        "pi.agent": {
+          "model": "glm",
+          "thinkingLevel": "high"
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "delete a doc",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["d", ["docs", "pi.usage"]]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "change a number in a doc",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["s", ["docs", "pi.usage", "output"], 99]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 99
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "add a tool slot",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      [
+        "p",
+        ["docs", "pi.live", "tools"],
+        0,
+        0,
+        [
+          {
+            "callId": "c1",
+            "name": "read",
+            "output": ""
+          }
+        ]
+      ]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": [
+            {
+              "callId": "c1",
+              "name": "read",
+              "output": ""
+            }
+          ]
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "set the before cursor",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      [
+        "s",
+        ["before"],
+        {
+          "id": 1
+        }
+      ]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      },
+      "before": {
+        "id": 1
+      }
+    }
+  },
+  {
+    "name": "change a key View does not keep",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["s", ["extra", "kept"], true]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": true
+      }
+    }
+  },
+  {
+    "name": "edit inside an entry",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["s", ["entries", 1, "data", "usage", "output"], 5]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 5
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "reverse the entries",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["m", ["entries"], [2, 1, 0]]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "many edits at once",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [
+      ["p", ["entries"], 1, 1, []],
+      [
+        "s",
+        ["conversation", "parent"],
+        {
+          "conversationId": 3,
+          "at": 9
+        }
+      ],
+      [
+        "p",
+        ["docs", "pi.live", "generation", "message", "content"],
+        1,
+        0,
+        [
+          {
+            "type": "thinking",
+            "thinking": "hm"
+          }
+        ]
+      ],
+      ["a", ["docs", "pi.live", "generation", "message", "content", 0, "text"], "p"]
+    ],
+    "want": {
+      "conversation": {
+        "id": 7,
+        "parent": {
+          "conversationId": 3,
+          "at": 9
+        }
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Help"
+                },
+                {
+                  "type": "thinking",
+                  "thinking": "hm"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "stream \"lo\"",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hel"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["a", ["docs", "pi.live", "generation", "message", "content", 0, "text"], "lo"]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "stream \" wor\"",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["a", ["docs", "pi.live", "generation", "message", "content", 0, "text"], " wor"]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello wor"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  },
+  {
+    "name": "stream \"ld\"",
+    "base": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello wor"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    },
+    "ops": [["a", ["docs", "pi.live", "generation", "message", "content", 0, "text"], "ld"]],
+    "want": {
+      "conversation": {
+        "id": 7
+      },
+      "entries": [
+        {
+          "id": 1,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "one"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 2,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "two"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        },
+        {
+          "id": 3,
+          "conversationId": 7,
+          "kind": "pi.assistant",
+          "model": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "three"
+                }
+              ]
+            }
+          ],
+          "data": {
+            "usage": {
+              "input": 1794203798247,
+              "output": 2
+            }
+          }
+        }
+      ],
+      "docs": {
+        "pi.live": {
+          "generation": {
+            "message": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Hello world"
+                }
+              ]
+            }
+          },
+          "tools": []
+        },
+        "pi.usage": {
+          "input": 10,
+          "output": 3
+        }
+      },
+      "extra": {
+        "kept": false
+      }
+    }
+  }
+]

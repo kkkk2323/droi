@@ -21,21 +21,21 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
-	"github.com/kkkk2323/droi/apps/native/internal/app"
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
-	"github.com/kkkk2323/droi/apps/native/internal/hosttools"
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/internal/updates"
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/app"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hostrun"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/hosttools"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/theme"
 )
 
 // Options are what makes an app of Droi's.
@@ -126,6 +126,7 @@ func Run(o Options) {
 				Version:            version,
 				Executable:         executable(),
 				Overlay:            exts.overlay,
+				KernelAgent:        exts.agent,
 				Start:              exts.start,
 				AppendSystemPrompt: exts.systemPrompt,
 				OwnFactoryHome:     o.OwnFactoryHome,
@@ -152,6 +153,8 @@ func Run(o Options) {
 		}
 	}
 
+	logToFile(userData)
+
 	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
 	factoryRoot := ""
 	if o.OwnFactoryHome {
@@ -173,6 +176,7 @@ func Run(o Options) {
 		// Read when the Daemon starts, which is after StartServices.
 		Overlay:            func() host.OverlayOptions { return svc.Overlay(exts.overlay(h)) },
 		AppendSystemPrompt: exts.systemPrompt,
+		KernelAgent:        exts.agent,
 		ClientHiddenTools:  func() []string { return svc.ClientHiddenTools() },
 	})
 	svc = hostrun.StartServices(h)

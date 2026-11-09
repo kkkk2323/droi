@@ -1,0 +1,44 @@
+{
+  "kind": "notification",
+  "method": "conversation.view",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "conversation.view",
+    "params": {
+      "id": 7,
+      "kind": "value",
+      "value": null,
+      "ops": [
+        [
+          "a",
+          ["entries"],
+          {
+            "id": 43,
+            "conversationId": 7,
+            "kind": "pi.tool-result",
+            "data": {
+              "diagnostics": []
+            },
+            "byTaskId": 901,
+            "model": [
+              {
+                "role": "toolResult",
+                "toolCallId": "call_9f8e",
+                "toolName": "read",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "import { parseConfig } from './config'\n"
+                  }
+                ],
+                "isError": false,
+                "timestamp": 1762480002000
+              }
+            ]
+          }
+        ]
+      ],
+      "retired": false
+    }
+  }
+}

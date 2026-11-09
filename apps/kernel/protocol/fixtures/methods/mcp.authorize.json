@@ -1,0 +1,19 @@
+{
+  "kind": "method",
+  "method": "mcp.authorize",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "22",
+    "method": "mcp.authorize",
+    "params": {
+      "name": "anlan"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "22",
+    "result": {
+      "authorizationUrl": "https://anlan.example.com/oauth/authorize?client_id=droi&state=9f2"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "kind": "notification",
+  "method": "index.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "index.changed",
+    "params": {
+      "id": 7,
+      "title": "parseConfig tests",
+      "titleSource": "auto",
+      "archived": false,
+      "lastActivityAt": 1762480002000,
+      "viewedAt": 1762480001000
+    }
+  }
+}

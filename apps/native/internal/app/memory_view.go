@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"os"
 	"strconv"
 	"strings"
@@ -8,12 +9,13 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memorywork"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // Memory is the Host's side of Memory that Settings → Memory reaches
@@ -111,12 +113,16 @@ func (a *App) memoryTab(c *ui.Context) {
 	a.settingGroup(c, "", "",
 		func() { a.memorySwitchRow(c, st.MemoryEnabled) },
 		func() {
-			a.memoryModelRow(c, L("Session summary model"), L("Writes a summary of each Session once it has been left for a while. A fast, low-cost model is enough."), "model:memory", st.MemoryModelOrDefault(),
-				func(s *host.Settings, next string) { s.MemoryModel = host.OptString(next) })
+			a.memoryModelRow(c, L("Session summary model"), L("Writes a summary of each Session once it has been left for a while. A fast, low-cost model is enough."), "model:memory", st.MemoryModelOrDefault(), cmp.Or(st.MemoryModelEffort, "low"),
+				func(s *host.Settings, next string) { s.MemoryModel, s.MemoryModelEffort = host.OptString(next), "" },
+				func(s *host.Settings, level string) { s.MemoryModelEffort = level })
 		},
 		func() {
-			a.memoryModelRow(c, L("Memory Summary model"), L("Folds the Session summaries and your Memory Notes into the Memory Summary every new Session starts with."), "model:memory-summary", st.MemorySummaryModelOrDefault(),
-				func(s *host.Settings, next string) { s.MemorySummaryModel = host.OptString(next) })
+			a.memoryModelRow(c, L("Memory Summary model"), L("Folds the Session summaries and your Memory Notes into the Memory Summary every new Session starts with."), "model:memory-summary", st.MemorySummaryModelOrDefault(), cmp.Or(st.MemorySummaryModelEffort, "medium"),
+				func(s *host.Settings, next string) {
+					s.MemorySummaryModel, s.MemorySummaryModelEffort = host.OptString(next), ""
+				},
+				func(s *host.Settings, level string) { s.MemorySummaryModelEffort = level })
 		},
 	)
 	if a.cfg.Memory != nil {
@@ -128,11 +134,21 @@ func (a *App) memoryTab(c *ui.Context) {
 func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	k, t := a.kit, a.kit.T
 	m := &a.memory
-	desc := L("Off: Droid starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past work on this computer.")
+	desc := L("Off: Droi starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past work on this computer.")
 	if on {
 		desc = L("On: Droi summarizes each Session once it has been left for a while and keeps a short Memory Summary that every new Session starts with. Only Droi’s Daemon has it; the droid CLI is untouched.")
+		if a.kernelMode() {
+			desc = L("On: Droi summarizes each Session once it has been left for a while and keeps a short Memory Summary that every new Session starts with.")
+		}
 	}
 	var below func()
+	// The Kernel takes Memory on or off as it runs (Changed): nothing restarts, so there is nothing to confirm.
+	if m.pending != nil && a.kernelMode() {
+		next := *m.pending
+		m.pending = nil
+		a.hostUpdate(false, func(s *host.Settings) { s.MemoryEnabled = next })
+		a.refreshMemory()
+	}
 	if m.pending != nil {
 		next := *m.pending
 		label := L("Turn Memory off")
@@ -176,17 +192,17 @@ func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	}, below)
 }
 
-// memoryModelRow picks the model of one kind of Memory Session; it is read
-// at each one, so the Daemon needs no restart.
-func (a *App) memoryModelRow(c *ui.Context, label, desc, flag, model string, set func(*host.Settings, string)) {
+// memoryModelRow picks the model of one kind of Memory Session and its reasoning level, in the chat's own picker;
+// both are read at each one, so the Daemon needs no restart.
+func (a *App) memoryModelRow(c *ui.Context, label, desc, flag, model, effort string, set, setEffort func(*host.Settings, string)) {
 	a.settingRow(c, label, desc, func() {
 		var choices = defaults.PickableModels(nil, false)
 		if dv := a.sessionDefaults(); dv != nil {
 			choices = defaults.PickableModels(dv.Models, false)
 		}
-		a.modelField(c, label, false, a.settings.Flag(flag), a.settings.Picker(), choices, model, func(next string) {
-			a.hostUpdate(false, func(s *host.Settings) { set(s, next) })
-		})
+		settingsview.ModelEffortField(c, a.kit, a.prefs, label, "", false, a.settings.Flag(flag), a.settings.Picker(), choices, model, effort,
+			func(next string) { a.hostUpdate(false, func(s *host.Settings) { set(s, next) }) },
+			func(level string) { a.hostUpdate(false, func(s *host.Settings) { setEffort(s, level) }) })
 	}, nil)
 }
 

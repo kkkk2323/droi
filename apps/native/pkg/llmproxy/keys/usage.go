@@ -16,8 +16,9 @@ import (
 
 	"github.com/egoist/mygo/netproxy"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/contentenc"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/config"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/contentenc"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/factory"
 )
 
 type KeyUsage struct {
@@ -1220,10 +1221,27 @@ func (r *KeyRotator) fetchJSON(ctx context.Context, key, url string) *KeyUsage {
 	return &KeyUsage{Key: key, LastCheckedAt: time.Now(), RawBody: body}
 }
 
-// BucketLimit is one rate-limit window as reported by the billing endpoint.
+// BucketLimit is one rate-limit window as reported by the billing endpoint. WindowEnd is RFC 3339, or "" when the
+// window has no end.
 type BucketLimit struct {
 	UsedPercent float64 `json:"usedPercent"`
 	WindowEnd   string  `json:"windowEnd"`
+}
+
+// UnmarshalJSON reads windowEnd as droid does (factory.WindowEnd): epoch milliseconds name an end as an ISO time does.
+func (b *BucketLimit) UnmarshalJSON(data []byte) error {
+	var v struct {
+		UsedPercent float64         `json:"usedPercent"`
+		WindowEnd   json.RawMessage `json:"windowEnd"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	b.UsedPercent, b.WindowEnd = v.UsedPercent, ""
+	if end, ok := factory.WindowEnd(v.WindowEnd); ok {
+		b.WindowEnd = end.Format(time.RFC3339Nano)
+	}
+	return nil
 }
 
 // PoolLimits is the per-window breakdown of one billing pool.

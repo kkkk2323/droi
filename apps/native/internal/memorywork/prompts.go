@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
 )
 
 // The Memory Sessions' prompts. The app ships them embedded and copies them

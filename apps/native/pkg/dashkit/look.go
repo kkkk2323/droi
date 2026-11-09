@@ -3,7 +3,7 @@ package dashkit
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 )
 
 // Look draws droid-proxy's controls and surfaces in P, at K's text size.

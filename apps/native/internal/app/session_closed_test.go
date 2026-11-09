@@ -13,6 +13,7 @@ import (
 // while its page may be open. The page stays, and the Session loads again:
 // its transcript comes back, and it takes the next message.
 func TestASessionClosedWhileItsPageIsOpenStaysOpen(t *testing.T) {
+	keepOnDaemon(t, goesWithCleanup)
 	h := newHarness(t, deployScenario(&fakedaemon.Turn{Kind: "reply", Deltas: []string{"Back again."}}), "")
 	h.openSession("Deploy")
 	h.until("the Session loaded", func() bool { return h.hasText("Context used") })

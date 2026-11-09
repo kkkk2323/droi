@@ -1,0 +1,18 @@
+{
+  "kind": "notification",
+  "method": "policy.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "policy.changed",
+    "params": {
+      "id": 7,
+      "policy": {
+        "autonomy": "edits",
+        "rules": [
+          { "kind": "tool", "tool": "bash" },
+          { "kind": "file", "path": "/Users/clive/dev/droi/build" }
+        ]
+      }
+    }
+  }
+}

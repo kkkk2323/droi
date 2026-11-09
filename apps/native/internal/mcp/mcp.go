@@ -12,8 +12,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kkkk2323/droi/apps/native/internal/collate"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/collate"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
@@ -23,6 +23,7 @@ var StatusLabels = map[string]string{
 	"disconnected": l10n.N("Disconnected"),
 	"failed":       l10n.N("Failed"),
 	"disabled":     l10n.N("Disabled"),
+	"untrusted":    l10n.N("Waiting for your OK"),
 }
 
 // DroiMemoryServer is Droi's Memory Server (ADR 0010), which the Desktop Shell

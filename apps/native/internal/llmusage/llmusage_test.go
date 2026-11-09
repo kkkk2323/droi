@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 func bucket(used float64, end time.Time) *keys.BucketLimit {
@@ -285,12 +285,14 @@ func TestNumbersReadCompactly(t *testing.T) {
 }
 
 // The weights price the models the request log has shown, the longer ID
-// first: Opus 5.5 and Opus 5, GLM-5.3-Flash and GLM-5.3, and a dated variant
-// at its base model's price.
+// first: Opus 5.5 and Opus 5 and their Fast Mode models, GLM-5.3-Flash and
+// GLM-5.3, and a dated variant at its base model's price.
 func TestWeightsPriceTheLogsModels(t *testing.T) {
 	for model, want := range map[string]string{
 		"claude-opus-5-5":           "claude-opus-5-5",
+		"claude-opus-5-5-fast":      "claude-opus-5-5-fast",
 		"claude-opus-5":             "claude-opus-5",
+		"claude-opus-5-fast":        "claude-opus-5-fast",
 		"claude-sonnet-5-5":         "claude-sonnet-5-5",
 		"claude-haiku-4-5-20251001": "claude-haiku-4-5",
 		"glm-5.3-flash":             "glm-5.3-flash",

@@ -7,7 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // openSessionDefaults opens Settings on the Session defaults page.
@@ -35,6 +35,7 @@ func (h *harness) defaultsPatchSent(n int) map[string]any {
 
 // A model can have a compaction limit of its own, changed and removed again.
 func TestSessionDefaultsSetsACompactionLimitForAModel(t *testing.T) {
+	keepOnDaemon(t, daemonDefaults)
 	h := newHarness(t, sessionsScenario(), "")
 	h.openSessionDefaults()
 	h.click("Add a model limit")
@@ -62,6 +63,7 @@ func TestSessionDefaultsSetsACompactionLimitForAModel(t *testing.T) {
 
 // A model can be added to the Script list, and removed again.
 func TestSessionDefaultsAddsAScriptModel(t *testing.T) {
+	keepOnDaemon(t, daemonDefaults)
 	h := newHarness(t, sessionsScenario(), "")
 	h.openSessionDefaults()
 	h.click("Add a Script model")
@@ -80,6 +82,7 @@ func TestSessionDefaultsAddsAScriptModel(t *testing.T) {
 
 // The spec folder is the user's, the project's or one picked.
 func TestSessionDefaultsSavesTheSpecFolder(t *testing.T) {
+	keepOnDaemon(t, daemonDefaults)
 	h := newHarnessWith(t, sessionsScenario(), "", func(c *Config) {
 		c.PickFolder = func(string) string { return "/Users/dev/specs" }
 	})
@@ -105,6 +108,7 @@ func TestSessionDefaultsSavesTheSpecFolder(t *testing.T) {
 
 // Each Subagent tier can have its own model and reasoning level.
 func TestSessionDefaultsSetsASubagentTierModel(t *testing.T) {
+	keepOnDaemon(t, daemonDefaults)
 	h := newHarness(t, sessionsScenario(), "")
 	h.openSessionDefaults()
 	if _, ok := h.tt.Find("Heavy task reasoning level"); ok {
@@ -134,6 +138,7 @@ func TestSessionDefaultsSetsASubagentTierModel(t *testing.T) {
 // The spec mode and summary models are picked in the model picker, which
 // starts with the choice of no model of their own.
 func TestSessionDefaultsPicksSpecAndSummaryModels(t *testing.T) {
+	keepOnDaemon(t, daemonDefaults)
 	h := newHarness(t, sessionsScenario(), "")
 	h.openSessionDefaults()
 	h.click("Spec mode model")

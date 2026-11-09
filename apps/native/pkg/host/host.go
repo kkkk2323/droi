@@ -13,10 +13,11 @@ import (
 
 	droid "github.com/kkkk2323/droid-sdk-go"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/droidhook"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessiontimes"
 )
 
 const defaultFactoryAPIBaseURL = "https://api.factory.ai"
@@ -57,6 +58,9 @@ type Config struct {
 	// AppendSystemPrompt, optional, follows the System Prompt Addition of
 	// Settings, read at every Session start.
 	AppendSystemPrompt func() string
+	// KernelAgent, optional, is the app's part of every Kernel conversation (ADR 0041), read at each Kernel launch:
+	// MCP servers, tools that run without asking, a prompt section.
+	KernelAgent func(h *Host) kernel.AppAgent
 	// ClientHiddenTools, optional, are the tools the Gateway leaves out of
 	// every Client's Session (disabledToolIds), read at every Session start:
 	// Factory's tools that Droi does its own way, and the Host's tools only
@@ -75,6 +79,8 @@ type Host struct {
 	Times *sessiontimes.Store
 
 	adding *FactoryAuth
+	// seedDefaults takes droid's Session defaults once (KernelSessionDefaults).
+	seedDefaults sync.Once
 
 	mu      sync.Mutex
 	readers map[string]*CliLoginReader
@@ -107,6 +113,8 @@ type Host struct {
 	indexRev uint64
 
 	droiDroid droiDroidState
+
+	kernel kernelHost
 }
 
 // New makes a Host; Start launches the Daemon.
@@ -161,23 +169,33 @@ func New(cfg Config) *Host {
 	return h
 }
 
-// Start launches the Daemon, and the first time dates the Sessions by the
+// Start launches the Kernel, or the Daemon on a Host without one, and the first time dates the Sessions by the
 // messages sent before the Session Times were kept.
 func (h *Host) Start() {
-	h.Daemon.Start()
+	if h.KernelEnabled() {
+		// Nothing on the Kernel uses the Daemon: its Sessions, models, Memory, Automations and Gateway are the Kernel's.
+		h.startKernel()
+	} else {
+		h.Daemon.Start()
+	}
 	h.watchDroiDroid()
 	go func() { _ = h.Times.Backfill(filepath.Join(h.SharedFactoryHome(), "sessions")) }()
 }
 
 // Stop ends the Daemon and writes what the Session Times still hold.
 func (h *Host) Stop() {
+	h.stopKernel()
 	h.stopWatchingDroiDroid()
 	h.Daemon.Stop()
 	h.Times.Flush()
 }
 
-// RestartDaemon starts a new Daemon from the droid on disk.
+// RestartDaemon starts a new Daemon from the droid on disk; on a Host that runs a Kernel, which runs no Daemon, it
+// does nothing.
 func (h *Host) RestartDaemon() {
+	if h.KernelEnabled() {
+		return
+	}
 	h.Daemon.Stop()
 	h.mu.Lock()
 	h.build = nil
@@ -212,7 +230,17 @@ func (h *Host) changed() {
 }
 
 // Changed tells listeners the settings changed.
-func (h *Host) Changed() { h.changed() }
+func (h *Host) Changed() {
+	// Off the caller's goroutine, often the window's: the Kernel may take a moment to answer.
+	go func() {
+		h.kernelMemoryChanged()
+		h.kernelSectionChanged()
+		h.kernelCodemodeChanged()
+		h.kernelCompactionChanged()
+		h.kernelModelsChanged()
+	}()
+	h.changed()
+}
 
 // FactoryHome is the .factory folder of the account the Daemon runs as:
 // ~/.factory for the droid CLI's own, the account's folder for another.
@@ -418,7 +446,7 @@ func (h *Host) spawn(port int) (*exec.Cmd, error) {
 			return nil, err
 		}
 	} else {
-		h.KeyPool().Stop()
+		h.releaseKeyPool()
 	}
 	// Signed in: the Daemon runs as the account's login. Without one an API
 	// key serves both sides.

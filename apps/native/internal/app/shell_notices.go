@@ -5,9 +5,9 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
 )
 
 // startingUp is the Daemon coming up: never connected yet, and not given
@@ -97,8 +97,11 @@ func (a *App) droiDroidUpdateCard(c *ui.Context) {
 func (a *App) cornerCards(c *ui.Context) {
 	k := a.kit
 	ui.Column(c).Absolute().Left(k.Px(16)).Bottom(k.Px(48)).Gap(k.Px(8)).Children(func() {
-		a.droidUpdatedCard(c)
-		a.droiDroidUpdateCard(c)
+		// droid's updates are the Daemon's: on the Kernel nothing runs droid.
+		if !a.kernelMode() {
+			a.droidUpdatedCard(c)
+			a.droiDroidUpdateCard(c)
+		}
 		a.updateCard(c)
 	})
 }
@@ -145,6 +148,46 @@ func (a *App) startingUpView(c *ui.Context, status controller.Status) {
 			ui.Row(c).Role(ui.RoleStatus).Label(L("Starting")).Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
 				loading.Ring(c, loading.Options{Size: k.Px(16), Color: t.MutedForeground})
 				k.Text(c, L("Starting the Daemon"), 14, 20).TextColor(t.MutedForeground)
+			})
+		})
+	})
+}
+
+// kernelStartingView is the quiet start on the Kernel, until the Host hands the window its connection: the
+// Kernel's own trouble when it has some, else a breathing dot.
+func (a *App) kernelStartingView(c *ui.Context) {
+	k, t := a.kit, a.kit.T
+	var st host.KernelState
+	if h := a.cfg.Host; h != nil {
+		st = h.KernelState()
+	}
+	ui.Column(c).Fill().Children(func() {
+		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
+			if a.narrow {
+				a.openSessionsButton(c)
+			}
+		})
+		if st.Reason != "" {
+			title := L("The Kernel did not start")
+			if st.KernelMissing() {
+				title = L("This install of Droi has no Kernel")
+			}
+			ui.Column(c).Grow(1).Center().PaddingX(k.Px(24)).Children(func() {
+				ui.Column(c).Role(ui.RoleStatus).Label(title).FillWidth().MaxWidth(k.Px(420)).AlignItems(ui.Center).Gap(k.Px(8)).Children(func() {
+					k.Icon(c, "circle-alert", 20, t.Attention)
+					k.Text(c, title, 14, 20).FontWeight(500).TextAlign(ui.Center)
+					k.Text(c, L("Last attempt: %s.", clause(st.Reason)), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
+					if a.smallButton(c, kit.Outline, L("Restart"), "refresh-cw", false).Margin(k.Px(8), 0, 0, 0).Clicked() {
+						go a.cfg.Host.RestartKernel()
+					}
+				})
+			})
+			return
+		}
+		ui.Row(c).Grow(1).Center().Children(func() {
+			ui.Row(c).Role(ui.RoleStatus).Label(L("Starting")).Gap(k.Px(10)).AlignItems(ui.Center).Children(func() {
+				loading.Ring(c, loading.Options{Size: k.Px(16), Color: t.MutedForeground})
+				k.Text(c, L("Starting Droi…"), 14, 20).TextColor(t.MutedForeground)
 			})
 		})
 	})

@@ -1,0 +1,37 @@
+{
+  "kind": "error",
+  "method": "model.complete",
+  "error": {
+    "code": -32014,
+    "name": "model output invalid"
+  },
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "27",
+    "method": "model.complete",
+    "params": {
+      "model": { "provider": "factory", "modelId": "claude-haiku-5-5" },
+      "input": "Return the summary as JSON.",
+      "schema": {
+        "type": "object",
+        "required": ["summary", "slug"],
+        "properties": {
+          "summary": { "type": "string" },
+          "slug": { "type": "string" }
+        }
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "27",
+    "error": {
+      "code": -32014,
+      "message": "the model's answer does not match the schema: missing required property slug",
+      "data": {
+        "issues": [{ "path": "", "message": "missing required property \"slug\"" }],
+        "text": "{\"summary\":\"Added the fixtures.\"}"
+      }
+    }
+  }
+}

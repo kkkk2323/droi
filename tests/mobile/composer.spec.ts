@@ -1,68 +1,66 @@
 import type { Page } from '@playwright/test'
-import { assistantMessage, CONTEXT_BUDGET, session, userMessage } from '@droi/fake-daemon/scenario'
-import {
-  interruptHandler,
-  resolveQueuedHandler,
-  streamedReply,
-  todoTurn,
-  withQueue,
-} from '@droi/fake-daemon/turns'
+import { CONTEXT_WINDOW } from './fake-kernel/fake-kernel'
+import { assistantEntry, exchange, userEntry } from './fake-kernel/history'
 import { expect, pairPhone, pickSession, relaunch, test } from './fixtures'
-
-const chat = session('Chat', '/Users/dev/acme-web', [
-  userMessage('hello'),
-  assistantMessage('Hi! How can I help?'),
-])
-const notes = session('Notes', '/Users/dev/acme-web', [userMessage('todo')])
 
 async function type(page: Page, text: string) {
   await page.getByRole('textbox', { name: 'Message' }).fill(text)
 }
 
+const transcript = (page: Page) => page.getByRole('log', { name: 'Transcript' })
+
 test.describe('a turn from the phone', () => {
   test.use({
     scenario: {
-      sessions: [chat, notes],
-      handlers: {
-        'daemon.add_user_message': withQueue(
-          streamedReply({ deltas: ['Part one. ', 'Part two. ', 'Part three.'], delayMs: 600 }),
-        ),
-        'daemon.interrupt_session': interruptHandler,
-        'daemon.resolve_queued_user_message': resolveQueuedHandler,
-      },
+      sessions: [
+        { title: 'Chat', cwd: 'acme-web', entries: exchange('hello', 'Hi! How can I help?') },
+        { title: 'Notes', cwd: 'acme-web', entries: [userEntry('todo')] },
+      ],
     },
   })
 
-  test('sends, streams and cancels', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('sends, streams and cancels', async ({ page, fakeKernel, phoneWire }) => {
+    fakeKernel.model.push({
+      match: 'Tell me a story',
+      chunks: ['Part one. ', 'Part two. ', 'Part three.'],
+      delayMs: 800,
+    })
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Chat/)
     await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled()
     await type(page, 'Tell me a story')
     await page.getByRole('button', { name: 'Send' }).click()
-    const sent = await fakeDaemon.waitForRequest('daemon.add_user_message')
-    expect(sent.params).toMatchObject({ text: 'Tell me a story' })
+    expect(await phoneWire.waitForCall('conversation.submit')).toMatchObject({
+      input: 'Tell me a story',
+    })
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('')
 
-    const transcript = page.getByRole('log', { name: 'Transcript' })
     await expect(
-      transcript.getByRole('article', { name: 'You' }).filter({ hasText: 'Tell me a story' }),
+      transcript(page).getByRole('article', { name: 'You' }).filter({ hasText: 'Tell me a story' }),
     ).toBeVisible()
-    const reply = transcript.getByRole('article', { name: 'Assistant' }).filter({
-      hasText: 'Part one.',
-    })
+    const reply = transcript(page)
+      .getByRole('article', { name: 'Assistant' })
+      .filter({ hasText: 'Part one.' })
     await expect(reply).toContainText('Part one.')
     await page.getByRole('button', { name: 'Cancel' }).click()
-    await fakeDaemon.waitForRequest('daemon.interrupt_session')
+    await phoneWire.waitForCall('conversation.abort')
     await expect(page.getByRole('button', { name: 'Send' })).toBeVisible()
     await expect(reply).toContainText('Part one.')
+    await page.waitForTimeout(2_000)
     await expect(reply).not.toContainText('Part three.')
   })
 
   test('three queued messages fold into one row that opens; one can be removed', async ({
     page,
-    fakeDaemon,
+    fakeKernel,
+    phoneWire,
   }) => {
-    await pairPhone(page, fakeDaemon)
+    fakeKernel.model.push({
+      match: 'first',
+      chunks: Array.from({ length: 30 }, (_, i) => `Step ${i}. `),
+      delayMs: 500,
+    })
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Chat/)
     await type(page, 'first')
     await page.getByRole('button', { name: 'Send' }).click()
@@ -75,8 +73,7 @@ test.describe('a turn from the phone', () => {
       await type(page, text)
       await page.getByRole('button', { name: 'Queue', exact: true }).click()
     }
-    const fourth = await fakeDaemon.waitForRequest('daemon.add_user_message', 4)
-    expect(fourth.params).toMatchObject({ text: 'three', queuePlacement: 'end_of_loop' })
+    expect(await phoneWire.waitForCall('conversation.submit', 4)).toMatchObject({ input: 'three' })
 
     const fold = page.getByRole('button', { name: 'Queued messages, 3' })
     await expect(fold).toHaveAttribute('aria-expanded', 'false')
@@ -86,37 +83,44 @@ test.describe('a turn from the phone', () => {
     await fold.click()
     await expect(queued.getByRole('listitem')).toHaveText([/one/, /two/, /three/])
     await queued.getByRole('button', { name: 'Remove queued message' }).nth(1).click()
-    const removed = await fakeDaemon.waitForRequest('daemon.resolve_queued_user_message')
-    expect(removed.params).toMatchObject({ action: 'delete' })
+    await phoneWire.waitForCall('submission.abort')
     await expect(queued.getByRole('listitem')).toHaveText([/one/, /three/])
     await expect(fold).toHaveCount(0)
   })
 
   test('cancelling keeps a queued message here, paused, to put back in the composer', async ({
     page,
-    fakeDaemon,
+    fakeKernel,
+    phoneWire,
   }) => {
-    await pairPhone(page, fakeDaemon)
+    fakeKernel.model.push({
+      match: 'first',
+      chunks: Array.from({ length: 30 }, (_, i) => `Step ${i}. `),
+      delayMs: 500,
+    })
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Chat/)
     await type(page, 'first')
     await page.getByRole('button', { name: 'Send' }).click()
     await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
     await type(page, 'keep me')
     await page.getByRole('button', { name: 'Queue', exact: true }).click()
-    await fakeDaemon.waitForRequest('daemon.add_user_message', 2)
+    await phoneWire.waitForCall('conversation.submit', 2)
     const queued = page.getByRole('list', { name: 'Queued messages' })
     await expect(queued.getByRole('listitem')).toHaveCount(1)
 
     await page.getByRole('button', { name: 'Cancel' }).click()
-    await fakeDaemon.waitForRequest('daemon.interrupt_session')
+    await phoneWire.waitForCall('conversation.abort')
     await expect(queued.getByRole('listitem')).toHaveText([/keep me.*Paused/])
+    // Nothing reached the model for it.
+    expect(fakeKernel.model.turns().some((r) => r.prompt.includes('keep me'))).toBe(false)
     await queued.getByRole('button', { name: 'Edit queued message' }).click()
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('keep me')
     await expect(queued).toHaveCount(0)
   })
 
-  test('a draft survives switching Sessions', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('a draft survives switching Sessions', async ({ page, fakeKernel }) => {
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Chat/)
     await type(page, 'half a thought')
     await pickSession(page, /Notes/)
@@ -128,80 +132,44 @@ test.describe('a turn from the phone', () => {
   })
 })
 
-test.describe('task list and context meter', () => {
+test.describe('the context meter', () => {
+  // The Kernel counts the context as Pi does for compaction: with no answer that reported usage, about 3.5
+  // characters to a token, so about 57k here.
   test.use({
     scenario: {
-      sessions: [chat],
-      contextUsedTokens: 50_000,
-      handlers: {
-        'daemon.add_user_message': todoTurn({
-          todos: [
-            { id: '1', content: 'Read the config', status: 'completed' },
-            { id: '2', content: 'Write the migration', status: 'in_progress' },
-            { id: '3', content: 'Run the tests', status: 'pending' },
-          ],
-          reply: 'Working through it.',
-        }),
-        'daemon.interrupt_session': interruptHandler,
-      },
+      sessions: [
+        {
+          title: 'Chat',
+          cwd: 'acme-web',
+          entries: [userEntry('read it all'), assistantEntry('x'.repeat(200_000))],
+        },
+      ],
     },
   })
 
-  test('follow the Daemon’s updates', async ({ page, fakeDaemon }) => {
-    await pairPhone(page, fakeDaemon)
+  test('follows the Kernel’s count as the conversation grows', async ({ page, fakeKernel }) => {
+    await pairPhone(page, fakeKernel)
     await pickSession(page, /Chat/)
     const meter = page.getByRole('meter', { name: 'Context used' })
-    await expect(meter).toHaveAttribute('aria-valuenow', '25')
-    await expect(meter).toContainText(`50k / ${CONTEXT_BUDGET / 1000}k · 25%`)
+    await expect(meter).toHaveAttribute('aria-valuenow', '29')
+    await expect(meter).toContainText(`57k / ${CONTEXT_WINDOW / 1000}k · 29%`)
 
-    await type(page, 'go')
+    fakeKernel.model.push({ match: 'go on', text: 'y'.repeat(40_000) })
+    await type(page, 'go on')
     await page.getByRole('button', { name: 'Send' }).click()
-    const summary = page.getByRole('button', { name: 'Tasks, 1 of 3 done' })
-    await expect(summary).toContainText('Write the migration')
-    await summary.click()
-    const tasks = page.getByRole('list', { name: 'Tasks' }).getByRole('listitem')
-    await expect(tasks).toHaveCount(3)
-    await expect(tasks.first()).toHaveAccessibleName('Done: Read the config')
-    await expect(tasks.nth(2)).toHaveAccessibleName('Pending: Run the tests')
-    await expect(meter).toContainText(`10k / ${CONTEXT_BUDGET / 1000}k · 5%`)
-  })
-})
-
-test.describe('a Session the Daemon let go', () => {
-  test.use({
-    scenario: {
-      sessions: [chat],
-      handlers: { 'daemon.add_user_message': streamedReply({ deltas: ['Back again.'] }) },
-    },
-  })
-
-  test('the composer still takes a message, which loads the Session again', async ({
-    page,
-    fakeDaemon,
-  }) => {
-    await pairPhone(page, fakeDaemon)
-    await pickSession(page, /Chat/)
-    const input = page.getByRole('textbox', { name: 'Message' })
-    await expect(input).toBeEnabled()
-
-    const listed = fakeDaemon.requests.filter(
-      (r) => r.method === 'daemon.list_available_sessions',
-    ).length
-    fakeDaemon.notify(chat.sessionId, {
-      type: 'session_inactivity',
-      message: 'Session inactive',
-      timestamp: Date.now(),
-      timeoutSeconds: 1800,
-    })
-    // Notifications arrive in order: once the title change refreshes the list,
-    // the inactivity has landed.
-    fakeDaemon.notify(chat.sessionId, { type: 'session_title_updated', title: 'Chat' })
-    await fakeDaemon.waitForRequest('daemon.list_available_sessions', listed + 1)
-
-    await type(page, 'still there?')
-    await page.getByRole('button', { name: 'Send' }).click()
-    await fakeDaemon.waitForRequest('daemon.add_user_message')
-    await expect(page.getByRole('log', { name: 'Transcript' })).toContainText('Back again.')
-    expect(fakeDaemon.requests.filter((r) => r.method === 'daemon.load_session')).toHaveLength(2)
+    await expect(transcript(page)).toContainText('yyyy')
+    await fakeKernel.settled('Chat')
+    const usage = await fakeKernel.kernel.call<{ context: { used: number; limit: number } }>(
+      'conversation.usage',
+      {
+        id: fakeKernel.session('Chat').conversationId,
+      },
+    )
+    const percent = Math.round((usage.context.used / usage.context.limit) * 100)
+    expect(percent).toBeGreaterThan(29)
+    await expect(meter).toHaveAttribute('aria-valuenow', String(percent))
+    await expect(meter).toContainText(
+      `${Math.round(usage.context.used / 1000)}k / ${CONTEXT_WINDOW / 1000}k · ${percent}%`,
+    )
   })
 })

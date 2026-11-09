@@ -6,7 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/slash"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/slash"
 )
 
 // suggests types query into the focused composer and waits for the "/"

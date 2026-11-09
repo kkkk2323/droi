@@ -1,11 +1,8 @@
 // New session: pick a recent Workspace, None (a fresh Scratch Workspace) or
-// type a path, the model and friends, and send the first message, or nothing. As soon as the Workspace is
-// known a Draft Session opens so "/" offers its commands and skills; the
-// first send takes it over, and leaving without sending closes it.
-import { useDaemonConnection } from '@droi/daemon-layer/connection-context'
+// type a path, the model and friends, and send the first message, or nothing.
+// Until there is a Session, "/" offers the user's own commands and skills.
 import { setPendingPrompt } from '@droi/daemon-layer/pending-prompt'
 import type { SessionSummary } from '@droi/daemon-layer/sessions'
-import { closeDraftSession, useDraftSession } from '@droi/daemon-layer/use-draft-session'
 import {
   recentWorkspaces,
   useNewSession,
@@ -14,23 +11,13 @@ import {
 import { useWorkspaceChoice, type WorkspacePick } from '@droi/daemon-layer/use-workspace-choice'
 import { useSessionDefaults } from '@droi/daemon-layer/use-session-defaults'
 import { useSlashItems, type SlashItem } from '@droi/daemon-layer/use-slash-items'
-import {
-  usePreference,
-  worktreeByDefault,
-  worktreeLifecyclePreference,
-} from '@droi/daemon-layer/local-preference'
+import { usePreference, worktreeByDefault } from '@droi/daemon-layer/local-preference'
 import { useGitBranches } from '@droi/daemon-layer/use-git-branches'
-import {
-  WORKTREE_LIFECYCLES,
-  WORKTREE_LIFECYCLE_DESCRIPTIONS,
-  WORKTREE_LIFECYCLE_LABELS,
-  type SessionWorktree,
-} from '@droi/daemon-layer/worktree'
 import { defaultToolMode, newSessionToolMode, type ToolMode } from '@droi/daemon-layer/tool-mode'
 import { useRouter } from 'expo-router'
 import { useHeaderHeight } from 'expo-router/react-navigation'
 import { ChevronDown, GitBranch } from 'lucide-react-native'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   KeyboardAvoidingView,
   Platform,
@@ -88,12 +75,11 @@ function NewSession({
   const { sessions } = connected
   // Null while the Session list is on its way.
   const known = sessions.live || !sessions.isPending ? recentWorkspaces(sessions.sessions) : null
-  // The Session as it stands before the Daemon lists it, which it does only once written to.
+  // The Session as it stands before the list has it.
   const onCreated = (session: SessionSummary) => {
     connected.started(session)
     router.replace(sessionPath(session.sessionId))
   }
-  const connection = useDaemonConnection()
   const { create, isCreating, error } = useNewSession()
   const choice = useWorkspaceChoice(known, initialPick)
   const recent = known ?? NO_RECENT
@@ -109,7 +95,6 @@ function NewSession({
   const git = useGitBranches(pickedPath)
   const canWorktree = git?.isGitRepository === true
   const [startWithWorktree, setStartWithWorktree] = usePreference(worktreeByDefault)
-  const [lifecycle, setLifecycle] = usePreference(worktreeLifecyclePreference)
   // This page's own choice; until made, the device default decides.
   const [placement, setPlacement] = useState<'local' | 'worktree' | null>(null)
   const [base, setBase] = useState<{ path: string; branch: string } | null>(null)
@@ -139,8 +124,7 @@ function NewSession({
     })
   }
 
-  const draft = useDraftSession(workspace, choice.tags)
-  const toolMode = newSessionToolMode(overrides.toolMode, toolModeDefault, draft.toolMode)
+  const toolMode = newSessionToolMode(overrides.toolMode, toolModeDefault, null)
   const settings = {
     models: defaults.models,
     modelId: overrides.modelId ?? defaults.modelId,
@@ -148,58 +132,44 @@ function NewSession({
     autonomyLevel: overrides.autonomyLevel ?? defaults.autonomyLevel,
     toolExecutionMode: toolMode.requested,
   }
-  const slashItems = useSlashItems(draft.sessionId, NO_BUILTINS)
-
-  // Leaving without sending closes the draft; a send has taken it over already.
-  const taking = useRef(false)
-  useEffect(
-    () => () => {
-      if (!taking.current) closeDraftSession(connection)
-    },
-    [connection],
-  )
+  const slashItems = useSlashItems(null, NO_BUILTINS)
 
   const start = async (target: string, prompt?: Submission) => {
-    taking.current = true
     const inTree = inWorktree && target === workspace
-    let made: SessionWorktree | null = null
-    let sessionId: string | null
-    if (inTree) {
-      // A draft is in the Workspace itself; the worktree is made by a Session of its own.
-      const created = await create(target, settings, choice.tags, {
-        lifecycle,
-        promptSlug: prompt?.text ?? '',
-        ...(chosenBase ? { baseBranch: chosenBase } : {}),
-      })
-      sessionId = created?.sessionId ?? null
-      made = created?.worktree ?? null
-      if (created) closeDraftSession(connection)
-    } else {
-      sessionId =
-        (await draft.take(target, settings)) ??
-        (await create(target, settings, choice.tags))?.sessionId ??
-        null
-    }
-    if (!sessionId) {
-      taking.current = false
-      return
-    }
+    const created = await create(
+      target,
+      settings,
+      choice.tags,
+      inTree
+        ? {
+            // The Kernel removes no worktree by itself.
+            lifecycle: 'persistent',
+            promptSlug: prompt?.text ?? '',
+            ...(chosenBase ? { baseBranch: chosenBase } : {}),
+          }
+        : undefined,
+    )
+    if (!created) return
+    if (scratch) choice.keep()
+    const { sessionId, worktree: made } = created
     if (prompt && (prompt.text.trim() || prompt.images.length > 0)) {
       setPendingPrompt(sessionId, { text: prompt.text, images: prompt.images })
     }
+    const now = Date.now()
     onCreated({
       sessionId,
       title: 'Untitled session',
       cwd: made?.path ?? target.trim(),
       repoRoot: made?.repoRoot ?? null,
       worktree: made,
-      updatedAt: Math.floor(Date.now() / 1000),
+      updatedAt: Math.floor(now / 1000),
+      activityAt: now,
+      viewedAt: now,
+      kind: scratch ? 'scratch' : 'chat',
       messagesCount: 0,
       archivedAt: null,
       tags: choice.tags,
       parentId: null,
-      callingSessionId: null,
-      callingToolUseId: null,
     })
   }
 
@@ -259,7 +229,7 @@ function NewSession({
             <GitBranch size={14} color={colors.mutedForeground} />
             <Text size="sm" tone="muted" numberOfLines={1} style={styles.worktreeText}>
               {inWorktree
-                ? `New worktree · ${WORKTREE_LIFECYCLE_LABELS[lifecycle]}${baseBranch ? ` · from ${baseBranch}` : ''}`
+                ? `New worktree${baseBranch ? ` · from ${baseBranch}` : ''}`
                 : 'Work locally'}
             </Text>
             <ChevronDown size={14} color={colors.mutedForeground} />
@@ -312,7 +282,7 @@ function NewSession({
         <TextScale>
           <Composer
             isRunning={false}
-            disabled={!workspace || isCreating || draft.isTaking}
+            disabled={!workspace || isCreating}
             allowEmpty
             placeholder="Do anything…"
             sendLabel="Start session"
@@ -392,17 +362,6 @@ function NewSession({
             </View>
             {inWorktree ? (
               <>
-                <View role="radiogroup" aria-label="Lifecycle">
-                  {WORKTREE_LIFECYCLES.map((each) => (
-                    <SheetOption
-                      key={each}
-                      label={WORKTREE_LIFECYCLE_LABELS[each]}
-                      description={WORKTREE_LIFECYCLE_DESCRIPTIONS[each]}
-                      checked={each === lifecycle}
-                      onPress={() => setLifecycle(each)}
-                    />
-                  ))}
-                </View>
                 <Pressable
                   role="button"
                   aria-label="Base branch"

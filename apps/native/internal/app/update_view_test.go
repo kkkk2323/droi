@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"testing"
+	"time"
 
-	"github.com/kkkk2323/droi/apps/native/internal/updates"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droid-sdk-go/protocol"
+
+	"github.com/kkkk2323/droi/apps/native/v2/internal/updates"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 )
 
@@ -184,5 +187,54 @@ func TestReleaseNotesAndSkipThisVersion(t *testing.T) {
 	next.SetAutomatic(true)
 	if s := next.BackgroundCheck(context.Background()); s.Status == updates.Ready {
 		t.Fatal("the next launch installed the skipped version")
+	}
+}
+
+// On a Kernel an installed update that has waited long enough for the Sessions restarts anyway, in the background:
+// the Kernel resumes the runs it interrupts (ADR 0038). On the Daemon it keeps waiting.
+func TestAnUpdateStopsWaitingForTheSessionsOnAKernel(t *testing.T) {
+	for _, onKernel := range []bool{true, false} {
+		t.Run(map[bool]string{true: "kernel", false: "daemon"}[onKernel], func(t *testing.T) {
+			if !onKernel {
+				keepOnDaemon(t, "the Daemon is what this case checks")
+			}
+			focused, relaunched := false, 0
+			now := time.Now()
+			u := updates.New(testSource{rel: testRelease{}})
+			h := newHarnessWith(t, oneSession(), "", func(cfg *Config) {
+				cfg.Updater = u
+				cfg.Relaunch = func() { relaunched++ }
+				cfg.Focused = func() bool { return focused }
+				cfg.Now = func() time.Time { return now }
+			})
+			if onKernel && h.kernel == nil {
+				t.Skip("no Kernel for the window")
+			}
+			u.SetAutomatic(true)
+			u.Check(context.Background())
+			u.Install(context.Background())
+			h.a.mu.Lock()
+			if h.a.busy == nil {
+				h.a.busy = map[string]string{}
+			}
+			h.a.busy[h.d.Sessions[0].SessionID] = string(protocol.DroidWorkingStateStreamingAssistantMessage)
+			h.a.mu.Unlock()
+			if h.a.RelaunchIfIdle() {
+				t.Fatal("relaunched at once while a Session works")
+			}
+			now = now.Add(updateWaitLimit - time.Minute)
+			if h.a.RelaunchIfIdle() {
+				t.Fatal("relaunched before the wait was over")
+			}
+			now = now.Add(time.Minute)
+			focused = true
+			if h.a.RelaunchIfIdle() {
+				t.Fatal("relaunched with the window in front")
+			}
+			focused = false
+			if got := h.a.RelaunchIfIdle(); got != onKernel || relaunched != map[bool]int{true: 1, false: 0}[onKernel] {
+				t.Fatalf("after the wait: relaunched %v (%d times)", got, relaunched)
+			}
+		})
 	}
 }

@@ -1,5 +1,5 @@
-// Above the composer: the Session's task list and the messages the Daemon
-// holds for a running turn. Under it: the Workspace and the context meter.
+// Above the composer: the messages the Kernel holds for a running turn, and those a
+// stop took back. Under it: the Workspace and the context meter.
 import { useCompactedNotice } from '@droi/daemon-layer/compaction'
 import { formatTokens, type ContextUsage } from '@droi/daemon-layer/use-context-usage'
 import {
@@ -11,23 +11,18 @@ import {
   type QueuedContent,
   type QueuedMessage,
 } from '@droi/daemon-layer/use-queued-messages'
-import { useTodos, type TodoItem } from '@droi/daemon-layer/use-todos'
 import {
   Check,
   ChevronDown,
-  Circle,
-  CircleCheck,
   Clock,
   CornerDownLeft,
   Folder,
-  ListChecks,
   Pause,
   Pencil,
   X,
 } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { Spinner } from '../ui/activity'
 import Svg, { Circle as SvgCircle } from 'react-native-svg'
 import { Text } from '../ui/primitives'
 import { radius, space } from '../ui/theme'
@@ -46,16 +41,11 @@ export function ComposerShelf({
   onTake: (content: QueuedContent) => void
 }) {
   const colors = useColors()
-  const todos = useTodos(sessionId)
   const queued = useQueuedMessages(sessionId)
   const actions = useQueuedMessageActions(sessionId)
-  const done = todos.filter((t) => t.status === 'completed').length
-  // A finished list has nothing left to steer; it stays in the transcript.
-  const showTodos = todos.length > 0 && done < todos.length
-  if (!showTodos && queued.length === 0 && !actions.error) return null
+  if (queued.length === 0 && !actions.error) return null
   return (
     <View style={[styles.shelf, { borderColor: colors.border, backgroundColor: colors.card }]}>
-      {showTodos ? <TodoPanel todos={todos} done={done} /> : null}
       {actions.error ? (
         <Text role="alert" size="xs" style={[styles.pad, { color: colors.destructiveForeground }]}>
           {actions.error}
@@ -65,8 +55,8 @@ export function ComposerShelf({
         <QueuedMessages
           queued={queued}
           onRemove={(id) => void actions.remove(id)}
-          onTake={(id) =>
-            void actions.take(id).then((content) => {
+          onTake={(message) =>
+            void actions.take(message).then((content) => {
               if (content) onTake(content)
             })
           }
@@ -76,66 +66,6 @@ export function ComposerShelf({
   )
 }
 
-function TodoPanel({ todos, done }: { todos: TodoItem[]; done: number }) {
-  const colors = useColors()
-  const [open, setOpen] = useState(false)
-  const current =
-    todos.find((t) => t.status === 'in_progress') ?? todos.find((t) => t.status === 'pending')
-  return (
-    <View>
-      <Pressable
-        role="button"
-        aria-label={`Tasks, ${done} of ${todos.length} done`}
-        aria-expanded={open}
-        onPress={() => setOpen(!open)}
-        style={styles.row}
-      >
-        <ListChecks size={14} color={colors.mutedForeground} strokeWidth={1.75} />
-        <Text size="sm" numberOfLines={1} style={styles.fill}>
-          {current?.content ?? 'Tasks'}
-        </Text>
-        <Text tone="muted" size="xs">
-          {done}/{todos.length}
-        </Text>
-        <Chevron open={open} />
-      </Pressable>
-      {open ? (
-        <View role="list" aria-label="Tasks" style={styles.list}>
-          {todos.map((todo) => (
-            <View
-              key={todo.id}
-              role="listitem"
-              aria-label={`${statusLabel(todo.status)}: ${todo.content}`}
-              style={styles.row}
-            >
-              <StatusIcon status={todo.status} />
-              <Text
-                size="sm"
-                tone={todo.status === 'completed' ? 'muted' : 'default'}
-                style={styles.fill}
-              >
-                {todo.content}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  )
-}
-
-function statusLabel(status: TodoItem['status']): string {
-  return status === 'completed' ? 'Done' : status === 'in_progress' ? 'In progress' : 'Pending'
-}
-
-function StatusIcon({ status }: { status: TodoItem['status'] }) {
-  const colors = useColors()
-  if (status === 'completed')
-    return <CircleCheck size={14} color={colors.success} strokeWidth={2} />
-  if (status === 'in_progress') return <Spinner size={14} color={colors.working} />
-  return <Circle size={14} color={colors.mutedForeground} strokeWidth={1.5} />
-}
-
 function QueuedMessages({
   queued,
   onRemove,
@@ -143,7 +73,7 @@ function QueuedMessages({
 }: {
   queued: QueuedMessage[]
   onRemove: (requestId: string) => void
-  onTake: (requestId: string) => void
+  onTake: (message: QueuedMessage) => void
 }) {
   const colors = useColors()
   const [open, setOpen] = useState(false)
@@ -163,7 +93,7 @@ function QueuedMessages({
               role="button"
               aria-label="Edit queued message"
               hitSlop={8}
-              onPress={() => onTake(message.requestId)}
+              onPress={() => onTake(message)}
               style={styles.remove}
             >
               <Pencil size={14} color={colors.mutedForeground} strokeWidth={1.75} />
@@ -265,8 +195,9 @@ export function ComposerFooter({
         <View role="status" style={styles.workspace}>
           <Check size={12} color={colors.success} strokeWidth={2} />
           <Text size="xs" numberOfLines={1} style={{ color: colors.success }}>
-            Compacted, {compacted.removedCount}{' '}
-            {compacted.removedCount === 1 ? 'message' : 'messages'} summarised
+            {compacted.removedCount > 0
+              ? `Compacted, ${compacted.removedCount} ${compacted.removedCount === 1 ? 'message' : 'messages'} summarised`
+              : 'Compacted'}
           </Text>
         </View>
       ) : null}

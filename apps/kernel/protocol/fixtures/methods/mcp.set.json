@@ -1,0 +1,44 @@
+{
+  "kind": "method",
+  "method": "mcp.set",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "21",
+    "method": "mcp.set",
+    "params": {
+      "name": "repo-tools",
+      "repoRoot": "/Users/clive/dev/droi",
+      "trust": true,
+      "fingerprint": "d2f0c6a5b1e4f3a7c9b8e1d0f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "21",
+    "result": {
+      "servers": [
+        {
+          "name": "anlan",
+          "transport": "http",
+          "status": "connected",
+          "enabled": true,
+          "tools": ["anlan___db_query", "anlan___reqlog_query"],
+          "error": null
+        },
+        {
+          "name": "repo-tools",
+          "transport": "stdio",
+          "status": "connected",
+          "enabled": true,
+          "tools": ["repo-tools___list"],
+          "error": null,
+          "repoRoot": "/Users/clive/dev/droi",
+          "trusted": true,
+          "fingerprint": "d2f0c6a5b1e4f3a7c9b8e1d0f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5",
+          "command": "node",
+          "args": ["tools/mcp-server.mjs"]
+        }
+      ]
+    }
+  }
+}

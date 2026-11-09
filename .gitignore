@@ -8,6 +8,12 @@ dist/
 build/
 *.tsbuildinfo
 
+# The kernel's compiled executables: built per platform by `bun run build:kernel`, released as their
+# own files, never committed (about 100 MB each).
+apps/native/assets/kernel/
+# The same executables staged for a release (`bun run build.ts --stage`), by Go platform.
+apps/native/resources/*-*/
+
 # Environment variables
 .env
 .env.local
@@ -74,3 +80,6 @@ package-lock.json
 # Playwright
 test-results/
 playwright-report/
+
+# The Phone App suite's Gateway, built by tests/mobile/global-setup.ts.
+tests/mobile/.bin/

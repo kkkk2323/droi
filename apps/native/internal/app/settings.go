@@ -10,14 +10,14 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
-	"github.com/kkkk2323/droi/apps/native/internal/alerts"
-	"github.com/kkkk2323/droi/apps/native/pkg/brand"
-	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/kit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/settingsview"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/alerts"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/brand"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/defaults"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/settingsview"
 )
 
 // settingsTab is a section of Settings, listed under its group's name.
@@ -34,6 +34,7 @@ var settingsTabs = []settingsTab{
 	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false, l10n.N("Sessions")},
 	{"memory", l10n.N("Memory"), "brain", true, l10n.N("Sessions")},
 	{"worktrees", l10n.N("Worktrees"), "git-fork", false, l10n.N("Sessions")},
+	{"droids", l10n.N("Droids"), "bot", false, l10n.N("Sessions")},
 	{"computer", l10n.N("Computer"), "laptop", false, l10n.N("Devices")},
 	{"remote", l10n.N("Remote Access"), "smartphone", true, l10n.N("Devices")},
 	{"usage", l10n.N("Usage"), "key-round", true, l10n.N("System")},
@@ -51,6 +52,9 @@ type settingsState struct {
 	// magpieURL is what is typed in Settings → Advanced; Magpie's own default
 	// shows while it is empty.
 	magpieURL string
+	// contextModel is the model whose context window Settings → Advanced sets, by host.ModelKey, and
+	// contextTokens what is typed for it.
+	contextModel, contextTokens string
 	// computerLink is the pairing link being typed; the check of one runs
 	// off the UI thread, and a refusal stays until the next try.
 	computerLink, computerErr string
@@ -58,6 +62,8 @@ type settingsState struct {
 	loaded                    bool
 	err                       string
 	worktrees                 managedWorktrees
+	factoryImport             factoryImport
+	droidImport               droidImport
 }
 
 // settingsPage is the SettingsPage: the sections down the left, the one
@@ -172,6 +178,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.memoryTab(c)
 				case "worktrees":
 					a.worktreesTab(c)
+				case "droids":
+					a.droidsTab(c)
 				case "notifications":
 					a.notificationsTab(c)
 				case "remote":
@@ -253,7 +261,7 @@ func (a *App) aboutTab(c *ui.Context) {
 		}
 		a.settingRow(c, L("Droi %s", version), "", control, below)
 	}}
-	if h := a.cfg.Host; h != nil && h.DroiDroidState().Enabled {
+	if h := a.cfg.Host; h != nil && h.DroiDroidState().Enabled && !a.kernelMode() {
 		h.RefreshDroiDroid()
 		p := h.DroiDroidState()
 		rows = append(rows, func() { a.droiDroidAboutRow(c, p) })
@@ -348,6 +356,32 @@ func (a *App) apiKeyRow(c *ui.Context, login host.LoginState) {
 	})
 }
 
+// kernelGroup is Settings → Advanced's Kernel on the Kernel: how it runs, and a way to start it again.
+func (a *App) kernelGroup(c *ui.Context) {
+	h := a.cfg.Host
+	ok, label, detail := kernelStatusText(h.KernelState())
+	a.settingGroup(c, L("Kernel"), L("The Kernel runs every Session on this computer. Restarting it stops the runs under way; the Sessions stay."), func() {
+		a.settingRow(c, L("Status"), detail, func() {
+			a.statusPill(c, ok, label)
+			if a.smallButton(c, kit.Outline, L("Restart Kernel"), "refresh-cw", false).Clicked() {
+				go h.RestartKernel()
+			}
+		}, nil)
+	})
+}
+
+func kernelStatusText(st host.KernelState) (ok bool, label, detail string) {
+	switch st.Status {
+	case host.KernelRunning:
+		return true, L("Running"), L("Process %d.", st.PID)
+	case host.KernelStarting:
+		return false, L("Starting"), L("Waiting for the Kernel to answer.")
+	case host.KernelRestarting:
+		return false, L("Not running"), L("Last attempt: %s. Starting again in %ds (attempt %d).", clause(st.Reason), int(st.Delay.Round(time.Second)/time.Second), st.Attempt)
+	}
+	return false, L("Stopped"), L("The Kernel is not running.")
+}
+
 func daemonStatusText(st host.DaemonState) (ok bool, label, detail string) {
 	switch st.Status {
 	case host.DaemonRunning:
@@ -384,6 +418,17 @@ func (a *App) advancedTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	st := h.Settings.Get()
+	// On the Kernel nothing runs droid: no Daemon to watch, no droid to find, no Factory API base URL to send it to.
+	if a.kernelMode() {
+		a.modelSourcesGroup(c)
+		a.contextWindowsGroup(c)
+		a.kernelGroup(c)
+		a.factoryImportGroup(c)
+		a.droidImportGroup(c)
+		a.droiDroidGroup(c)
+		a.magpieGroup(c)
+		return
+	}
 	a.settingGroup(c, L("Daemon"), "",
 		func() {
 			ok, label, detail := daemonStatusText(h.Daemon.State())
@@ -421,6 +466,8 @@ func (a *App) advancedTab(c *ui.Context) {
 				}))
 		},
 	)
+	a.factoryImportGroup(c)
+	a.droidImportGroup(c)
 	a.droiDroidGroup(c)
 	a.settingGroup(c, L("Factory API"), "", func() {
 		desc := L("Leave empty to talk to Factory directly. Set it to route the Daemon through a local proxy such as droid-proxy (for example http://127.0.0.1:37650).")
@@ -456,15 +503,23 @@ func (a *App) magpieGroup(c *ui.Context) {
 	h := a.cfg.Host
 	s := &a.settings
 	st := h.Settings.Get()
+	// On the Kernel a change reaches it as it runs (Changed, then the Model Sources): no Daemon starts again.
+	kernel := a.kernelMode()
 	rows := []func(){
 		func() {
 			on := st.MagpieEnabled
-			a.settingRow(c, L("Offer Magpie's models"),
-				L("Changing this restarts the Daemon. Sessions using a Magpie model fall back to another model; reselect their model after the restart."),
+			desc := L("Changing this restarts the Daemon. Sessions using a Magpie model fall back to another model; reselect their model after the restart.")
+			if kernel {
+				desc = L("Its models are offered beside Factory's. Working Sessions keep running when you change this.")
+			}
+			a.settingRow(c, L("Offer Magpie's models"), desc,
 				func() {
 					if a.toggle(c, L("Offer Magpie's models"), on, false) {
 						next := !on
 						a.hostUpdate(false, func(st *host.Settings) { st.MagpieEnabled = next })
+						if kernel {
+							return
+						}
 						go func() {
 							if next {
 								h.RefreshMagpie()
@@ -478,6 +533,9 @@ func (a *App) magpieGroup(c *ui.Context) {
 			a.settingRow(c, L("Gateway"), L("Leave empty for %s, or set MAGPIE_BASE_URL.", host.DefaultMagpieBaseURL), nil,
 				a.saveRow(c, &s.magpieURL, L("Magpie base URL"), host.DefaultMagpieBaseURL, L("Save URL"), true, func(v string) {
 					a.hostUpdate(false, func(st *host.Settings) { st.MagpieBaseURL = host.OptString(v) })
+					if kernel {
+						return
+					}
 					go func() {
 						h.RefreshMagpie()
 						if h.Settings.Get().MagpieEnabled {
@@ -498,6 +556,9 @@ func (a *App) magpieGroup(c *ui.Context) {
 				ok, label = true, L("Running, no models")
 			}
 			desc := L("Loaded when the Daemon starts. Refresh reloads the list and restarts the Daemon if it changed, which interrupts working Sessions.")
+			if kernel {
+				desc = L("Refresh reloads the list. Working Sessions keep running.")
+			}
 			if cat.Err != "" {
 				desc = L("Could not read the model list at %s. Make sure Magpie is running, then refresh.", h.MagpieBaseURL())
 			}
@@ -505,7 +566,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 				a.statusPill(c, ok, label)
 				if a.smallButton(c, kit.Outline, L("Refresh"), "refresh-cw", false).Clicked() {
 					go func() {
-						if h.RefreshMagpie() {
+						if h.RefreshMagpie() && !kernel {
 							h.RestartDaemon()
 						}
 					}()
@@ -526,7 +587,7 @@ func (a *App) newSessionsGroup(c *ui.Context) {
 	st := h.Settings.Get()
 	a.settingGroup(c, L("New Sessions in Droi"), L("Applies to new Sessions started from this computer or a paired phone, without affecting the droid CLI or the Factory App."),
 		func() {
-			a.settingRow(c, L("System prompt addition"), L("Appended to Droid's system prompt in every new Session from this computer or a paired phone. Existing Sessions and subagents keep theirs."), nil, func() {
+			a.settingRow(c, L("System prompt addition"), L("Appended to Droi's system prompt in every new Session from this computer or a paired phone. Existing Sessions and subagents keep theirs."), nil, func() {
 				ui.Row(c).Radius(k.Px(10)).Border(1, t.Border).Background(t.Background).Children(func() {
 					k.TextArea(c, &s.prompt, L("System prompt addition"), L("e.g. Reply in the language I write in. Prefer small, reviewable commits."),
 						kit.AreaStyle{Pad: [4]float32{8, 12, 8, 12}, Size: 14, Line: 20, MinLines: 4, Color: t.Foreground})
@@ -578,7 +639,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 	}
 	a.settings.SessionDefaults(c, note, func() {
 		h := a.cfg.Host
-		if h == nil || !h.DroidUpdated() {
+		if h == nil || !h.DroidUpdated() || a.kernelMode() {
 			return
 		}
 		a.settingGroup(c, "", "", func() {
@@ -590,6 +651,10 @@ func (a *App) defaultsTab(c *ui.Context) {
 		})
 	})
 	if a.cfg.Host != nil && !a.following() {
+		if a.kernelMode() {
+			a.codemodeGroup(c)
+			a.compactionGroup(c)
+		}
 		a.newSessionsGroup(c)
 	}
 }
@@ -703,13 +768,13 @@ func (a *App) notificationsTab(c *ui.Context) {
 			}, nil)
 		}
 	}
-	a.settingGroup(c, L("When Droid finishes"), "",
-		soundRow(l10n.N("Completion sound"), l10n.N("Completion sound"), L("Plays when Droid finishes and the Session stops."), &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
-		notifyRow(l10n.N("Notify when Droid finishes"), L("Notifies you when you are not viewing that Session."), &p.NotifyOnComplete),
+	a.settingGroup(c, L("When Droi finishes"), "",
+		soundRow(l10n.N("Completion sound"), l10n.N("Completion sound"), L("Plays when Droi finishes and the Session stops."), &p.CompletionSound, &p.CustomCompletionSound, "fx-ok01"),
+		notifyRow(l10n.N("Notify when Droi finishes"), L("Notifies you when you are not viewing that Session."), &p.NotifyOnComplete),
 	)
-	a.settingGroup(c, L("When Droid needs input"), "",
-		soundRow(l10n.N("Needs-input sound"), l10n.N("Needs-input sound"), L("Plays when Droid stops to ask for permission or an answer."), &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
-		notifyRow(l10n.N("Notify when Droid needs input"), L("Notifies you when a Session waits for permission or an answer."), &p.NotifyOnWaitingForInput),
+	a.settingGroup(c, L("When Droi needs input"), "",
+		soundRow(l10n.N("Needs-input sound"), l10n.N("Needs-input sound"), L("Plays when Droi stops to ask for permission or an answer."), &p.AwaitingInputSound, &p.CustomAwaitingInputSound, "fx-ack01"),
+		notifyRow(l10n.N("Notify when Droi needs input"), L("Notifies you when a Session waits for permission or an answer."), &p.NotifyOnWaitingForInput),
 	)
 	a.settingGroup(c, L("Sounds"), "", func() {
 		opts := []kit.Option{{Value: "always", Label: L("Always")}, {Value: "focused", Label: L("Only when Droi is focused")}, {Value: "unfocused", Label: L("Only when Droi is in the background")}}

@@ -1,0 +1,14 @@
+{
+  "kind": "notification",
+  "method": "task.changed",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "task.changed",
+    "params": {
+      "taskId": 902,
+      "kind": "compaction",
+      "status": "terminal",
+      "conversationId": 7
+    }
+  }
+}

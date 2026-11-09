@@ -2,11 +2,13 @@ package droiapp
 
 import (
 	"context"
+	"log"
 
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
-	"github.com/kkkk2323/droi/apps/native/internal/app"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/app"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // inside is what the window draws for the computer it follows: the App,
@@ -17,22 +19,47 @@ type inside struct {
 	app       *app.App
 	following bool
 	stop      context.CancelFunc
+	// unhear stops the window hearing the Host's Kernel, and link is the connection it keeps to it; both nil when
+	// the window does not use one.
+	unhear func()
+	link   *host.KernelLink
 }
 
-// start starts the App and keeps its Controller connected.
+// start starts the App and keeps its Kernel connection when this computer's Host runs one, its Controller connected
+// otherwise. A window that follows another computer stays on that computer's Daemon.
 func (in *inside) start(h *host.Host) {
 	in.app.Start()
 	ctx, cancel := context.WithCancel(context.Background())
 	in.stop = cancel
-	go connectWhenSignedIn(ctx, in.ctl, h, in.following)
+	onKernel := !in.following && h.KernelEnabled()
+	if !onKernel {
+		// A Host on the Kernel runs no Daemon to connect to.
+		go connectWhenSignedIn(ctx, in.ctl, h, in.following)
+	}
+	if onKernel {
+		in.link = host.NewKernelLink(host.KernelLinkOptions{
+			Client:   "window",
+			Token:    h.KernelToken,
+			OnClient: func(c *kernel.Client, gen int) { in.app.UseKernel(c, int64(gen)) },
+			Log:      func(s string) { log.Println("droi: kernel:", s) },
+		})
+		in.unhear = h.OnKernelState(in.link.Use)
+	}
 }
 
 // close stops what keeps the Controller connected, the App, and then the
-// Controller, whose closing the App no longer hears.
+// Controller, whose closing the App no longer hears. The App closes before its
+// Kernel connection: it writes what it saw on the way out.
 func (in *inside) close() {
 	if in.stop != nil {
 		in.stop()
 	}
+	if in.unhear != nil {
+		in.unhear()
+	}
 	in.app.Close()
+	if in.link != nil {
+		in.link.Close()
+	}
 	in.ctl.Close()
 }

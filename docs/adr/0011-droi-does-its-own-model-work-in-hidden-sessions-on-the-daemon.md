@@ -1,8 +1,10 @@
 ---
-status: accepted
+status: superseded by ADR-0042
 ---
 
 # Droi does its own model work in hidden Sessions on the Daemon
+
+_Superseded by ADR 0042: the hidden Session existed because there was no other way to call a model, and the Kernel has one - `model.complete`, with no Conversation, no entry and no tool. Memory's work runs from the Host as it did, and no hidden Conversation is opened, tagged, archived or retried._
 
 _The Memory work changed with ADR 0031: Memory Sessions write Session Summaries and the Memory Summary instead of consolidating and extracting entries, and Settings → Memory can open them. How they run on the Daemon stands._
 

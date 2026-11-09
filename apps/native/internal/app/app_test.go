@@ -19,12 +19,13 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/computer"
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessiontimes"
-	"github.com/kkkk2323/droi/apps/native/pkg/theme"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/computer"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessiontimes"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/theme"
 )
 
 // The reference screens are 1024x640 at 2x (tests/web/native-reference.spec.ts).
@@ -58,6 +59,9 @@ type harness struct {
 	cfg        Config
 	window     *controller.Controller
 	switches   int
+
+	// kernel holds the scenario's Sessions when the window draws them from a Kernel; nil when it does not.
+	kernel *kernelSessions
 }
 
 // harnessCredential is the Factory credential the harness's Gateway holds.
@@ -88,6 +92,7 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	theme.RegisterFonts()
 	d := fakedaemon.Start(t, sc)
 	h := &harness{t: t, d: d, addition: addition, scratchRoot: filepath.Join(t.TempDir(), "chats"), transcripts: map[string]string{}, times: sessiontimes.Open("", nil)}
+	h.kernel = startKernelSessions(t, sc, d)
 	localToken := gateway.NewLocalToken()
 	opts := gateway.Options{
 		DaemonURL:    func() string { return d.URL },
@@ -149,6 +154,9 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 		OpenInApps: func() []host.OpenInApp { return []host.OpenInApp{{ID: "finder", Label: "Finder"}} },
 		Switch:     h.switchTo,
 	}
+	if h.kernel != nil {
+		cfg.KernelID, cfg.KernelSession = h.kernel.id, h.kernel.session
+	}
 	if with != nil {
 		with(&cfg)
 	}
@@ -158,6 +166,10 @@ func startHarnessGateway(t *testing.T, sc fakedaemon.Scenario, themeName, additi
 	// ends with it.
 	t.Cleanup(func() { h.a.Close() })
 	h.a.Start()
+	// A window that follows another computer lists that Host's Sessions, not this Kernel's.
+	if h.kernel != nil && cfg.Computer == nil {
+		h.a.UseKernel(h.kernel.c, 1)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := ctl.Connect(ctx); err != nil {
@@ -212,6 +224,11 @@ func (h *harness) switchTo(to *computer.Paired) {
 	go ctl.Connect(context.Background())
 	old.Close()
 	oldCtl.Close()
+	// After the old App closed: one connection has one reader of its pushes. Another computer's Sessions are its
+	// own Host's, not this Kernel's.
+	if h.kernel != nil && to == nil {
+		h.a.UseKernel(h.kernel.c, 1)
+	}
 }
 
 func (h *harness) frame() {
@@ -749,11 +766,11 @@ func TestAnOlderListReadDoesNotOverwriteANewerOne(t *testing.T) {
 	h := newHarness(t, sessionsScenario(), "")
 	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
 	older, newer := h.a.startList(), h.a.startList()
-	list := func(title string) *protocol.ListAvailableSessionsResult {
-		return &protocol.ListAvailableSessionsResult{Sessions: []protocol.DaemonAvailableSessionInfo{{SessionID: title, Title: title, Cwd: "/Users/dev/acme-web"}}}
+	list := func(title string) []sessions.Summary {
+		return []sessions.Summary{{SessionID: title, Title: title, Cwd: "/Users/dev/acme-web"}}
 	}
-	h.a.setList(newer, list("Newer"), nil)
-	h.a.setList(older, list("Older"), nil)
+	h.a.setList(newer, list("Newer"), 0, false, nil)
+	h.a.setList(older, list("Older"), 0, false, nil)
 	h.a.mu.Lock()
 	defer h.a.mu.Unlock()
 	if len(h.a.listed) != 1 || h.a.listed[0].Title != "Newer" {

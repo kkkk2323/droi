@@ -2,15 +2,17 @@ package droiapp
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/extension"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/icons"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/extension"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/icons"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
 // extensions are the app's Extensions, joined for the Host, the window and
@@ -98,4 +100,41 @@ func (x *extensions) systemPrompt() string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// agent is what the extensions give every Kernel conversation: their MCP
+// servers, the first's kept where two name the same; every tool they let run
+// without asking; and their sections, a blank line between them.
+func (x *extensions) agent(h *host.Host) kernel.AppAgent {
+	var a kernel.AppAgent
+	var sections []string
+	for _, e := range x.list {
+		if e.Agent == nil {
+			continue
+		}
+		ag := e.Agent(h)
+		for _, s := range ag.MCPServers {
+			if s.Name == "" {
+				continue
+			}
+			if _, taken := a.MCPServers[s.Name]; taken {
+				continue
+			}
+			if a.MCPServers == nil {
+				a.MCPServers = map[string]kernel.AppMCPServer{}
+			}
+			a.MCPServers[s.Name] = kernel.AppMCPServer{Command: s.Command, Args: s.Args, Env: s.Env, URL: s.URL,
+				Headers: s.Headers, BlockOnLoad: s.BlockOnLoad}
+		}
+		for _, tool := range ag.AlwaysAllow {
+			if tool != "" && !slices.Contains(a.AlwaysAllow, tool) {
+				a.AlwaysAllow = append(a.AlwaysAllow, tool)
+			}
+		}
+		if s := strings.TrimSpace(ag.Section); s != "" {
+			sections = append(sections, s)
+		}
+	}
+	a.Section = strings.Join(sections, "\n\n")
+	return a
 }

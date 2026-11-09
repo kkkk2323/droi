@@ -10,15 +10,16 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
-	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/llmusage"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/prefs"
 )
 
 // Advanced's switch puts the Key Pool in the menu bar, whose panel shows
 // the pools and the keys, and opens the Usage tab.
 func TestTheMenuBarItemShowsTheKeyPool(t *testing.T) {
+	keepOnDaemon(t, "Droi's droid is the Daemon's: turning it off is what takes the item away here")
 	h0 := keyPoolTestHost(t)
 	var fitted float32
 	opened := 0
@@ -80,7 +81,7 @@ func TestTheMenuBarItemShowsTheKeyPool(t *testing.T) {
 	h.a.OpenUsage()
 	h.until("the Usage tab", func() bool { return h.hasText("Keys and quota") })
 
-	// Turning the Key Pool off takes the item away with it.
+	// Turning the Key Pool off takes the item away with it (on the Daemon: on Kernel the pool has no switch).
 	h0.DisableDroiDroid()
 	h.until("the item to go", func() bool { return !h.a.MenuBarShown() })
 }

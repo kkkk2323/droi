@@ -10,10 +10,10 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
-	"github.com/kkkk2323/droi/apps/native/internal/memory"
-	"github.com/kkkk2323/droi/apps/native/internal/memorywork"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
-	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memorywork"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 type fakeMemory struct {
@@ -134,7 +134,7 @@ func TestTheSessionListLeavesOutMemorySessions(t *testing.T) {
 
 func clickMemorySwitch(h *harness, asked func() bool) {
 	h.t.Helper()
-	clickSwitchBeside(h, []string{"Off: Droid starts", "On: Droi summarizes"}, asked)
+	clickSwitchBeside(h, []string{"Off: Droi starts", "On: Droi summarizes"}, asked)
 }
 
 // clickSwitchBeside clicks a settings switch named like its section in the
@@ -164,6 +164,7 @@ func clickSwitchBeside(h *harness, descs []string, done func() bool) {
 }
 
 func TestTheMemorySwitchAsksBeforeRestarting(t *testing.T) {
+	keepOnDaemon(t, daemonMemory)
 	h, h0 := memoryHarness(t, &fakeMemory{}, false)
 	h.a.Go(Route{Name: "settings", Tab: "memory"})
 	h.settle()
@@ -181,6 +182,22 @@ func TestTheMemorySwitchAsksBeforeRestarting(t *testing.T) {
 	h.frame()
 	if !h0.Settings.Get().MemoryEnabled {
 		t.Fatal("Restart Daemon did not turn Memory on")
+	}
+}
+
+// TestOnKernelTheMemorySwitchTurnsMemoryOnAtOnce: the Kernel takes Memory on or off as it runs, so the switch asks
+// nothing and offers no Daemon to restart.
+func TestOnKernelTheMemorySwitchTurnsMemoryOnAtOnce(t *testing.T) {
+	h, h0 := memoryHarness(t, &fakeMemory{}, false)
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.a.Go(Route{Name: "settings", Tab: "memory"})
+	h.settle()
+	clickMemorySwitch(h, func() bool { return h0.Settings.Get().MemoryEnabled })
+	if h.hasText("Restart Daemon") || h.hasText("Turn Memory on?") {
+		t.Fatalf("the switch asks to restart the Daemon on the Kernel: %q", h.tt.Texts())
 	}
 }
 

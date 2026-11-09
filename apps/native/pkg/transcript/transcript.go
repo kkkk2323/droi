@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 )
@@ -42,12 +42,18 @@ type ToolCall struct {
 	RawInput json.RawMessage
 	Keys     []string
 	Result   *protocol.ToolResult
+	// ResultView is the result as this package already read it, for a call that came from the Kernel: Pi
+	// writes one entry per result, so BuildView has the result before the row asks for it. The Daemon's
+	// path leaves it nil and ReadResult derives the same shape from Result.
+	ResultView *ToolResultView
 	// Set on a Script or WaitForScript call (Lifecycle): the calls its run made
 	// while this call was the latest one watching it.
 	Nested    []*ToolCall
 	Lifecycle bool
 	// Queued is where an AskUser call that queued its questions stands.
 	Queued QueuedState
+	// Subagent is a Kernel task call's subagent; nil for every other call, and for the Daemon's Task.
+	Subagent *KernelSubagent
 }
 
 type BlockKind uint8
@@ -80,9 +86,12 @@ type Block struct {
 }
 
 type Entry struct {
-	ID        string
-	User      bool
-	Blocks    []Block
+	ID     string
+	User   bool
+	Blocks []Block
+	// Note marks a row that is Droi's own remark rather than either side of the conversation. Nothing answers it,
+	// so nothing folds into it and it closes no turn.
+	Note      bool
 	CreatedAt float64
 	IsError   bool
 }
@@ -177,6 +186,15 @@ func LatestTool(messages []protocol.FactoryDroidMessage) (*ToolCall, int) {
 type Builder struct {
 	messages map[string]*seenMessage
 	gen      uint64
+	// view is the same cache for the Kernel's entries, which BuildView reads.
+	view    map[string]*seenViewEntry
+	viewGen uint64
+	// scripts are the calls each codemode call made, by its call ID, for the build under way: from a finished
+	// call's result, else from pi.live while it runs.
+	scripts, liveScripts map[string][]*ToolCall
+	// subagents are what the Kernel said of each task call's subagent, by its call ID: its result's details, pi.live's
+	// while it runs, and a background one's end.
+	subagents, liveSubagents, subagentsDone map[string]subagentState
 }
 
 // seenMessage is a message's blocks as the last Build decoded them.
@@ -507,6 +525,11 @@ func TurnEnds(entries []*Entry, running bool) map[string]TurnEnd {
 	var start float64
 	hasStart := false
 	for i, e := range entries {
+		if e.Note {
+			// A note belongs to neither side, so it neither starts nor ends a turn. Counting one as the end gave the
+			// turn a closing row with time zero and took the note into Copy.
+			continue
+		}
 		if e.User {
 			if !hasStart {
 				start, hasStart = e.CreatedAt, true
@@ -516,7 +539,10 @@ func TurnEnds(entries []*Entry, running bool) map[string]TurnEnd {
 		replied := len(e.Blocks) > 0 && e.Blocks[len(e.Blocks)-1].Kind == Text
 		closes := !running
 		if i+1 < len(entries) {
-			closes = entries[i+1].User && replied
+			// A turn closes when the user speaks again — or when Droi adds a note, which belongs to neither side
+			// and therefore ends what came before it.
+			next := entries[i+1]
+			closes = (next.User || next.Note) && replied
 		}
 		if !closes {
 			continue
@@ -545,7 +571,7 @@ func FormatTurnEnd(end TurnEnd, now time.Time) string {
 func ReplyText(entries []*Entry) string {
 	var parts []string
 	for _, e := range entries {
-		if e.User {
+		if e.User || e.Note {
 			continue
 		}
 		for _, b := range e.Blocks {

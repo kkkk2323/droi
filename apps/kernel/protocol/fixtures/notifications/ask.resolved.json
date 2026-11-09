@@ -1,0 +1,21 @@
+{
+  "kind": "notification",
+  "method": "ask.resolved",
+  "notification": {
+    "jsonrpc": "2.0",
+    "method": "ask.resolved",
+    "params": {
+      "requestId": "req-ask-77",
+      "id": 7,
+      "answers": [
+        {
+          "questionId": "q1",
+          "selected": ["fail"],
+          "text": null
+        }
+      ],
+      "cancelled": false,
+      "by": "window"
+    }
+  }
+}

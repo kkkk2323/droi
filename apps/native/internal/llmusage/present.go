@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/dashkit"
-	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/dashkit"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/llmproxy/keys"
 )
 
 // The Tones and view models the Usage page draws are dashkit's.
@@ -389,6 +389,12 @@ func eventName(kind string) string {
 		return l10n.L("Key ran out")
 	case "key_cooled":
 		return l10n.L("Key paused")
+	case "key_retried":
+		return l10n.L("Tried another key")
+	case "llm_no_key":
+		return l10n.L("No key could serve the request")
+	case "request_shrunk":
+		return l10n.L("Sent again without older images")
 	case "key_opened":
 		return l10n.L("Started a key")
 	case "key_open_failed":

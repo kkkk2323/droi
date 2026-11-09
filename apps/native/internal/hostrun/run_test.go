@@ -25,8 +25,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
-	"github.com/kkkk2323/droi/apps/native/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 )
 
 // TestStandInDroid is the droid the tests run: standInDroid re-executes the
@@ -245,10 +245,24 @@ func (r *running) base() string { return "http://127.0.0.1:" + strconv.Itoa(r.b.
 
 func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
+// waitNotAlive waits until pid is gone, and answers whether it outlasted the
+// bound. A process that exited is reaped a moment later, so one sample taken
+// right after a stop proves nothing about it.
+func waitNotAlive(pid int, within time.Duration) bool {
+	for deadline := time.Now().Add(within); time.Now().Before(deadline); {
+		if !alive(pid) {
+			return false
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return alive(pid)
+}
+
 func TestHostPrintsThePairingLinkServesMetaAndTakesAClient(t *testing.T) {
 	b := newBox(t, "0.240.0")
 	r := b.start(func(o *Options) { o.Terminal = true })
-	r.waitForOutput("Pairing link: ")
+	// The QR code is written after the link line, so wait for the line after it.
+	r.waitForOutput("Press Ctrl-C to stop.")
 	token := b.token()
 
 	out := r.out.String()
@@ -383,7 +397,7 @@ func TestStopEndsTheGatewayAndTheDaemon(t *testing.T) {
 	if err := r.stop(); err != nil {
 		t.Fatal(err)
 	}
-	if alive(pid) {
+	if waitNotAlive(pid, 5*time.Second) {
 		t.Fatalf("the Daemon (pid %d) is still running", pid)
 	}
 	if conn, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(b.port), time.Second); err == nil {

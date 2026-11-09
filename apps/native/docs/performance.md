@@ -95,3 +95,12 @@ copied per frame.
 - **Another Mac**: an app started there over SSH may not reach this computer's Gateway on
   the local network ("no route to host": macOS's Local Network privacy), so forward it with
   `ssh -N -R 41418:127.0.0.1:41417 <host>` and add the computer there as `127.0.0.1:41418`.
+- **What one Kernel push costs the window**: `BenchmarkAWholeViewPush` and `BenchmarkADeltaPush`
+  (`pkg/sessionview`) decode a real push and build the transcript from it. Write one from
+  this computer's Kernel database with `sqlite3 -readonly` (the last 200 `pi_entries` records of
+  one conversation, `id` and `conversationId` set, inside
+  `{"params":{"id":…,"kind":"value","value":{"conversation":{"id":…},"entries":[…]}}}`) and run
+  `DROI_VIEW_PUSH=<file> go test ./apps/native/pkg/sessionview -run X -bench Push`. In November 2026,
+  on the 200 newest entries (6 MB) of the longest conversation: a whole view 9.1 ms and 8.4 MB
+  allocated per push, five pushes a second while a turn streams; since the window subscribes to
+  deltas, a streamed piece of text costs 1.0 ms and 1.6 MB, most of it the transcript's build.
