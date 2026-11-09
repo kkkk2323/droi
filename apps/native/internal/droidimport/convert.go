@@ -17,9 +17,11 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
@@ -30,6 +32,9 @@ type Conversation struct {
 	Title    string
 	Cwd      string
 	Archived bool
+	// Scratch says Droi 1.x made the session a scratch one (its droi.scratch tag): it comes over as a scratch
+	// conversation, not a chat.
+	Scratch bool
 	// Model and Effort are what droid ran the session with, droid's names for them.
 	Model  string
 	Effort string
@@ -89,6 +94,7 @@ func Convert(path string) (Conversation, error) {
 	out.Entries = c.entries
 	out.Hash = hex.EncodeToString(sum.Sum(nil))
 	out.Archived, out.Model, out.Effort = settingsOf(path)
+	out.Scratch = slices.Contains(memory.SessionTags(path), scratchTag)
 	return out, nil
 }
 

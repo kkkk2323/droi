@@ -300,9 +300,13 @@ func TestListOffersSessionsWithAConversation(t *testing.T) {
 	newer := transcript(t, dir, "newer", start("newer"), msg(at(1), user("hello")))
 	transcript(t, dir, "sub", start("sub", m{"callingSessionId": "older"}), msg(at(1), user("task")))
 	transcript(t, dir, "empty", start("empty"), msg(at(1), user([]any{}, m{"visibility": "user_only"})))
-	memory := transcript(t, dir, "memory", start("memory"), msg(at(1), user("summarize")))
-	if err := os.WriteFile(strings.TrimSuffix(memory, ".jsonl")+".settings.json", []byte(`{"tags":[{"name":"droi.memory"}]}`), 0o644); err != nil {
-		t.Fatal(err)
+	// Droi's Memory Sessions, droid exec runs, a mission's sessions and an Automation's runs are no one's
+	// conversation.
+	for id, tag := range map[string]string{"memory": "droi.memory", "exec": "exec", "worker": "mission-worker", "mission": "mission-session", "auto": "automation", "droi-auto": "droi.automation"} {
+		path := transcript(t, dir, id, start(id), msg(at(1), user("work")))
+		if err := os.WriteFile(strings.TrimSuffix(path, ".jsonl")+".settings.json", []byte(`{"tags":[{"name":"`+tag+`"}]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	transcript(t, dir, "junk", `{"type":"message"}`)
 	now := time.Now()
@@ -380,13 +384,33 @@ func TestBatchesKeepToBothBounds(t *testing.T) {
 	}
 }
 
-// recorder is a Kernel that keeps the calls it got, and numbers the entries it is sent from 100.
+// A Droi 1.x scratch session comes over as a scratch conversation.
+func TestAScratchSessionComesOverAsOne(t *testing.T) {
+	dir := t.TempDir()
+	path := transcript(t, dir, "s1", start("s1"), msg(at(1), user("try this")))
+	if err := os.WriteFile(strings.TrimSuffix(path, ".jsonl")+".settings.json", []byte(`{"tags":[{"name":"droi.scratch"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := &recorder{}
+	if _, _, err := Import(context.Background(), r, OpenStore(filepath.Join(dir, "i.json")), Source{ID: "s1", Path: path}, 1000, nil); err != nil {
+		t.Fatal(err)
+	}
+	if r.imports[0].Kind != "scratch" {
+		t.Fatalf("kind %q", r.imports[0].Kind)
+	}
+}
+
+// recorder is a Kernel that keeps the calls it got and the entries they wrote, numbers conversations from 42 and
+// entries from 100, and answers a key it saw before with what it wrote then, as the Kernel does.
 type recorder struct {
 	imports   []kernel.ImportParams
 	configure []kernel.ConfigureParams
 	index     []kernel.IndexUpdateParams
 	fail      int
 	next      kernel.ID
+	convs     kernel.ID
+	held      map[kernel.ID][]kernel.Entry
+	keys      map[string]kernel.ImportResult
 }
 
 func (r *recorder) Import(_ context.Context, p kernel.ImportParams) (kernel.ImportResult, error) {
@@ -394,10 +418,25 @@ func (r *recorder) Import(_ context.Context, p kernel.ImportParams) (kernel.Impo
 	if r.fail > 0 && len(r.imports) == r.fail {
 		return kernel.ImportResult{}, context.DeadlineExceeded
 	}
-	res := kernel.ImportResult{ConversationID: 42}
-	for range p.Entries {
+	if res, ok := r.keys[p.Key]; ok && p.Key != "" {
+		return res, nil
+	}
+	if r.held == nil {
+		r.held, r.keys = map[kernel.ID][]kernel.Entry{}, map[string]kernel.ImportResult{}
+	}
+	id := p.ID
+	if id == 0 {
+		id = 42 + r.convs
+		r.convs++
+	}
+	res := kernel.ImportResult{ConversationID: id}
+	for _, e := range p.Entries {
 		r.next++
 		res.EntryIDs = append(res.EntryIDs, 99+r.next)
+		r.held[id] = append(r.held[id], kernel.Entry{ID: 99 + r.next, ConversationID: id, Kind: e.Kind, Model: e.Model, Data: e.Data})
+	}
+	if p.Key != "" {
+		r.keys[p.Key] = res
 	}
 	return res, nil
 }
@@ -408,6 +447,18 @@ func (r *recorder) UpdateIndex(_ context.Context, p kernel.IndexUpdateParams) er
 func (r *recorder) Configure(_ context.Context, p kernel.ConfigureParams) (kernel.ConfigureResult, error) {
 	r.configure = append(r.configure, p)
 	return kernel.ConfigureResult{}, nil
+}
+func (r *recorder) Entries(_ context.Context, p kernel.EntriesParams) (kernel.EntriesResult, error) {
+	return kernel.EntriesResult{Items: r.held[p.ID]}, nil
+}
+
+// kinds are the kinds of the entries conversation id holds, in order.
+func (r *recorder) kinds(id kernel.ID) []string {
+	var out []string
+	for _, e := range r.held[id] {
+		out = append(out, e.Kind)
+	}
+	return out
 }
 
 // An import creates with the first batch and appends the rest, keyed by session, file and place, so a retry
@@ -444,7 +495,7 @@ func TestWriteKeysEveryBatch(t *testing.T) {
 	if p1.ID != 42 || p1.Title != "" || p1.Cwd != "" || p1.CreatedAt != nil {
 		t.Errorf("second call %+v", p1)
 	}
-	if !strings.HasPrefix(p0.Key, "droid-import/v1/s1/") || !strings.HasSuffix(p0.Key, "/0") || !strings.HasSuffix(first.imports[2].Key, "/2") {
+	if !strings.HasPrefix(p0.Key, "droid-import/v1/s1/") || !strings.HasSuffix(p0.Key, "/0-2") || !strings.HasSuffix(first.imports[2].Key, "/4-5") {
 		t.Errorf("keys %q %q", p0.Key, first.imports[2].Key)
 	}
 	var data m
@@ -463,17 +514,89 @@ func TestWriteKeysEveryBatch(t *testing.T) {
 	if !ok || rec.Conversation != 42 || len(rec.Hash) != 64 {
 		t.Errorf("record %+v", rec)
 	}
-	// A failure part way keeps no record; the retry sends the very same calls.
-	failed, err := run(2)
-	if err == nil || len(failed.imports) != 2 {
-		t.Fatalf("the failing run: %v, %d calls", err, len(failed.imports))
+}
+
+// An import that stops part way leaves a record of the conversation it made, and the next import goes on with it:
+// the same conversation, each entry once, the note once.
+func TestAnImportThatStoppedGoesOnInItsConversation(t *testing.T) {
+	dir := t.TempDir()
+	lines := []any{start("s1")}
+	for i := range 5 {
+		lines = append(lines, msg(at(i+1), user(fmt.Sprintf("prompt %d", i))))
 	}
-	for i := range failed.imports {
-		a, _ := json.Marshal(failed.imports[i])
-		b, _ := json.Marshal(first.imports[i])
-		if string(a) != string(b) {
-			t.Errorf("call %d differs on a retry:\n%s\n%s", i, a, b)
+	src := Source{ID: "s1", Path: transcript(t, dir, "s1", lines...)}
+	store := OpenStore(filepath.Join(dir, "imports.json"))
+	r := &recorder{fail: 2}
+	if _, _, err := Import(context.Background(), r, store, src, 2, nil); err == nil {
+		t.Fatal("the failing run did not fail")
+	}
+	rec, _ := store.Get("s1")
+	if rec.Conversation != 42 || !rec.Partial || rec.Current(src) {
+		t.Fatalf("record after the failure %+v", rec)
+	}
+	r.fail = 0
+	id, _, err := Import(context.Background(), r, store, src, 2, nil)
+	if err != nil || id != 42 {
+		t.Fatalf("retry: %d, %v", id, err)
+	}
+	if got := r.kinds(42); len(got) != 6 || got[5] != kernel.EntryNote {
+		t.Fatalf("the conversation holds %v", got)
+	}
+	if r.convs != 1 {
+		t.Fatalf("%d conversations made", r.convs)
+	}
+	if rec, _ := store.Get("s1"); rec.Partial || rec.Conversation != 42 || len(rec.Hash) != 64 {
+		t.Fatalf("record after the retry %+v", rec)
+	}
+}
+
+// A session droid went on with after its import goes on in the same conversation: only what came since is sent,
+// and no second note.
+func TestASessionThatWentOnInDroidGoesOnInItsConversation(t *testing.T) {
+	dir := t.TempDir()
+	lines := []any{start("s1"), msg(at(1), user("first")), msg(at(2), answer(txt("answer one")))}
+	path := transcript(t, dir, "s1", lines...)
+	store := OpenStore(filepath.Join(dir, "imports.json"))
+	r := &recorder{}
+	if _, _, err := Import(context.Background(), r, store, Source{ID: "s1", Path: path}, 1000, nil); err != nil {
+		t.Fatal(err)
+	}
+	transcript(t, dir, "s1", append(lines, msg(at(3), user("second")), msg(at(4), answer(txt("answer two"))))...)
+	id, _, err := Import(context.Background(), r, store, Source{ID: "s1", Path: path}, 1000, nil)
+	if err != nil || id != 42 || r.convs != 1 {
+		t.Fatalf("second import: %d, %v, %d conversations", id, err, r.convs)
+	}
+	eq := func(got, want []string) {
+		t.Helper()
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("got %v, want %v", got, want)
 		}
+	}
+	eq(r.kinds(42), []string{kernel.EntryUser, kernel.EntryAssistant, kernel.EntryNote, kernel.EntryUser, kernel.EntryAssistant})
+	last := r.imports[len(r.imports)-1]
+	if last.ID != 42 || len(last.Entries) != 2 || !strings.HasSuffix(last.Key, "/2-4") {
+		t.Fatalf("the continuation sent %+v", last)
+	}
+}
+
+// A conversation that went on in Droi is not droid's to add to: droid's later session comes over as a new one.
+func TestAConversationThatWentOnInDroiIsLeftAsItIs(t *testing.T) {
+	dir := t.TempDir()
+	lines := []any{start("s1"), msg(at(1), user("first")), msg(at(2), answer(txt("answer one")))}
+	path := transcript(t, dir, "s1", lines...)
+	store := OpenStore(filepath.Join(dir, "imports.json"))
+	r := &recorder{}
+	if _, _, err := Import(context.Background(), r, store, Source{ID: "s1", Path: path}, 1000, nil); err != nil {
+		t.Fatal(err)
+	}
+	r.held[42] = append(r.held[42], kernel.Entry{ID: 900, Kind: kernel.EntryUser, Model: json.RawMessage(`[{"role":"user","content":"asked in Droi","timestamp":9}]`)})
+	transcript(t, dir, "s1", append(lines, msg(at(3), user("second")))...)
+	id, _, err := Import(context.Background(), r, store, Source{ID: "s1", Path: path}, 1000, nil)
+	if err != nil || id != 43 {
+		t.Fatalf("second import: %d, %v", id, err)
+	}
+	if len(r.held[42]) != 4 {
+		t.Fatalf("the Droi conversation changed: %v", r.kinds(42))
 	}
 }
 

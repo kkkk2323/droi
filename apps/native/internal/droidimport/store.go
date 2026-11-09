@@ -19,11 +19,14 @@ type Record struct {
 	ModTime      int64     `json:"modTime"`
 	// At is when the import ended, in epoch milliseconds.
 	At int64 `json:"at"`
+	// Partial says the import created the conversation and stopped before it was whole: the next import of the
+	// session goes on with that conversation instead of starting another.
+	Partial bool `json:"partial,omitempty"`
 }
 
-// Current reports that src is still the file the record imported.
+// Current reports that src is still the file the record imported, all of it.
 func (r Record) Current(src Source) bool {
-	return r.Size == src.Size && r.ModTime == src.ModTime.UnixMilli()
+	return !r.Partial && r.Size == src.Size && r.ModTime == src.ModTime.UnixMilli()
 }
 
 // StoreFile is the records' file in the Host's user data folder.

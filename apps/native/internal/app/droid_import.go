@@ -143,10 +143,11 @@ func (di *droidImport) matches() []droidimport.Source {
 }
 
 // droidState is what the list says about a session: imported and unchanged, imported and gone on with in droid
-// since, or not imported.
+// since (importing it again adds what came since to its conversation), or not imported.
 func (a *App) droidState(src droidimport.Source) (imported, changed bool) {
 	r, ok := a.droidStore().Get(src.ID)
-	if !ok {
+	if !ok || r.Partial {
+		// An import that stopped part way is not one: picking the session again goes on with it.
 		return false, false
 	}
 	return r.Current(src), !r.Current(src)

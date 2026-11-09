@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/v2/internal/memory"
@@ -25,8 +26,8 @@ type Source struct {
 	ModTime time.Time
 }
 
-// List is the sessions in dir, droid's sessions folder, newest first. A subagent's session and a Memory
-// Session are left out: the first belongs to the session that started it, the second is Droi's own bookkeeping.
+// List is the sessions in dir, droid's sessions folder, newest first. A subagent's session is left out, since it
+// belongs to the session that started it, and so are the sessions leftOut names.
 // So is a session with nothing said in it, which droid leaves behind for every window opened and closed. A folder
 // that is not there lists nothing.
 func List(dir string) ([]Source, error) {
@@ -70,10 +71,24 @@ func source(file string) (Source, bool) {
 	if json.Unmarshal(line, &start) != nil || start.Type != "session_start" || start.ID == "" || start.Calling != "" {
 		return Source{}, false
 	}
-	if slices.Contains(memory.SessionTags(file), memory.MemorySessionTag) || !saysAnything(r) {
+	if slices.ContainsFunc(memory.SessionTags(file), leftOut) || !saysAnything(r) {
 		return Source{}, false
 	}
 	return Source{ID: start.ID, Path: file, Title: start.Title, Cwd: start.Cwd, Size: info.Size(), ModTime: info.ModTime()}, true
+}
+
+// scratchTag is the tag Droi 1.x gave a scratch session.
+const scratchTag = "droi.scratch"
+
+// leftOut says a session with this tag is not a conversation to import: a Memory Session is Droi's own
+// bookkeeping, a `droid exec` run and a mission's sessions are droid's work with no one talking to it, and an
+// Automation's run belongs to its Automation, which Droi 2.0 runs again rather than imports.
+func leftOut(tag string) bool {
+	switch tag {
+	case memory.MemorySessionTag, "exec", "automation", "droi.automation":
+		return true
+	}
+	return strings.HasPrefix(tag, "mission")
 }
 
 // saysAnything reads the transcript up to its first message that would come over.
