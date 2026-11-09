@@ -24,8 +24,11 @@ export const COMPACTION_MODEL_EXTENSION = 'compaction-model'
 const MEMO = 'droi.compaction-summary'
 
 export function compactionModelExtension(options: {
-  /** The compaction model now, undefined for the conversation's own. Read at each compaction. */
-  model: () => ModelRef | undefined
+  /**
+   * The compaction model now and its thinking level (absent: the model's default), undefined for the conversation's
+   * own. Read at each compaction.
+   */
+  model: () => (ModelRef & { thinkingLevel?: string }) | undefined
   /** Hears why the compaction model wrote no summary. */
   warn?: (message: string) => void
 }): Extension {
@@ -41,7 +44,7 @@ export function compactionModelExtension(options: {
 }
 
 async function summarize(
-  ref: ModelRef | undefined,
+  ref: (ModelRef & { thinkingLevel?: string }) | undefined,
   compaction: { readonly messages: readonly Message[]; readonly instructions?: string },
   api: HookApi,
   context: Context,
@@ -82,6 +85,9 @@ async function summarize(
           model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
         ),
         headers: { [CALL_HEADER]: 'compaction' },
+        ...(ref.thinkingLevel === undefined || ref.thinkingLevel === 'off'
+          ? {}
+          : { reasoning: ref.thinkingLevel as never }),
         ...(context.abortSignal === undefined ? {} : { signal: context.abortSignal }),
       },
     )

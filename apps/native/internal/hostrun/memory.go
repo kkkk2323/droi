@@ -63,7 +63,8 @@ func StartMemory(h *host.Host, home string, changed func()) *memorywork.Controll
 		},
 		Models: func() memorywork.Models {
 			st := h.Settings.Get()
-			return memorywork.Models{SessionSummary: st.MemoryModelOrDefault(), MemorySummary: st.MemorySummaryModelOrDefault()}
+			return memorywork.Models{SessionSummary: st.MemoryModelOrDefault(), MemorySummary: st.MemorySummaryModelOrDefault(),
+				SessionSummaryEffort: st.MemoryModelEffort, MemorySummaryEffort: st.MemorySummaryModelEffort}
 		},
 		Kernel: kernelOf,
 		// Read at each pass: the window imports while Memory runs.

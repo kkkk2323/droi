@@ -928,17 +928,25 @@ func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 	k, t := v.a.kit, v.a.kit.T
 	st := s.Stats()
 	calls, live, measured := v.a.modelCalls(v.id)
-	if (st.Calls == 0 || st.Last == nil) && !measured {
+	now := v.a.cfg.Now()
+	// On the Kernel, the answer streaming now as this window sees it; the Key Pool's figure wins where it has one.
+	var kernelRate float64
+	var kernelStreaming bool
+	if s.State != nil {
+		kernelRate, kernelStreaming = s.State.LiveRate(now)
+	}
+	if (st.Calls == 0 || st.Last == nil) && !measured && kernelRate == 0 {
 		return
 	}
-	now := v.a.cfg.Now()
-	if live != nil {
+	if live != nil || kernelStreaming {
 		c.After(liveRefresh)
 	}
 	rate := st.TokensPerSecond()
 	switch {
 	case liveRate(live, now) > 0:
 		rate = liveRate(live, now)
+	case kernelRate > 0:
+		rate = kernelRate
 	case calls.TokensPerSecond() > 0:
 		rate = calls.TokensPerSecond()
 	}
@@ -959,8 +967,14 @@ func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 	if measured {
 		sections = speedSections(calls, live, st, now)
 	} else {
+		if kernelRate > 0 {
+			sections = append(sections, speedSection{L("Now"), []speedRow{{L("Speed"), "≈ " + formatRate(kernelRate) + " tok/s"}}})
+		}
+		if st.Last == nil {
+			st.Last = &session.CallStats{}
+		}
 		last := *st.Last
-		sections = []speedSection{
+		sections = append(sections, []speedSection{
 			{L("Last model call"), []speedRow{
 				{L("First token after"), formatSeconds(last.TTFTMs)},
 				{L("Speed"), formatRate(last.TokensPerSecond()) + " tok/s"},
@@ -973,7 +987,7 @@ func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 				{L("Time in the model"), formatSpan(st.ModelMs)},
 				{L("Time in tools"), formatSpan(st.ToolMs)},
 			}},
-		}
+		}...)
 	}
 	ui.PopoverBase(c, b, &v.speedOpen, func(p ui.Element) {
 		p.AttachTo(b, ui.AnchorTopRight, ui.AnchorBottomRight).Margin(0, 0, k.Px(6), 0).

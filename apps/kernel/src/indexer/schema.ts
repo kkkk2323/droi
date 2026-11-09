@@ -1,4 +1,5 @@
 import type { SqliteExecutor } from '@earendil-works/chord/sqlite'
+import { hashedFingerprint } from '../fingerprint.ts'
 
 /** The shape of the index's own tables. A different value clears the caches and rebuilds them. */
 export const INDEX_VERSION = '4'
@@ -150,6 +151,7 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
     )
     await writeMeta(db, 'index.viewedSeeded', '1')
   }
+  await hashFingerprints(db)
   const version = await readMeta(db, 'index.version')
   const tokenizer = await readMeta(db, 'index.tokenizer')
   if (version === INDEX_VERSION && tokenizer === TOKENIZER) return
@@ -179,6 +181,41 @@ export async function migrate(db: SqliteExecutor): Promise<void> {
   }
   if (transactional.transaction === undefined) await reset(db)
   else await transactional.transaction(reset)
+}
+
+/**
+ * Once: the fingerprints an older build kept as JSON become their hashes (`../fingerprint.ts`). An import's held
+ * every entry it imported, 424 KB a row on average; a hash is 71 bytes, and `sameFingerprint` matches either. A few
+ * rows at a time, so a large table never sits in memory at once.
+ */
+async function hashFingerprints(db: SqliteExecutor): Promise<void> {
+  if ((await readMeta(db, 'index.fingerprintsHashed')) !== undefined) return
+  const tables = [
+    ['droi_import_keys', 'fingerprint'],
+    ['droi_requests', 'fingerprint'],
+    ['droi_conversations', 'request_fingerprint'],
+  ] as const
+  for (const [table, column] of tables) {
+    let after = 0
+    for (;;) {
+      const rows = await db.all<{ r: number; f: string }>(
+        `SELECT rowid AS r, ${column} AS f FROM ${table}
+         WHERE rowid > ? AND ${column} IS NOT NULL AND ${column} NOT LIKE 'sha256:%'
+         ORDER BY rowid LIMIT 32`,
+        after,
+      )
+      if (rows.length === 0) break
+      for (const row of rows) {
+        await db.run(
+          `UPDATE ${table} SET ${column} = ? WHERE rowid = ?`,
+          hashedFingerprint(row.f),
+          row.r,
+        )
+        after = row.r
+      }
+    }
+  }
+  await writeMeta(db, 'index.fingerprintsHashed', '1')
 }
 
 export async function readMeta(db: SqliteExecutor, key: string): Promise<string | undefined> {

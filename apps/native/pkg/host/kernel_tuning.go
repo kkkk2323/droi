@@ -62,10 +62,16 @@ func (h *Host) kernelCodemodeChanged() {
 // conversation's own.
 func (h *Host) KernelCompactionModel() string { return h.Settings.Get().CompactionModel }
 
-// SetKernelCompactionModel stores the compaction model, by ModelKey ("" for each conversation's own), and gives it to
-// the running Kernel.
-func (h *Host) SetKernelCompactionModel(key string) error {
-	if err := h.Settings.Update(func(s *Settings) { s.CompactionModel = key }); err != nil {
+// KernelCompactionThinking is the compaction model's thinking level; "" for the model's default.
+func (h *Host) KernelCompactionThinking() string { return h.Settings.Get().CompactionThinking }
+
+// SetKernelCompactionModel stores the compaction model, by ModelKey ("" for each conversation's own), and its
+// thinking level ("" for its default), and gives them to the running Kernel.
+func (h *Host) SetKernelCompactionModel(key, thinking string) error {
+	if key == "" {
+		thinking = ""
+	}
+	if err := h.Settings.Update(func(s *Settings) { s.CompactionModel, s.CompactionThinking = key, thinking }); err != nil {
 		return err
 	}
 	h.Changed()
@@ -78,19 +84,20 @@ func (h *Host) kernelCompactionChanged() {
 	k := &h.kernel
 	k.configuring.Lock()
 	defer k.configuring.Unlock()
-	key := h.KernelCompactionModel()
+	key, thinking := h.KernelCompactionModel(), h.KernelCompactionThinking()
 	k.mu.Lock()
 	sup := k.sup
-	if sup == nil || k.compaction == key {
+	if sup == nil || k.compaction == compactionKey(key, thinking) {
 		k.mu.Unlock()
 		return
 	}
-	k.compaction = key
+	k.compaction = compactionKey(key, thinking)
 	runs := k.runs
 	k.mu.Unlock()
 	settings := &kernel.CompactionSettings{}
 	if provider, id, ok := strings.Cut(key, "/"); ok {
 		settings.Model = &kernel.ModelRef{Provider: provider, ModelID: id}
+		settings.ThinkingLevel = thinking
 	}
 	err := h.configureKernel(kernel.HarnessConfigureParams{Compaction: settings})
 	if err == nil {
@@ -100,6 +107,9 @@ func (h *Host) kernelCompactionChanged() {
 	log.Println("droi: kernel: the compaction model changed; starting the Kernel again:", err)
 	h.restartKernel(sup, runs)
 }
+
+// compactionKey is what the Kernel was last given of the compaction model: the model and its thinking level.
+func compactionKey(model, thinking string) string { return model + "#" + thinking }
 
 // ModelKey is how ModelContextWindows names a Kernel model: its provider and its id.
 func ModelKey(provider, id string) string { return provider + "/" + id }

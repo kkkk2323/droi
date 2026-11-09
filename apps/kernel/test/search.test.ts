@@ -10,6 +10,8 @@ import {
   likeClauses,
   searchWords,
   SHORT_TERM_WINDOW,
+  TOOL_RESULT_INDEX_CHARS,
+  entryText,
 } from '../src/indexer/index.ts'
 import { BunSqliteDatabase } from '../src/storage/facade.ts'
 import type { KernelHandle } from '../src/kernel.ts'
@@ -208,4 +210,27 @@ describe('search', () => {
       await db.close()
     }
   })
+})
+
+test('search indexes the ends of a long tool result, not all of it', () => {
+  const text = `$ make\n${'build line\n'.repeat(5000)}error: the test failed`
+  const entry = {
+    kind: 'pi.tool-result',
+    model: [
+      {
+        role: 'toolResult',
+        toolCallId: 'c',
+        toolName: 'bash',
+        content: [{ type: 'text', text }],
+        isError: false,
+        timestamp: 1,
+      },
+    ],
+  } as never
+  const indexed = entryText(entry)
+  expect(indexed.length).toBeLessThanOrEqual(TOOL_RESULT_INDEX_CHARS + 1)
+  expect(indexed.startsWith('$ make')).toBe(true)
+  expect(indexed).toContain('error: the test failed')
+  const user = { kind: 'pi.user', model: [{ role: 'user', content: text, timestamp: 1 }] } as never
+  expect(entryText(user).length).toBeGreaterThan(TOOL_RESULT_INDEX_CHARS)
 })

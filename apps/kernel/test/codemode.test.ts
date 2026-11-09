@@ -7,6 +7,7 @@ import type { KernelConfig } from '../src/config.ts'
 import type { KernelHandle } from '../src/kernel.ts'
 import { context } from '../src/session/service.ts'
 import { NESTED_OUTPUT_BYTES } from '../src/extensions/codemode.ts'
+import { backgroundOption } from '../src/extensions/codemode-jobs.ts'
 import { DEFAULT_SCRIPT_TIMEOUT_MS, codemodeSandbox } from '../src/codemode/sandbox.ts'
 import {
   CodemodeSandbox,
@@ -60,6 +61,7 @@ type Call = {
   output?: string
   truncated?: boolean
   error?: string
+  diff?: string
 }
 type Entry = {
   kind: string
@@ -120,6 +122,21 @@ describe('codemode', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({ name: 'read', status: 'ok' })
     expect(calls[0]?.output).toContain('hello from a file')
+  }, 60_000)
+
+  test("a script's edit carries its diff, so the card shows what changed", async () => {
+    const b = await boot()
+    writeFileSync(join(b.dir, 'a.txt'), 'one\ntwo\nthree\n')
+    const id = await conversation(b)
+    script(
+      b,
+      'await tools.edit({ path: "a.txt", edits: [{ oldText: "two", newText: "zwei" }] }); return 1',
+    )
+    await b.client.call('conversation.submit', { id, input: 'edit in a script' })
+    const [call] = callsOf(await result(b.client, id))
+    expect(call).toMatchObject({ name: 'edit', status: 'ok' })
+    expect(call?.diff).toContain('-2 two')
+    expect(call?.diff).toContain('+2 zwei')
   }, 60_000)
 
   test('a call that fails keeps the calls before it, each with its own answer', async () => {
@@ -431,5 +448,145 @@ describe('codemode', () => {
       else Object.defineProperty(CodemodeSandbox.prototype, 'start', original)
     }
     expect(seen).toEqual([DEFAULT_SCRIPT_TIMEOUT_MS, 5])
+  })
+})
+
+describe('background scripts', () => {
+  /** The job id a codemode call that started one answered, from the conversation's context. */
+  const jobIdIn = (messages: unknown): number => {
+    const found = /as job (\d+)/.exec(JSON.stringify(messages))
+    if (found === null) throw new Error('no job was started')
+    return Number(found[1])
+  }
+
+  type Done = {
+    kind: string
+    data?: { jobId: number; status: string; output: string; details: { calls: Call[] } }
+    model?: unknown
+  }
+
+  async function done(client: Client, id: number): Promise<Done> {
+    return until(async () => {
+      const page = await client.call('conversation.entries', {
+        id,
+        query: { order: 'ascending' },
+        limit: 200,
+      })
+      return (page['items'] as Done[]).find((entry) => entry.kind === 'droi.codemode.done')
+    })
+  }
+
+  test('a background script answers at once, runs on, and its result comes back as an entry the model reads', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    script(
+      b,
+      '// @options: {"background": true, "timeout_ms": 60000}\nconst r = await tools.bash({ command: "sleep 1; echo from-the-job" }); text(r.output.trim())',
+    )
+    const started = Date.now()
+    await b.client.call('conversation.submit', { id, input: 'run it in the background' })
+    const entry = await result(b.client, id)
+    const text = entry.model?.[0]?.content.map((c) => c.text).join('') ?? ''
+    expect(text).toContain('Started in the background as job')
+    const ended = await done(b.client, id)
+    expect(Date.now() - started).toBeGreaterThan(900)
+    expect(ended.data?.status).toBe('completed')
+    expect(ended.data?.output).toContain('from-the-job')
+    expect(ended.data?.details.calls[0]).toMatchObject({ name: 'bash', status: 'ok' })
+    expect(ended.data?.details.calls[0]?.output).toContain('from-the-job')
+    expect(ended.data?.details.calls[0]?.arguments).toEqual({
+      command: 'sleep 1; echo from-the-job',
+    })
+    // The conversation was idle: the result is in its context for the next turn.
+    expect(JSON.stringify(ended.model)).toContain('from-the-job')
+    const live = await b.client.call('conversation.open', { id }).catch(() => undefined)
+    void live
+  }, 60_000)
+
+  test('codemode_job waits for a job and reports its result', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    let seen = ''
+    b.faux.faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall('codemode', {
+          code: '// @options: {"background": true}\nawait tools.bash({ command: "sleep 1" }); text("waited for")',
+        }),
+        { stopReason: 'toolUse' },
+      ),
+      (context) =>
+        fauxAssistantMessage(
+          fauxToolCall('codemode_job', { id: jobIdIn(context.messages), wait_seconds: 20 }),
+          {
+            stopReason: 'toolUse',
+          },
+        ),
+      (context) => {
+        seen = JSON.stringify(context.messages.at(-1))
+        return fauxAssistantMessage('done')
+      },
+    ])
+    await b.client.call('conversation.submit', { id, input: 'start it and wait' })
+    await until(async () => (seen === '' ? undefined : seen))
+    expect(seen).toContain('ended')
+    expect(seen).toContain('waited for')
+  }, 60_000)
+
+  test('codemode_job stops a job: the call it was making is cancelled', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    let seen = ''
+    b.faux.faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall('codemode', {
+          code: '// @options: {"background": true}\nawait tools.bash({ command: "sleep 30" }); text("never")',
+        }),
+        { stopReason: 'toolUse' },
+      ),
+      // A second in, it is still running, and it has made its call.
+      (context) =>
+        fauxAssistantMessage(
+          fauxToolCall('codemode_job', { id: jobIdIn(context.messages), wait_seconds: 1 }),
+          {
+            stopReason: 'toolUse',
+          },
+        ),
+      (context) => {
+        running = JSON.stringify(context.messages.at(-1))
+        return fauxAssistantMessage(
+          fauxToolCall('codemode_job', { id: jobIdIn(context.messages), stop: true }),
+          {
+            stopReason: 'toolUse',
+          },
+        )
+      },
+      (context) => {
+        seen = JSON.stringify(context.messages.at(-1))
+        return fauxAssistantMessage('done')
+      },
+    ])
+    let running = ''
+    await b.client.call('conversation.submit', { id, input: 'start it and stop it' })
+    const ended = await done(b.client, id)
+    expect(ended.data?.status).toBe('stopped')
+    expect(ended.data?.details.calls[0]).toMatchObject({ name: 'bash', status: 'cancelled' })
+    await until(async () => (seen === '' ? undefined : seen))
+    expect(running).toContain('still running')
+    expect(running).toContain('bash running')
+    expect(seen).toContain('was stopped')
+  }, 60_000)
+
+  test('the background option leaves the rest of the options line, and the line, in place', () => {
+    expect(
+      backgroundOption('// @options: {"background": true, "timeout_ms": 5}\nreturn 1'),
+    ).toEqual({
+      code: '// @options: {"timeout_ms":5}\nreturn 1',
+      background: true,
+    })
+    expect(backgroundOption('// @options: {"background": true}\nreturn 1')).toEqual({
+      code: '\nreturn 1',
+      background: true,
+    })
+    expect(backgroundOption('return 1')).toEqual({ code: 'return 1', background: false })
   })
 })

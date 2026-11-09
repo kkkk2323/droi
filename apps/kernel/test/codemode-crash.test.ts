@@ -99,3 +99,80 @@ describe('a kernel killed mid-script', () => {
     ).toBe(0)
   }, 90_000)
 })
+
+describe('a kernel killed while a background script runs', () => {
+  test('resumes the job on the next start, which hands the script its cut-off call and writes its result', async () => {
+    const data = tempData()
+    cleanups.push(() => data.cleanup())
+    const work = realpathSync(mkdtempSync(join(tmpdir(), 'codemode-crash-')))
+    cleanups.push(() => rmSync(work, { recursive: true, force: true }))
+    const child = Bun.spawn([process.execPath, 'run', childPath, data.dir, work, 'background'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const line = await (async () => {
+      const reader = child.stdout.getReader()
+      let buffer = ''
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) throw new Error(await new Response(child.stderr).text())
+        buffer += new TextDecoder().decode(value)
+        const found = buffer.split('\n').find((candidate) => candidate.startsWith('{'))
+        if (found !== undefined) return found
+      }
+    })()
+    const { conversationId } = JSON.parse(line) as { conversationId: number }
+    const sleeper = Number(readFileSync(join(work, 'sleep.pid'), 'utf8').trim())
+    cleanups.push(() => {
+      try {
+        process.kill(sleeper, 'SIGKILL')
+      } catch {
+        // Already gone.
+      }
+    })
+    child.kill(9)
+    await child.exited
+
+    const faux = fauxCatalog()
+    const kernel: KernelHandle = await start({
+      dir: data.dir,
+      faux,
+      overrides: { policy: { autonomy: 'all', rules: [] } },
+    })
+    const client = new Client(kernel.port)
+    cleanups.push(async () => {
+      client.close()
+      await kernel.stop()
+    })
+    type Done = {
+      kind: string
+      data?: {
+        status: string
+        output: string
+        details: { calls: { name: string; status: string }[] }
+      }
+    }
+    const deadline = Date.now() + 30_000
+    let done: Done | undefined
+    while (done === undefined && Date.now() < deadline) {
+      const page = await client.call('conversation.entries', {
+        id: conversationId,
+        query: { order: 'ascending' },
+        limit: 200,
+      })
+      done = (page['items'] as Done[]).find((entry) => entry.kind === 'droi.codemode.done')
+      if (done === undefined) await Bun.sleep(25)
+    }
+    expect(done).toBeDefined()
+    // The script did not catch the cut-off call's error, so it failed with it, as it would have in the foreground.
+    expect(done!.data?.status).toBe('failed')
+    expect(done!.data?.output).toContain('interrupted')
+    // bash is not safe to run twice: the restart ends it as cut off, and the script goes on from there.
+    expect(done!.data?.details.calls[0]).toMatchObject({ name: 'bash', status: 'error' })
+    const inspect = await kernel.harness.inspect({ signal: new AbortController().signal } as never)
+    expect(
+      inspect.tasks.filter((task) => task.record.conversationId === (conversationId as never))
+        .length,
+    ).toBe(0)
+  }, 90_000)
+})

@@ -70,6 +70,8 @@ type Models struct {
 	SessionSummary string
 	// MemorySummary updates the Memory Summary.
 	MemorySummary string
+	// SessionSummaryEffort and MemorySummaryEffort are their reasoning levels; "" for low and medium.
+	SessionSummaryEffort, MemorySummaryEffort string
 }
 
 // Work is what a pass runs with.
@@ -433,12 +435,13 @@ func (p *pass) summarizeSession(ctx context.Context, c candidate) {
 	workspace := memory.WorkspaceOf(cmp.Or(t.Cwd, c.rec.Cwd))
 	title := oneLine(cmp.Or(t.Title, c.rec.Title, shortID(c.id)))
 	reply, err := p.run(ctx, Request{
-		Title:   sessions.MemoryTitlePrefix + "summarize " + clipRunes(title, 60),
-		Cwd:     existingDir(workspace, p.w.Home),
-		ModelID: p.w.Models.SessionSummary,
-		Prompt:  p.w.SessionPrompt,
-		Input:   sessionInput(c.id, workspace, title, c.mtime, t),
-		Schema:  SessionSummarySchema,
+		Title:           sessions.MemoryTitlePrefix + "summarize " + clipRunes(title, 60),
+		Cwd:             existingDir(workspace, p.w.Home),
+		ModelID:         p.w.Models.SessionSummary,
+		Prompt:          p.w.SessionPrompt,
+		Input:           sessionInput(c.id, workspace, title, c.mtime, t),
+		Schema:          SessionSummarySchema,
+		ReasoningEffort: protocol.ReasoningEffort(p.w.Models.SessionSummaryEffort),
 	}, memory.RunSessionSummary, checkSessionSummary)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -760,7 +763,7 @@ func (p *pass) updateMemorySummary(ctx context.Context, force bool) error {
 			Prompt:          p.w.MemoryPrompt,
 			Input:           jsonText(input),
 			Schema:          MemorySummarySchema,
-			ReasoningEffort: protocol.ReasoningEffortMedium,
+			ReasoningEffort: protocol.ReasoningEffort(cmp.Or(p.w.Models.MemorySummaryEffort, string(protocol.ReasoningEffortMedium))),
 		}
 		// An answer too long is no failure: the size is dealt with below.
 		reply, err := p.run(ctx, req, memory.RunMemorySummary, checkMemorySummaryShape)

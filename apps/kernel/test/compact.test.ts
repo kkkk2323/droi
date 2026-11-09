@@ -89,11 +89,13 @@ async function bootTwo(compactionModel?: string) {
   const models = createModels()
   models.setProvider(faux.provider)
   const answered: { model: string; summary: boolean }[] = []
+  const reasoning: (string | undefined)[] = []
   const answer =
     (text: string): FauxResponseStep =>
-    (context, _options, _state, model) => {
+    (context, options, _state, model) => {
       const summary = JSON.stringify(context.messages).includes('<conversation>')
       answered.push({ model: model.id, summary })
+      if (summary) reasoning.push((options as { reasoning?: string } | undefined)?.reasoning)
       return fauxAssistantMessage(text)
     }
   faux.setResponses([answer(long(1)), answer(long(2)), answer(long(3)), answer('the summary')])
@@ -115,7 +117,7 @@ async function bootTwo(compactionModel?: string) {
     agent: { model: { provider, modelId: 'main' } },
   })) as { conversationId: number }
   for (let n = 1; n <= 3; n++) await turn(client, id, `turn ${n}`)
-  return { client, id, answered, provider }
+  return { client, id, answered, provider, reasoning }
 }
 
 async function summaryText(client: Client, id: number): Promise<string> {
@@ -167,6 +169,32 @@ describe('the compaction model', () => {
     await client.call('harness.configure', { compaction: { model: null } })
     expect((await client.call('harness.info', {}))['compaction']).toEqual({ model: null })
     const refused = await client.fails('harness.configure', { compaction: { model: { provider } } })
+    expect(refused.code).toBe(-32602)
+  }, 60_000)
+
+  test('it thinks at the level it was given, and a change of model without one is its default', async () => {
+    const { client, id, answered, provider, reasoning } = await bootTwo()
+    await client.call('harness.configure', {
+      compaction: { model: { provider, modelId: 'small' }, thinkingLevel: 'high' },
+    })
+    expect((await client.call('harness.info', {}))['compaction']).toEqual({
+      model: { provider, modelId: 'small' },
+      thinkingLevel: 'high',
+    })
+    expect((await client.call('conversation.compact', { id, wait: true }))['outcome']).toBe(
+      'compacted',
+    )
+    expect(answered.filter((a) => a.summary)).toEqual([{ model: 'small', summary: true }])
+    expect(reasoning).toEqual(['high'])
+    await client.call('harness.configure', {
+      compaction: { model: { provider, modelId: 'small' } },
+    })
+    expect((await client.call('harness.info', {}))['compaction']).toEqual({
+      model: { provider, modelId: 'small' },
+    })
+    const refused = await client.fails('harness.configure', {
+      compaction: { model: { provider, modelId: 'small' }, thinkingLevel: 'loud' },
+    })
     expect(refused.code).toBe(-32602)
   }, 60_000)
 })

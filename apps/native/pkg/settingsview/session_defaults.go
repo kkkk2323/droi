@@ -76,23 +76,25 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 	}
 	rows := []func(){
 		func() {
-			k.SettingRow(c, l10n.L("Model"), descIf("modelId", ""), func() {
-				ModelField(c, k, s.env.Prefs, l10n.L("Default model"), locked("modelId"), s.Flag("model:default"), &s.picker,
-					defaults.PickableModels(dv.Models, true), dv.ModelID, func(next string) {
+			// The chat's own picker: the model and its reasoning level in one panel.
+			desc := descIf("modelId", "")
+			if desc == "" {
+				desc = descIf("reasoningEffort", "")
+			}
+			k.SettingRow(c, l10n.L("Model"), desc, func() {
+				ModelEffortField(c, k, s.env.Prefs, l10n.L("Default model"), "", locked("modelId"), s.Flag("model:default"), &s.picker,
+					defaults.PickableModels(dv.Models, true), dv.ModelID, dv.ReasoningEffort, func(next string) {
 						p := defaults.Patch{ModelID: str(next)}
 						// A level the new model lacks would be refused; start from its first.
 						if sup := defaults.ReasoningChoices(dv.Models, next, ""); len(sup) > 0 && !slices.Contains(sup, dv.ReasoningEffort) {
 							p.ReasoningEffort = str(sup[0])
 						}
 						save(p)
+					}, func(next string) {
+						if !locked("reasoningEffort") {
+							save(defaults.Patch{ReasoningEffort: str(next)})
+						}
 					})
-			}, nil)
-		},
-		func() {
-			k.SettingRow(c, l10n.L("Reasoning level"), descIf("reasoningEffort", ""), func() {
-				if next, ok := s.Select(c, l10n.N("Default reasoning level"), dv.ReasoningEffort, efforts(dv.ModelID, dv.ReasoningEffort), locked("reasoningEffort")); ok {
-					save(defaults.Patch{ReasoningEffort: str(next)})
-				}
 			}, nil)
 		},
 		interaction,

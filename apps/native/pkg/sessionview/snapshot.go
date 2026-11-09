@@ -54,10 +54,12 @@ func (s *Snapshot) Settings() session.Settings {
 	return s.Session.Settings()
 }
 
-// Stats are the conversation's measured speeds. Only the Daemon has them; the Kernel measures usage instead, which
-// the composer reads from State.
+// Stats are the conversation's measured speeds: the Daemon's, or on the Kernel path what its answers recorded.
 func (s *Snapshot) Stats() session.Stats {
 	if s.Session == nil {
+		if s.State != nil {
+			return s.State.Stats()
+		}
 		return session.Stats{}
 	}
 	return s.Session.Stats()

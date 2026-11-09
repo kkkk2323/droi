@@ -24,12 +24,13 @@ import type { ConversationMeta } from '../indexer/schema.ts'
 import type { ConversationRow } from '../indexer/schema.ts'
 import type { BunSqliteDatabase } from '../storage/facade.ts'
 import type { AgentDefaults, KernelConfig, ProviderConfig } from '../config.ts'
-import { modelRefOf, validateProviders } from '../config.ts'
+import { COMPACTION_THINKING_LEVELS, modelRefOf, validateProviders } from '../config.ts'
 import { replaceProviders, supportedApi } from '../models.ts'
 import { selectMemory } from '../memory/select.ts'
 import { isCodemodeMode, type CodemodeMode } from '../extensions/codemode.ts'
 import { isAbsolute } from 'node:path'
 import { info, warn } from '../log.ts'
+import { fingerprintOf, sameFingerprint } from '../fingerprint.ts'
 import {
   Code,
   RpcError,
@@ -465,7 +466,12 @@ export class Kernel implements Dispatcher {
       },
       capabilities: this.#options.capabilities,
       codemode: { mode: config.codemodeMode ?? 'on' },
-      compaction: { model: config.compactionModel ?? null },
+      compaction: {
+        model: config.compactionModel ?? null,
+        ...(config.compactionThinking === undefined
+          ? {}
+          : { thinkingLevel: config.compactionThinking }),
+      },
       providers,
       models,
       // What a new conversation starts with when its create names no model.
@@ -551,8 +557,10 @@ export class Kernel implements Dispatcher {
       codemodeMode = mode
     }
     let compactionModel: ModelRef | null | undefined
+    let compactionThinking: string | undefined
     if (params['compaction'] !== undefined) {
-      const model = (params['compaction'] as { model?: unknown } | null)?.model
+      const given = params['compaction'] as { model?: unknown; thinkingLevel?: unknown } | null
+      const model = given?.model
       compactionModel = model === null ? null : modelRefOf(model)
       if (compactionModel === undefined) {
         throw invalidParams([
@@ -561,6 +569,18 @@ export class Kernel implements Dispatcher {
             message: "{provider, modelId}, or null for each conversation's own",
           },
         ])
+      }
+      const level = given?.thinkingLevel
+      if (level !== undefined && level !== null) {
+        if (typeof level !== 'string' || !COMPACTION_THINKING_LEVELS.has(level)) {
+          throw invalidParams([
+            {
+              path: 'compaction.thinkingLevel',
+              message: 'off, minimal, low, medium, high or xhigh',
+            },
+          ])
+        }
+        compactionThinking = level
       }
     }
     if (providers !== undefined) {
@@ -591,8 +611,14 @@ export class Kernel implements Dispatcher {
       config.codemodeMode = codemodeMode
       this.#options.syncCodemode?.()
     }
-    if (compactionModel === null) delete config.compactionModel
-    else if (compactionModel !== undefined) config.compactionModel = compactionModel
+    if (compactionModel !== undefined) {
+      // The level goes with the model: a change that names none is the model's own default.
+      if (compactionModel === null) delete config.compactionModel
+      else config.compactionModel = compactionModel
+      if (compactionModel === null || compactionThinking === undefined)
+        delete config.compactionThinking
+      else config.compactionThinking = compactionThinking
+    }
     info('harness configured', {
       ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
       ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),
@@ -695,7 +721,10 @@ export class Kernel implements Dispatcher {
       requestId === undefined ? undefined : await this.#options.indexer.byRequestId(requestId)
     if (existing !== undefined) {
       // The same key with different params is a conflict, not a silent answer with the first result.
-      if (existing.request_fingerprint !== null && existing.request_fingerprint !== fingerprint) {
+      if (
+        existing.request_fingerprint !== null &&
+        !sameFingerprint(existing.request_fingerprint, fingerprint)
+      ) {
         throw conflict(requestId!)
       }
       return { conversationId: existing.id, view: await this.#view(existing.id, DEFAULT_WINDOW) }
@@ -821,7 +850,7 @@ export class Kernel implements Dispatcher {
       const replay = await this.#options.indexer.importKey(key)
       if (replay !== undefined) {
         // The same key with other fields is a different conversation, not a silent answer with the first.
-        if (replay.fingerprint !== fingerprint) throw conflict(key)
+        if (!sameFingerprint(replay.fingerprint, fingerprint)) throw conflict(key)
         return { conversationId: replay.conversationId, entryIds: replay.entryIds, replayed: true }
       }
     }
@@ -1024,7 +1053,7 @@ export class Kernel implements Dispatcher {
         // Only an append memo replays here.
         if (data.scope !== 'append') continue // The same key with other entries is a different batch: answering with the old ids would silently
         // discard what the caller asked to append.
-        if (data.fingerprint !== fingerprint) throw conflict(key)
+        if (!sameFingerprint(data.fingerprint as string, fingerprint)) throw conflict(key)
         return data.entryIds as number[]
       }
       cursor = page.next as never
@@ -1195,7 +1224,7 @@ export class Kernel implements Dispatcher {
     if (requestId !== undefined) {
       const known = await this.#requestMemo(id, requestId)
       if (known !== undefined) {
-        if (known.fingerprint !== fingerprint) throw conflict(requestId)
+        if (!sameFingerprint(known.fingerprint, fingerprint)) throw conflict(requestId)
         if (known.submissionId !== undefined) return { submissionId: known.submissionId }
       }
     }
@@ -2017,30 +2046,7 @@ function defaultsAsChange(defaults: AgentDefaults | undefined): AgentChange {
   }
 }
 
-/** A stable string for "the same request": key order does not matter, so a client may resend freely. */
-export function fingerprintOf(value: unknown): string {
-  return JSON.stringify(normalize(value))
-}
-
-function normalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalize)
-  if (typeof value !== 'object' || value === null) return value
-  const record = value as Record<string, unknown>
-  // A null prototype and `defineProperty`: an own `__proto__` in imported data is a field like any other, and
-  // assigning it would set the prototype instead — losing it from the fingerprint so two different payloads
-  // look like the same request.
-  const out = Object.create(null) as Record<string, unknown>
-  for (const key of Object.keys(record).sort()) {
-    if (record[key] === undefined) continue
-    Object.defineProperty(out, key, {
-      value: normalize(record[key]),
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    })
-  }
-  return out
-}
+export { fingerprintOf }
 /**
  * Every method of the contract this build does not implement, and the capability that says so.
  *

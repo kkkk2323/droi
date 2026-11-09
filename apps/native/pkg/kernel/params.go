@@ -130,13 +130,15 @@ type Window struct {
 // How a connection wants its conversation.view pushes: the whole window, or
 // only the ops that changed it.
 const (
-	// SubscribeView sends the whole view on every push. It is the default: the
-	// window sits on the machine that runs Kernel and redraws cheaply.
+	// SubscribeView sends the whole view on every push. It is the protocol's
+	// default, for a client that keeps no state of its own.
 	SubscribeView = "view"
 	// SubscribeDelta sends only Pi's ops, with value null, for a client that
-	// reaches Kernel over the Relay and keeps its own state (the phone, M5).
-	// A push whose ops it cannot merge with what it holds arrives as a
-	// kind "full" view instead, so it never has to guess.
+	// keeps its own state and applies them (ApplyOps): the phone over the
+	// Relay, and the window, for which a whole view of a long conversation
+	// was megabytes of JSON five times a second. A push whose ops it cannot
+	// merge with what it holds arrives as a kind "full" view instead, so it
+	// never has to guess.
 	SubscribeDelta = "delta"
 )
 
@@ -841,6 +843,8 @@ type HarnessConfigureParams struct {
 // for each conversation's own.
 type CompactionSettings struct {
 	Model *ModelRef `json:"model"`
+	// ThinkingLevel is the model's thinking level (off, minimal, low, medium, high, xhigh); "" for its default.
+	ThinkingLevel string `json:"thinkingLevel,omitempty"`
 }
 
 // Codemode's modes, as pi-coding-agent's codemode.mode setting: CodemodeOn offers the model every tool and codemode

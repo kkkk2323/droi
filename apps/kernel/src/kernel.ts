@@ -136,7 +136,14 @@ export async function startKernel(
     const backgroundTool = backgroundExtension(() => background)
     /** The MCP servers as codemode groups their tools: `McpServers` keeps the list current. */
     const namespaces: CodemodeNamespace[] = []
-    const codemode = codemodeExtension({ sandbox: codemodeSandbox(), namespaces })
+    const codemode = codemodeExtension({
+      sandbox: codemodeSandbox(),
+      namespaces,
+      // Read once the harness is open: a background script is stopped as Harness.abortTask stops a task.
+      abortTask: async (id) => {
+        await harness?.abortTask(id as never, context)
+      },
+    })
     // Always installed, and selected per conversation before each turn while Memory is on (selectMemory), so
     // harness.configure can turn it on or off without a restart. The folder is read as config holds it then.
     const memory = memoryExtension({
@@ -160,7 +167,15 @@ export async function startKernel(
     registry.install(memory)
     // The compaction model, read at each compaction so harness.configure can change it.
     const compactionModel = compactionModelExtension({
-      model: () => config.compactionModel,
+      model: () =>
+        config.compactionModel === undefined
+          ? undefined
+          : {
+              ...config.compactionModel,
+              ...(config.compactionThinking === undefined
+                ? {}
+                : { thinkingLevel: config.compactionThinking }),
+            },
       warn: (message) => warn('compaction', { message }),
     })
     registry.install(compactionModel)

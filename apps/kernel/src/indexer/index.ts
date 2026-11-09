@@ -9,6 +9,7 @@ import {
   readMeta,
   writeMeta,
 } from './schema.ts'
+import { hashedFingerprint } from '../fingerprint.ts'
 
 /**
  * Droi's conversation list, search index and view times, kept in the kernel's one SQLite file.
@@ -318,7 +319,7 @@ export class Indexer {
            submission_id = COALESCE(droi_requests.submission_id, excluded.submission_id)`,
         id,
         request.requestId,
-        request.fingerprint,
+        hashedFingerprint(request.fingerprint),
         request.submissionId ?? null,
       )
     }
@@ -562,7 +563,7 @@ export class Indexer {
              entry_ids = excluded.entry_ids`,
           entry.import.key,
           entry.conversation,
-          entry.import.fingerprint,
+          hashedFingerprint(entry.import.fingerprint),
           JSON.stringify(entry.import.entryIds),
         )
       }
@@ -836,7 +837,7 @@ export class Indexer {
          submission_id = COALESCE(droi_requests.submission_id, excluded.submission_id)`,
       conversationId,
       requestId,
-      fingerprint,
+      hashedFingerprint(fingerprint),
       submissionId,
     )
   }
@@ -1087,7 +1088,9 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
       row.insert.parentId ?? null,
       row.insert.ownerId ?? null,
       row.insert.requestId ?? null,
-      row.insert.requestFingerprint ?? null,
+      row.insert.requestFingerprint === undefined
+        ? null
+        : hashedFingerprint(row.insert.requestFingerprint),
       row.insert.viewedAt ?? row.insert.createdAt,
     )
     return
@@ -1125,9 +1128,21 @@ async function writeRow(exec: SqliteExecutor, row: PendingRow): Promise<void> {
  */
 export function entryText(entry: EntryRecord): string {
   if (BOOKKEEPING.has(entry.kind)) return ''
-  const text = messageTextOf(entry.model) + '\n' + dataText(entry.data)
+  let text = messageTextOf(entry.model) + '\n' + dataText(entry.data)
+  if (entry.kind === 'pi.tool-result' && text.length > TOOL_RESULT_INDEX_CHARS) {
+    text = `${text.slice(0, TOOL_RESULT_INDEX_HEAD)}\n${text.slice(text.length - (TOOL_RESULT_INDEX_CHARS - TOOL_RESULT_INDEX_HEAD))}`
+  }
   return text.trim() === '' ? '' : text
 }
+
+/**
+ * How much of one tool result search indexes: its first 12,000 and last 4,000 characters. A trigram index costs
+ * about twice the text it covers, and tool results were 1.44 GB of one person's 3.9 GB of entries — whole files
+ * read, whole logs — so they were most of a 2.5 GB index. A command, its error and its outcome are at the ends.
+ * Entries indexed before keep what they had.
+ */
+export const TOOL_RESULT_INDEX_CHARS = 16_000
+const TOOL_RESULT_INDEX_HEAD = 12_000
 
 /** Entry kinds the kernel writes for its own records, never as conversation text. */
 const BOOKKEEPING = new Set(['droi.meta', 'droi.request', 'droi.import'])

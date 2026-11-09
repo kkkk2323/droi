@@ -300,9 +300,12 @@ func (h *Host) kernelEnv() []string {
 	}
 	codemode := h.KernelCodemode()
 	env = append(env, kernel.CodemodeEnv+"="+codemode)
-	compaction := h.KernelCompactionModel()
+	compaction, thinking := h.KernelCompactionModel(), h.KernelCompactionThinking()
 	if compaction != "" {
 		env = append(env, kernel.CompactionModelEnv+"="+compaction)
+		if thinking != "" {
+			env = append(env, kernel.CompactionThinkingEnv+"="+thinking)
+		}
 	}
 	agent := h.kernelAgent()
 	if !agent.Empty() {
@@ -314,7 +317,7 @@ func (h *Host) kernelEnv() []string {
 	k.memoryOn = memoryOn
 	k.section = agent.Section
 	k.codemode = codemode
-	k.compaction = compaction
+	k.compaction = compactionKey(compaction, thinking)
 	k.mu.Unlock()
 	// Stopped, or started again, while this launch was preparing: the proxy does not take its token.
 	providers, _, ok := h.loadModelSources(token, runs, true)

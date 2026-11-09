@@ -102,19 +102,59 @@ func TestStateReplacesOnFull(t *testing.T) {
 	}
 }
 
-// TestStateIgnoresADeltaPush: the window subscribes to whole views. A push with no value and only ops is a
-// mistake in the wiring, and the state says so by changing nothing rather than by guessing what the ops mean.
-func TestStateIgnoresADeltaPush(t *testing.T) {
+// TestStateAppliesADeltaPush: the window subscribes to deltas, so a push carries only Pi's ops, applied to the view
+// held. Ops that do not follow on change nothing and mark the state broken, for the store to open it again.
+func TestStateAppliesADeltaPush(t *testing.T) {
 	s := NewState(7)
 	s.Apply(viewPush(t, 7, entryOf(t, 1, kernel.EntryUser, "one", 1000)))
 	before := s.Revision()
 
-	delta := kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Ops: json.RawMessage(`[["a",["entries"],{}]]`)}
-	if s.Apply(delta) {
-		t.Error("a delta push changed a window subscriber's state")
+	two, err := json.Marshal([]kernel.Entry{entryOf(t, 2, kernel.EntryAssistant, "two", 2000)})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if s.Revision() != before || len(s.Entries()) != 1 {
-		t.Fatalf("the state moved on a delta push: revision %d, %d entries", s.Revision(), len(s.Entries()))
+	delta := kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Ops: json.RawMessage(`[["p",["entries"],1,0,` + string(two) + `]]`)}
+	if !s.Apply(delta) {
+		t.Fatal("a delta push changed nothing")
+	}
+	if s.Revision() != before+1 || len(s.Entries()) != 2 || s.Entries()[1].ID != 2 {
+		t.Fatalf("revision %d, entries %+v", s.Revision(), s.Entries())
+	}
+
+	wrong := kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Ops: json.RawMessage(`[["a",["entries"],"x"]]`)}
+	if s.Apply(wrong) {
+		t.Error("ops that do not follow on changed the state")
+	}
+	if len(s.Entries()) != 2 {
+		t.Fatalf("the state lost its entries: %+v", s.Entries())
+	}
+	if !s.takeBroken() {
+		t.Error("the state did not say its ops stopped following on")
+	}
+	if s.takeBroken() {
+		t.Error("broken was not cleared once read")
+	}
+}
+
+// TestStateKeepsEarlyOpsForTheOpenAnswer: Kernel subscribes before it answers conversation.open, so a delta push can
+// arrive before the answer it follows on from. Its ops wait for that answer and are applied after it.
+func TestStateKeepsEarlyOpsForTheOpenAnswer(t *testing.T) {
+	s := NewState(7)
+	s.expectOpen()
+	two, err := json.Marshal([]kernel.Entry{entryOf(t, 2, kernel.EntryAssistant, "two", 2000)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	early := kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Ops: json.RawMessage(`[["p",["entries"],1,0,` + string(two) + `]]`)}
+	if s.Apply(early) {
+		t.Error("ops applied before the view they follow on from")
+	}
+	answer := kernel.View{Conversation: kernel.Conversation{ID: 7}, Entries: []kernel.Entry{entryOf(t, 1, kernel.EntryUser, "one", 1000)}}
+	if !s.takeOpen(answer) {
+		t.Fatal("the open's answer changed nothing")
+	}
+	if got := s.Entries(); len(got) != 2 || got[0].ID != 1 || got[1].ID != 2 {
+		t.Fatalf("entries %+v, want the answer and the early ops", got)
 	}
 }
 
@@ -299,11 +339,10 @@ func TestStoreOpensAndDraws(t *testing.T) {
 	}
 }
 
-// TestStoreAsksForWholeViews: the state holds whole views and ignores ops, which is right only while the
-// subscription is "view". The protocol's default is that value, so leaving it out works and nothing would notice
-// the day someone wrote "delta": every push would carry value: null, Apply would ignore all of them, and every
-// page would freeze on its first snapshot with no error anywhere.
-func TestStoreAsksForWholeViews(t *testing.T) {
+// TestStoreAsksForDeltas: the state applies Pi's ops to the view it holds, so the open asks for "delta". A whole
+// view on every push is the protocol's default, and costs the Kernel and the window a few megabytes of JSON five
+// times a second on a long conversation.
+func TestStoreAsksForDeltas(t *testing.T) {
 	k := &fakeKernel{views: map[kernel.ID]kernel.View{1: {}}}
 	st := NewStore(3)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -316,8 +355,8 @@ func TestStoreAsksForWholeViews(t *testing.T) {
 	if len(params) != 1 {
 		t.Fatalf("%d opens reached Kernel, want one", len(params))
 	}
-	if params[0].Subscribe != kernel.SubscribeView {
-		t.Fatalf("the open subscribed to %q, want %q", params[0].Subscribe, kernel.SubscribeView)
+	if params[0].Subscribe != kernel.SubscribeDelta {
+		t.Fatalf("the open subscribed to %q, want %q", params[0].Subscribe, kernel.SubscribeDelta)
 	}
 	if params[0].Window == nil || params[0].Window.Min != 10 || params[0].Window.Max != 20 {
 		t.Errorf("the open asked for window %+v", params[0].Window)

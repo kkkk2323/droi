@@ -28,6 +28,8 @@ const CLASSES: Readonly<Record<string, ToolClass>> = {
   powershell: 'exec',
   bash_background: 'exec',
   codemode: 'exec',
+  // It reports a background script, waits for one or stops one: the script's own calls are judged as they are made.
+  codemode_job: 'meta',
   ask_user: 'meta',
   submit_plan: 'meta',
   // Memory's tools read the Memory folder and write only a Memory Note the user asked for (ADR 0042).

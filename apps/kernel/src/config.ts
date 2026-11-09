@@ -87,6 +87,37 @@ export type KernelConfig = {
    * changes it for the next compaction.
    */
   compactionModel?: { provider: string; modelId: string }
+  /**
+   * The compaction model's thinking level (`DROI_KERNEL_COMPACTION_THINKING`, or the config file's
+   * `compaction.thinkingLevel`); unset, the model's own default. Set and cleared with the model.
+   */
+  compactionThinking?: string
+}
+
+/** The thinking levels a compaction model takes, pi-ai's; `off` asks for none. */
+export const COMPACTION_THINKING_LEVELS = new Set([
+  'off',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+])
+
+/** `DROI_KERNEL_COMPACTION_THINKING`, else the config file's `compaction.thinkingLevel`; undefined for the default. */
+export function compactionThinkingFrom(
+  file: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const given = env['DROI_KERNEL_COMPACTION_THINKING']
+  const level =
+    given !== undefined && given.trim() !== ''
+      ? given.trim()
+      : (file as { thinkingLevel?: unknown } | undefined)?.thinkingLevel
+  if (level === undefined || level === null) return undefined
+  if (typeof level !== 'string' || !COMPACTION_THINKING_LEVELS.has(level))
+    throw new Error('compaction.thinkingLevel must be off, minimal, low, medium, high or xhigh')
+  return level
 }
 
 /**
@@ -363,6 +394,10 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
   const app = appAgentFromEnv(env)
   const codemodeMode = codemodeModeFrom((file as { codemode?: unknown }).codemode, env)
   const compactionModel = compactionModelFrom((file as { compaction?: unknown }).compaction, env)
+  const compactionThinking =
+    compactionModel === undefined
+      ? undefined
+      : compactionThinkingFrom((file as { compaction?: unknown }).compaction, env)
   return {
     port: args.port,
     host: args.host,
@@ -378,5 +413,6 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     ...(app === undefined ? {} : { app }),
     ...(codemodeMode === undefined ? {} : { codemodeMode }),
     ...(compactionModel === undefined ? {} : { compactionModel }),
+    ...(compactionThinking === undefined ? {} : { compactionThinking }),
   }
 }

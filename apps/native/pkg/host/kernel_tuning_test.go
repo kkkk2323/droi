@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +73,12 @@ func TestTheKernelIsToldTheCompactionModel(t *testing.T) {
 	if got, _ := model(); got != "factory-chat/small" {
 		t.Fatalf("with a compaction model set the Kernel got %q", got)
 	}
+	if err := h.Settings.Update(func(s *Settings) { s.CompactionThinking = "low" }); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(h.kernelEnv(), kernel.CompactionThinkingEnv+"=low") {
+		t.Fatalf("the Kernel was not told the compaction model's thinking level: %v", h.kernelEnv())
+	}
 }
 
 // Codemode's mode and a model's context window, changed in Settings, reach the running Kernel without a restart:
@@ -127,16 +134,17 @@ func TestCodemodeAndContextWindowsReachTheRunningKernel(t *testing.T) {
 	}
 
 	// The compaction model, set and cleared, reaches the same Kernel.
-	if err := hk.h.SetKernelCompactionModel(ModelKey(chat.Provider, chat.ModelID)); err != nil {
+	if err := hk.h.SetKernelCompactionModel(ModelKey(chat.Provider, chat.ModelID), "high"); err != nil {
 		t.Fatal(err)
 	}
 	harnessChanged(t, ctx, c)
 	hk.stillRunning(t, first)
 	if info, err := c.Harness(ctx); err != nil || info.Compaction == nil || info.Compaction.Model == nil ||
-		*info.Compaction.Model != (kernel.ModelRef{Provider: chat.Provider, ModelID: chat.ModelID}) {
+		*info.Compaction.Model != (kernel.ModelRef{Provider: chat.Provider, ModelID: chat.ModelID}) ||
+		info.Compaction.ThinkingLevel != "high" {
 		t.Fatalf("the Kernel's compaction model is %+v (%v)", info.Compaction, err)
 	}
-	if err := hk.h.SetKernelCompactionModel(""); err != nil {
+	if err := hk.h.SetKernelCompactionModel("", "high"); err != nil {
 		t.Fatal(err)
 	}
 	harnessChanged(t, ctx, c)

@@ -86,6 +86,11 @@ type State struct {
 	// landed says a whole view has been applied since the last conversation.open asked for one. Kernel starts
 	// the subscription before it answers, so a push that arrives during the round trip is the newer of the two.
 	landed bool
+	// early are the ops of delta pushes that arrived before the open's answer: they follow on from that answer,
+	// so they wait for it. broken says ops did not follow on from the view held, and the store opens the
+	// conversation again for a whole one.
+	early  []json.RawMessage
+	broken bool
 	// requests are the approvals and questions waiting for a person, in the order they were asked. answered are
 	// the ones this connection heard answered: the requests and their answers reach every connection on a queue
 	// of their own, so conversation.open's pending list can land after the answer it predates.
@@ -98,6 +103,8 @@ type State struct {
 	// counts the reads begun (under the store's lock), so an older answer cannot replace a newer one.
 	processes      []kernel.Process
 	processesAsked int
+	// speed is the model speed under the composer: the answer streaming now and the figures last added up.
+	speed speed
 }
 
 // NewState makes the state of conversation id, empty until a view arrives.
@@ -277,8 +284,9 @@ func (s *State) UsageContext() json.RawMessage {
 //
 // A whole view replaces the state, docs and all: a push is a snapshot of what Kernel reads, so keeping pieces of
 // the previous one would be guessing. A failed read keeps the entries the window shows — a transient failure must
-// not blank a transcript — and records Kernel's sentence. A delta push has no value, and a window subscriber that
-// receives one is misconfigured: the state changes nothing rather than applying ops it never asked for.
+// not blank a transcript — and records Kernel's sentence. A delta push carries only Pi's ops, which are applied to
+// the view held; before the open's answer they wait for it, and ops that do not follow on mark the state broken
+// for the store to open again.
 func (s *State) Apply(n kernel.ViewNotification) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -299,10 +307,41 @@ func (s *State) apply(n kernel.ViewNotification) bool {
 		s.revision++
 		return true
 	case n.Value == nil:
-		return false
+		if len(n.Ops) == 0 {
+			return false
+		}
+		if !s.landed {
+			s.early = append(s.early, n.Ops)
+			return false
+		}
+		return s.applyOps(n.Ops)
 	}
+	s.early = nil
 	s.take(*n.Value)
 	return true
+}
+
+// applyOps applies one delta push's ops to the view held. It is called with the lock held.
+func (s *State) applyOps(ops json.RawMessage) bool {
+	if s.broken {
+		return false
+	}
+	next, err := kernel.ApplyOps(s.view, ops)
+	if err != nil {
+		s.broken = true
+		return false
+	}
+	s.take(next)
+	return true
+}
+
+// takeBroken reports whether ops did not follow on from the view held since the last open, and clears it.
+func (s *State) takeBroken() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	broken := s.broken
+	s.broken = false
+	return broken
 }
 
 // take replaces the state with a whole view. It is called with the lock held.
@@ -323,6 +362,8 @@ func (s *State) expectOpen() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.landed = false
+	s.early = nil
+	s.broken = false
 	s.answered = nil
 	s.stale = map[string]bool{}
 	for _, p := range s.requests {
@@ -457,6 +498,11 @@ func (s *State) takeOpen(v kernel.View) bool {
 		return false
 	}
 	s.take(v)
+	early := s.early
+	s.early = nil
+	for _, ops := range early {
+		s.applyOps(ops)
+	}
 	return true
 }
 
@@ -627,6 +673,7 @@ func (s *State) readDocs() {
 	if raw := s.view.Doc("pi.agent"); len(raw) > 0 {
 		s.agent = raw
 	}
+	s.trackLive()
 }
 
 // namesARun says whether a run document names one: absent, empty and the JSON null are all "nothing runs".
@@ -795,7 +842,7 @@ func (st *Store) Open(ctx context.Context, k Kernel, id kernel.ID, window kernel
 
 	var opened kernel.OpenResult
 	err := turn.run(ctx, func() (err error) {
-		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView})
+		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeDelta})
 		return err
 	})
 
@@ -911,7 +958,7 @@ func (st *Store) reopen(ctx context.Context, k Kernel, id kernel.ID, gen int64) 
 	// Opening again is the connection's doing, not a person's: what arrived while the window was away stays unread.
 	seen := false
 	err := turn.run(ctx, func() (err error) {
-		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeView, Seen: &seen})
+		opened, err = k.Open(ctx, kernel.OpenParams{ID: id, Window: &window, Subscribe: kernel.SubscribeDelta, Seen: &seen})
 		return err
 	})
 
@@ -1023,6 +1070,20 @@ func (st *Store) ApplyView(gen int64, n kernel.ViewNotification) bool {
 		st.notify(n.ID)
 	}
 	return changed
+}
+
+// Broken reports whether conversation id's ops stopped following on from the view it holds, and clears it: the
+// caller opens it again (ReopenOne), and the whole view that answers replaces what it held.
+func (st *Store) Broken(id kernel.ID) bool {
+	st.mu.Lock()
+	state := st.states[id]
+	st.mu.Unlock()
+	return state != nil && state.takeBroken()
+}
+
+// ReopenOne opens one held conversation again on generation gen, for a whole view.
+func (st *Store) ReopenOne(ctx context.Context, k Kernel, gen int64, id kernel.ID) error {
+	return st.reopen(ctx, k, id, gen)
 }
 
 // ApplyBusy routes conversation.busy, which reaches every connection.

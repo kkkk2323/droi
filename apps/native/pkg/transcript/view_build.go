@@ -57,45 +57,48 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 				boundary = true
 				continue
 			}
-			entries = append(entries, &Entry{ID: entryID(entry), User: true, Blocks: blocks, CreatedAt: createdAt(entry)})
+			entries = append(entries, &Entry{ID: entryID(entry), User: true, Blocks: blocks, CreatedAt: bl.createdAt(entry)})
 			boundary = false
 		case kernel.EntryAssistant:
 			blocks := bl.blocksOf(entry, results, true)
-			failed, stopped := answerEnd(entry)
+			failed, stopped := bl.answerEnd(entry)
 			if len(blocks) == 0 {
 				// A refused request and a cancelled one can both end with no content at all. The turn did
 				// happen, and it is the row that says so; skipping it left the question standing alone.
-				text, ok := emptyAnswerSentence(entry, failed, stopped)
+				text, ok := bl.emptyAnswerSentence(entry, failed, stopped)
 				if !ok {
 					continue
 				}
 				blocks = []Block{{Kind: Text, ID: entryID(entry) + ":0:0", Text: text}}
 			}
 			if n := len(entries); n > 0 && !entries[n-1].User && !boundary {
-				joinAnswer(entries[n-1], blocks, createdAt(entry), failed)
+				joinAnswer(entries[n-1], blocks, bl.createdAt(entry), failed)
 				boundary = false
 				continue
 			}
-			entries = append(entries, &Entry{ID: entryID(entry), Blocks: blocks, CreatedAt: createdAt(entry), IsError: failed})
+			entries = append(entries, &Entry{ID: entryID(entry), Blocks: blocks, CreatedAt: bl.createdAt(entry), IsError: failed})
 			boundary = false
 		case kernel.EntryCompaction:
 			// The summary is a message, not something the user said: the row only marks where the context moved, as a
 			// note does, so a `/compact` that summarised shows in the transcript too.
-			entries = append(entries, &Entry{ID: entryID(entry), Note: true, CreatedAt: createdAt(entry),
+			entries = append(entries, &Entry{ID: entryID(entry), Note: true, CreatedAt: bl.createdAt(entry),
 				Blocks: []Block{{Kind: Text, ID: entryID(entry) + ":0:0", Text: l10n.L("Context compacted: the earlier messages are summarised for the model.")}}})
 			boundary = true
 		case kernel.EntryReset:
 			// A reset's handoff may carry a message; it is not something the user said. It marks where the context
 			// moved and draws no row yet.
 			boundary = true
-		case kernel.EntryNote:
+		case kernel.EntryNote, EntryCodemodeDone:
 			block, ok := noteBlock(entry)
+			if entry.Kind == EntryCodemodeDone {
+				block, ok = jobDoneBlock(entry)
+			}
 			if !ok {
 				continue
 			}
 			// A note is its own row and nothing answers it: an answer after it opens a new row rather than joining
 			// the note's.
-			entries = append(entries, &Entry{ID: entryID(entry), Note: true, Blocks: []Block{block}, CreatedAt: createdAt(entry)})
+			entries = append(entries, &Entry{ID: entryID(entry), Note: true, Blocks: []Block{block}, CreatedAt: bl.createdAt(entry)})
 			boundary = true
 		}
 		// Every other kind shows nothing here: a tool result completes a call, a positional system entry is
@@ -106,9 +109,9 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 	if live, ok := liveAnswer(view); ok {
 		if blocks := streaming(bl.blocksOf(live, results, true)); len(blocks) > 0 {
 			if n := len(entries); n > 0 && !entries[n-1].User && !boundary {
-				joinAnswer(entries[n-1], blocks, createdAt(live), false)
+				joinAnswer(entries[n-1], blocks, bl.createdAt(live), false)
 			} else {
-				entries = append(entries, &Entry{ID: entryID(live), Blocks: blocks, CreatedAt: createdAt(live)})
+				entries = append(entries, &Entry{ID: entryID(live), Blocks: blocks, CreatedAt: bl.createdAt(live)})
 			}
 		}
 	}
@@ -180,8 +183,8 @@ func streaming(blocks []Block) []Block {
 //
 // Both are read from the last message that says anything, because Pi writes one message per entry today but the
 // contract allows several: the last stop reason is the one that ended the answer.
-func answerEnd(e kernel.Entry) (failed, stopped bool) {
-	msgs, _ := decodeMessages(e.Model)
+func (bl *Builder) answerEnd(e kernel.Entry) (failed, stopped bool) {
+	msgs := bl.messagesOf(e)
 	for i := len(msgs) - 1; i >= 0; i-- {
 		switch msgs[i].StopReason {
 		case "error":
@@ -201,8 +204,8 @@ func answerEnd(e kernel.Entry) (failed, stopped bool) {
 // emptyAnswerSentence is what a row says when an answer ended with nothing in it: the provider's own sentence, a
 // sentence for a refused request that gave none, or the word for a turn the user stopped. ok is false for an
 // answer that simply had nothing to say.
-func emptyAnswerSentence(e kernel.Entry, failed, stopped bool) (string, bool) {
-	msgs, _ := decodeMessages(e.Model)
+func (bl *Builder) emptyAnswerSentence(e kernel.Entry, failed, stopped bool) (string, bool) {
+	msgs := bl.messagesOf(e)
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].ErrorMessage != "" {
 			return msgs[i].ErrorMessage, true
@@ -259,8 +262,8 @@ func joinAnswer(target *Entry, blocks []Block, at float64, failed bool) {
 func entryID(e kernel.Entry) string { return fmt.Sprintf("%d", e.ID) }
 
 // createdAt is when the entry happened: its last message's own timestamp, which is what Pi stores.
-func createdAt(e kernel.Entry) float64 {
-	msgs, _ := decodeMessages(e.Model)
+func (bl *Builder) createdAt(e kernel.Entry) float64 {
+	msgs := bl.messagesOf(e)
 	if n := len(msgs); n > 0 {
 		return msgs[n-1].Timestamp
 	}
@@ -286,12 +289,40 @@ func (bl *Builder) toolResults(view kernel.View) map[string]*ToolResultView {
 		for _, m := range bl.messagesOf(entry) {
 			if m.Role == "toolResult" && m.ToolCallID != "" {
 				m.Diagnostics = diagnostics
-				out[m.ToolCallID] = m.resultView()
+				view := m.resultView()
+				out[m.ToolCallID] = view
 				if m.ToolName == CodemodeTool {
+					if job := backgroundJob(m.Details); job != 0 {
+						// A background script: its calls are pi.live's while it runs, and its result's once it ends.
+						view.Background = &BackgroundJob{ID: job}
+						continue
+					}
 					bl.scripts[m.ToolCallID] = codemodeNested(m.ToolCallID, m.Details)
 				}
 			}
 		}
+	}
+	for _, entry := range view.Entries {
+		if entry.Kind != EntryCodemodeDone {
+			continue
+		}
+		done, ok := jobDoneOf(entry)
+		if !ok {
+			continue
+		}
+		result := out[done.CallID]
+		if result == nil || result.Background == nil {
+			continue
+		}
+		result.Background.Done = true
+		result.Text = withoutTrailingNewlines(done.Output)
+		switch done.Status {
+		case "failed":
+			result.IsError = true
+		case "stopped":
+			result.Interrupted = true
+		}
+		bl.scripts[done.CallID] = codemodeNested(done.CallID, done.Details)
 	}
 	return out
 }
@@ -336,7 +367,7 @@ func (bl *Builder) blocksOf(entry kernel.Entry, results map[string]*ToolResultVi
 					Input: decodeInputObject(c.Arguments), RawInput: c.Arguments, Keys: orderedKeys(c.Arguments),
 					ResultView: results[c.ID]}
 				if call.ResultView == nil {
-					if result := interruptedResult(entry); result != nil {
+					if result := bl.interruptedResult(entry); result != nil {
 						call.ResultView = result
 					}
 				}
@@ -503,8 +534,8 @@ func decodeContent(raw json.RawMessage) []piContent {
 // interruptedResult is what a call on a stopped answer reads: the turn was cancelled before its result arrived,
 // so the call did not run to an answer. Without this the row says "Running" for ever — a window that never rests.
 // A call whose answer merely stopped on tool calls has not finished either, and keeps waiting: that run is live.
-func interruptedResult(answer kernel.Entry) *ToolResultView {
-	if _, stopped := answerEnd(answer); !stopped {
+func (bl *Builder) interruptedResult(answer kernel.Entry) *ToolResultView {
+	if _, stopped := bl.answerEnd(answer); !stopped {
 		return nil
 	}
 	return &ToolResultView{Text: l10n.L("Interrupted"), Interrupted: true}
@@ -553,6 +584,10 @@ func (m piMessage) resultView() *ToolResultView {
 		v.Blocked = true
 	default:
 		v.IsError = m.IsError
+	}
+	// An edit answers one line of text; what it changed is in its details, as the Daemon's Edit answered it.
+	if !v.IsError {
+		v.Diff = piDetailsDiff(m.Details)
 	}
 	return v
 }

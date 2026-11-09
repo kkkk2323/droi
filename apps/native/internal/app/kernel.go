@@ -262,6 +262,9 @@ func (a *App) pumpKernel(c *kernel.Client, gen int64) {
 				var view kernel.ViewNotification
 				if n.Decode(&view) == nil {
 					a.sessions.ApplyView(gen, view)
+					if a.sessions.Broken(view.ID) {
+						go func(id kernel.ID) { _ = a.sessions.ReopenOne(a.ctx, &a.kernel, gen, id) }(view.ID)
+					}
 					if s := a.sessions.State(view.ID); s != nil && s.Busy() {
 						a.joinedRun(view.ID)
 					}

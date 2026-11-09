@@ -1,6 +1,7 @@
 import type { Context, JsonValue } from '@earendil-works/chord'
 import { LiveDoc, NestedCallDoc, ToolTask, hook, section } from '@earendil-works/pi-durable'
 import type {
+  AnyTask,
   Extension,
   HookApi,
   NestedToolSlot,
@@ -18,6 +19,7 @@ import {
   type CodemodeToolDetails,
 } from '@earendil-works/pi-durable/codemode'
 import type { CodemodeSandboxBase } from '@earendil-works/pi-codemode'
+import { codemodeJobs, type NestedReader } from './codemode-jobs.ts'
 
 /** The most of one nested call's output a script's card carries. */
 export const NESTED_OUTPUT_BYTES = 4096
@@ -30,7 +32,12 @@ export type NestedCallWithOutput = CodemodeNestedCall & {
   arguments?: JsonValue
   output?: string
   truncated?: true
+  /** An `edit`'s diff, as Pi's edit tool writes it in its details, so the card shows what changed. */
+  diff?: string
 }
+
+/** The most of an `edit`'s diff a script's card carries. */
+export const NESTED_DIFF_BYTES = 32 * 1024
 
 /** Pi's row keeps this much of a call's arguments as JSON (pi-durable codemode's ARGS_PREVIEW_CHARS). */
 const ARGS_PREVIEW_CHARS = 200
@@ -120,6 +127,7 @@ export const CODEMODE_GUIDELINES = [
   '- Search and list files with `tools.grep`, `tools.find` and `tools.ls`, which return arrays; read files with `tools.read`.',
   '- Give paths from the working directory, or absolute ones, rather than chaining `cd … &&`.',
   '- `text()` or return only what you need to decide or to report.',
+  '- A script that may run for more than a minute or two (a build, a test suite, many slow calls) starts with `// @options: {"background": true}`: codemode answers at once with a job id, the script runs on while you work, and its result comes to you as a message when it ends. `codemode_job` reports one, waits for it, or stops it.',
 ].join('\n')
 
 /** What {@link codemodeInMode} made: the tools its wraps hide, so an unchanged one is not installed again. */
@@ -144,14 +152,32 @@ export function codemodeKey(extension: Extension): string {
 export function codemodeExtension(options: {
   sandbox: CodemodeSandboxBase
   namespaces: readonly CodemodeNamespace[]
+  /** Harness.abortTask, which stops a background script (codemode-jobs.ts); without it none can be stopped. */
+  abortTask?: (id: number) => Promise<void>
 }): Extension {
   const base = createCodemodeExtension({
     sandbox: options.sandbox,
     namespaces: options.namespaces,
     models: false,
   })
+  const pi = (base.tools ?? []).find((tool) => tool.name === CODEMODE_TOOL_NAME)!
+  const jobs = codemodeJobs({
+    codemode: pi,
+    withOutputs: (rows, reader, stopped) =>
+      callsWithOutputs(rows, reader, stopped) as unknown as Promise<JsonValue[]>,
+    abortTask:
+      options.abortTask ??
+      (async () => {
+        throw new Error('background scripts cannot be stopped here')
+      }),
+  })
   return {
     ...base,
+    tools: [
+      ...(base.tools ?? []).map((tool) => (tool === pi ? jobs.codemode : tool)),
+      jobs.jobTool,
+    ],
+    tasks: [...(base.tasks ?? []), jobs.task as unknown as AnyTask],
     hooks: [...(base.hooks ?? []), hook(ToolTask, { afterTool: withNestedOutput })],
     sections: [...(base.sections ?? []), section('codemode-guidelines', () => CODEMODE_GUIDELINES)],
   }
@@ -180,19 +206,47 @@ async function withNestedOutput(
     ? [...slots.entries()].sort(([a], [b]) => a - b).map(([id, slot]) => rowOf(id, slot))
     : details.calls
   if (rows.length === 0) return undefined
-  const calls = await Promise.all(
+  const calls = await callsWithOutputs(
+    rows,
+    {
+      slots,
+      answer: async (id) =>
+        (await api.snapshot(NestedCallDoc, api.taskId, `c${id}`, context))?.result as
+          | NestedToolExecutionResult
+          | undefined,
+    },
+    stopped,
+  )
+  return { ...result, details: { ...details, calls } as unknown as JsonValue }
+}
+
+/**
+ * Each row of a script's card with the arguments its call ran with, from its slot, and what it answered: its output
+ * (the first {@link NESTED_OUTPUT_BYTES}) and an edit's diff. `stopped`: the script was stopped, and a call the stop
+ * reached is cancelled, as Pi calls one still running when a script ends.
+ */
+export async function callsWithOutputs(
+  rows: readonly CodemodeNestedCall[],
+  reader: NestedReader,
+  stopped: boolean,
+): Promise<NestedCallWithOutput[]> {
+  const { slots } = reader
+  return Promise.all(
     rows.map(async (row): Promise<NestedCallWithOutput> => {
       const slot = slots.get(row.id)
       let withArguments: NestedCallWithOutput =
         slot === undefined ? row : { ...row, arguments: cutStrings(slot.arguments) }
-      const nested = await api.snapshot(NestedCallDoc, api.taskId, `c${row.id}`, context)
-      const answer = nested?.result as NestedToolExecutionResult | undefined
+      const answer = await reader.answer(row.id)
       if (answer === undefined) return withArguments
       // The stop reached the call too, which ended with its own error: it was cut off, as Pi calls a script's call
       // still running when the script ends.
       if (stopped && answer.diagnostics.some((diagnostic) => diagnostic.code === 'aborted')) {
         const { error: _error, ...rest } = withArguments
         withArguments = { ...rest, status: 'cancelled' }
+      }
+      const diff = (answer.details as { diff?: unknown } | undefined)?.diff
+      if (typeof diff === 'string' && diff !== '') {
+        withArguments = { ...withArguments, diff: cutBytes(diff, NESTED_DIFF_BYTES) }
       }
       const text = outputText(answer)
       if (text === '') return withArguments
@@ -204,7 +258,6 @@ async function withNestedOutput(
       }
     }),
   )
-  return { ...result, details: { ...details, calls } as unknown as JsonValue }
 }
 
 /** Pi's row for a call, from its slot, as Pi writes it for a script that ends: one still running was cancelled. */

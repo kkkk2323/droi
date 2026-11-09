@@ -37,7 +37,7 @@ export const MAX_TIMEOUT_MS = 600_000
 export const DEFAULT_TIMEOUT_MS = 120_000
 
 /** The thinking levels the protocol names, in the words pi-ai uses for a request. */
-const THINKING_LEVELS = new Set(['off', 'low', 'medium', 'high'])
+const THINKING_LEVELS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
 
 /**
  * A provider's own words for "the model declined". pi-ai reports a refusal as an error whose message
@@ -81,7 +81,10 @@ export async function completeModel(
   const thinkingLevel = optionalString(params, 'thinkingLevel')
   if (thinkingLevel !== undefined && !THINKING_LEVELS.has(thinkingLevel)) {
     throw invalidParams([
-      { path: 'thinkingLevel', message: 'one of off, low, medium or high is required' },
+      {
+        path: 'thinkingLevel',
+        message: 'one of off, minimal, low, medium, high or xhigh is required',
+      },
     ])
   }
   const timeoutMs = optionalNumber(params, 'timeoutMs') ?? DEFAULT_TIMEOUT_MS
@@ -128,7 +131,7 @@ export async function completeModel(
         // pretending otherwise.
         ...(thinkingLevel === undefined || thinkingLevel === 'off'
           ? {}
-          : { reasoning: thinkingLevel as 'low' | 'medium' | 'high' }),
+          : { reasoning: thinkingLevel as 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }),
       },
     )
   } catch (error) {

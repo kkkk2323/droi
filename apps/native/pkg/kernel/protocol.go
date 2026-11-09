@@ -118,6 +118,10 @@ const CodemodeEnv = "DROI_KERNEL_CODEMODE"
 // without it, each conversation's own.
 const CompactionModelEnv = "DROI_KERNEL_COMPACTION_MODEL"
 
+// CompactionThinkingEnv is the compaction model's thinking level a Kernel is started with; without it, the model's
+// default.
+const CompactionThinkingEnv = "DROI_KERNEL_COMPACTION_THINKING"
+
 // AppAgentEnv carries what a brand's app gives every conversation, an AppAgent as JSON (ADR 0041).
 const AppAgentEnv = "DROI_KERNEL_AGENT"
 
