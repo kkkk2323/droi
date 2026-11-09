@@ -610,6 +610,64 @@ type SkillsSetDisabledParams struct {
 	ID *ID `json:"id,omitempty"`
 }
 
+// Droid is one droid as droids.list reports it: a kind of subagent the task tool starts, with its own prompt,
+// model and tools. Source is "builtin" or "personal"; a personal one's file is Path. As droids.set's droid, Source
+// and Path are left out.
+type Droid struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Prompt      string `json:"prompt"`
+	// Model is a model id or provider/modelId; empty is the calling conversation's model.
+	Model           string      `json:"model,omitempty"`
+	ReasoningEffort string      `json:"reasoningEffort,omitempty"`
+	Tools           *DroidTools `json:"tools,omitempty"`
+	Source          string      `json:"source,omitempty"`
+	Path            string      `json:"path,omitempty"`
+}
+
+// DroidTools is what a droid may use: Preset "read-only" (or "all"), or the tools by name.
+type DroidTools struct {
+	Preset string
+	Names  []string
+}
+
+// MarshalJSON writes the names as a list, else the preset as a string.
+func (t DroidTools) MarshalJSON() ([]byte, error) {
+	if t.Names != nil {
+		return json.Marshal(t.Names)
+	}
+	return json.Marshal(t.Preset)
+}
+
+// UnmarshalJSON reads a preset or a list of names.
+func (t *DroidTools) UnmarshalJSON(b []byte) error {
+	*t = DroidTools{}
+	if len(b) > 0 && b[0] == '[' {
+		return json.Unmarshal(b, &t.Names)
+	}
+	return json.Unmarshal(b, &t.Preset)
+}
+
+// DroidDiagnostic is a file in the droids folder that is not a droid, and why.
+type DroidDiagnostic struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+// Droids is droids.list's and droids.set's result.
+type Droids struct {
+	Droids      []Droid           `json:"droids"`
+	Diagnostics []DroidDiagnostic `json:"diagnostics"`
+}
+
+// DroidsSetParams is droids.set's params: Droid written as a person's own under its name (one renamed from Name
+// leaves Name's file), or with Remove, Name's file removed.
+type DroidsSetParams struct {
+	Name   string `json:"name"`
+	Droid  *Droid `json:"droid,omitempty"`
+	Remove bool   `json:"remove,omitempty"`
+}
+
 // HarnessInfo is harness.info's result.
 type HarnessInfo struct {
 	Version   string   `json:"version"`
@@ -736,6 +794,8 @@ type Capabilities struct {
 	Models bool `json:"models"`
 	// Resources says resources.list answers.
 	Resources bool `json:"resources"`
+	// Subagents says the task tools run and droids.list and droids.set answer.
+	Subagents bool `json:"subagents"`
 }
 
 // ExtensionInfo is one extension this build ships.

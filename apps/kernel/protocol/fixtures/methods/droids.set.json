@@ -1,0 +1,57 @@
+{
+  "kind": "method",
+  "method": "droids.set",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": "34",
+    "method": "droids.set",
+    "params": {
+      "name": "code-reviewer",
+      "droid": {
+        "name": "code-reviewer",
+        "description": "Reviews a diff for correctness risks",
+        "prompt": "You are the team's senior reviewer.",
+        "model": "claude-fable-5.1",
+        "reasoningEffort": "high",
+        "tools": ["read", "grep", "find", "ls"]
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": "34",
+    "result": {
+      "droids": [
+        {
+          "name": "worker",
+          "description": "General-purpose agent for a self-contained task.",
+          "prompt": "You are a worker subagent.",
+          "source": "builtin"
+        },
+        {
+          "name": "explorer",
+          "description": "Read-only agent for finding things in the codebase.",
+          "prompt": "You are an explorer subagent.",
+          "tools": "read-only",
+          "source": "builtin"
+        },
+        {
+          "name": "code-reviewer",
+          "description": "Reviews a diff for correctness risks",
+          "prompt": "You are the team's senior reviewer.",
+          "model": "claude-fable-5.1",
+          "reasoningEffort": "high",
+          "tools": ["read", "grep", "find", "ls"],
+          "source": "personal",
+          "path": "/Users/clive/.droi/droids/code-reviewer.md"
+        }
+      ],
+      "diagnostics": [
+        {
+          "path": "/Users/clive/.droi/droids/broken.md",
+          "message": "a description is required"
+        }
+      ]
+    }
+  }
+}

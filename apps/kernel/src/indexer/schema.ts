@@ -269,5 +269,7 @@ export type ConversationMeta = {
   kind?: string
   workspace?: string
   parentId?: number
+  /** The conversation that spawned this one, for a subagent's (ADR 0043): what keeps it out of the list. */
+  ownerId?: number
   createdAt: number
 }

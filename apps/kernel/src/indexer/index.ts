@@ -353,6 +353,7 @@ export class Indexer {
             : parentId === undefined
               ? {}
               : { parentId }),
+          ...(meta?.ownerId === undefined ? {} : { ownerId: meta.ownerId }),
         },
         activity: newest ?? createdAt,
         ...(title === undefined ? {} : { title }),
@@ -386,6 +387,9 @@ export class Indexer {
       if (row.parent_id === null && meta.parentId !== undefined) {
         pending.insert.parentId = meta.parentId
       }
+      if (row.owner_id === null && meta.ownerId !== undefined) {
+        pending.insert.ownerId = meta.ownerId
+      }
     }
     return count
   }
@@ -404,6 +408,8 @@ export class Indexer {
       title?: string
       preview?: string
       parentId?: number
+      /** The conversation that spawned this one: a subagent's parent (ADR 0043). */
+      ownerId?: number
       requestId?: string
       requestFingerprint?: string
       createdAt?: number
@@ -442,6 +448,10 @@ export class Indexer {
     if (extra.parentId !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }
       pending.insert.parentId = extra.parentId
+    }
+    if (extra.ownerId !== undefined) {
+      pending.insert ??= { createdAt: extra.createdAt ?? at }
+      pending.insert.ownerId = extra.ownerId
     }
     if (extra.requestId !== undefined) {
       pending.insert ??= { createdAt: extra.createdAt ?? at }

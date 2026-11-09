@@ -77,6 +77,8 @@ type clientAPI interface {
 	CancelMCPAuthorize(ctx context.Context, p kernel.MCPAuthorizeParams) error
 	Skills(ctx context.Context) (kernel.Skills, error)
 	SetSkillDisabled(ctx context.Context, p kernel.SkillsSetDisabledParams) (kernel.Skills, error)
+	Droids(ctx context.Context) (kernel.Droids, error)
+	SetDroid(ctx context.Context, p kernel.DroidsSetParams) (kernel.Droids, error)
 	ModelComplete(ctx context.Context, p kernel.ModelCompleteParams) (kernel.ModelCompleteResult, error)
 	PolicySet(ctx context.Context, p kernel.PolicySetParams) (kernel.PolicyResult, error)
 	Resources(ctx context.Context, p kernel.ResourcesListParams) (kernel.ResourcesResult, error)
@@ -356,6 +358,18 @@ func (o *Observer) SetSkillDisabled(ctx context.Context, p kernel.SkillsSetDisab
 	return o.client.SetSkillDisabled(ctx, p)
 }
 
+// Droids is droids.list.
+func (o *Observer) Droids(ctx context.Context) (kernel.Droids, error) {
+	o.record(kernel.MethodDroidsList, nil)
+	return o.client.Droids(ctx)
+}
+
+// SetDroid is droids.set.
+func (o *Observer) SetDroid(ctx context.Context, p kernel.DroidsSetParams) (kernel.Droids, error) {
+	o.record(kernel.MethodDroidsSet, p)
+	return o.client.SetDroid(ctx, p)
+}
+
 // ModelComplete is model.complete.
 func (o *Observer) ModelComplete(ctx context.Context, p kernel.ModelCompleteParams) (kernel.ModelCompleteResult, error) {
 	o.record(kernel.MethodModelComplete, p)
@@ -411,6 +425,7 @@ func (o *Observer) methods() []string {
 		kernel.MethodApprovalRespond, kernel.MethodAskRespond, kernel.MethodMCPList, kernel.MethodMCPSet,
 		kernel.MethodMCPAuthorize, kernel.MethodMCPAuthorizeCancel, kernel.MethodSkillsList,
 		kernel.MethodSkillsSetDisabled, kernel.MethodPolicySet, kernel.MethodResourcesList,
+		kernel.MethodDroidsList, kernel.MethodDroidsSet,
 		kernel.MethodModelComplete, kernel.MethodKernelShutdown,
 	}
 }

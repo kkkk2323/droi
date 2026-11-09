@@ -270,6 +270,12 @@ var callers = []caller{
 	{MethodSkillsSetDisabled, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.SetSkillDisabled(ctx, *decodeParams[SkillsSetDisabledParams](t, raw))
 	}},
+	{MethodDroidsList, func(t *testing.T, ctx context.Context, c *Client, _ json.RawMessage) (any, error) {
+		return c.Droids(ctx)
+	}},
+	{MethodDroidsSet, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
+		return c.SetDroid(ctx, *decodeParams[DroidsSetParams](t, raw))
+	}},
 	{MethodPolicySet, func(t *testing.T, ctx context.Context, c *Client, raw json.RawMessage) (any, error) {
 		return c.PolicySet(ctx, *decodeParams[PolicySetParams](t, raw))
 	}},
