@@ -13,7 +13,9 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/gitutil"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessions"
 )
 
 // The Host's own git on Kernel (M4 4N): a conversation's changes, new worktrees and Settings → Worktrees, with git
@@ -293,5 +295,80 @@ func TestAWorktreeMadeForAConversationThatFailedIsTakenAway(t *testing.T) {
 	}
 	if strings.Contains(gitIn(t, repo, "branch", "--list", "droi/x"), "droi/x") {
 		t.Error("its branch is still there")
+	}
+}
+
+// TestOnKernelWorktreesGoInDroisFolder: on the Kernel, Settings → Worktrees offers Droi's own folder as the default
+// without waiting for the Daemon, and a new Session's worktree is made in the folder Settings picks.
+func TestOnKernelWorktreesGoInDroisFolder(t *testing.T) {
+	home := t.TempDir()
+	h0 := host.New(host.Config{UserData: t.TempDir(), Home: home, Env: func(string) string { return "" }})
+	t.Cleanup(h0.Stop)
+	h := newHarnessWith(t, sessionsScenario(), "", func(cfg *Config) { cfg.Host = h0 })
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.openSettingsTab("worktrees")
+	want := filepath.Join(home, ".droi", "worktrees")
+	h.until("the default folder", func() bool { return h.hasText("Default (" + want + ")") })
+	if h.hasText("~/.factory/worktrees") || h.hasText("Loading worktree settings…") {
+		t.Fatalf("the Worktrees tab is the Daemon's: %q", h.tt.Texts())
+	}
+	root := filepath.Join(t.TempDir(), "trees")
+	if err := h0.Settings.Update(func(s *host.Settings) { s.WorktreeDirectory = host.OptString(root) }); err != nil {
+		t.Fatal(err)
+	}
+	repo := gitRepo(t)
+	h.click("Back")
+	h.until("the Session list", func() bool { return h.hasText("Fix the login race") })
+	h.openStartPage()
+	h.a.newPage.pick, h.a.newPage.picked = repo, true
+	h.frame()
+	h.until("the worktree control", func() bool { return h.hasText("Work locally") })
+	h.click("Worktree")
+	h.click("main")
+	h.tt.Key(0, ui.KeyEscape)
+	h.frame()
+	h.start("Fix the flaky login test")
+	h.until("the conversation in a worktree", func() bool {
+		for _, s := range h.a.listedNow() {
+			if strings.HasPrefix(s.Cwd, root) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// The Kernel names a folder that is no repository as its own repoRoot (it groups conversations by it): Settings →
+// Worktrees lists what the real repositories have and says nothing failed.
+func TestHereWorktreesSkipAFolderThatIsNoRepository(t *testing.T) {
+	repo := gitRepo(t)
+	tree := filepath.Join(t.TempDir(), "trees", "fix-login")
+	if err := gitutil.AddWorktree(context.Background(), gitutil.AddOptions{Repo: repo, Path: tree, Branch: "droi/fix-login"}); err != nil {
+		t.Fatal(err)
+	}
+	plain, gone := t.TempDir(), filepath.Join(t.TempDir(), "deleted")
+	ctx := context.Background()
+	got, err := readHereWorktrees(ctx, []sessions.Summary{{Cwd: plain, RepoRoot: plain}, {Cwd: gone, RepoRoot: gone}})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("no repository: %v, %v", got, err)
+	}
+	got, err = readHereWorktrees(ctx, []sessions.Summary{{Cwd: plain, RepoRoot: plain}, {Cwd: tree, RepoRoot: repo}})
+	if err != nil || len(got) != 1 || !inFolder(got[0].Path, tree) {
+		t.Fatalf("with a repository: %v, %v", got, err)
+	}
+}
+
+func TestOnKernelSettingsWorktreesWithOnlyAPlainFolderSaysNone(t *testing.T) {
+	h := kernelHarness(t)
+	h.kernelConversationIn(t.TempDir(), "Plain chat")
+	h.until("the conversation", func() bool { return h.hasText("Plain chat") })
+	h.click("Settings")
+	h.click("Worktrees")
+	h.until("the list read", func() bool { return h.hasText("No worktrees.") || h.hasText("Failed to load worktrees.") })
+	if h.hasText("Failed to load worktrees.") {
+		t.Fatal("a folder that is no repository failed the list")
 	}
 }

@@ -454,7 +454,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 		interaction = dv.InteractionMode
 	}
 	s.takeEdit(&s.text)
-	picked, rest, hasPick := s.splitTag(s.text, s.menu.items(s.text, slash.Starters, fromDaemon))
+	picked, rest, hasPick := s.splitTag(s.text, s.menu.items(s.text, a.slashBuiltins(slash.Starters), fromDaemon))
 	accept := func(item slash.Item) {
 		s.text = "/" + item.Name + " "
 		s.caretToEnd = true

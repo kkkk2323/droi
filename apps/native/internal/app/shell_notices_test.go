@@ -77,6 +77,7 @@ func TestStartingUpWaitsForTheFirstConnection(t *testing.T) {
 }
 
 func TestStartingUpSaysWhyDroidIsMissing(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	h0 := testHost(t)
 	h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-x") })
 	idle := controller.New(controller.Config{ResolveURL: h0.WaitForDaemonURL})
@@ -95,6 +96,7 @@ func TestStartingUpSaysWhyDroidIsMissing(t *testing.T) {
 }
 
 func TestStartingUpOffersToUpdateAnOldDroid(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a shell")
 	}
@@ -122,6 +124,7 @@ func TestStartingUpOffersToUpdateAnOldDroid(t *testing.T) {
 }
 
 func TestStartingUpSaysWhyItCannotConnect(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	h0 := testHost(t)
 	h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-x") })
 	rejected := controller.New(controller.Config{

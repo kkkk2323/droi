@@ -383,7 +383,7 @@ func openingNote(st keypool.State) string {
 	}
 	note := L("%d of %d started today · %d waiting", int(o.OpenedToday), o.DailyOpens, len(o.Queue))
 	if st.ScheduledOpening && !o.Scheduled && len(o.Queue) > 0 {
-		note = L("%s · starts once droid sends a Haiku request", note)
+		note = L("%s · starts with the next Haiku request", note)
 	}
 	return note
 }

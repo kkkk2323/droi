@@ -41,7 +41,7 @@ func (h *Host) GatewayOptions(version string, moveToTrash func(string) error) ga
 	opts := h.gatewayOptions(version, moveToTrash)
 	if h.KernelEnabled() {
 		opts.KernelURL, opts.KernelToken = h.KernelURL, h.KernelToken
-		opts.Workspaces = NewWorkspaces(func() string { return filepath.Join(h.FactoryHome(), "worktrees") })
+		opts.Workspaces = NewWorkspaces(h.WorktreeRoot)
 	}
 	return opts
 }

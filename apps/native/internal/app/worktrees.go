@@ -641,6 +641,14 @@ func (a *App) loadManagedWorktrees() {
 // how many ephemeral ones it keeps, and the ones it manages.
 func (a *App) worktreesTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
+	// The Host's own worktrees: their folder is Droi's setting, not the Daemon's, so nothing here waits for it.
+	if a.worktreesHere() && a.cfg.Host != nil {
+		k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droi makes them, and deletes one only when you do."), 13, 19.5).
+			TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
+		a.hereWorktreeSettings(c)
+		a.hereWorktreesGroup(c)
+		return
+	}
 	k.Text(c, L("Worktrees let a session work on its own checkout and branch, beside your own. Droi makes and cleans them up; these settings are shared with the droid CLI and the Factory App on this computer."), 13, 19.5).
 		TextColor(t.MutedForeground).Margin(-k.Px(16), 0, 0, 0)
 	dv := a.sessionDefaults()

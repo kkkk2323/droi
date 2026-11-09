@@ -255,7 +255,7 @@ func (a *App) aboutTab(c *ui.Context) {
 		}
 		a.settingRow(c, L("Droi %s", version), "", control, below)
 	}}
-	if h := a.cfg.Host; h != nil && h.DroiDroidState().Enabled {
+	if h := a.cfg.Host; h != nil && h.DroiDroidState().Enabled && !a.kernelMode() {
 		h.RefreshDroiDroid()
 		p := h.DroiDroidState()
 		rows = append(rows, func() { a.droiDroidAboutRow(c, p) })
@@ -350,6 +350,32 @@ func (a *App) apiKeyRow(c *ui.Context, login host.LoginState) {
 	})
 }
 
+// kernelGroup is Settings → Advanced's Kernel on the Kernel: how it runs, and a way to start it again.
+func (a *App) kernelGroup(c *ui.Context) {
+	h := a.cfg.Host
+	ok, label, detail := kernelStatusText(h.KernelState())
+	a.settingGroup(c, L("Kernel"), L("The Kernel runs every Session on this computer. Restarting it stops the runs under way; the Sessions stay."), func() {
+		a.settingRow(c, L("Status"), detail, func() {
+			a.statusPill(c, ok, label)
+			if a.smallButton(c, kit.Outline, L("Restart Kernel"), "refresh-cw", false).Clicked() {
+				go h.RestartKernel()
+			}
+		}, nil)
+	})
+}
+
+func kernelStatusText(st host.KernelState) (ok bool, label, detail string) {
+	switch st.Status {
+	case host.KernelRunning:
+		return true, L("Running"), L("Process %d.", st.PID)
+	case host.KernelStarting:
+		return false, L("Starting"), L("Waiting for the Kernel to answer.")
+	case host.KernelRestarting:
+		return false, L("Not running"), L("Last attempt: %s. Starting again in %ds (attempt %d).", clause(st.Reason), int(st.Delay.Round(time.Second)/time.Second), st.Attempt)
+	}
+	return false, L("Stopped"), L("The Kernel is not running.")
+}
+
 func daemonStatusText(st host.DaemonState) (ok bool, label, detail string) {
 	switch st.Status {
 	case host.DaemonRunning:
@@ -386,8 +412,15 @@ func (a *App) advancedTab(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.settings
 	st := h.Settings.Get()
-	if a.onKernel() {
+	// On the Kernel nothing runs droid: no Daemon to watch, no droid to find, no Factory API base URL to send it to.
+	if a.kernelMode() {
 		a.modelSourcesGroup(c)
+		a.kernelGroup(c)
+		a.factoryImportGroup(c)
+		a.droidImportGroup(c)
+		a.droiDroidGroup(c)
+		a.magpieGroup(c)
+		return
 	}
 	a.settingGroup(c, L("Daemon"), "",
 		func() {
@@ -436,8 +469,6 @@ func (a *App) advancedTab(c *ui.Context) {
 			inherited = a.cfg.Env("FACTORY_API_BASE_URL")
 		}
 		switch {
-		case a.onKernel():
-			desc = L("Only the Daemon uses this. Droi's own models go through the Key Pool to Factory, whatever it says.")
 		case st.FactoryAPIBaseURL != nil:
 			desc = L("The Daemon sends its Factory API traffic to this URL (FACTORY_API_BASE_URL). Use it for a local proxy such as droid-proxy.")
 		case inherited != "":
@@ -466,7 +497,7 @@ func (a *App) magpieGroup(c *ui.Context) {
 	s := &a.settings
 	st := h.Settings.Get()
 	// On the Kernel a change reaches it as it runs (Changed, then the Model Sources): no Daemon starts again.
-	kernel := a.onKernel()
+	kernel := a.kernelMode()
 	rows := []func(){
 		func() {
 			on := st.MagpieEnabled
@@ -601,7 +632,7 @@ func (a *App) defaultsTab(c *ui.Context) {
 	}
 	a.settings.SessionDefaults(c, note, func() {
 		h := a.cfg.Host
-		if h == nil || !h.DroidUpdated() {
+		if h == nil || !h.DroidUpdated() || a.kernelMode() {
 			return
 		}
 		a.settingGroup(c, "", "", func() {

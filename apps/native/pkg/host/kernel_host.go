@@ -414,6 +414,28 @@ func (h *Host) OnKernelState(fn func(KernelState)) (unsubscribe func()) {
 	}
 }
 
+// KernelState is how the Kernel stood when the Supervisor last said; the zero state while none was started.
+func (h *Host) KernelState() KernelState {
+	k := &h.kernel
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.sup == nil {
+		return KernelState{}
+	}
+	return k.last
+}
+
+// RestartKernel starts the running Kernel again; its runs stop and its conversations stay.
+func (h *Host) RestartKernel() {
+	k := &h.kernel
+	k.mu.Lock()
+	sup := k.sup
+	k.mu.Unlock()
+	if sup != nil {
+		sup.Restart()
+	}
+}
+
 // KernelURL is the running Kernel's /rpc address, "" while none runs.
 func (h *Host) KernelURL() string {
 	k := &h.kernel

@@ -358,6 +358,7 @@ func New(cfg Config) *App {
 		Defaults:   a.defaults,
 		Failed:     func(msg string) { a.settings.err = msg },
 		PickFolder: pickFolder,
+		OnKernel:   a.kernelMode,
 	})
 	a.applyPrefs()
 	if cfg.Updater != nil {
@@ -649,8 +650,13 @@ func (a *App) View(c *ui.Context) {
 		a.mu.Lock()
 		starting := startingUp(status, a.everConnected)
 		a.mu.Unlock()
+		// On the Kernel the window is up once it has the Kernel: the Daemon's connection says nothing of it.
+		kernel := a.kernelMode()
+		if kernel {
+			starting = !a.onKernel()
+		}
 		main.Children(func() {
-			if !starting {
+			if !starting && !kernel {
 				a.banner(c, status)
 			}
 			switch {
@@ -667,6 +673,8 @@ func (a *App) View(c *ui.Context) {
 				a.extensionPageView(c, a.extensionPage(a.route.Page))
 			case starting && a.following():
 				a.followingStartView(c, status)
+			case starting && kernel:
+				a.kernelStartingView(c)
 			case starting && a.cfg.Host != nil && a.cfg.Host.HasCredential():
 				// Home with nothing to show yet; the New session page would flash.
 				a.startingUpView(c, status)

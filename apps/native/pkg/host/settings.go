@@ -39,7 +39,9 @@ type Settings struct {
 	MagpieBaseURL      *string `json:"magpieBaseUrl"`
 	AppendSystemPrompt *string `json:"appendSystemPrompt"`
 	ScratchFolder      *string `json:"scratchFolder"`
-	MemoryEnabled      bool    `json:"memoryEnabled"`
+	// WorktreeDirectory is where the Host makes a Kernel conversation's worktrees; nil for WorktreeRoot's default.
+	WorktreeDirectory *string `json:"worktreeDirectory,omitempty"`
+	MemoryEnabled     bool    `json:"memoryEnabled"`
 	// MemoryModel writes Session Summaries; MemorySummaryModel keeps the
 	// Memory Summary, and is MemoryModel's when unset (ADR 0031).
 	MemoryModel        *string `json:"memoryModel"`
