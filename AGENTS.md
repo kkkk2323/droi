@@ -86,6 +86,7 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 | `pnpm smoke:kernel <executable>`                             | Start a built Kernel, `read` a PNG, assert an image comes back (the cross-compile check)                                |
 | `pnpm typecheck:kernel` / `pnpm lint:kernel`                 | The Kernel's own type check and lint                                                                                    |
 | `go test ./apps/native/...`                                  | Go unit tests and the native app's view tests                                                                           |
+| `scripts/test-native.sh`                                     | The same, plus the view tests on one CPU, in shards at once (about 1 minute, not 4.5; `SHARDS` picks how many)          |
 | `go vet ./apps/native/...`                                   | Also with `GOOS=windows` when the change touches Windows                                                                |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows)                                         |
 | `pnpm test`                                                  | Run vitest once                                                                                                         |
@@ -108,7 +109,9 @@ of its directory-reader cases fail on macOS against upstream 1.5.0 itself, and t
 and `go test` over `./apps/native/...` plus `go test -cpu 1 ./apps/native/internal/app`
 (as the PR workflow does: on one CPU a view test that races the Fake Daemon's answers fails
 there, not in a Release; the workflow runs the view tests in shards of that binary, which
-cover the same tests). Format with that gofmt, which is go.mod's
+cover the same tests). `scripts/test-native.sh` runs all of that at once, in shards, with the
+Kernel built, node required and a running Droi's `DROI_*` variables unset (which would point
+Memory's tests at this computer's Memory folder). Format with that gofmt, which is go.mod's
 Go: a `gofmt` on PATH from another Go lays out `pkg/l10n/zh.go` differently, and the PR
 workflow rejects it (`go test ./apps/native` checks this too). Run
 `pnpm test:e2e:phone` when the Phone App, the shared daemon layer, the Kernel or the Gateway
