@@ -314,6 +314,7 @@ func TestSettingsOffersDroisDroid(t *testing.T) {
 // About has a row for Droi's droid while the Key Pool is on: its version and
 // Check for updates, or Update once Factory offers a newer droid.
 func TestAboutOffersDroisDroidUpdates(t *testing.T) {
+	keepOnDaemon(t, daemonDroid)
 	h0 := keyPoolTestHost(t)
 	_ = h0.Settings.Update(func(s *host.Settings) { s.DroiDroidVersion = "9.9.9" })
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = h0 })
@@ -513,6 +514,7 @@ func TestUsageTabPages(t *testing.T) {
 // While the Key Pool runs an older droid than Factory's newest, a corner card
 // offers the update; closing it hides it.
 func TestANewerDroisDroidShowsACard(t *testing.T) {
+	keepOnDaemon(t, daemonDroid)
 	h0 := keyPoolTestHost(t)
 	p := h0.DroiDroidState()
 	if !p.UpdateAvailable() {

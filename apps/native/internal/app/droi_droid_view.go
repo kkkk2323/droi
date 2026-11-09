@@ -19,7 +19,7 @@ import (
 func (a *App) droiDroidGroup(c *ui.Context) {
 	h := a.cfg.Host
 	// On Kernel the Key Pool serves Kernel's models through its own proxy: no droid to fetch, no Daemon to restart.
-	if a.onKernel() {
+	if a.kernelMode() {
 		p := h.DroiDroidState()
 		rows := []func(){func() { a.keyPoolRow(c, p) }}
 		if a.cfg.MenuBar != nil {

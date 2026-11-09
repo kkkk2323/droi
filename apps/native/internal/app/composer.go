@@ -145,7 +145,7 @@ func (v *sessionView) send(s *sessionview.Snapshot, text string, images []attach
 		go v.compact(m[1])
 		return true
 	}
-	if m := loopCommand.FindStringSubmatch(trimmed); m != nil && len(images) == 0 {
+	if m := loopCommand.FindStringSubmatch(trimmed); m != nil && len(images) == 0 && !v.a.kernelMode() {
 		return v.loop(s, m[1])
 	}
 	v.Send(text, images, placement)
@@ -156,6 +156,17 @@ func (v *sessionView) send(s *sessionview.Snapshot, text string, images []attach
 // to a child Session, which this Client tags as the continuation and shows.
 func (v *sessionView) compact(instructions string) {
 	a := v.a
+	// The Kernel compacts in place, as a task of its own: the transcript shows the summary once it is written.
+	if conv, ok := a.kernelID(v.id); ok && a.onKernel() {
+		c, err := a.kernel.client()
+		if err == nil {
+			_, err = c.Compact(a.ctx, kernel.CompactParams{ID: conv, Instructions: strings.TrimSpace(instructions)})
+		}
+		if err != nil {
+			v.Fail(err)
+		}
+		return
+	}
 	v.a.cfg.Update(func() { v.SetCompacting(true) })
 	a.compactions.Start(v.id)
 	defer a.cfg.Update(func() { v.SetCompacting(false) })
@@ -279,7 +290,7 @@ func (v *sessionView) inputBar(c *ui.Context, s *sessionview.Snapshot, running, 
 		cs.menu.highlight = 0
 		v.saveDraft()
 	}
-	items := cs.menu.items(cs.text, slash.Builtins, v.slashItems(loaded))
+	items := cs.menu.items(cs.text, a.slashBuiltins(slash.Builtins), v.slashItems(loaded))
 	picked, rest, hasPick := cs.splitTag(cs.text, items)
 	ready := loaded || v.Ready()
 	canSend := ready && (strings.TrimSpace(cs.text) != "" || len(cs.images)+len(cs.pasted) > 0)

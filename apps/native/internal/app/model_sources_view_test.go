@@ -3,10 +3,14 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
 // TestOnKernelNoFactoryAccountIsAsked: a window on the Kernel whose Host has no Factory login and no API key opens on
@@ -90,5 +94,81 @@ func TestTheNoModelsNoticeNamesBothSourcesWithoutAHost(t *testing.T) {
 	got := a.noKernelModels()
 	if !strings.Contains(got, "Usage") || !strings.Contains(got, "Magpie") {
 		t.Fatalf("the notice: %q", got)
+	}
+}
+
+// TestOnKernelAdvancedHasNoDaemon: on the Kernel, Settings → Advanced shows the Kernel and its model sources, and
+// nothing of the Daemon: no status of it, no droid to find, no Factory API base URL to send it to.
+func TestOnKernelAdvancedHasNoDaemon(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.openSettingsTab("advanced")
+	h.until("the Kernel's row", func() bool { return h.finds("Restart Kernel") })
+	for _, gone := range []string{"droid executable", "Restart Daemon", "Factory API base URL", "Daemon log"} {
+		if h.hasText(gone) || h.finds(gone) {
+			t.Errorf("Advanced shows the Daemon's %q on the Kernel", gone)
+		}
+	}
+	if !h.hasText("Offer Magpie's models") {
+		t.Errorf("Advanced lost Magpie: %q", h.tt.Texts())
+	}
+}
+
+// TestOnKernelSessionDefaultsLeaveOutTheDaemons: the Session defaults on the Kernel are what a Kernel conversation
+// starts with: no Spec mode, compaction or subagent settings, and tool calls are Script or Direct, with no droid to
+// follow and no list of Script models.
+func TestOnKernelSessionDefaultsLeaveOutTheDaemons(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.openSettingsTab("defaults")
+	h.until("the defaults", func() bool { return h.hasText("Tool calls") && h.hasText("Model and autonomy") })
+	for _, gone := range []string{"Spec mode", "Compaction", "Subagents", "Interaction mode", "Follow droid settings", "Script models", "Shared with the droid CLI"} {
+		for _, s := range h.tt.Texts() {
+			if strings.Contains(s, gone) {
+				t.Errorf("the Session defaults show %q on the Kernel", gone)
+				break
+			}
+		}
+	}
+}
+
+// TestOnKernelCompactAsksTheKernel: /compact in a Session on the Kernel starts a compaction in the Kernel, which
+// every connection hears as a task, and asks the Daemon nothing.
+func TestOnKernelCompactAsksTheKernel(t *testing.T) {
+	h := kernelHarness(t)
+	watch := h.testConn()
+	h.openSession("Fix the login race")
+	h.until("the transcript", func() bool { return h.hasText("Message") })
+	conv, ok := h.a.kernelID(h.a.route.SessionID)
+	if !ok {
+		t.Fatal("the Session is not the Kernel's")
+	}
+	h.click("Message")
+	h.tt.Type("/compact keep the test names")
+	h.tt.Key(0, ui.KeyEnter)
+	h.frame()
+	deadline := time.After(15 * time.Second)
+	for compacting := false; !compacting; {
+		select {
+		case n, ok := <-watch.Notifications():
+			if !ok {
+				t.Fatal("the test's connection closed")
+			}
+			var task kernel.TaskChanged
+			if n.Method == kernel.NotifyTaskChanged && n.Decode(&task) == nil && task.ConversationID == conv && task.Kind == "compaction" {
+				compacting = true
+			}
+		case <-deadline:
+			t.Fatal("the Kernel started no compaction")
+		}
+	}
+	if n := h.count("daemon.compact_session"); n != 0 {
+		t.Errorf("the Daemon was asked to compact %d times", n)
 	}
 }

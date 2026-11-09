@@ -842,7 +842,8 @@ func (a *App) automationRow(c *ui.Context, e gateway.Automation) {
 func (a *App) factorySection(c *ui.Context) {
 	k, t := a.kit, a.kit.T
 	s := &a.automations
-	if len(s.factory) == 0 {
+	// The Daemon runs Factory's automations: on the Kernel there is none of it to show.
+	if len(s.factory) == 0 || a.kernelMode() {
 		return
 	}
 	title := L("Factory automations on this computer")

@@ -40,6 +40,10 @@ const (
 	untilPlanMode    = "Spec mode is replaced by plan mode (Q4, M3); the test goes with M2's cleanup"
 	untilCodemode    = "the Daemon's tool mode is its initialize_session's; Kernel's Direct is codemode_kernel_test.go's"
 	untilWorkstreams = "Workstreams run on the Daemon, and a window on the Kernel offers none until they move (4M)"
+	daemonStartup    = "the Daemon's startup and connection; a window on the Kernel waits for the Kernel alone"
+	daemonDefaults   = "Spec mode, compaction, subagents and Script models are the Daemon's Session defaults; the Kernel has none of them"
+	daemonDroid      = "droid's updates are the Daemon's; nothing on the Kernel runs droid"
+	daemonMemory     = "turning Memory on or off restarts the Daemon; the Kernel takes the change as it runs"
 )
 
 // onDaemon holds the tests that keep their Sessions on the Fake Daemon, by name, with why.

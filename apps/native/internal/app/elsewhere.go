@@ -82,7 +82,8 @@ func (a *App) keepList() {
 func (a *App) withElsewhere(listed []sessions.Summary, rev uint64) ([]sessions.Summary, uint64) {
 	h := a.cfg.Host
 	e := &a.elsewhere
-	if h == nil || a.following() {
+	// Other Factory accounts are the Daemon's: on the Kernel no account runs a Session.
+	if h == nil || a.following() || a.kernelMode() {
 		if len(e.accounts) > 0 {
 			e.accounts, e.extra, e.key = nil, nil, ""
 			e.rev++

@@ -57,7 +57,7 @@ func TestSettingsImportsFromDroidAgain(t *testing.T) {
 func TestSettingsOffersNoImportWithoutAKernel(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
 	h.openSettingsTab("advanced")
-	h.until("Settings", func() bool { return h.hasText("droid executable") })
+	h.until("Settings", func() bool { return h.hasText("Offer Magpie's models") })
 	if h.hasText("Import from droid") {
 		t.Fatal("Settings offers the import without a Kernel")
 	}

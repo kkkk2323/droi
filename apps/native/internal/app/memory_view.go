@@ -131,8 +131,18 @@ func (a *App) memorySwitchRow(c *ui.Context, on bool) {
 	desc := L("Off: Droi starts every Session with no recollection of earlier ones. Turn it on to let it remember preferences, conventions and past work on this computer.")
 	if on {
 		desc = L("On: Droi summarizes each Session once it has been left for a while and keeps a short Memory Summary that every new Session starts with. Only Droi’s Daemon has it; the droid CLI is untouched.")
+		if a.kernelMode() {
+			desc = L("On: Droi summarizes each Session once it has been left for a while and keeps a short Memory Summary that every new Session starts with.")
+		}
 	}
 	var below func()
+	// The Kernel takes Memory on or off as it runs (Changed): nothing restarts, so there is nothing to confirm.
+	if m.pending != nil && a.kernelMode() {
+		next := *m.pending
+		m.pending = nil
+		a.hostUpdate(false, func(s *host.Settings) { s.MemoryEnabled = next })
+		a.refreshMemory()
+	}
 	if m.pending != nil {
 		next := *m.pending
 		label := L("Turn Memory off")

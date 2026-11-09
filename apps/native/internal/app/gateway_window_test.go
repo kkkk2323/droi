@@ -118,6 +118,7 @@ func TestTheWindowReconnectsThroughTheGatewayWhenTheDaemonComesBack(t *testing.T
 }
 
 func TestAGatewayThatCannotListenShowsAnErrorInTheWindow(t *testing.T) {
+	keepOnDaemon(t, daemonStartup)
 	h0 := testHost(t)
 	h0.Settings.Update(func(s *host.Settings) { s.APIKey = host.OptString("fk-x") })
 	none := controller.New(controller.Config{

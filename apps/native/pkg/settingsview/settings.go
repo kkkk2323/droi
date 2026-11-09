@@ -31,7 +31,13 @@ type Env struct {
 	// leaves the spec folder without its Custom… choice, as for another
 	// computer's Daemon, which cannot use a folder picked here.
 	PickFolder func(title string) string
+	// OnKernel reports that new Sessions run on the Kernel, which has no Spec mode, compacts and starts subagents its
+	// own way and offers Script to every model: the sections then leave out what only the Daemon reads. Nil is the
+	// Daemon's.
+	OnKernel func() bool
 }
+
+func (s *Settings) onKernel() bool { return s.env.OnKernel != nil && s.env.OnKernel() }
 
 // Settings is the sections' state, kept from frame to frame: which selects
 // are open, and the model picker's.

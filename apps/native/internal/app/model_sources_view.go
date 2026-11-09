@@ -1,10 +1,12 @@
 package app
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/kkkk2323/droi/apps/native/v2/internal/slash"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/l10n"
 )
@@ -19,6 +21,14 @@ func (a *App) kernelMode() bool {
 	}
 	h := a.cfg.Host
 	return h != nil && !a.following() && h.KernelEnabled()
+}
+
+// slashBuiltins are the builtins a composer offers: on the Kernel without /loop, a timer only the Daemon keeps.
+func (a *App) slashBuiltins(items []slash.Item) []slash.Item {
+	if !a.kernelMode() {
+		return items
+	}
+	return slices.DeleteFunc(slices.Clone(items), func(i slash.Item) bool { return i.Name == "loop" })
 }
 
 // noKernelModels says why a Kernel without models starts nothing, and for each Model Source of this computer what
