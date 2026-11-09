@@ -91,6 +91,7 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 | `pnpm test`                                                  | Run vitest once                                                                                                         |
 | `pnpm test:e2e:phone`                                        | Export the Phone App for web and run Playwright against it (Fake Kernel: needs Bun and Go; `DROI_KERNEL_BIN` picks a build) |
 | `pnpm install:phone`                                         | Build a signed Release of the Phone App and install it on the connected iPhone                                          |
+| `scripts/install-next.sh`                                    | Build this branch as Droi Next (its own name, folders, port and bundle id, on the Kernel, no updates) and install it in /Applications |
 | `pnpm typecheck`                                             | TypeScript validation (root + Phone App + tests)                                                                        |
 | `pnpm lint` / `pnpm lint:fix`                                | oxlint                                                                                                                  |
 | `pnpm format` / `pnpm format:check`                          | oxfmt                                                                                                                   |
