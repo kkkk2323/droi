@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +66,9 @@ func (h *harness) kernelConversationIn(dir, title string) kernel.ID {
 		h.t.Fatal(err)
 	}
 	h.a.reloadList()
+	// What reads the list (Settings → Worktrees, say) reads it once a while: the conversation must be in it first.
+	want := h.a.sessionIDOf(res.ConversationID)
+	h.until("the conversation listed", func() bool { return slices.Contains(h.listedIDs(), want) })
 	return res.ConversationID
 }
 
