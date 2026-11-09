@@ -81,3 +81,13 @@ func TestTheKernelSpeedIsTimedFromTheFirstTokenThisWindowSaw(t *testing.T) {
 		t.Errorf("time in the model %v", st.ModelMs)
 	}
 }
+
+// The window's log says what the speed was made from when it shows none.
+func TestSpeedReportSaysWhatTheSpeedWasMadeFrom(t *testing.T) {
+	s := NewState(7)
+	untimed := answer(t, 2, 1000, 0, 0)
+	s.Apply(kernel.ViewNotification{ID: 7, Kind: kernel.ViewKindValue, Value: &kernel.View{Entries: []kernel.Entry{answer(t, 1, 1000, 5000, 400), untimed}}})
+	if got, want := s.SpeedReport(), "opened true, held 2, answers 2, timed 1, streaming false, pi.live false"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}

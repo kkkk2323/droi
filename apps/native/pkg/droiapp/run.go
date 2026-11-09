@@ -153,6 +153,8 @@ func Run(o Options) {
 		}
 	}
 
+	logToFile(userData)
+
 	userPrefs := prefs.Open(filepath.Join(userData, "preferences.json"))
 	factoryRoot := ""
 	if o.OwnFactoryHome {

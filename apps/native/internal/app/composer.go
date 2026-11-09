@@ -5,7 +5,9 @@ import (
 	"cmp"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
+	"log"
 	"math"
 	"path/filepath"
 	"regexp"
@@ -936,8 +938,10 @@ func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 		kernelRate, kernelStreaming = s.State.LiveRate(now)
 	}
 	if (st.Calls == 0 || st.Last == nil) && !measured && kernelRate == 0 {
+		v.logNoSpeed(s, st, measured)
 		return
 	}
+	v.speedWhy = ""
 	if live != nil || kernelStreaming {
 		c.After(liveRefresh)
 	}
@@ -1021,6 +1025,26 @@ func (v *sessionView) speedMeter(c *ui.Context, s *sessionview.Snapshot) {
 			}
 		})
 	})
+}
+
+// logNoSpeed writes to the window's log why a Kernel conversation shows no speed under its composer, once for each
+// reason: the figure is drawn from the state's entries, and a window that shows none where the entries say there
+// is one needs the state's side of the story.
+func (v *sessionView) logNoSpeed(s *sessionview.Snapshot, st session.Stats, measured bool) {
+	conv, onKernel := v.a.kernelID(v.id)
+	if !onKernel {
+		return
+	}
+	why := "no state"
+	if s.State != nil {
+		why = s.State.SpeedReport()
+	}
+	why = fmt.Sprintf("calls %d, last %t, measured %t, session %t, %s", st.Calls, st.Last != nil, measured, s.Session != nil, why)
+	if why == v.speedWhy {
+		return
+	}
+	v.speedWhy = why
+	log.Printf("droi: speed: conversation %d (%s) shows no speed: %s", conv, v.id, why)
 }
 
 // formatSeconds is a latency: 0.8s, 12s; – when unknown.
