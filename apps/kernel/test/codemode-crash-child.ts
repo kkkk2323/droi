@@ -21,14 +21,17 @@ if (dir === undefined || work === undefined) {
 }
 const pidFile = join(work, 'sleep.pid')
 
+// With a third argument, `background`: the script runs as a background job, and the turn ends while it sleeps.
+const background = process.argv[4] === 'background'
 const faux = fauxProvider()
 faux.setResponses([
   fauxAssistantMessage(
     fauxToolCall('codemode', {
-      code: `const r = await tools.bash({ command: "echo $$ > ${pidFile} && sleep 30" }); return "after"`,
+      code: `${background ? '// @options: {"background": true}\n' : ''}const r = await tools.bash({ command: "echo $$ > ${pidFile} && sleep 30" }); return "after"`,
     }),
     { stopReason: 'toolUse' },
   ),
+  ...(background ? [fauxAssistantMessage('it runs in the background')] : []),
 ])
 const models = createModels()
 models.setProvider(faux.provider)
