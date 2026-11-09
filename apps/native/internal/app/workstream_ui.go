@@ -238,6 +238,7 @@ func (a *App) sessionPage(c *ui.Context, id string, listed []sessions.Summary) {
 		return
 	}
 	v := a.view(id)
+	a.showing = id
 	v.ws, v.chrome = nil, nil
 	v.build(c, a, sel, listed)
 }
@@ -254,6 +255,7 @@ func (a *App) workstreamPage(c *ui.Context, orch sessions.Summary, listed []sess
 	}
 	ctx := &wsContext{id: wsID, orch: orch, w: a.findWorkstream(wsID), st: st, agentShown: agent}
 	v := a.view(active)
+	a.showing = active
 	v.ws = ctx
 	v.chrome = func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav) {
 		a.workstreamTabs(c, ctx, v, s, loaded, workspace, nav)

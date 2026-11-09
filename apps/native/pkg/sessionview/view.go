@@ -34,6 +34,15 @@ const LoadedMessageLimit = 400
 // olderPage is how many messages one daemon.get_session_messages brings.
 const olderPage = 100
 
+// keepLoadedAtEnd is how many messages a Session may hold loaded while its
+// transcript shows its end: past it, the older ones the user read back to
+// are let go of, down to LoadedMessageLimit. releaseAbove is how many a
+// Session not shown may hold even away from its end.
+const (
+	keepLoadedAtEnd = 4 * LoadedMessageLimit
+	releaseAbove    = 5 * LoadedMessageLimit
+)
+
 // ColumnWidth is the reading column's max-w-3xl, which the transcript,
 // the Prompts and the composer share.
 const ColumnWidth = 768
@@ -90,25 +99,53 @@ type Env struct {
 // Revisions counts each Session's changes in the Store, for its View to
 // build its transcript again.
 type Revisions struct {
-	m sync.Map // Session id → *atomic.Int64
+	m sync.Map // Session id → *revision
 }
 
-func (r *Revisions) of(id string) *atomic.Int64 {
-	n, _ := r.m.LoadOrStore(id, new(atomic.Int64))
-	return n.(*atomic.Int64)
+// revision counts a Session's changes, and apart those that can change its
+// messages: a working state, its settings or its stats leave the transcript
+// as it was, and building a long one again for each was most of a running
+// Session's cost.
+type revision struct {
+	all, messages atomic.Int64
 }
 
-// Bump counts a change to Session id. Any goroutine.
-func (r *Revisions) Bump(id string) { r.of(id).Add(1) }
+func (r *Revisions) of(id string) *revision {
+	n, _ := r.m.LoadOrStore(id, new(revision))
+	return n.(*revision)
+}
+
+// Bump counts a change to Session id, which may be to its messages. Any
+// goroutine.
+func (r *Revisions) Bump(id string) {
+	n := r.of(id)
+	n.all.Add(1)
+	n.messages.Add(1)
+}
+
+// Note counts the change e reports, as a change to the Session's messages
+// only when it can be one. Any goroutine.
+func (r *Revisions) Note(e session.Event) {
+	n := r.of(e.SessionID)
+	n.all.Add(1)
+	switch e.Kind {
+	case session.EventMessagesUpdated, session.EventLoadStateChanged, session.EventRegistered, session.EventRemoved:
+		n.messages.Add(1)
+	}
+}
 
 // Load is the count of Session id's changes.
-func (r *Revisions) Load(id string) int64 { return r.of(id).Load() }
+func (r *Revisions) Load(id string) int64 { return r.of(id).all.Load() }
+
+// Messages is the count of the changes that could change Session id's
+// messages.
+func (r *Revisions) Messages(id string) int64 { return r.of(id).messages.Load() }
 
 // Watch counts every change the Store reports, then calls changed, until
 // the returned function is called.
 func (r *Revisions) Watch(store *session.Store, changed func()) (unsubscribe func()) {
 	return store.Subscribe(func(e session.Event) {
-		r.Bump(e.SessionID)
+		r.Note(e)
 		if changed != nil {
 			changed()
 		}
@@ -127,6 +164,9 @@ type View struct {
 	built   int64 // the Session's revision entries were built at
 	// frameRows are the list's rows of the frame being built.
 	frameRows []transcriptRow
+	rowCache  rowCache
+	// rowsGen counts the folds opened or closed that change the rows.
+	rowsGen uint64
 
 	// Guarded by mu: written by the goroutines loading the Session.
 	mu           sync.Mutex
@@ -282,7 +322,8 @@ func loadKeepingArchived(ctx context.Context, id string, load func() error, daem
 	return err
 }
 
-// loadOlder brings the page of messages before the first one shown.
+// loadOlder brings the messages before the first one shown: a page while
+// few are loaded, more pages at once the more are (olderPages).
 func (v *View) loadOlder() {
 	ctl := v.env.Controller
 	s := ctl.Store().Session(v.id)
@@ -297,27 +338,58 @@ func (v *View) loadOlder() {
 	}
 	v.olderLoading, v.olderErr = true, ""
 	v.mu.Unlock()
+	pages := olderPages(s.MessageCount())
 	go func() {
 		defer v.redraw()
+		var newest []protocol.FactoryDroidMessage // newest first, as the Daemon pages
+		more := true
 		cl, err := ctl.Client()
-		var res *protocol.GetSessionMessagesResult
-		if err == nil {
+		for range pages {
+			if err != nil || !more {
+				break
+			}
+			var res *protocol.GetSessionMessagesResult
 			limit := float64(olderPage)
 			res, err = cl.GetSessionMessages(v.env.Ctx, protocol.GetSessionMessagesParams{SessionID: v.id, Cursor: cursor, Limit: &limit})
+			if err != nil {
+				break
+			}
+			newest = append(newest, res.Messages...)
+			more = res.HasMore
+			cursor = res.NextCursor
+			if cursor == "" && len(res.Messages) > 0 {
+				cursor = res.Messages[len(res.Messages)-1].ID
+			}
+			if cursor == "" {
+				more = false
+			}
 		}
 		v.mu.Lock()
 		defer v.mu.Unlock()
 		v.olderLoading = false
-		if err != nil {
+		if err != nil && len(newest) == 0 {
 			v.olderErr = err.Error()
 			return
 		}
-		page := make([]protocol.FactoryDroidMessage, len(res.Messages))
-		for i, m := range res.Messages {
+		if err != nil {
+			// What came is kept, and the next call asks again from there.
+			more = true
+		}
+		page := make([]protocol.FactoryDroidMessage, len(newest))
+		for i, m := range newest {
 			page[len(page)-1-i] = m
 		}
-		ctl.Store().PrependOlderMessages(v.id, page, res.HasMore)
+		ctl.Store().PrependOlderMessages(v.id, page, more)
 	}()
+}
+
+// olderPages is how many pages of older messages one loadOlder brings with
+// loaded messages in the Store. Each merge of a page reads every message
+// loaded, so a page at a time made reading a long Session back to its start
+// cost the square of its length: 270 merges of 27,000 messages. Growing the
+// batch with what is loaded makes it a few dozen.
+func olderPages(loaded int) int {
+	return min(max(1, loaded/(4*olderPage)), 50)
 }
 
 // Hold stops the transcript following its end, as the web Client's list
@@ -393,6 +465,48 @@ func (v *View) sweep() {
 			delete(v.imageAt, id)
 		}
 	}
+}
+
+// Release lets go of what the view holds of its Session while it is not
+// shown. The Store keeps only the latest messages, as a load brings them,
+// when the transcript was at its end or holds more than releaseAbove; and
+// the view drops what it decoded and cut, built again from what is loaded
+// when it shows. A long Session read back to its start kept every message
+// and all that was made of them until Droi quit.
+func (v *View) Release() {
+	if v.Busy() {
+		return
+	}
+	atEnd := v.list.FollowEnd
+	if ctl := v.env.Controller; ctl != nil {
+		if s := ctl.Store().Session(v.id); s != nil {
+			if n := s.MessageCount(); n > LoadedMessageLimit && (atEnd || n > releaseAbove) {
+				atEnd = ctl.Store().TrimOlderMessages(v.id, LoadedMessageLimit) || atEnd
+			}
+		}
+	}
+	if atEnd {
+		// The list holds its last frame, whose rows hold every entry, until
+		// it is shown again; one at its end starts there again as it was.
+		v.list, v.leftEnd = ui.ListState{FollowEnd: true}, false
+	}
+	v.builder = transcript.Builder{}
+	v.entries, v.frameRows, v.rowCache, v.built = nil, nil, rowCache{}, -1
+	v.links, v.linksAt = nil, linksKey{}
+	clear(v.calls)
+	clear(v.images)
+	clear(v.imageAt)
+	v.jobs.reader, v.jobs.byID = transcript.JobReader{}, nil
+}
+
+// trimAtEnd lets go of the older messages the user read back to once the
+// transcript follows its end again, and keeps a running Session's loaded
+// messages from growing without end while it is watched.
+func (v *View) trimAtEnd(s *session.Session) {
+	if !v.list.FollowEnd || !v.list.AtEnd() || s.MessageCount() <= keepLoadedAtEnd || v.Busy() {
+		return
+	}
+	v.env.Controller.Store().TrimOlderMessages(v.id, LoadedMessageLimit)
 }
 
 // Busy: the view holds what would be lost with it, a load or a compaction
@@ -515,12 +629,15 @@ func CachedBitmap(cache map[string]*ui.Bitmap, id string, img transcript.Image) 
 // refresh builds the transcript again when the Session changed, keeping the
 // entries that did not change so that their rows keep their state.
 func (v *View) refresh(s *session.Session) {
-	rev := v.env.Revisions.Load(v.id)
+	rev := v.env.Revisions.Messages(v.id)
 	if rev == v.built || s == nil {
 		return
 	}
 	v.built = rev
-	next := v.builder.Build(s.DisplayMessages())
+	var next []*transcript.Entry
+	// Read in place: copying a long Session's messages on each change was
+	// most of what its window allocated while its agent worked.
+	s.ReadDisplayMessages(func(msgs []protocol.FactoryDroidMessage) { next = v.builder.Build(msgs) })
 	v.entries, _ = transcript.ReuseUnchanged(v.entries, next)
 }
 

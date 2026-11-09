@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
@@ -260,6 +261,103 @@ func TestReuseUnchanged(t *testing.T) {
 	}
 }
 
+// sameEntry tells what reflect.DeepEqual tells, field for field; a field
+// added to Entry or Block has to be compared there too.
+func TestSameEntryIsDeepEqual(t *testing.T) {
+	eq(t, reflect.TypeFor[Entry]().NumField(), 5)
+	eq(t, reflect.TypeFor[Block]().NumField(), 9)
+	five, six := 5.0, 6.0
+	c := &ToolCall{Use: protocol.ToolUse{ID: "c", Name: "Read"}, Input: map[string]any{"file_path": "/a"}}
+	sameC := &ToolCall{Use: protocol.ToolUse{ID: "c", Name: "Read"}, Input: map[string]any{"file_path": "/a"}}
+	otherC := &ToolCall{Use: protocol.ToolUse{ID: "c", Name: "Read"}, Input: map[string]any{"file_path": "/b"}}
+	base := Entry{ID: "e", CreatedAt: 1, Blocks: []Block{
+		{Kind: Text, ID: "e:0", Text: "hi"},
+		{Kind: Thinking, ID: "e:1", Text: "hm", DurationMs: &five},
+		{Kind: Tools, ID: "e:2", Calls: []*ToolCall{c}},
+		{Kind: Subagent, ID: "e:3", Call: c},
+		{Kind: QueuedAnswers, ID: "e:4", Records: []QueuedRecord{{ToolCallID: "q", Answers: []QueuedAnswer{{"Q", "A"}}}}},
+		{Kind: Picture, ID: "e:5", Image: Image{"image/png", "AAAA"}},
+	}}
+	variants := []func(e *Entry){
+		func(e *Entry) {},
+		func(e *Entry) { e.ID = "f" },
+		func(e *Entry) { e.User = true },
+		func(e *Entry) { e.CreatedAt = 2 },
+		func(e *Entry) { e.IsError = true },
+		func(e *Entry) { e.Blocks = e.Blocks[:5] },
+		func(e *Entry) { e.Blocks[0].Text = "ho" },
+		func(e *Entry) { e.Blocks[0].Streaming = true },
+		func(e *Entry) { e.Blocks[0].Kind = Thinking },
+		func(e *Entry) { e.Blocks[0].ID = "x" },
+		func(e *Entry) { e.Blocks[1].DurationMs = &six },
+		func(e *Entry) { d := 5.0; e.Blocks[1].DurationMs = &d },
+		func(e *Entry) { e.Blocks[1].DurationMs = nil },
+		func(e *Entry) { e.Blocks[2].Calls = []*ToolCall{sameC} },
+		func(e *Entry) { e.Blocks[2].Calls = []*ToolCall{otherC} },
+		func(e *Entry) { e.Blocks[2].Calls = []*ToolCall{} },
+		func(e *Entry) { e.Blocks[2].Calls = nil },
+		func(e *Entry) { e.Blocks[3].Call = sameC },
+		func(e *Entry) { e.Blocks[3].Call = otherC },
+		func(e *Entry) { e.Blocks[3].Call = nil },
+		func(e *Entry) { e.Blocks[4].Records = nil },
+		func(e *Entry) { e.Blocks[4].Records = []QueuedRecord{} },
+		func(e *Entry) {
+			e.Blocks[4].Records = []QueuedRecord{{ToolCallID: "q", Answers: []QueuedAnswer{{"Q", "B"}}}}
+		},
+		func(e *Entry) { e.Blocks[5].Image.Data = "BBBB" },
+	}
+	clone := func(e Entry) *Entry {
+		e.Blocks = slices.Clone(e.Blocks)
+		return &e
+	}
+	for i, a := range variants {
+		for j, b := range variants {
+			x, y := clone(base), clone(base)
+			a(x)
+			b(y)
+			if got, want := sameEntry(x, y), reflect.DeepEqual(x, y); got != want {
+				t.Fatalf("variants %d and %d: sameEntry %v, DeepEqual %v", i, j, got, want)
+			}
+		}
+	}
+}
+
+// A call that did not change keeps its pointer from build to build; one
+// whose result came is new, and so is the Script whose run called another
+// tool.
+func TestABuilderKeepsAnUnchangedCall(t *testing.T) {
+	withID := func(id string, m protocol.FactoryDroidMessage) protocol.FactoryDroidMessage { m.ID = id; return m }
+	msgs := []protocol.FactoryDroidMessage{
+		withID("u1", msg("user", `[{"type":"text","text":"go"}]`)),
+		withID("a1", msg("assistant", `[{"type":"tool_use","id":"read","name":"Read","input":{"file_path":"/a"}},{"type":"tool_use","id":"run","name":"Script","input":{"script":"x"}}]`)),
+	}
+	var b Builder
+	first := b.Build(msgs)
+	calls := first[1].Blocks[0].Calls
+	again := b.Build(append(slices.Clone(msgs), withID("u2", msg("user", `[{"type":"text","text":"and?"}]`))))
+	if again[1].Blocks[0].Calls[0] != calls[0] || again[1].Blocks[0].Calls[1] != calls[1] {
+		t.Fatal("an unchanged call is new")
+	}
+	got, changed := ReuseUnchanged(first, again)
+	eq(t, changed, true)
+	if got[1] != first[1] {
+		t.Fatal("the unchanged entry is not kept")
+	}
+	withResult := append(slices.Clone(msgs), withID("r1", msg("tool", `[{"type":"tool_result","toolUseId":"read","content":"a"}]`)))
+	next := b.Build(withResult)
+	if next[1].Blocks[0].Calls[0] == calls[0] || next[1].Blocks[0].Calls[1] != calls[1] {
+		t.Fatal("only the call whose result came is new")
+	}
+	nested := b.Build(append(withResult, withID("a2", msg("assistant", `[{"type":"tool_use","id":"run-1","name":"Read","input":{"file_path":"/b"},"scriptExecution":{"runId":"run","outerToolUseId":"run"}}]`))))
+	script := nested[1].Blocks[0].Calls[1]
+	if script == calls[1] || len(script.Nested) != 1 {
+		t.Fatal("the Script that called a tool is not new")
+	}
+	if b.Build(append(withResult, withID("a2", msg("assistant", `[{"type":"tool_use","id":"run-1","name":"Read","input":{"file_path":"/b"},"scriptExecution":{"runId":"run","outerToolUseId":"run"}}]`))))[1].Blocks[0].Calls[1] != script {
+		t.Fatal("the Script is new again with nothing changed")
+	}
+}
+
 // A Builder builds what Build does as a Session's messages change: a turn
 // streams, results come, an older page comes before, a message changes or
 // goes.
@@ -485,5 +583,24 @@ func TestLatestTool(t *testing.T) {
 	call, n := LatestTool(msgs)
 	if n != 2 || call == nil || call.Use.Name != "Read" || Summary(call) != "src/a.ts" {
 		t.Fatalf("got %d %+v", n, call)
+	}
+}
+
+// A decoded call's input and result are the bytes of the Store's JSON, not
+// copies of them.
+func TestDecodedBlocksShareTheirJSON(t *testing.T) {
+	inside := func(raw, sub []byte) bool {
+		start := uintptr(unsafe.Pointer(unsafe.SliceData(raw)))
+		p := uintptr(unsafe.Pointer(unsafe.SliceData(sub)))
+		return len(sub) > 0 && p >= start && p+uintptr(len(sub)) <= start+uintptr(len(raw))
+	}
+	use := protocol.ContentBlock{Type: "tool_use", Raw: json.RawMessage(`{"type":"tool_use","id":"c","name":"Create","input":{"file_path":"/a","content":"` + strings.Repeat("x", 1000) + `"}}`)}
+	d := decodeBlock(use, "m:0")
+	if !inside(use.Raw, d.rawInput) || !inside(use.Raw, d.use.Input["content"]) {
+		t.Fatal("a call's input is a copy")
+	}
+	result := protocol.ContentBlock{Type: "tool_result", Raw: json.RawMessage(`{"type":"tool_result","toolUseId":"c","content":"` + strings.Repeat("y", 1000) + `"}`)}
+	if d := decodeBlock(result, "r:0"); !d.ok || !inside(result.Raw, d.result.Content) || string(d.result.Content) != `"`+strings.Repeat("y", 1000)+`"` {
+		t.Fatal("a result is a copy")
 	}
 }

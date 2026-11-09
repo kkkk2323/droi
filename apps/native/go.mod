@@ -7,7 +7,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/egoist/mygo v0.7.3
 	github.com/google/uuid v1.6.0
-	github.com/kkkk2323/droid-sdk-go v0.7.2
+	github.com/kkkk2323/droid-sdk-go v0.7.3
 	github.com/klauspost/compress v1.20.3
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.46.0

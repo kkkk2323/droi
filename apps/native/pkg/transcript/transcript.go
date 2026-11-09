@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -128,7 +129,28 @@ func callInput(b protocol.ContentBlock, use protocol.ToolUse) (map[string]any, j
 	if len(raw.Input) == 0 || raw.Input[0] != '{' {
 		raw.Input = json.RawMessage("{}")
 	}
-	return decodeInput(use.Input), raw.Input, orderedKeys(raw.Input)
+	return decodeInput(use.Input), within(b.Raw, raw.Input), orderedKeys(raw.Input)
+}
+
+// within is sub, which decoding copied out of raw, as those same bytes of
+// raw: a long Session's tool inputs and results were otherwise held twice
+// or more, once as the Store's JSON and again as each decoded copy.
+func within(raw, sub []byte) []byte {
+	if len(sub) == 0 {
+		return sub
+	}
+	if i := bytes.Index(raw, sub); i >= 0 {
+		return raw[i : i+len(sub) : i+len(sub)]
+	}
+	return sub
+}
+
+// sharedUse is use, decoded from b, with its input's values in b's bytes.
+func sharedUse(b protocol.ContentBlock, use protocol.ToolUse) protocol.ToolUse {
+	for k, v := range use.Input {
+		use.Input[k] = within(b.Raw, v)
+	}
+	return use
 }
 
 func decode[T any](b protocol.ContentBlock) (T, bool) {
@@ -177,7 +199,31 @@ func LatestTool(messages []protocol.FactoryDroidMessage) (*ToolCall, int) {
 type Builder struct {
 	messages map[string]*seenMessage
 	gen      uint64
+	// src is the block each call of the build under way came from.
+	src map[*ToolCall]*decodedBlock
+	// last is what the last Build returned: an entry that comes out the
+	// same is that entry again.
+	last []*Entry
+	// A Build lays its entries out here, by index, before it knows which
+	// are new; the room is kept for the next. Making every entry of a long
+	// Session anew on each change, to keep the old ones after, was most of
+	// what its window allocated while its agent worked.
+	drafts   []draft
+	draftBl  []Block
+	draftCs  []*ToolCall
+	spans    []span
+	results  map[string]*protocol.ToolResult
+	watching map[string]*ToolCall
 }
+
+// draft is an entry under way: its blocks are draftBl[from:to].
+type draft struct {
+	Entry
+	from, to int
+}
+
+// span is where a Tools block's calls are in draftCs.
+type span struct{ from, to int }
 
 // seenMessage is a message's blocks as the last Build decoded them.
 type seenMessage struct {
@@ -200,6 +246,8 @@ type decodedBlock struct {
 	rawInput   json.RawMessage
 	keys       []string
 	result     *protocol.ToolResult
+	// call is the call the last Build made of this tool use.
+	call *ToolCall
 }
 
 func decodeBlock(b protocol.ContentBlock, id string) *decodedBlock {
@@ -219,11 +267,13 @@ func decodeBlock(b protocol.ContentBlock, id string) *decodedBlock {
 	case protocol.ContentBlockTypeToolUse:
 		d.use, d.ok = decode[protocol.ToolUse](b)
 		if d.ok {
+			d.use = sharedUse(b, d.use)
 			d.input, d.rawInput, d.keys = callInput(b, d.use)
 		}
 	case protocol.ContentBlockTypeToolResult:
 		var r protocol.ToolResult
 		r, d.ok = decode[protocol.ToolResult](b)
+		r.Content = within(b.Raw, r.Content)
 		d.result = &r
 	}
 	return d
@@ -265,6 +315,9 @@ func (bl *Builder) blocks(m protocol.FactoryDroidMessage) []*decodedBlock {
 func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	if bl.messages == nil {
 		bl.messages = map[string]*seenMessage{}
+		bl.src = map[*ToolCall]*decodedBlock{}
+		bl.results = map[string]*protocol.ToolResult{}
+		bl.watching = map[string]*ToolCall{}
 	}
 	bl.gen++
 	defer func() {
@@ -274,8 +327,11 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			}
 		}
 	}()
+	defer clear(bl.src)
+	defer clear(bl.watching)
 
-	results := map[string]*protocol.ToolResult{}
+	results := bl.results
+	clear(results)
 	for _, m := range messages {
 		if m.Role != protocol.MessageRoleTool {
 			continue
@@ -291,21 +347,21 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 
 	// A call a Script made goes under the latest call watching its run, so the
 	// calls a WaitForScript saw show where that wait sits in the turn.
-	watching := map[string]*ToolCall{}
-	var entries []*Entry
+	watching := bl.watching
+	ds, bs, cs, sp := bl.drafts[:0], bl.draftBl[:0], bl.draftCs[:0], bl.spans[:0]
 	for _, m := range messages {
 		if isReceipt(m) {
 			continue
 		}
 		if recs := records[m.ID]; recs != nil {
-			if n := len(entries); n > 0 && isRecordEntry(entries[n-1]) {
-				prev := entries[n-1]
-				prev.Blocks[0].Records = append(prev.Blocks[0].Records, recs...)
+			if n := len(ds); n > 0 && ds[n-1].User && ds[n-1].to-ds[n-1].from == 1 && bs[ds[n-1].from].Kind == QueuedAnswers {
+				prev := &ds[n-1]
+				bs[prev.from].Records = append(bs[prev.from].Records, recs...)
 				prev.CreatedAt = m.CreatedAt
 				continue
 			}
-			entries = append(entries, &Entry{ID: m.ID, User: true, CreatedAt: m.CreatedAt,
-				Blocks: []Block{{Kind: QueuedAnswers, ID: m.ID + ":0", Records: recs}}})
+			bs, sp = append(bs, Block{Kind: QueuedAnswers, ID: m.ID + ":0", Records: recs}), append(sp, span{})
+			ds = append(ds, draft{Entry: Entry{ID: m.ID, User: true, CreatedAt: m.CreatedAt}, from: len(bs) - 1, to: len(bs)})
 			continue
 		}
 		role := m.Role
@@ -321,73 +377,162 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 		if m.IsUserVisible != nil && !*m.IsUserVisible {
 			continue
 		}
-		var blocks []Block
+		start := len(bs)
 		for _, d := range bl.blocks(m) {
 			if !d.ok {
 				continue
 			}
 			switch d.typ {
 			case protocol.ContentBlockTypeText:
-				blocks = append(blocks, Block{Kind: Text, ID: d.id, Text: d.text, Streaming: d.streaming})
+				bs, sp = append(bs, Block{Kind: Text, ID: d.id, Text: d.text, Streaming: d.streaming}), append(sp, span{})
 			case protocol.ContentBlockTypeImage:
-				blocks = append(blocks, Block{Kind: Picture, ID: d.id, Image: d.image})
+				bs, sp = append(bs, Block{Kind: Picture, ID: d.id, Image: d.image}), append(sp, span{})
 			case protocol.ContentBlockTypeThinking:
-				blocks = append(blocks, Block{Kind: Thinking, ID: d.id, Text: d.text, DurationMs: d.durationMs, Streaming: d.streaming})
+				bs, sp = append(bs, Block{Kind: Thinking, ID: d.id, Text: d.text, DurationMs: d.durationMs, Streaming: d.streaming}), append(sp, span{})
 			case protocol.ContentBlockTypeToolUse:
 				use := d.use
-				call := &ToolCall{Use: use, Input: d.input, RawInput: d.rawInput, Keys: d.keys, Result: results[use.ID]}
-				call.Queued = queuedStateOf(call, resolved)
+				call, run := bl.call(d, results[use.ID], resolved)
+				bl.src[call] = d
 				if use.ScriptExecution != nil {
 					if owner := watching[use.ScriptExecution.OuterToolUseID]; owner != nil {
 						owner.Nested = append(owner.Nested, call)
 						continue
 					}
 				}
-				if run := ScriptRunOf(use, call.Input); run != "" {
-					call.Lifecycle = true
+				if run != "" {
 					watching[run] = call
 				}
 				if use.Name == TaskTool {
-					blocks = append(blocks, Block{Kind: Subagent, ID: d.id, Call: call})
+					bs, sp = append(bs, Block{Kind: Subagent, ID: d.id, Call: call}), append(sp, span{})
 					continue
 				}
 				if use.Name == SpecTool {
-					blocks = append(blocks, Block{Kind: Spec, ID: d.id, Call: call})
+					bs, sp = append(bs, Block{Kind: Spec, ID: d.id, Call: call}), append(sp, span{})
 					continue
 				}
-				if n := len(blocks); n > 0 && blocks[n-1].Kind == Tools {
-					blocks[n-1].Calls = append(blocks[n-1].Calls, call)
+				// The last Tools block's calls are the last in cs: only
+				// Tools blocks add to it.
+				cs = append(cs, call)
+				if n := len(bs); n > start && bs[n-1].Kind == Tools {
+					sp[n-1].to = len(cs)
 				} else {
-					blocks = append(blocks, Block{Kind: Tools, ID: d.id, Calls: []*ToolCall{call}})
+					bs, sp = append(bs, Block{Kind: Tools, ID: d.id}), append(sp, span{len(cs) - 1, len(cs)})
 				}
 			}
 		}
 		// A user message with nothing to show is a record, not a turn: the
 		// Daemon persists each hook run as one, and a message that was only a
 		// system reminder loses its text on the way.
-		if len(blocks) == 0 {
+		if len(bs) == start {
 			continue
 		}
 		isError := m.IsError != nil && *m.IsError
 		user := role == protocol.MessageRoleUser
 		// One turn arrives as several assistant messages; shown as one entry
-		// so nothing splits it. Tool runs join up too.
-		if n := len(entries); !user && n > 0 && !entries[n-1].User {
-			prev := entries[n-1]
-			for _, b := range blocks {
-				if k := len(prev.Blocks); b.Kind == Tools && k > 0 && prev.Blocks[k-1].Kind == Tools {
-					prev.Blocks[k-1].Calls = append(prev.Blocks[k-1].Calls, b.Calls...)
-				} else {
-					prev.Blocks = append(prev.Blocks, b)
-				}
+		// so nothing splits it. Tool runs join up too. The entry before is
+		// the last, so its blocks end where this message's start.
+		if n := len(ds); !user && n > 0 && !ds[n-1].User {
+			prev := &ds[n-1]
+			if bs[start].Kind == Tools && bs[start-1].Kind == Tools {
+				sp[start-1].to = sp[start].to
+				bs, sp = slices.Delete(bs, start, start+1), slices.Delete(sp, start, start+1)
 			}
+			prev.to = len(bs)
 			prev.CreatedAt = m.CreatedAt
 			prev.IsError = prev.IsError || isError
 			continue
 		}
-		entries = append(entries, &Entry{ID: m.ID, User: user, Blocks: blocks, CreatedAt: m.CreatedAt, IsError: isError})
+		ds = append(ds, draft{Entry: Entry{ID: m.ID, User: user, CreatedAt: m.CreatedAt, IsError: isError}, from: start, to: len(bs)})
 	}
+	bl.drafts, bl.draftBl, bl.draftCs, bl.spans = ds, bs, cs, sp
+
+	var entries []*Entry
+	if len(ds) > 0 {
+		entries = make([]*Entry, len(ds))
+	}
+	var byID map[string]*Entry
+	previous := func(i int, id string) *Entry {
+		// Mostly the entries stand where they stood.
+		if i < len(bl.last) && bl.last[i].ID == id {
+			return bl.last[i]
+		}
+		if byID == nil {
+			byID = make(map[string]*Entry, len(bl.last))
+			for _, e := range bl.last {
+				byID[e.ID] = e
+			}
+		}
+		return byID[id]
+	}
+	for i := range ds {
+		d := &ds[i]
+		blocks := bs[d.from:d.to:d.to]
+		for j := range blocks {
+			b := &blocks[j]
+			if b.Kind == Tools {
+				s := sp[d.from+j]
+				b.Calls = cs[s.from:s.to:s.to]
+				for k, c := range b.Calls {
+					b.Calls[k] = bl.canonical(c)
+				}
+			}
+			if b.Call != nil {
+				b.Call = bl.canonical(b.Call)
+			}
+		}
+		e := d.Entry
+		e.Blocks = blocks
+		if old := previous(i, e.ID); old != nil && sameEntry(old, &e) {
+			entries[i] = old
+			continue
+		}
+		e.Blocks = slices.Clone(blocks)
+		for j := range e.Blocks {
+			if c := e.Blocks[j].Calls; c != nil {
+				e.Blocks[j].Calls = slices.Clone(c)
+			}
+		}
+		entries[i] = new(Entry)
+		*entries[i] = e
+	}
+	bl.last = entries
 	return entries
+}
+
+// call is the call of tool use d with result, and the run it watches when
+// it is a Script or WaitForScript. The call the last Build made of d is
+// kept when nothing about it changed; a call watching a run is always new,
+// as the calls of its run are added to it.
+func (bl *Builder) call(d *decodedBlock, result *protocol.ToolResult, resolved map[string]QueuedState) (*ToolCall, string) {
+	c := ToolCall{Use: d.use, Input: d.input, RawInput: d.rawInput, Keys: d.keys, Result: result}
+	c.Queued = queuedStateOf(&c, resolved)
+	run := ScriptRunOf(d.use, c.Input)
+	if p := d.call; run == "" && p != nil && p.Result == c.Result && p.Queued == c.Queued && !p.Lifecycle && p.Nested == nil {
+		return p, ""
+	}
+	c.Lifecycle = run != ""
+	call := new(ToolCall)
+	*call = c
+	return call, run
+}
+
+// canonical is the call the last Build made of c's tool use when nothing
+// about it changed since, and c otherwise. The same call keeps its pointer
+// from build to build, which views key what they decoded of it by, and lets
+// ReuseUnchanged tell an unchanged entry without walking it.
+func (bl *Builder) canonical(c *ToolCall) *ToolCall {
+	for i, n := range c.Nested {
+		c.Nested[i] = bl.canonical(n)
+	}
+	d := bl.src[c]
+	if d == nil {
+		return c
+	}
+	if p := d.call; p != nil && p.Result == c.Result && p.Queued == c.Queued && p.Lifecycle == c.Lifecycle && slices.Equal(p.Nested, c.Nested) {
+		return p
+	}
+	d.call = c
+	return c
 }
 
 func isRecordEntry(e *Entry) bool {
@@ -401,14 +546,24 @@ func ReuseUnchanged(previous, next []*Entry) ([]*Entry, bool) {
 	if len(previous) == 0 {
 		return next, len(next) > 0
 	}
-	byID := make(map[string]*Entry, len(previous))
-	for _, e := range previous {
-		byID[e.ID] = e
+	var byID map[string]*Entry
+	find := func(i int, id string) *Entry {
+		// Mostly the entries stand where they stood.
+		if i < len(previous) && previous[i].ID == id {
+			return previous[i]
+		}
+		if byID == nil {
+			byID = make(map[string]*Entry, len(previous))
+			for _, e := range previous {
+				byID[e.ID] = e
+			}
+		}
+		return byID[id]
 	}
 	changed := len(previous) != len(next)
 	out := make([]*Entry, len(next))
 	for i, e := range next {
-		if old := byID[e.ID]; old != nil && reflect.DeepEqual(old, e) {
+		if old := find(i, e.ID); old != nil && sameEntry(old, e) {
 			if i >= len(previous) || previous[i] != old {
 				changed = true
 			}
@@ -423,6 +578,42 @@ func ReuseUnchanged(previous, next []*Entry) ([]*Entry, bool) {
 	}
 	return out, true
 }
+
+// sameEntry is reflect.DeepEqual(a, b), without walking calls that are
+// the same pointer.
+func sameEntry(a, b *Entry) bool {
+	if a == b {
+		return true
+	}
+	if a.ID != b.ID || a.User != b.User || a.CreatedAt != b.CreatedAt || a.IsError != b.IsError || len(a.Blocks) != len(b.Blocks) {
+		return false
+	}
+	for i := range a.Blocks {
+		if !sameBlock(&a.Blocks[i], &b.Blocks[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameBlock(a, b *Block) bool {
+	if a.Kind != b.Kind || a.ID != b.ID || a.Text != b.Text || a.Image != b.Image || a.Streaming != b.Streaming ||
+		(a.DurationMs == nil) != (b.DurationMs == nil) || a.DurationMs != nil && *a.DurationMs != *b.DurationMs ||
+		!sameCall(a.Call, b.Call) || len(a.Calls) != len(b.Calls) || (a.Calls == nil) != (b.Calls == nil) {
+		return false
+	}
+	for i := range a.Calls {
+		if !sameCall(a.Calls[i], b.Calls[i]) {
+			return false
+		}
+	}
+	if len(a.Records) == 0 && len(b.Records) == 0 {
+		return (a.Records == nil) == (b.Records == nil)
+	}
+	return reflect.DeepEqual(a.Records, b.Records)
+}
+
+func sameCall(a, b *ToolCall) bool { return a == b || a != nil && b != nil && reflect.DeepEqual(a, b) }
 
 type resultPart struct {
 	Type   string `json:"type"`
