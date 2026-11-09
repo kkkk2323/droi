@@ -56,6 +56,8 @@ type sessionView struct {
 	// its settings show icons.
 	narrowBar bool
 	chrome    func(c *ui.Context, s *sessionview.Snapshot, loaded bool, workspace string, nav subagentNav)
+	// speedWhy is the last reason the window's log was given for no speed under the composer.
+	speedWhy string
 }
 
 func (a *App) view(id string) *sessionView {

@@ -2,6 +2,7 @@ package sessionview
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/session"
@@ -178,4 +179,23 @@ func sampleOf(e kernel.Entry) callSample {
 		}
 	}
 	return out
+}
+
+// SpeedReport says what the speed under the composer was made from, for the window's log when it shows none: the
+// entries held, the answers among them and how many recorded a duration and output, and the call streaming now.
+func (s *State) SpeedReport() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	answers, timed := 0, 0
+	for _, e := range s.held {
+		if e.Kind != kernel.EntryAssistant {
+			continue
+		}
+		answers++
+		if sampleOf(e).answer {
+			timed++
+		}
+	}
+	return fmt.Sprintf("opened %t, held %d, answers %d, timed %d, streaming %t, pi.live %t",
+		s.opened, len(s.held), answers, timed, s.speed.live.started != 0, len(s.live) > 0)
 }
