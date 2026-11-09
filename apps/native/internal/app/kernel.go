@@ -29,6 +29,8 @@ type kernelConn struct {
 	gen int64
 	// models are what harness.info offered on the connection in use, for the composer's picker.
 	models []kernel.ModelInfo
+	// answered is whether harness.info has answered: before, no models says nothing about the Kernel.
+	answered bool
 }
 
 // offered is the models harness.info offered; nil before it answered.
@@ -36,6 +38,14 @@ func (k *kernelConn) offered() []kernel.ModelInfo {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	return k.models
+}
+
+// noModels reports that the Kernel answered and has no models: the Host gave it none, as when the Key Pool has
+// no key. A conversation it would start could not run.
+func (k *kernelConn) noModels() bool {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.answered && len(k.models) == 0
 }
 
 func (k *kernelConn) use(c *kernel.Client, gen int64) {
@@ -227,7 +237,7 @@ func (a *App) readModels(c *kernel.Client, gen int64) {
 	a.kernel.mu.Lock()
 	current := a.kernel.gen == gen
 	if current {
-		a.kernel.models = info.Models
+		a.kernel.models, a.kernel.answered = info.Models, true
 	}
 	a.kernel.mu.Unlock()
 	a.redraw()

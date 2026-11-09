@@ -20,6 +20,11 @@ import (
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/sessionview"
 )
 
+// noKernelModels says why a Kernel without models starts nothing, and where to give it some.
+func noKernelModels() string {
+	return L("Droi has no models to run yet. Add a key in Settings → Advanced → Key Pool.")
+}
+
 // kernelCodemode is the extension that offers a conversation's model scripts (codemode, on by default).
 const kernelCodemode = "codemode"
 
@@ -48,6 +53,9 @@ func (a *App) kernelChoices() []models.Choice {
 // and answers its Session id, or why it could not. A new worktree the page chose is made first, with git on this
 // computer, and the conversation works in it.
 func (a *App) createConversation(c *kernel.Client, workspace string, p protocol.InitializeSessionParams) (string, error) {
+	if a.kernel.noModels() {
+		return "", errors.New(noKernelModels())
+	}
 	kind := "chat"
 	if workspace == scratchPick {
 		dir, err := "", gateway.ErrNotFound

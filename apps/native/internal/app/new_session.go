@@ -133,10 +133,15 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 			autonomy = dv.AutonomyLevel
 		}
 	}
-	// On Kernel the picker offers Kernel's models: the Daemon's are not the ones a conversation can run.
-	if offered := a.kernelChoices(); len(offered) > 0 {
-		choices = offered
-		if !slices.ContainsFunc(choices, func(m models.Choice) bool { return m.ID == modelID }) {
+	// On Kernel the picker offers Kernel's models only: the Daemon's are not ones a conversation can run, and
+	// with none of its own the page says so rather than offer them.
+	noModels := false
+	if a.onKernel() {
+		choices = a.kernelChoices()
+		noModels = a.kernel.noModels()
+		if len(choices) == 0 {
+			modelID, effort = "", ""
+		} else if !slices.ContainsFunc(choices, func(m models.Choice) bool { return m.ID == modelID }) {
 			modelID, effort = choices[0].ID, ""
 		}
 	}
@@ -187,6 +192,8 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 					})
 					if s.err != "" {
 						k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
+					} else if noModels {
+						k.Text(c, noKernelModels(), 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 					}
 				})
 				col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).PaddingX(k.Px(32)).Shrink(0)
@@ -440,7 +447,8 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree worktreeChoice, creating bool, choices []models.Choice, modelID, effort, autonomy string, shownMode, requestedMode defaults.ToolMode, fromDaemon []slash.Item) {
 	k, t := a.kit, a.kit.T
 	s := &a.newPage
-	enabled := workspace != "" && !creating
+	// On Kernel a conversation runs only a model the Kernel has.
+	enabled := workspace != "" && !creating && (!a.onKernel() || len(choices) > 0)
 	interaction := s.interaction
 	if dv := a.sessionDefaults(); interaction == "" && dv != nil {
 		interaction = dv.InteractionMode
