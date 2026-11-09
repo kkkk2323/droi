@@ -113,8 +113,8 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 		},
 	}
 	k.SettingGroup(c, l10n.L("Model and autonomy"), "", slices.DeleteFunc(rows, func(r func()) bool { return r == nil })...)
+	// The Kernel's tool calls are codemode's, whose mode is the Host's to keep, not this device's: the app draws it.
 	if kernel {
-		s.kernelToolCalls(c, k)
 		return
 	}
 	k.SettingGroup(c, l10n.L("Tool calls"), "", func() {
@@ -420,23 +420,4 @@ func sortInts(v []int) {
 			v[j], v[j-1] = v[j-1], v[j]
 		}
 	}
-}
-
-// kernelToolCalls is the Tool calls group on the Kernel: Script, which every model may use there, or Direct.
-func (s *Settings) kernelToolCalls(c *ui.Context, k *kit.Kit) {
-	opts := make([]kit.Option, 0, len(defaults.ToolModes))
-	for _, m := range []defaults.ToolMode{defaults.ScriptOnly, defaults.DirectOnly} {
-		opts = append(opts, kit.Option{Value: string(m), Label: defaults.ToolModeLabels[m]})
-	}
-	current := defaults.DefaultToolMode(s.env.Prefs)
-	if current == "" {
-		current = defaults.ScriptOnly
-	}
-	k.SettingGroup(c, l10n.L("Tool calls"), "", func() {
-		k.SettingRow(c, l10n.L("Mode"), l10n.L("Script lets the model call tools from a small program that can batch and filter them; Direct calls each tool on its own. A Session keeps its mode. Kept on this device."), func() {
-			if next, ok := s.Select(c, l10n.N("Default tool calls"), string(current), opts, false); ok {
-				defaults.SetDefaultToolMode(s.env.Prefs, defaults.ToolMode(next))
-			}
-		}, nil)
-	})
 }

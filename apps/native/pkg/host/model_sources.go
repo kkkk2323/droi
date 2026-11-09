@@ -90,6 +90,7 @@ func (h *Host) loadModelSources(token string, runs int, launch bool) (providers 
 			admits = append(admits, l.admit)
 		}
 	}
+	all, listed := withContextWindows(all, h.Settings.Get().ModelContextWindows)
 	b, err := json.Marshal(all)
 	if err != nil {
 		return nil, false, false
@@ -105,7 +106,7 @@ func (h *Host) loadModelSources(token string, runs int, launch bool) (providers 
 	}
 	changed = launch || k.given != string(b)
 	moved := !slices.Equal(k.sources, statuses)
-	k.given, k.sources = string(b), statuses
+	k.given, k.sources, k.listed = string(b), statuses, listed
 	for _, admit := range admits {
 		admit(token)
 	}

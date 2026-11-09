@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { Policy } from './policy/decide.ts'
+import { isCodemodeMode, type CodemodeMode } from './extensions/codemode.ts'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 
@@ -75,6 +76,11 @@ export type KernelConfig = {
   viewPushesPerSecond?: number
   /** What the brand's app gives every conversation (`DROI_KERNEL_AGENT`, ADR 0041). */
   app?: AppAgent
+  /**
+   * How codemode presents tools (`DROI_KERNEL_CODEMODE`, or the config file's `codemode.mode`): `on` unless set.
+   * `harness.configure {codemode: {mode}}` changes it for every conversation's next request.
+   */
+  codemodeMode?: CodemodeMode
 }
 
 /**
@@ -284,6 +290,23 @@ export function memoryDirFromEnv(env: NodeJS.ProcessEnv = process.env): string |
   return given
 }
 
+/** `DROI_KERNEL_CODEMODE`, else the config file's `codemode.mode`: `on` or `only`; undefined for codemode's default. */
+export function codemodeModeFrom(
+  file: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+): CodemodeMode | undefined {
+  const given = env['DROI_KERNEL_CODEMODE']
+  if (given !== undefined && given.trim() !== '') {
+    if (!isCodemodeMode(given))
+      throw new Error(`DROI_KERNEL_CODEMODE must be on or only, not ${given}`)
+    return given
+  }
+  const mode = (file as { mode?: unknown } | undefined)?.mode
+  if (mode === undefined || mode === null) return undefined
+  if (!isCodemodeMode(mode)) throw new Error('codemode.mode must be on or only')
+  return mode
+}
+
 /** Read the config file, or the empty config when there is none. */
 export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): KernelConfig {
   let file: Partial<KernelConfig> = {}
@@ -296,6 +319,7 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
   const fromEnv = providersFromEnv(env)
   const memoryDir = memoryDirFromEnv(env)
   const app = appAgentFromEnv(env)
+  const codemodeMode = codemodeModeFrom((file as { codemode?: unknown }).codemode, env)
   return {
     port: args.port,
     host: args.host,
@@ -309,5 +333,6 @@ export function loadConfig(args: Args, env: NodeJS.ProcessEnv = process.env): Ke
     progress: file.progress,
     viewPushesPerSecond: file.viewPushesPerSecond ?? 5,
     ...(app === undefined ? {} : { app }),
+    ...(codemodeMode === undefined ? {} : { codemodeMode }),
   }
 }

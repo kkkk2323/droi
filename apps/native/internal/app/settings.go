@@ -51,6 +51,9 @@ type settingsState struct {
 	// magpieURL is what is typed in Settings → Advanced; Magpie's own default
 	// shows while it is empty.
 	magpieURL string
+	// contextModel is the model whose context window Settings → Advanced sets, by host.ModelKey, and
+	// contextTokens what is typed for it.
+	contextModel, contextTokens string
 	// computerLink is the pairing link being typed; the check of one runs
 	// off the UI thread, and a refusal stays until the next try.
 	computerLink, computerErr string
@@ -415,6 +418,7 @@ func (a *App) advancedTab(c *ui.Context) {
 	// On the Kernel nothing runs droid: no Daemon to watch, no droid to find, no Factory API base URL to send it to.
 	if a.kernelMode() {
 		a.modelSourcesGroup(c)
+		a.contextWindowsGroup(c)
 		a.kernelGroup(c)
 		a.factoryImportGroup(c)
 		a.droidImportGroup(c)
@@ -644,6 +648,9 @@ func (a *App) defaultsTab(c *ui.Context) {
 		})
 	})
 	if a.cfg.Host != nil && !a.following() {
+		if a.kernelMode() {
+			a.codemodeGroup(c)
+		}
 		a.newSessionsGroup(c)
 	}
 }

@@ -78,10 +78,15 @@ func (bl *Builder) BuildView(view kernel.View) []*Entry {
 			}
 			entries = append(entries, &Entry{ID: entryID(entry), Blocks: blocks, CreatedAt: createdAt(entry), IsError: failed})
 			boundary = false
-		case kernel.EntryReset, kernel.EntryCompaction:
-			// The summary a compaction writes is a message, and a reset's handoff may carry one; neither is
-			// something the user said. They mark where the context moved and draw no row of this PR: their own
-			// cards (Block kinds Compaction and the reset marker) come with the next one, which the plan names.
+		case kernel.EntryCompaction:
+			// The summary is a message, not something the user said: the row only marks where the context moved, as a
+			// note does, so a `/compact` that summarised shows in the transcript too.
+			entries = append(entries, &Entry{ID: entryID(entry), Note: true, CreatedAt: createdAt(entry),
+				Blocks: []Block{{Kind: Text, ID: entryID(entry) + ":0:0", Text: l10n.L("Context compacted: the earlier messages are summarised for the model.")}}})
+			boundary = true
+		case kernel.EntryReset:
+			// A reset's handoff may carry a message; it is not something the user said. It marks where the context
+			// moved and draws no row yet.
 			boundary = true
 		case kernel.EntryNote:
 			block, ok := noteBlock(entry)

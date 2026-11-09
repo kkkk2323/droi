@@ -52,6 +52,10 @@ type kernelHost struct {
 	memoryOn bool
 	// section is the prompt section the Kernel has, as the latest launch or harness.configure gave it.
 	section string
+	// codemode is codemode's mode the Kernel has, as the latest launch or harness.configure gave it.
+	codemode string
+	// listed are the models the Kernel was last given, with the context windows their sources list.
+	listed []KernelModelContext
 	// link is the Host's own connection to the Kernel, over which a change of its settings reaches it
 	// (configureKernel); unhearLink stops it hearing the Supervisor.
 	link *KernelLink
@@ -291,6 +295,8 @@ func (h *Host) kernelEnv() []string {
 	if memoryOn {
 		env = append(env, kernel.MemoryDirEnv+"="+h.MemoryDir())
 	}
+	codemode := h.KernelCodemode()
+	env = append(env, kernel.CodemodeEnv+"="+codemode)
 	agent := h.kernelAgent()
 	if !agent.Empty() {
 		if b, err := json.Marshal(agent); err == nil {
@@ -300,6 +306,7 @@ func (h *Host) kernelEnv() []string {
 	k.mu.Lock()
 	k.memoryOn = memoryOn
 	k.section = agent.Section
+	k.codemode = codemode
 	k.mu.Unlock()
 	// Stopped, or started again, while this launch was preparing: the proxy does not take its token.
 	providers, _, ok := h.loadModelSources(token, runs, true)

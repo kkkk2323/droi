@@ -161,6 +161,43 @@ describe('codemode', () => {
     expect(await offered(b, id)).not.toContain('codemode')
   }, 60_000)
 
+  test('in only mode the model is offered codemode and what a script cannot call, and scripts still call the rest', async () => {
+    const b = await boot({ codemodeMode: 'only' })
+    writeFileSync(join(b.dir, 'a.txt'), 'only through a script')
+    const id = await conversation(b)
+    const tools = await offered(b, id)
+    expect(tools).toContain('codemode')
+    expect(tools).toContain('ask_user')
+    expect(tools).not.toContain('read')
+    expect(tools).not.toContain('bash')
+    const info = await b.client.call('harness.info', {})
+    expect(info['codemode']).toEqual({ mode: 'only' })
+    script(b, 'const t = await tools.read({ path: "a.txt" }); text(t); return "ok"')
+    await b.client.call('conversation.submit', { id, input: 'read it in a script' })
+    const [call] = callsOf(await result(b.client, id))
+    expect(call).toMatchObject({ name: 'read', status: 'ok' })
+    expect(call?.output).toContain('only through a script')
+  }, 60_000)
+
+  test('harness.configure switches the mode for every conversation, and one without codemode keeps its tools', async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    const direct = await conversation(b)
+    await b.client.call('conversation.configure', {
+      id: direct,
+      change: { extensions: { remove: ['codemode'] } },
+    })
+    expect(await offered(b, id)).toContain('read')
+    await b.client.call('harness.configure', { codemode: { mode: 'only' } })
+    expect(await offered(b, id)).not.toContain('read')
+    expect(await offered(b, direct)).toContain('read')
+    await b.client.call('harness.configure', { codemode: { mode: 'on' } })
+    expect(await offered(b, id)).toContain('read')
+    await expect(
+      b.client.call('harness.configure', { codemode: { mode: 'off' } }),
+    ).rejects.toThrow()
+  }, 60_000)
+
   test("a script's own calls wait for the approval policy too", async () => {
     const b = await boot({ policy: { autonomy: 'ask', rules: [] } })
     const marker = join(b.dir, 'ran.txt')
@@ -184,55 +221,60 @@ describe('codemode', () => {
     const [call] = callsOf(await result(b.client, id))
     expect(call).toMatchObject({ name: 'bash', status: 'ok' })
   }, 60_000)
-  test("an MCP server's tools are a script's too, under the server's namespace", async () => {
-    const data = tempData()
-    cleanups.push(() => data.cleanup())
-    mkdirSync(join(data.dir, 'user'), { recursive: true })
-    writeFileSync(
-      join(data.dir, 'user', 'mcp.json'),
-      JSON.stringify({
-        mcpServers: {
-          fake: {
-            command: process.execPath,
-            args: ['run', new URL('./mcp-server.ts', import.meta.url).pathname],
+  for (const mode of ['on', 'only'] as const)
+    test(`an MCP server's tools are a script's too, under the server's namespace (${mode})`, async () => {
+      const data = tempData()
+      cleanups.push(() => data.cleanup())
+      mkdirSync(join(data.dir, 'user'), { recursive: true })
+      writeFileSync(
+        join(data.dir, 'user', 'mcp.json'),
+        JSON.stringify({
+          mcpServers: {
+            fake: {
+              command: process.execPath,
+              args: ['run', new URL('./mcp-server.ts', import.meta.url).pathname],
+            },
           },
-        },
-      }),
-    )
-    const faux = fauxCatalog()
-    const kernel = await start({
-      dir: data.dir,
-      faux,
-      overrides: { policy: { autonomy: 'all', rules: [] } },
-    })
-    const client = new Client(kernel.port, undefined, 'window')
-    cleanups.push(async () => {
-      client.close()
-      await kernel.stop()
-    })
-    await until(async () =>
-      ((await client.call('mcp.list', {}))['servers'] as { status: string }[])[0]?.status ===
-      'connected'
-        ? true
-        : undefined,
-    )
-    const id = (
-      await client.call('conversation.create', {
-        agent: { model: faux.model, cwd: realpathSync(data.dir) },
+        }),
+      )
+      const faux = fauxCatalog()
+      const kernel = await start({
+        dir: data.dir,
+        faux,
+        overrides: { policy: { autonomy: 'all', rules: [] }, codemodeMode: mode },
       })
-    )['conversationId'] as number
-    faux.faux.setResponses([
-      fauxAssistantMessage(
-        fauxToolCall('codemode', { code: 'return await tools.fake___echo({ text: "hi" })' }),
-        { stopReason: 'toolUse' },
-      ),
-      fauxAssistantMessage('done'),
-    ])
-    await client.call('conversation.submit', { id, input: 'echo from a script' })
-    const [call] = callsOf(await result(client, id))
-    expect(call).toMatchObject({ name: 'fake___echo', status: 'ok' })
-    expect(call?.output).toContain('echo: hi')
-  }, 60_000)
+      const client = new Client(kernel.port, undefined, 'window')
+      cleanups.push(async () => {
+        client.close()
+        await kernel.stop()
+      })
+      await until(async () =>
+        ((await client.call('mcp.list', {}))['servers'] as { status: string }[])[0]?.status ===
+        'connected'
+          ? true
+          : undefined,
+      )
+      const id = (
+        await client.call('conversation.create', {
+          agent: { model: faux.model, cwd: realpathSync(data.dir) },
+        })
+      )['conversationId'] as number
+      faux.faux.setResponses([
+        fauxAssistantMessage(
+          fauxToolCall('codemode', { code: 'return await tools.fake___echo({ text: "hi" })' }),
+          { stopReason: 'toolUse' },
+        ),
+        fauxAssistantMessage('done'),
+      ])
+      await client.call('conversation.submit', { id, input: 'echo from a script' })
+      const [call] = callsOf(await result(client, id))
+      expect(call).toMatchObject({ name: 'fake___echo', status: 'ok' })
+      expect(call?.output).toContain('echo: hi')
+      // The server's tools were installed after the kernel started; `only` hides them from the model all the same.
+      const conv = await kernel.harness.conversation(id as never, context)
+      const names = (await conv!.agent(context)).tools.map((tool) => tool.name)
+      expect(names.includes('fake___echo')).toBe(mode === 'on')
+    }, 60_000)
   test("a call's card has the whole arguments it ran with, not Pi's 200-character preview", async () => {
     const b = await boot()
     const id = await conversation(b)

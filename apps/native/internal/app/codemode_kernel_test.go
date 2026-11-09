@@ -45,34 +45,36 @@ func TestAKernelScriptShowsTheCallsItMade(t *testing.T) {
 	h.until("the script's source", func() bool { return h.hasText("tools.read") })
 }
 
-// Direct, picked on the New session page, starts a Kernel conversation without scripts; the default keeps them.
-func TestANewKernelSessionPickedDirectHasNoScripts(t *testing.T) {
+// On the Kernel the New session page has no Script or Direct: a new conversation has codemode, whose mode is the
+// Kernel's, whatever this device's Daemon default says.
+func TestANewKernelSessionHasCodemodeWhateverTheDaemonsDefault(t *testing.T) {
 	h := kernelHarness(t)
-	for _, mode := range []defaults.ToolMode{defaults.DirectOnly, ""} {
-		dir := t.TempDir()
-		h.openStartPage()
-		h.a.newPage.pick, h.a.newPage.picked = dir, true
-		h.a.newPage.toolMode = mode
-		h.frame()
-		h.start("Plan the week " + string(mode))
-		var conv kernel.ID
-		h.until("the conversation", func() bool {
-			for _, s := range h.a.listedNow() {
-				if id, ok := h.a.kernelID(s.SessionID); ok && s.Cwd == dir {
-					conv = id
-					return true
-				}
+	defaults.SetDefaultToolMode(h.a.prefs, defaults.DirectOnly)
+	if tools := h.a.pickerTools(defaults.DirectOnly, func(defaults.ToolMode) {}); tools != nil {
+		t.Fatal("the picker offers Script or Direct on the Kernel")
+	}
+	dir := t.TempDir()
+	h.openStartPage()
+	h.a.newPage.pick, h.a.newPage.picked = dir, true
+	h.frame()
+	h.start("Plan the week")
+	var conv kernel.ID
+	h.until("the conversation", func() bool {
+		for _, s := range h.a.listedNow() {
+			if id, ok := h.a.kernelID(s.SessionID); ok && s.Cwd == dir {
+				conv = id
+				return true
 			}
-			return false
-		})
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		agent, err := h.testConn().Configure(ctx, kernel.ConfigureParams{ID: conv, Change: &kernel.AgentChange{}})
-		cancel()
-		if err != nil {
-			t.Fatal(err)
 		}
-		if has := slices.Contains(agent.Agent.Tools, "codemode"); has == (mode == defaults.DirectOnly) {
-			t.Errorf("mode %q: codemode offered %v, tools %v", mode, has, agent.Agent.Tools)
-		}
+		return false
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	agent, err := h.testConn().Configure(ctx, kernel.ConfigureParams{ID: conv, Change: &kernel.AgentChange{}})
+	cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(agent.Agent.Tools, "codemode") {
+		t.Errorf("codemode is not offered: %v", agent.Agent.Tools)
 	}
 }

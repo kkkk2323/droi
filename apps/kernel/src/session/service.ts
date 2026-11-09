@@ -26,6 +26,7 @@ import type { AgentDefaults, KernelConfig, ProviderConfig } from '../config.ts'
 import { validateProviders } from '../config.ts'
 import { replaceProviders, supportedApi } from '../models.ts'
 import { selectMemory } from '../memory/select.ts'
+import { isCodemodeMode, type CodemodeMode } from '../extensions/codemode.ts'
 import { isAbsolute } from 'node:path'
 import { info, warn } from '../log.ts'
 import {
@@ -98,6 +99,8 @@ export type KernelOptions = {
   disabledSkills: DisabledSkills
   /** The tools this build offers, by name, for `harness.info`. */
   tools: string[]
+  /** Installs codemode again as `config.codemodeMode` says, after `harness.configure` changed it. */
+  syncCodemode?: () => void
   version: string
   piVersion: string
   capabilities: Record<string, boolean>
@@ -460,6 +463,7 @@ export class Kernel implements Dispatcher {
         pi: { durable: this.#options.piVersion },
       },
       capabilities: this.#options.capabilities,
+      codemode: { mode: config.codemodeMode ?? 'on' },
       providers,
       models,
       // What a new conversation starts with when its create names no model.
@@ -490,7 +494,7 @@ export class Kernel implements Dispatcher {
   // ── harness.configure ───────────────────────────────────────────────────────────────────────────
 
   /**
-   * `harness.configure {providers?, memoryDir?, section?}`: what the Host's settings changed, for a running kernel. A new
+   * `harness.configure {providers?, memoryDir?, section?, agent?, codemode?}`: what the Host's settings changed, for a running kernel. A new
    * catalog takes the place of the old at once, so every conversation's next request resolves its model in it; Memory
    * turned on or off reaches each conversation at its next turn (selectMemory), and so does the app's section (the
    * Host's prompt addition and the brand's). A run under way is not touched.
@@ -536,6 +540,14 @@ export class Kernel implements Dispatcher {
       }
       appSection = given === null || given.trim() === '' ? null : given
     }
+    let codemodeMode: CodemodeMode | undefined
+    if (params['codemode'] !== undefined) {
+      const mode = (params['codemode'] as { mode?: unknown } | null)?.mode
+      if (!isCodemodeMode(mode)) {
+        throw invalidParams([{ path: 'codemode.mode', message: 'on or only' }])
+      }
+      codemodeMode = mode
+    }
     if (providers !== undefined) {
       replaceProviders(models, config.providers, providers)
       config.providers = providers
@@ -560,6 +572,10 @@ export class Kernel implements Dispatcher {
       else app.section = appSection
       config.app = app
     }
+    if (codemodeMode !== undefined) {
+      config.codemodeMode = codemodeMode
+      this.#options.syncCodemode?.()
+    }
     info('harness configured', {
       ...(providers === undefined ? {} : { providers: providers.map((provider) => provider.id) }),
       ...(memoryDir === undefined ? {} : { memory: memoryDir !== null }),
@@ -567,6 +583,7 @@ export class Kernel implements Dispatcher {
         ? {}
         : { agent: agent === null ? null : `${agent.provider}/${agent.modelId}` }),
       ...(appSection === undefined ? {} : { section: appSection !== null }),
+      ...(codemodeMode === undefined ? {} : { codemode: codemodeMode }),
     })
     this.#notifier?.broadcast('harness.changed', {})
     return {}
@@ -1334,7 +1351,22 @@ export class Kernel implements Dispatcher {
     const id = requiredNumber(params, 'id')
     const conversation = await this.#conversation(id)
     const taskId = await conversation.compact(optionalString(params, 'instructions'), context)
-    return { taskId }
+    if (optionalBoolean(params, 'wait') !== true) return { taskId }
+    // `wait`: answered once the compaction ended, with what it did. One that found nothing to summarize (the whole
+    // context is within what a summary keeps verbatim) completes with no entry, which a client must say, not hide.
+    const settled = await this.#options.harness.waitForTask(taskId, context)
+    const outcome = settled.state.outcome
+    switch (outcome.status) {
+      case 'completed': {
+        const done = outcome.result as { entryId?: unknown; submissionId?: unknown } | undefined
+        const compacted = done?.entryId !== undefined || done?.submissionId !== undefined
+        return { taskId, outcome: compacted ? 'compacted' : 'nothing' }
+      }
+      case 'failed':
+        return { taskId, outcome: 'failed', error: outcome.error.message }
+      default:
+        return { taskId, outcome: 'aborted' }
+    }
   }
 
   async #fork(params: Record<string, unknown>): Promise<unknown> {

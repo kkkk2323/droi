@@ -11,6 +11,8 @@ entry id=5 user=true error=false at=5000 blocks=1
 entry id=6 user=false error=false at=6000 blocks=1
   block kind=tools id=6:0:0
     call id=c2 name=bash input={"command":"go test ./..."} result={text="exit status 1" pending=false error=true}
+entry id=8 user=false error=false at=8000 blocks=1
+  block kind=text id=8:0:0 text="Context compacted: the earlier messages are summarised for the model."
 entry id=9 user=false error=true at=10000 blocks=2
   block kind=text id=9:0:0 text="and the changelog"
   block kind=text id=10:0:0 text="The model could not answer this turn."

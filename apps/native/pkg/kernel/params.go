@@ -311,15 +311,30 @@ type ConfigureResult struct {
 }
 
 // CompactParams is conversation.compact's params: Kernel starts a compaction
-// task and answers its id.
+// task and answers its id. With Wait it answers once the compaction ended,
+// with its Outcome.
 type CompactParams struct {
 	ID           ID     `json:"id"`
 	Instructions string `json:"instructions,omitempty"`
+	Wait         bool   `json:"wait,omitempty"`
 }
 
-// CompactResult names the compaction task.
+// A compaction's outcome, as conversation.compact {wait} answers it.
+const (
+	// CompactCompacted: the summary is written, or placed at the next boundary of a run under way.
+	CompactCompacted = "compacted"
+	// CompactNothing: the whole context is within what a summary keeps verbatim, so nothing was summarized.
+	CompactNothing = "nothing"
+	CompactFailed  = "failed"
+	CompactAborted = "aborted"
+)
+
+// CompactResult names the compaction task and, for a Wait, how it ended:
+// Error says why one failed.
 type CompactResult struct {
-	TaskID ID `json:"taskId"`
+	TaskID  ID     `json:"taskId"`
+	Outcome string `json:"outcome,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // ForkParams is conversation.fork's params: At is the entry the new
@@ -814,6 +829,20 @@ type HarnessConfigureParams struct {
 	// Agent takes the place of what a new conversation starts with when its create names no model, with
 	// Some(agent), or takes it away with None; nil leaves it.
 	Agent *Field[DefaultAgent] `json:"agent,omitempty"`
+	// Codemode is how codemode presents tools from every conversation's next request; nil leaves it.
+	Codemode *CodemodeSettings `json:"codemode,omitempty"`
+}
+
+// Codemode's modes, as pi-coding-agent's codemode.mode setting: CodemodeOn offers the model every tool and codemode
+// beside them; CodemodeOnly offers it codemode and the tools a script cannot call, so it reaches the rest from scripts.
+const (
+	CodemodeOn   = "on"
+	CodemodeOnly = "only"
+)
+
+// CodemodeSettings are harness.configure's codemode.
+type CodemodeSettings struct {
+	Mode string `json:"mode"`
 }
 
 // DefaultAgent is what a new conversation starts with when its create names no model: a model the Kernel offers,

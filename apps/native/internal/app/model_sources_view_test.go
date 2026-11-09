@@ -118,8 +118,8 @@ func TestOnKernelAdvancedHasNoDaemon(t *testing.T) {
 }
 
 // TestOnKernelSessionDefaultsLeaveOutTheDaemons: the Session defaults on the Kernel are what a Kernel conversation
-// starts with: no Spec mode, compaction or subagent settings, and tool calls are Script or Direct, with no droid to
-// follow and no list of Script models.
+// starts with: no Spec mode, compaction or subagent settings, and no Script or Direct: codemode's mode, on or only,
+// is the Kernel's.
 func TestOnKernelSessionDefaultsLeaveOutTheDaemons(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
 	if h.kernel == nil {
@@ -127,8 +127,8 @@ func TestOnKernelSessionDefaultsLeaveOutTheDaemons(t *testing.T) {
 	}
 	h.until("the Kernel", func() bool { return h.a.onKernel() })
 	h.openSettingsTab("defaults")
-	h.until("the defaults", func() bool { return h.hasText("Tool calls") && h.hasText("Model and autonomy") })
-	for _, gone := range []string{"Spec mode", "Compaction", "Subagents", "Interaction mode", "Follow droid settings", "Script models", "Shared with the droid CLI"} {
+	h.until("the defaults", func() bool { return h.hasText("Codemode") && h.hasText("Model and autonomy") })
+	for _, gone := range []string{"Spec mode", "Compaction", "Subagents", "Interaction mode", "Follow droid settings", "Script models", "Shared with the droid CLI", "Tool calls"} {
 		for _, s := range h.tt.Texts() {
 			if strings.Contains(s, gone) {
 				t.Errorf("the Session defaults show %q on the Kernel", gone)
@@ -170,5 +170,40 @@ func TestOnKernelCompactAsksTheKernel(t *testing.T) {
 	}
 	if n := h.count("daemon.compact_session"); n != 0 {
 		t.Errorf("the Daemon was asked to compact %d times", n)
+	}
+	// The Session is short: the whole of it is within what a summary keeps, and the footer says so.
+	h.until("the footer's notice", func() bool { return h.hasText("Nothing to compact yet: the newest 20,000 tokens are kept as they are") })
+}
+
+// TestOnKernelCodemodeIsOnOrOnly: Settings → Session defaults on the Kernel sets codemode's mode, on or only, in the
+// Host's settings, which is what reaches the Kernel.
+func TestOnKernelCodemodeIsOnOrOnly(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = testHost(t) })
+	if h.kernel == nil {
+		t.Skip("the Sessions are on the Fake Daemon")
+	}
+	h.until("the Kernel", func() bool { return h.a.onKernel() })
+	h.openSettingsTab("defaults")
+	h.until("the Codemode group", func() bool { return h.hasText("Codemode") })
+	h.click("Codemode mode")
+	h.click("only")
+	if got := h.a.cfg.Host.Settings.Get().CodemodeMode; got != "only" {
+		t.Fatalf("codemode's mode is %q", got)
+	}
+}
+
+func TestContextWindowsAreTypedAsPeopleWriteThem(t *testing.T) {
+	for in, want := range map[string]int{"": 0, "200000": 200_000, "200,000": 200_000, "200k": 200_000, "1.5m": 1_500_000, " 64K ": 64_000} {
+		if got, ok := parseTokens(in); !ok || got != want {
+			t.Errorf("%q is %d, %v", in, got, ok)
+		}
+	}
+	for _, in := range []string{"abc", "-5", "0"} {
+		if _, ok := parseTokens(in); ok {
+			t.Errorf("%q was taken", in)
+		}
+	}
+	if got := groupedTokens(1_000_000); got != "1,000,000" {
+		t.Errorf("grouped %q", got)
 	}
 }

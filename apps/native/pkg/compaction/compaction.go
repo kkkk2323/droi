@@ -15,6 +15,11 @@ import (
 type Done struct {
 	RemovedCount int
 	FinishedAt   int64
+	// Nothing is a compaction on the Kernel that found nothing to summarize, the whole context being within what a
+	// summary keeps verbatim. The Kernel counts no messages, so a Kernel's Done has no RemovedCount either way.
+	Nothing bool
+	// Kernel is a compaction on the Kernel, which compacts in place.
+	Kernel bool
 }
 
 // Finished is what a done listener hears: SessionID is the Session that was
@@ -57,7 +62,11 @@ func (l *Log) Start(sessionID string) {
 // Finish ends a run; shownIn is where the user lands: the Session itself, or
 // the child of a handoff. nowMs is Unix milliseconds.
 func (l *Log) Finish(sessionID, shownIn string, removedCount int, nowMs int64) {
-	done := Done{RemovedCount: removedCount, FinishedAt: nowMs}
+	l.FinishDone(sessionID, shownIn, Done{RemovedCount: removedCount, FinishedAt: nowMs})
+}
+
+// FinishDone is Finish with the whole Done, for a Kernel's compaction.
+func (l *Log) FinishDone(sessionID, shownIn string, done Done) {
 	l.update(func(s *Snapshot) {
 		delete(s.Pending, sessionID)
 		s.Finished[shownIn] = done
