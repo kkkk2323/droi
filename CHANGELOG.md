@@ -1,8 +1,19 @@
 ## Unreleased
 
+### Added
+
+- On the Kernel, Magpie's models are offered beside Factory's (ADR 0044). Turn Magpie on in Settings → Advanced: its models appear in the model picker without a restart, and working sessions keep running. With Magpie, Droi runs sessions with no Factory key at all.
+- Settings → Advanced lists where Droi's models come from (Factory and Magpie) and how each stands. When there is no model, the New session page says what each source needs.
+
 ### Changed
 
 - For apps built on Droi (ADR 0041): the Go module is now `github.com/kkkk2323/droi/apps/native/v2`, and its tags are `apps/native/v2.x.y`. Change every import of `github.com/kkkk2323/droi/apps/native/...` to `github.com/kkkk2323/droi/apps/native/v2/...` and require the module at a v2 tag. The packages and their names stay the same.
+- On the Kernel, Droi no longer asks you to sign in with Factory, and Settings has no Account tab: no Factory account runs a model there. An app built on Droi still shows its own sign-in page.
+
+### Fixed
+
+- On the Kernel, the Key Pool could not be used while `FACTORY_API_BASE_URL` was set, and Settings had no Usage tab to add a key. The Kernel's models always go through the Key Pool now, and the Usage tab is always there.
+- On the Kernel with no models, the New session page offered the Daemon's models, which no session could run. It now offers none and says how to get some.
 
 ## 1.92.0 - 2026-11-06
 

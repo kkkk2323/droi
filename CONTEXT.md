@@ -172,8 +172,12 @@ _Avoid_: system prompt override, custom instructions
 A model the Kernel runs that is not Factory's: a pi-ai provider with its own base URL, key and dialect, kept in Droi's settings rather than in droid's. A Session picks one like any other model, and it has no Factory usage multiplier. Clients show them; only the user and the Host add them.
 _Avoid_: BYOK model, external model, third-party model (on its own)
 
+**Model Source**:
+One place the Kernel's models come from: Factory through the Key Pool, or Magpie. The Host gives the Kernel every source's models together, gives them again when one changes, and the window shows how each stands and what it needs. No Factory account is needed for any of them (ADR 0044).
+_Avoid_: provider (pi-ai's word for one endpoint of a source), plugin, backend
+
 **Magpie**:
-A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it: in 2.0 it is registered with the Kernel as an OpenAI-compatible provider whose model list is fetched, so its models sit in the same picker as Factory's (ADR 0038).
+A local gateway (yetone's Magpie, listening on 127.0.0.1:3425) that runs coding agents on the models of many providers behind one endpoint. Droi does not run it: it is a Model Source, turned on in Settings → Advanced, registered with the Kernel as an OpenAI-compatible provider whose model list is fetched, so its models sit in the same picker as Factory's (ADR 0038, ADR 0044).
 _Avoid_: proxy, provider, model router (a Router is Factory's), gateway (that is Droi's own)
 
 **Skill**:

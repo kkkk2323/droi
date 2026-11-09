@@ -46,10 +46,12 @@ func (a *App) openSignInPage(c *ui.Context, login host.LoginState) {
 }
 
 // needsSignIn: the Host has nothing to authenticate with, so every
-// daemon.authenticate would fail and nothing but signing in can work.
+// daemon.authenticate would fail and nothing but signing in can work. On the
+// Kernel no Factory account runs a model, the Model Sources do, so Droi's own
+// sign-in is not asked for; an app's own sign-in page still is.
 func (a *App) needsSignIn() bool {
 	h := a.cfg.Host
-	return h != nil && !h.HasCredential()
+	return h != nil && !h.HasCredential() && (a.cfg.SignIn != nil || !a.kernelMode())
 }
 
 // signInPage fills the window until Droi can authenticate: sign in with

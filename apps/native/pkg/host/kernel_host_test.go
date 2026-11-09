@@ -17,6 +17,12 @@ import (
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
 
+// kernelProviders are Factory's models on the proxy at base, as the Kernel reads them.
+func kernelProviders(base string) string {
+	b, _ := json.Marshal(factoryProviders(base))
+	return string(b)
+}
+
 // The Kernel's providers are Factory's models on the proxy, on the wire droid sends each, with the Host's token for a
 // key: never a key of the pool.
 func TestTheKernelsProvidersAreFactorysModelsOnTheProxy(t *testing.T) {
@@ -260,6 +266,12 @@ func startHostKernel(t *testing.T, f *fakeFactory, withKey bool) *hostKernel {
 // startHostKernelWith is startHostKernel with the Host's Config changed by change first.
 func startHostKernelWith(t *testing.T, f *fakeFactory, withKey bool, change func(*Config)) *hostKernel {
 	t.Helper()
+	return startHostKernelPrepared(t, f, withKey, change, nil)
+}
+
+// startHostKernelPrepared is startHostKernelWith with prepare given the Host before its Kernel starts.
+func startHostKernelPrepared(t *testing.T, f *fakeFactory, withKey bool, change func(*Config), prepare func(*Host)) *hostKernel {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("runs the Kernel")
 	}
@@ -281,6 +293,9 @@ func startHostKernelWith(t *testing.T, f *fakeFactory, withKey bool, change func
 		}
 	}
 	t.Cleanup(h.KeyPool().Stop)
+	if prepare != nil {
+		prepare(h)
+	}
 	hk := &hostKernel{h: h, clients: make(chan *kernel.Client, 8)}
 	link := NewKernelLink(KernelLinkOptions{
 		Client:   "window",
@@ -342,6 +357,12 @@ func offered(t *testing.T, ctx context.Context, c *kernel.Client, provider, mode
 // answer asks model one question on c and waits for Factory's answer.
 func answer(t *testing.T, ctx context.Context, c *kernel.Client, model kernel.ModelRef) {
 	t.Helper()
+	answerSays(t, ctx, c, model, "Hello from Factory")
+}
+
+// answerSays asks model one question on c and waits for an answer that says want.
+func answerSays(t *testing.T, ctx context.Context, c *kernel.Client, model kernel.ModelRef, want string) {
+	t.Helper()
 	created, err := c.Create(ctx, kernel.CreateParams{Agent: &kernel.AgentChange{Model: kernel.Some(model)}, Cwd: t.TempDir(), Kind: "chat"})
 	if err != nil {
 		t.Fatal(err)
@@ -356,7 +377,7 @@ func answer(t *testing.T, ctx context.Context, c *kernel.Client, model kernel.Mo
 		}
 		for _, e := range page.Items {
 			if e.Kind == "pi.assistant" {
-				if !strings.Contains(string(e.Model), "Hello from Factory") {
+				if !strings.Contains(string(e.Model), want) {
 					t.Fatalf("%s answered %s", model.ModelID, e.Model)
 				}
 				return

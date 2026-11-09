@@ -193,7 +193,7 @@ func (a *App) newSessionPage(c *ui.Context, listed []sessions.Summary, status co
 					if s.err != "" {
 						k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 					} else if noModels {
-						k.Text(c, noKernelModels(), 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
+						k.Text(c, a.noKernelModels(), 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
 					}
 				})
 				col := ui.Column(c).FillWidth().MaxWidth(k.Px(sessionview.ColumnWidth)).AlignSelf(ui.Center).PaddingX(k.Px(32)).Shrink(0)

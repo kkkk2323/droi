@@ -73,7 +73,7 @@ func TestOnKernelWithNoModelsANewSessionSaysToAddAKey(t *testing.T) {
 	h.until("no models", func() bool { return len(h.a.kernelModelIDs()) == 0 })
 	listed := len(h.a.listedNow())
 	h.openStartPage()
-	h.until("the notice", func() bool { return h.hasText(noKernelModels()) })
+	h.until("the notice", func() bool { return h.hasText(h.a.noKernelModels()) })
 	if dv := h.a.sessionDefaults(); dv != nil {
 		for _, m := range dv.Models {
 			if m.Label != "" && h.hasText(m.Label) {
