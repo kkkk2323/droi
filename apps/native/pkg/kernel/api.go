@@ -89,9 +89,20 @@ func (c *Client) Configure(ctx context.Context, p ConfigureParams) (ConfigureRes
 }
 
 // Compact starts a compaction and answers its task id.
+//
+// With Wait it answers once the compaction ended, which takes as long as a model writes the summary: it waits up to
+// CompactWaitTimeout, not the Client's RequestTimeout.
 func (c *Client) Compact(ctx context.Context, p CompactParams) (CompactResult, error) {
-	return call[CompactResult](c, ctx, MethodConversationCompact, p)
+	if !p.Wait {
+		return call[CompactResult](c, ctx, MethodConversationCompact, p)
+	}
+	var out CompactResult
+	err := c.callWithin(ctx, max(CompactWaitTimeout, c.opts.timeout()), MethodConversationCompact, p, &out)
+	return out, err
 }
+
+// CompactWaitTimeout bounds a conversation.compact {wait} call: the model's summary of a long context.
+const CompactWaitTimeout = 10 * time.Minute
 
 // Fork copies a conversation up to an entry into a new one.
 func (c *Client) Fork(ctx context.Context, p ForkParams) (ForkResult, error) {

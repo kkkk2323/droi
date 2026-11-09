@@ -550,6 +550,31 @@ func TestModelCompleteWaitsForItsModelPastTheRequestTimeout(t *testing.T) {
 	}
 }
 
+// A conversation.compact {wait} call waits for the summary, which a model writes, not the RequestTimeout: a 33 s
+// compaction that succeeded used to be shown as "context deadline exceeded".
+func TestCompactThatWaitsOutlastsTheRequestTimeout(t *testing.T) {
+	f := startFakeKernel(t)
+	c, err := Dial(context.Background(), Options{URL: f.url(), RequestTimeout: 80 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	done := make(chan error, 1)
+	go func() {
+		res, err := c.Compact(context.Background(), CompactParams{ID: 7, Wait: true})
+		if err == nil && res.Outcome != CompactCompacted {
+			err = errors.New("the outcome is " + res.Outcome)
+		}
+		done <- err
+	}()
+	call := f.next(t)
+	time.Sleep(300 * time.Millisecond)
+	f.reply(t, call.ID, map[string]any{"taskId": 9, "outcome": "compacted"})
+	if err := <-done; err != nil {
+		t.Fatalf("conversation.compact: %v", err)
+	}
+}
+
 func TestClientClosesWaitingCalls(t *testing.T) {
 	f := startFakeKernel(t)
 	c := dialFake(t, f)
