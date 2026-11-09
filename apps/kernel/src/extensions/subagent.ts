@@ -178,7 +178,7 @@ export function subagentExtension(options: SubagentOptions): Extension {
         const settled = await submission.wait(context)
         const output = await answerOf(runtime as never, childId, context)
         await finish(runtime as never, context, job.input, {
-          status: settled.status === 'done' ? 'completed' : 'failed',
+          status: statusOf(settled),
           output,
           conversationId: childId,
         })
@@ -501,7 +501,7 @@ async function runInForeground(
   await api.details(details as never, context)
   const handle = await api.conversation(details.conversationId as never, context)
   if (handle === undefined) return failed(`Subagent ${details.conversationId} is gone.`)
-  let settled: { status: string }
+  let settled: { status: string; reason?: string }
   try {
     const submission = await handle.submit(
       { type: 'input', content: content as never, requestId: `subagent:${api.taskId}` },
@@ -514,11 +514,11 @@ async function runInForeground(
     throw cause
   }
   const answer = await answerOf(api as never, details.conversationId, context)
-  const status: SubagentStatus = settled.status === 'done' ? 'completed' : 'failed'
+  const status = statusOf(settled)
   const text =
     status === 'completed'
       ? answer
-      : `The subagent ended without an answer.${answer === '' ? '' : ` What it said last:\n${answer}`}`
+      : `The subagent ${status === 'stopped' ? 'was stopped' : 'ended without an answer'}.${answer === '' ? '' : ` What it said last:\n${answer}`}`
   return {
     output: [
       {
@@ -529,6 +529,12 @@ async function runInForeground(
     details: { ...details, status } as never,
     ...(status === 'completed' ? {} : { isError: true }),
   }
+}
+
+/** How a child's input ended: answered, stopped (task_stop or a person aborted its run), or failed. */
+function statusOf(settled: { status: string; reason?: string }): SubagentStatus {
+  if (settled.status === 'done') return 'completed'
+  return settled.reason === 'aborted' ? 'stopped' : 'failed'
 }
 
 function startedInBackground(details: SubagentDetails) {

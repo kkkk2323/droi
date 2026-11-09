@@ -268,6 +268,7 @@ type App struct {
 	// updateDismissed is the update step whose card was closed.
 	updateDismissed string
 	memory          memoryState
+	droids          droidsState
 	automations     automationsState
 	workstreams     workstreamsState
 	usage           usageState

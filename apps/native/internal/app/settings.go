@@ -34,6 +34,7 @@ var settingsTabs = []settingsTab{
 	{"defaults", l10n.N("Session defaults"), "sliders-horizontal", false, l10n.N("Sessions")},
 	{"memory", l10n.N("Memory"), "brain", true, l10n.N("Sessions")},
 	{"worktrees", l10n.N("Worktrees"), "git-fork", false, l10n.N("Sessions")},
+	{"droids", l10n.N("Droids"), "bot", false, l10n.N("Sessions")},
 	{"computer", l10n.N("Computer"), "laptop", false, l10n.N("Devices")},
 	{"remote", l10n.N("Remote Access"), "smartphone", true, l10n.N("Devices")},
 	{"usage", l10n.N("Usage"), "key-round", true, l10n.N("System")},
@@ -177,6 +178,8 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					a.memoryTab(c)
 				case "worktrees":
 					a.worktreesTab(c)
+				case "droids":
+					a.droidsTab(c)
 				case "notifications":
 					a.notificationsTab(c)
 				case "remote":

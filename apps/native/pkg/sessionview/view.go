@@ -83,6 +83,9 @@ type Env struct {
 	// OpenSession opens a subagent's Session from its card; nil leaves the
 	// card without its Open button.
 	OpenSession func(id string)
+	// SessionOf is the window's id for a Kernel conversation, such as a subagent's; nil writes the id as the
+	// contract does.
+	SessionOf func(kernel.ID) string
 	// Quote takes a reply the transcript's menu quotes; nil quotes it in the
 	// plain composer.
 	Quote func(text string)

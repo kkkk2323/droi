@@ -76,6 +76,7 @@ func (a *App) view(id string) *sessionView {
 			Now:         a.cfg.Now,
 			Revisions:   &a.revs,
 			OpenSession: func(id string) { a.Go(Route{Name: "session", SessionID: id}) },
+			SessionOf:   a.sessionIDOf,
 			Agent:       a.agentInfo,
 			OpenAgents: func() {
 				if v.ws != nil {

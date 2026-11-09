@@ -58,7 +58,7 @@ func TestAnExtensionsSettingsTabShowsInItsGroup(t *testing.T) {
 	for i, tab := range tabs {
 		at[tab.id] = i
 	}
-	if at["x"] != at["worktrees"]+1 || at["y"] != len(tabs)-1 {
+	if at["x"] != at["droids"]+1 || at["y"] != len(tabs)-1 {
 		t.Errorf("order %v", at)
 	}
 }

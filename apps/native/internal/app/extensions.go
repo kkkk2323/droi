@@ -72,6 +72,10 @@ func (a *App) settingHidden(id string) bool {
 	if id == "account" && a.kernelMode() {
 		return true
 	}
+	// Droids are the Kernel's subagents: the Daemon has its own.
+	if id == "droids" && !a.kernelMode() {
+		return true
+	}
 	return id != "about" && slices.Contains(a.cfg.HiddenSettings, id)
 }
 

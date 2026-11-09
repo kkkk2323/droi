@@ -335,6 +335,46 @@ describe('subagents', () => {
     expect(done.data).toMatchObject({ status: 'stopped', description: 'Long job' })
   }, 60_000)
 
+  test("a foreground subagent whose run is aborted, as the card's Stop does, answers that it was stopped", async () => {
+    const b = await boot()
+    const id = await conversation(b)
+    route(
+      b,
+      (n) =>
+        n === 0
+          ? fauxAssistantMessage(
+              fauxToolCall('task', {
+                subagent_type: 'worker',
+                description: 'Long job',
+                prompt: 'wait',
+              }),
+              { stopReason: 'toolUse' },
+            )
+          : fauxAssistantMessage('the parent goes on'),
+      (n) =>
+        n === 0
+          ? fauxAssistantMessage(fauxToolCall('bash', { command: 'sleep 30' }), {
+              stopReason: 'toolUse',
+            })
+          : fauxAssistantMessage('never'),
+    )
+    await b.client.call('conversation.submit', { id, input: 'start it' })
+    const childId = await until(async () => {
+      const owned = (await b.client.call('conversation.list', { parent: id }))['items'] as {
+        id: number
+      }[]
+      return owned[0]?.id
+    })
+    // Wait until the child is at work on its bash call before stopping it.
+    await until(async () =>
+      (await entries(b, childId)).some((entry) => entry.kind === 'pi.assistant') ? true : undefined,
+    )
+    await b.client.call('conversation.abort', { id: childId })
+    const { text, entry } = await resultOf(b, id)
+    expect(text).toContain('The subagent was stopped.')
+    expect(entry.model?.[0]?.details).toMatchObject({ status: 'stopped', conversationId: childId })
+  }, 60_000)
+
   test("task_output reads a subagent of this conversation's and refuses one of another's", async () => {
     const b = await boot()
     const id = await conversation(b)
