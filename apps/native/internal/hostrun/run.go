@@ -98,7 +98,7 @@ func Run(ctx context.Context, o Options) error {
 	}
 	cfg.ClientHiddenTools = func() []string { return svc.ClientHiddenTools() }
 	h = host.New(cfg)
-	if err := checkDroid(h); err != nil {
+	if err := checkDroid(h); err != nil && !h.KernelEnabled() {
 		return err
 	}
 	svc = StartServices(h)
@@ -143,14 +143,18 @@ func Run(ctx context.Context, o Options) error {
 		o.Start(ctx, h)
 	}
 
-	if !h.HasCredential() {
+	// The Kernel runs every Session with its Model Sources: no droid, no Daemon and no Factory login.
+	daemon := !h.KernelEnabled()
+	if daemon && !h.HasCredential() {
 		fmt.Fprintln(out, "Warning: no login. Run `droid login` on this computer, or set FACTORY_API_KEY, then restart.")
 	}
 	// The Gateway listens whether or not the Daemon is up, so the link comes
 	// first: a Daemon that takes long to start must not hide it.
 	announce(out, o.Terminal, gw, h, o.Version)
-	if err := waitForDaemon(ctx, h); err != nil {
-		fmt.Fprintf(out, "Warning: the Daemon is not running yet: %s\n", err)
+	if daemon {
+		if err := waitForDaemon(ctx, h); err != nil {
+			fmt.Fprintf(out, "Warning: the Daemon is not running yet: %s\n", err)
+		}
 	}
 	<-ctx.Done()
 	return nil

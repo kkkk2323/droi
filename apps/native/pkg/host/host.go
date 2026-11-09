@@ -79,6 +79,8 @@ type Host struct {
 	Times *sessiontimes.Store
 
 	adding *FactoryAuth
+	// seedDefaults takes droid's Session defaults once (KernelSessionDefaults).
+	seedDefaults sync.Once
 
 	mu      sync.Mutex
 	readers map[string]*CliLoginReader
@@ -167,13 +169,15 @@ func New(cfg Config) *Host {
 	return h
 }
 
-// Start launches the Daemon, and the first time dates the Sessions by the
+// Start launches the Kernel, or the Daemon on a Host without one, and the first time dates the Sessions by the
 // messages sent before the Session Times were kept.
 func (h *Host) Start() {
 	if h.KernelEnabled() {
+		// Nothing on the Kernel uses the Daemon: its Sessions, models, Memory, Automations and Gateway are the Kernel's.
 		h.startKernel()
+	} else {
+		h.Daemon.Start()
 	}
-	h.Daemon.Start()
 	h.watchDroiDroid()
 	go func() { _ = h.Times.Backfill(filepath.Join(h.SharedFactoryHome(), "sessions")) }()
 }
@@ -186,8 +190,12 @@ func (h *Host) Stop() {
 	h.Times.Flush()
 }
 
-// RestartDaemon starts a new Daemon from the droid on disk.
+// RestartDaemon starts a new Daemon from the droid on disk; on a Host that runs a Kernel, which runs no Daemon, it
+// does nothing.
 func (h *Host) RestartDaemon() {
+	if h.KernelEnabled() {
+		return
+	}
 	h.Daemon.Stop()
 	h.mu.Lock()
 	h.build = nil
