@@ -758,7 +758,9 @@ func (v *sessionView) footer(c *ui.Context, s *sessionview.Snapshot, workspace s
 				k.Text(c, workspaceName(workspace), 12, 16).TextColor(t.MutedForeground).SingleLine()
 			})
 		}
-		if done, ok := a.compactions.Snapshot().Finished[v.id]; ok && done.NoticeShown(time.Now().UnixMilli()) {
+		// A compaction on the Kernel that summarised is a row of the transcript, which says it once: the footer says only
+		// what that row cannot, that there was nothing to compact.
+		if done, ok := a.compactions.Snapshot().Finished[v.id]; ok && done.NoticeShown(time.Now().UnixMilli()) && (!done.Kernel || done.Nothing) {
 			c.After(time.Second)
 			ui.Row(c).Role(ui.RoleStatus).Gap(k.Px(4)).MinWidth(0).Children(func() {
 				compacted := L("Compacted, %d messages summarised", done.RemovedCount)

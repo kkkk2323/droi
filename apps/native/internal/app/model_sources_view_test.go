@@ -9,6 +9,7 @@ import (
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
+	"github.com/kkkk2323/droi/apps/native/v2/pkg/compaction"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/host"
 	"github.com/kkkk2323/droi/apps/native/v2/pkg/kernel"
 )
@@ -175,6 +176,24 @@ func TestOnKernelCompactAsksTheKernel(t *testing.T) {
 		t.Errorf("the Daemon was asked to compact %d times", n)
 	}
 	// The Session is short: the whole of it is within what a summary keeps, and the footer says so.
+	h.until("the footer's notice", func() bool { return h.hasText("Nothing to compact yet: the newest 20,000 tokens are kept as they are") })
+}
+
+// TestOnKernelCompactedSaysItOnce: a compaction on the Kernel that summarised is said by its row in the transcript,
+// not again in the footer.
+func TestOnKernelCompactedSaysItOnce(t *testing.T) {
+	h := kernelHarness(t)
+	h.openSession("Fix the login race")
+	h.until("the transcript", func() bool { return h.hasText("Message") })
+	id := h.a.route.SessionID
+	h.a.compactions.Start(id)
+	h.a.compactions.FinishDone(id, id, compaction.Done{FinishedAt: time.Now().UnixMilli(), Kernel: true})
+	h.frame()
+	if h.hasText("Compacted, older messages summarised") {
+		t.Error("the footer says the compaction the transcript says")
+	}
+	h.a.compactions.Start(id)
+	h.a.compactions.FinishDone(id, id, compaction.Done{FinishedAt: time.Now().UnixMilli(), Kernel: true, Nothing: true})
 	h.until("the footer's notice", func() bool { return h.hasText("Nothing to compact yet: the newest 20,000 tokens are kept as they are") })
 }
 
