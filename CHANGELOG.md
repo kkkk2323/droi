@@ -1,3 +1,18 @@
+## 1.94.0 - 2026-11-10
+
+### Added
+
+- The Session footer shows Credits reported by the Daemon, with the Session's own total and its total including subagents shown separately. Click to see the most recent completed turn observed in this window, its subagents' Credits and when it was recorded. This works without the Key Pool.
+
+### Changed
+
+- Observability names request-log Credits as estimates and says they use bundled model weights without promotions. These estimates stay separate from the Daemon's lifetime Session totals.
+
+### Fixed
+
+- Fable 5.2 requests no longer show as unpriced. Existing request records can also be estimated, using Droid 1.7.0's input, output and cache weights rather than Fable 5.1's.
+- Unknown model versions and Fast variants no longer borrow a base model's price just because their IDs begin the same way.
+
 ## 1.93.0 - 2026-11-09
 
 ### Added
