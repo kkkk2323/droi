@@ -203,11 +203,26 @@ func Credits(model string, u diag.TokenUsage) (float64, bool) {
 func weightOf(model string) (TokenWeight, bool) {
 	m := strings.ToLower(model)
 	for _, w := range StandardTokenWeights {
-		if strings.HasPrefix(m, w.ID) {
+		suffix, matches := strings.CutPrefix(m, w.ID)
+		if matches && (suffix == "" || datedModelSuffix(suffix)) {
 			return w, true
 		}
 	}
 	return TokenWeight{}, false
+}
+
+// A dated ID shares its base's weight, but another version or a fast
+// variant must not silently borrow that price.
+func datedModelSuffix(s string) bool {
+	if len(s) < 5 || s[0] != '-' {
+		return false
+	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Group is one row of the breakdown: what the calls share, and their

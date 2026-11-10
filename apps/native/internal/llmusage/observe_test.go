@@ -140,6 +140,37 @@ func TestRequestDetailSaysEverything(t *testing.T) {
 	}
 }
 
+func TestFable52RequestsHaveAnExplicitEstimate(t *testing.T) {
+	chinese(t)
+	r := diag.RequestRecord{Time: time.Now(), Model: "claude-fable-5.2", Status: 200,
+		Usage: &diag.TokenUsage{Input: 101800, CacheRead: 100000, CacheWrite: 800, Output: 500}}
+	// Droid 1.7.0's registry: 3.2 input, 5x output, default 0.1x
+	// cache reads and 1.25x cache writes. Not Fable 5.1's cache weight.
+	// 1000*3.2 + 800*4 + 100000*0.32 + 500*16 = 46400.
+	if got, ok := Credits(r.Model, *r.Usage); !ok || got < 46399.99 || got > 46400.01 {
+		t.Fatalf("Fable 5.2 credits = %v, %t; want 46400", got, ok)
+	}
+	row := BuildRequestRow(r)
+	if row.Credits.Text != "≈ 46.4K" || !strings.Contains(row.Credits.Help, "估算") {
+		t.Fatalf("request credits must name their source: %+v", row.Credits)
+	}
+	log := NewRequestLog(writeRequestLog(t, []diag.RequestRecord{r}))
+	if err := log.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	o := log.Observe(ObserveQuery{Period: PeriodAll}, time.Now())
+	if o.Totals.Unpriced != 0 || o.Totals.Credits < 46399.99 {
+		t.Fatalf("a historical Fable 5.2 request stays unpriced: %+v", o.Totals)
+	}
+	// A version or fast variant with no known full price is not the base
+	// model, even when its ID starts with one.
+	for _, model := range []string{"claude-fable-5.20", "claude-fable-5.2-fast"} {
+		if _, ok := Credits(model, *r.Usage); ok {
+			t.Errorf("%s borrowed another model's price", model)
+		}
+	}
+}
+
 func TestTrendNamesAndDescribesItsBars(t *testing.T) {
 	chinese(t)
 	now := time.Date(2026, 10, 23, 15, 30, 0, 0, time.Local)

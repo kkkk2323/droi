@@ -255,7 +255,7 @@ func observeSummary(t Totals) []MetricView {
 		cache.Value = FormatPercent(rate)
 		cache.Note = l10n.L("%s written to cache", compactTokens(t.CacheWrite))
 	}
-	credits := MetricView{Title: l10n.L("Credits"), Value: "≈ " + FormatCredits(t.Credits), Tone: TonePrimary, Note: l10n.L("Standard models only")}
+	credits := MetricView{Title: l10n.L("Estimated credits"), Value: "≈ " + FormatCredits(t.Credits), Tone: TonePrimary, Note: l10n.L("Standard models only")}
 	if t.Unpriced > 0 {
 		credits.Note = l10n.L("%d calls unpriced", t.Unpriced)
 	}
@@ -434,7 +434,7 @@ func buildGroups(o Observation, g Grouping, sessionName func(string) string) ([]
 func creditsCell(t Totals) Cell {
 	switch {
 	case t.Credits > 0:
-		help := keyMonths(t.Credits)
+		help := l10n.L("Estimated from bundled model weights; promotions are not included. Not a Daemon-reported charge.") + "\n" + keyMonths(t.Credits)
 		if t.Unpriced > 0 {
 			help += "\n" + l10n.L("%d calls unpriced", t.Unpriced)
 		}
@@ -491,7 +491,10 @@ func RequestDetail(r diag.RequestRecord, sessionName func(string) string) []Deta
 		lines = append(lines, DetailLine{l10n.L("Tokens"), tokens})
 		var t Totals
 		t.add(r)
-		lines = append(lines, DetailLine{l10n.L("Credits"), creditsCell(t).Text})
+		lines = append(lines, DetailLine{l10n.L("Estimated credits"), creditsCell(t).Text})
+		if t.Credits > 0 {
+			lines = append(lines, DetailLine{l10n.L("Credit source"), l10n.L("Bundled model weights; promotions are not included")})
+		}
 	} else {
 		lines = append(lines, DetailLine{l10n.L("Tokens"), l10n.L("Factory returned no usage")})
 	}

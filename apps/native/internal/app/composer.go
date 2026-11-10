@@ -717,6 +717,7 @@ func (v *sessionView) footer(c *ui.Context, s *session.Session, workspace string
 		// A Session the Daemon cleaned up keeps its figures until the next
 		// message loads it again.
 		if loaded || v.Ready() {
+			v.creditsMeter(c, s)
 			v.speedMeter(c, s)
 			v.contextMeter(c, s, loaded)
 		}
