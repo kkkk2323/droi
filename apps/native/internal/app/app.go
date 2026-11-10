@@ -270,6 +270,7 @@ type App struct {
 	memory          memoryState
 	droids          droidsState
 	automations     automationsState
+	loopAutos       loopAutomations
 	workstreams     workstreamsState
 	usage           usageState
 	// narrow is a window under the web Client's md breakpoint, where the
@@ -431,6 +432,7 @@ func (a *App) Start() {
 	if a.cfg.AutomationsChanged != nil {
 		a.unsubscribe = append(a.unsubscribe, a.cfg.AutomationsChanged(func() {
 			a.cfg.Update(func() {
+				a.loopAutos.at = time.Time{}
 				if a.route.Name == "automations" {
 					a.automationsChanged()
 				} else {

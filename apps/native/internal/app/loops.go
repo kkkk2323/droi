@@ -183,6 +183,9 @@ func (a *App) keepWorker(id string, keep bool) {
 
 // sessionLoops are the loops of Session id, as they were made.
 func (a *App) sessionLoops(id string) []loops.Loop {
+	if conv, ok := a.kernelLoopsOf(id); ok {
+		return a.kernelLoops(id, conv)
+	}
 	a.mu.Lock()
 	var out []loops.Loop
 	for _, l := range a.loops.byID {
@@ -247,6 +250,10 @@ func (v *sessionView) loop(s *sessionview.Snapshot, args string) bool {
 		}
 	}
 	v.SetErr("")
+	if conv, ok := a.kernelLoopsOf(v.id); ok {
+		go v.startKernelLoop(conv, cmd, prompt, cwd)
+		return true
+	}
 	yes := true
 	params, err := protocol.NewDaemonCreateCronRequestParams(protocol.DaemonCreateCronRequestParamsSessionPrompt{
 		Kind:           protocol.DaemonCreateCronRequestParamsKindSessionPrompt,
@@ -279,6 +286,10 @@ func (v *sessionView) loop(s *sessionview.Snapshot, args string) bool {
 // pauseLoop pauses a loop, or lets a paused one run again.
 func (v *sessionView) pauseLoop(l loops.Loop, pause bool) {
 	a := v.a
+	if l.Automation {
+		v.pauseKernelLoop(l, pause)
+		return
+	}
 	status := protocol.UserUpdatableCronStatusActive
 	if pause {
 		status = protocol.UserUpdatableCronStatusPaused
@@ -299,6 +310,10 @@ func (v *sessionView) pauseLoop(l loops.Loop, pause bool) {
 
 func (v *sessionView) deleteLoop(l loops.Loop) {
 	a := v.a
+	if l.Automation {
+		v.deleteKernelLoop(l)
+		return
+	}
 	cl, err := a.ctl.Client()
 	if err == nil {
 		_, err = cl.DeleteCron(a.ctx, protocol.DeleteCronParams{CronID: l.ID, SessionID: l.SessionID})

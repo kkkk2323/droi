@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -118,6 +119,9 @@ func (st *KernelStarter) Start(ctx context.Context, run RunSpec) (string, error)
 		}
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
+	if run.Conversation != "" {
+		return st.post(ctx, c, run, fail)
+	}
 	info, err := c.Harness(ctx)
 	if err != nil {
 		return "", fail(err, false)
@@ -168,6 +172,26 @@ func (st *KernelStarter) Start(ctx context.Context, run RunSpec) (string, error)
 	}
 	st.follows.Add(1)
 	go st.follow(run.RunID, id, sub.SubmissionID, level, c)
+	return id.String(), nil
+}
+
+// post is the run of a loop: its prompt goes into the conversation it names, at that conversation's own model and
+// approval level, after what the conversation is doing.
+func (st *KernelStarter) post(ctx context.Context, c KernelRuns, run RunSpec, fail func(error, bool) error) (string, error) {
+	n, err := strconv.ParseInt(run.Conversation, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("%w: %q is no conversation", ErrTargetGone, run.Conversation)
+	}
+	id := kernel.ID(n)
+	sub, err := c.Submit(ctx, kernel.SubmitParams{ID: id, Input: run.Prompt, WhenBusy: kernel.WhenBusyFollowUp, RequestID: "automation-run:" + run.RunID})
+	if kernel.Is(err, kernel.CodeConversationGone) {
+		return "", fmt.Errorf("%w: %w", ErrTargetGone, err)
+	}
+	if err != nil {
+		return "", fail(err, false)
+	}
+	st.follows.Add(1)
+	go st.follow(run.RunID, id, sub.SubmissionID, "", c)
 	return id.String(), nil
 }
 

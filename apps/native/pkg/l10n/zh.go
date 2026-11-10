@@ -1158,6 +1158,7 @@ var zh = map[string]string{
 	"Every %d minutes": "每 %d 分钟",
 	"Every hour":       "每小时",
 	"Include an interval, e.g. /loop 10m check the build or /loop check the build every 2h.": "请指定循环间隔，例如：/loop 10m 检查构建，或 /loop 检查构建 every 2h。",
+	"Loop: %s":             "循环：%s",
 	"Loops":                "循环",
 	"Loops, %d":            "循环，%d 个",
 	"Next at %s":           "下次 %s",

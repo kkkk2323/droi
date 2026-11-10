@@ -75,6 +75,9 @@ type Automation struct {
 	// WorkingDirectory is the Workspace its runs work in; "" is Folder.
 	WorkingDirectory string `json:"workingDirectory,omitempty"`
 	Paused           bool   `json:"paused"`
+	// Conversation is the conversation a loop's runs post into; "" opens one
+	// for each run. A save that leaves it empty keeps the one it had.
+	Conversation string `json:"conversation,omitempty"`
 	// The rest is the Host's to answer; a save ignores it.
 	CreatedAt string `json:"createdAt,omitempty"`
 	// ForkedFrom is the Factory automation it was moved from: its uuid,

@@ -40,6 +40,10 @@ type Automation struct {
 	// leaves them empty keeps them.
 	ForkedFrom     string `json:"forkedFrom,omitempty"`
 	ForkedFromName string `json:"forkedFromName,omitempty"`
+	// Conversation is the conversation its runs post into, a loop's (target
+	// existing); "" opens a conversation of its own for each run (target
+	// new). An edit that leaves it empty keeps it.
+	Conversation string `json:"conversation,omitempty"`
 	// Invalid is why its HEARTBEAT.md, schedule or time zone cannot be
 	// read; it is never written. List keeps such a folder, so it can be
 	// seen and deleted.
@@ -241,6 +245,7 @@ func Clean(a Automation) Automation {
 	}
 	a.ForkedFrom = strings.TrimSpace(a.ForkedFrom)
 	a.ForkedFromName = strings.TrimSpace(a.ForkedFromName)
+	a.Conversation = strings.TrimSpace(a.Conversation)
 	a.Invalid = ""
 	return a
 }
@@ -318,6 +323,9 @@ func (s Store) Save(a Automation) (Automation, error) {
 		}
 		if a.ForkedFrom == "" {
 			a.ForkedFrom, a.ForkedFromName = old.ForkedFrom, old.ForkedFromName
+		}
+		if a.Conversation == "" {
+			a.Conversation = old.Conversation
 		}
 	}
 	a.CreatedAt = a.CreatedAt.Truncate(time.Second)
@@ -497,6 +505,10 @@ func formatHeartbeat(a Automation) string {
 	}
 	field("forkedFrom", a.ForkedFrom)
 	field("forkedFromName", a.ForkedFromName)
+	if a.Conversation != "" {
+		field("target", "existing")
+		field("conversation", a.Conversation)
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimSpace(a.Prompt))
 	b.WriteString("\n")
@@ -573,6 +585,8 @@ func parseHeartbeat(text string) (Automation, error) {
 			a.ForkedFrom = v
 		case "forkedFromName":
 			a.ForkedFromName = v
+		case "conversation":
+			a.Conversation = v
 		}
 	}
 	if a.Name == "" || a.Schedule == "" {

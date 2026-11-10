@@ -328,3 +328,34 @@ func TestStoreCutsALongRunError(t *testing.T) {
 		t.Fatalf("error of %d bytes, valid %v, run %q", len(e), utf8.ValidString(e), runs[0].AutomationID)
 	}
 }
+
+// A loop's Automation names the conversation it posts into (target existing); an edit that leaves it out keeps it.
+func TestStoreKeepsALoopsConversation(t *testing.T) {
+	s := Store{Dir: filepath.Join(t.TempDir(), "automations")}
+	a, err := s.Save(Automation{Name: "Loop: check the build", Schedule: "*/10 * * * *", Timezone: "UTC", Prompt: "check the build", Conversation: " 42 "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(s.Dir, a.ID, "HEARTBEAT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "target: existing\nconversation: \"42\"\n") {
+		t.Fatalf("HEARTBEAT.md:\n%s", b)
+	}
+	edit := a
+	edit.Conversation, edit.Prompt = "", "check the build again"
+	if _, err := s.Save(edit); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(a.ID)
+	if err != nil || got.Conversation != "42" || got.Prompt != "check the build again" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if err := s.SetPaused(a.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(a.ID); got.Conversation != "42" || !got.Paused {
+		t.Fatalf("paused: %+v", got)
+	}
+}
