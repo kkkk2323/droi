@@ -44,6 +44,10 @@ type sessionView struct {
 	subOpen, trailOpen bool
 	// speedOpen: the footer's model speed details.
 	speedOpen bool
+	// turnCredits is the last completed turn observed while this view was
+	// kept, not a sum or a difference of Session counters.
+	turnCredits observedTurnCredits
+	creditsOpen bool
 	// jobsOpen: the header's background tasks.
 	jobsOpen bool
 

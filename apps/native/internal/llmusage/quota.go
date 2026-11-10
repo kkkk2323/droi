@@ -35,10 +35,9 @@ func WindowCredits(w Window, percent float64) (float64, bool) {
 }
 
 // TokenWeight is a model's credit weight per input, output and cache-read
-// token; a cache write weighs 1.25 input tokens. ID is the start of the
-// model's ID in requests, and the first prefix match wins, so a longer ID
-// comes first and a variant with its own price (a "-fast") needs its own row
-// above its base model. Common marks the models TokenEquivalents spells out:
+// token; a cache write weighs 1.25 input tokens. ID matches the model's ID
+// or a dated suffix in requests. A variant with its own price (a "-fast")
+// needs its own row. Common marks the models TokenEquivalents spells out:
 // a few, so that its tooltip stays short.
 type TokenWeight struct {
 	Model, ID                string
@@ -55,6 +54,9 @@ type TokenWeight struct {
 var StandardTokenWeights = []TokenWeight{
 	{"Opus 5.5", "claude-opus-5-5", 1.6, 8, 0.08, true},
 	{"Opus 5", "claude-opus-5", 2, 10, 0.2, false},
+	// Droid 1.7.0: 3.2 input, 5x output and the default 0.1x cache
+	// read, not Fable 5.1's 0.025x cache read.
+	{"Fable 5.2", "claude-fable-5.2", 3.2, 16, 0.32, false},
 	{"Fable 5.1", "claude-fable-5.1", 4, 20, 0.1, true},
 	{"Sonnet 5.5", "claude-sonnet-5-5", 0.8, 4, 0.04, true},
 	{"Haiku 5.5", "claude-haiku-5-5", 0.04, 0.2, 0.004, false},

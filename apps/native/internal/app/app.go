@@ -482,6 +482,19 @@ func (a *App) onEvent(e controller.Event) {
 			go a.refreshList()
 		}
 		switch ev.Raw.Type {
+		case "agent_turn_completed":
+			var n protocol.AgentTurnCompletedNotification
+			if jsonUnmarshal(ev.Raw.Raw, &n) == nil {
+				turn := observedTurnCredits{
+					own: creditValue(&n.TokenUsage), children: creditValue(n.ChildTokenUsage),
+					at: a.cfg.Now(),
+				}
+				a.cfg.Update(func() {
+					if v := a.views[ev.SessionID]; v != nil {
+						v.turnCredits = turn
+					}
+				})
+			}
 		case "tool_result":
 			// The Daemon edits files while a turn runs.
 			id := ev.SessionID
