@@ -12,7 +12,23 @@ type Palette struct {
 	Bg, Card, Text, Secondary, Tertiary, Faint, Line, Track, Hover, Selected ui.Color
 	SegTrack, SegThumb, SegText                                              ui.Color
 	Accent, Green, Warning, Danger                                           ui.Color
+	// Shadow lifts a popover or chart tooltip, SegShadow a segmented
+	// control's thumb; OnAccent is text on a filled Accent button.
+	Shadow, SegShadow, OnAccent ui.Color
+	// Series colors a trend's parts after Accent.
+	Series [4]ui.Color
+	// Providers marks each model provider in its brand's color, by
+	// provider class ("anthropic", "openai", "google"); "" is any other.
+	Providers map[string]ui.Color
 }
+
+// The same in both palettes.
+var (
+	series    = [4]ui.Color{ui.Hex("#8b5cf6"), ui.Hex("#14a3a3"), ui.Hex("#e08a2c"), ui.Hex("#d6578a")}
+	providers = map[string]ui.Color{
+		"anthropic": ui.Hex("#cc784d"), "openai": ui.Hex("#1aa68c"), "google": ui.Hex("#4285f5"), "": ui.Hex("#8e8e93"),
+	}
+)
 
 var (
 	Light = Palette{
@@ -22,6 +38,9 @@ var (
 		Hover: ui.RGBA(20, 20, 30, 0.045), Selected: ui.RGBA(20, 20, 30, 0.075),
 		SegTrack: ui.Hex("#e0e0e6"), SegThumb: ui.Hex("#ffffff"), SegText: ui.Hex("#3f3f46"),
 		Accent: ui.Hex("#2f6fe4"), Green: ui.Hex("#189a58"), Warning: ui.Hex("#c2710c"), Danger: ui.Hex("#d64545"),
+		Shadow: ui.RGBA(0, 0, 0, 0.16), SegShadow: ui.RGBA(0, 0, 0, 0.14), OnAccent: ui.Hex("#ffffff"),
+		Series:    series,
+		Providers: providers,
 	}
 	Dark = Palette{
 		Bg: ui.Hex("#1a1a1e"), Card: ui.Hex("#232327"), Text: ui.Hex("#ededf1"),
@@ -30,6 +49,9 @@ var (
 		Hover: ui.RGBA(255, 255, 255, 0.05), Selected: ui.RGBA(255, 255, 255, 0.085),
 		SegTrack: ui.Hex("#2a2a2f"), SegThumb: ui.Hex("#4a4a52"), SegText: ui.Hex("#c9c9d1"),
 		Accent: ui.Hex("#7ea6ff"), Green: ui.Hex("#6fd99b"), Warning: ui.Hex("#f2b544"), Danger: ui.Hex("#f28b82"),
+		Shadow: ui.RGBA(0, 0, 0, 0.16), SegShadow: ui.RGBA(0, 0, 0, 0.14), OnAccent: ui.Hex("#ffffff"),
+		Series:    series,
+		Providers: providers,
 	}
 )
 

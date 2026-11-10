@@ -69,9 +69,9 @@ func (a *App) newWorkstreamDialog(c *ui.Context) {
 	}
 	open := true
 	ui.DialogBase(c, &open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		panel.Role(ui.RoleDialog).Label(L("New Workstream")).Width(min(k.Px(560), width-k.Px(32))).Padding(k.Px(24)).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).FillWidth().Gap(k.Px(14)).Children(func() {
 			ui.Row(c).AlignItems(ui.Start).Children(func() {
 				ui.Column(c).Grow(1).Gap(k.Px(4)).Children(func() {
@@ -175,7 +175,7 @@ func (a *App) symbolPicker(c *ui.Context, f *workstreamForm) {
 	}
 	ui.PopoverBase(c, b, &f.symbolOpen, func(p ui.Element) {
 		p.Role(ui.RoleDialog).Label(L("Workstream symbol")).Margin(k.Px(6), 0, 0, 0).Padding(k.Px(8)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).
-			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Column(c).Gap(k.Px(2)).Children(func() {
 			const perRow = 6
 			for start := 0; start < len(sessions.WorkstreamSymbols); start += perRow {
@@ -373,9 +373,9 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 	}
 	open := true
 	ui.DialogBase(c, &open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		panel.Role(ui.RoleDialog).Label(L("Workstream settings")).Width(min(k.Px(640), width-k.Px(32))).Padding(k.Px(24)).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
 				k.Text(c, L("Workstream settings"), k.Dense(16, 18), 24).Role(ui.RoleHeading).FontWeight(500).Grow(1)

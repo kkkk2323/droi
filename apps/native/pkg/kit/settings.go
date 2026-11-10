@@ -94,7 +94,7 @@ func (k *Kit) Toggle(c *ui.Context, label string, on, disabled bool) bool {
 	b.Background(bg).Border(1, border)
 	x := b.Animate("on", b2f(on), 150*time.Millisecond)
 	b.Children(func() {
-		ui.Box(c).Size(k.Px(14), k.Px(14)).Radius(k.Px(7)).Background(ui.RGBA(255, 255, 255, 1)).Absolute().Top(k.Px(1)).Left(k.Px(1) + x*k.Px(13))
+		ui.Box(c).Size(k.Px(14), k.Px(14)).Radius(k.Px(7)).Background(t.OnFill).Absolute().Top(k.Px(1)).Left(k.Px(1) + x*k.Px(13))
 	})
 	return b.Clicked()
 }

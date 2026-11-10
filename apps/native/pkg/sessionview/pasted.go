@@ -53,7 +53,7 @@ func PastedCard(c *ui.Context, k *kit.Kit, text, action string, expanded *bool, 
 			return
 		}
 		x := ui.ButtonBase(c).Label(remove).Size(k.Px(20), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).
-			Background(t.Background).Absolute().Top(-k.Px(6)).Right(-k.Px(6)).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05)).Cursor(ui.CursorPointer)
+			Background(t.Background).Absolute().Top(-k.Px(6)).Right(-k.Px(6)).Shadow(0, 1, 2, 0, t.ShadowFaint).Cursor(ui.CursorPointer)
 		color := t.MutedForeground
 		if x.Hovered() {
 			color = t.Foreground

@@ -39,7 +39,7 @@ func (v *sessionView) jobsMenu(c *ui.Context) {
 		p.AttachTo(b, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(6), 0, 0, 0).
 			Role(ui.RoleDialog).Label(L("Background tasks")).Width(k.Px(440)).Padding(k.Px(4)).Radius(k.Px(8)).
 			Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
-			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Scroll(c).FillWidth().MaxHeight(k.Px(480)).Children(func() { v.jobList(c, jobs) })
 	})
 }

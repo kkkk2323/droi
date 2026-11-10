@@ -277,9 +277,10 @@ evidence; the removed Client's reference images remain unchanged.
 Settings leaves out Account, Memory, Remote Access and Advanced when there is no Host (the
 tests); the app has them all.
 
-Live tests against a real Daemon, through droid-proxy, skip without a key:
+Live tests against a real Daemon, through droid-proxy, skip without a key. The key comes from
+you; an agent never reads droid-proxy's key file.
 
 ```sh
-FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') \
+FACTORY_API_KEY=<key> FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') \
   go test ./apps/native/pkg/host ./apps/native/pkg/gateway -run Live -v
 ```

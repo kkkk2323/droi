@@ -916,8 +916,8 @@ func (a *App) requestsTable(c *ui.Context, u usageLook, rows []llmusage.RequestR
 			ui.Text(c, r.Time).TextColor(p.Secondary).FontFeatures("tnum").Tooltip(r.TimeHelp).SingleLine()
 		case 1:
 			ui.Row(c).Gap(u.Px(6)).Children(func() {
-				u.Text(c, r.ProviderMark, 9).FontWeight(700).TextColor(ui.Hex("#ffffff")).TextAlign(ui.Center).
-					Size(u.Px(20), u.Px(16)).FixedLineHeight(u.Px(16)).Radius(u.Px(4)).Background(providerColor(r.ProviderClass)).Tooltip(r.ProviderHelp).NoWrap()
+				u.Text(c, r.ProviderMark, 9).FontWeight(700).TextColor(p.OnAccent).TextAlign(ui.Center).
+					Size(u.Px(20), u.Px(16)).FixedLineHeight(u.Px(16)).Radius(u.Px(4)).Background(providerColor(p, r.ProviderClass)).Tooltip(r.ProviderHelp).NoWrap()
 				u.Text(c, r.Model, 11).Font(u.K.Mono).SingleLine().Shrink(1).Tooltip(r.Model)
 				if r.Kind != "" {
 					u.Text(c, r.Kind, 10).TextColor(p.Tertiary).NoWrap()

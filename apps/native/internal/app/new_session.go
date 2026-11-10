@@ -385,7 +385,7 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 	}
 	ui.PopoverBase(c, tr, &s.menuOpen, func(p ui.Element) {
 		p.Label(L("Choose a project")).Width(k.Px(288)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Row(c).Gap(k.Px(8)).PaddingX(k.Px(12)).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			k.Icon(c, "search", 14, t.MutedForeground)
 			in := ui.TextInputBase(c, &s.query).Label(L("Search projects")).Placeholder(L("Search projects")).AutoFocus().

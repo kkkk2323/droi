@@ -154,7 +154,7 @@ func (v *sessionView) gitButton(c *ui.Context, s *session.Session, loaded bool) 
 		w, h := c.Size()
 		p.AttachTo(b, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(6), 0, 0, 0).Role(ui.RoleDialog).Label(L("Changed files")).
 			Width(min(k.Px(416), w-k.Px(16))).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		maxH := min(k.Px(384), h-k.Px(60))
 		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).Gap(k.Px(8)).Padding(k.Px(10), k.Px(12), k.Px(6), k.Px(12)).Children(func() {

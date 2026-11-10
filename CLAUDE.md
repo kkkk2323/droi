@@ -11,12 +11,12 @@ The interface should feel like a precision instrument -- quiet confidence rather
 - **Visual tone**: Refined and information-dense, inspired by Linear and Raycast, and by Synara's material (ADR 0025): a near-white page with panels a hairline apart, faint alpha fills rather than extra greys, tight controls.
 - **References**: Linear (polish, dark-mode-first, subtle animations), Raycast (command-driven efficiency, minimal chrome), Synara (surfaces, hairlines, the single tint).
 - **Anti-references**: Overly playful or colorful interfaces (Slack-style), heavy illustrations or mascots, excessive whitespace that wastes screen real estate.
-- **Theme**: Light mode is the primary experience (a near-white page like Synara's). Dark mode is a first-class toggle, stored per browser. Solarized Light+ is kept, drawn in the same material.
+- **Theme**: Light mode is the primary experience (a near-white page like Synara's). Dark mode is a first-class toggle, kept with the app's local preferences (`pkg/prefs`). Solarized Light+ is kept, drawn in the same material.
 - **Typography**: the system's interface font (San Francisco, Segoe UI) for UI, JetBrains Mono for code. Geist stays as Settings → Font's choice. No decorative fonts.
 - **Color**: neutral palette with one blue tint (`#0169cc` light, `#339cff` dark) for the controls that show state. Color is reserved for status, actions, and that tint -- never for decoration.
 - **Geometry**: Settings → Density picks the sizes (ADR 0026): Comfortable, the default, has 32px controls and 14px base text; Compact has 28px controls and 13px text. 8–12px radii, 20px/500 headings with −0.3px tracking.
 - **Contrast**: text `#171717`, muted text `#636363`, hairlines at 12% ink and inputs at 15% (ADR 0026). A white panel on the white page must still read as its own surface.
-- **Motion**: Subtle and purposeful (framer-motion). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.
+- **Motion**: Subtle and purposeful (MyGo's `Animate` in the native app, react-native-reanimated in the Phone App). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.
 
 ### Design Principles
 
@@ -26,7 +26,7 @@ The interface should feel like a precision instrument -- quiet confidence rather
 
 3. **Speed is a feature** -- Interactions should feel instant. Prefer skeleton states over spinners, optimistic updates over loading screens. Animations are functional (guiding attention), not decorative.
 
-4. **Consistency through constraint** -- Use the established component library (shadcn/ui + Base UI Vega). Resist adding one-off styles. Stick to the design token system (CSS variables, Tailwind utilities). New patterns must justify their existence.
+4. **Consistency through constraint** -- Use the controls in `pkg/kit` (shadcn's Button variants and Base UI's menus, selects and dialogs, rebuilt as MyGo elements). Resist adding one-off styles. Stick to the design tokens in `pkg/theme`. New patterns must justify their existence.
 
 5. **Code is the content** -- The chat and code output are the primary focus. All surrounding UI (sidebar, input bar, status indicators) exists to support the content area, not compete with it.
 

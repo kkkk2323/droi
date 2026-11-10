@@ -1066,9 +1066,9 @@ func (a *App) confirmDialog(c *ui.Context, open *bool, title, body string, butto
 	k, t := a.kit, a.kit.T
 	w, _ := c.Size()
 	ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		panel.Role(ui.RoleAlertDialog).Label(title).Width(min(k.Px(420), w-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
 			k.Text(c, title, 15, 22).Role(ui.RoleHeading).FontWeight(600)
 			k.Text(c, body, 13, 20).TextColor(t.MutedForeground)

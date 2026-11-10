@@ -17,7 +17,9 @@ export default defineConfig({
     trace: process.env['CI'] || process.env['PW_TRACE'] ? 'retain-on-failure' : 'off',
   },
   webServer: {
-    command: `pnpm --filter @droi/mobile exec expo export --platform web && pnpm --filter @droi/mobile exec expo serve --port ${phonePort}`,
+    // --clear: Metro's cache outlives a release and would keep the old version in
+    // expoConfig, which the Gateway's /meta then contradicts.
+    command: `pnpm --filter @droi/mobile exec expo export --platform web --clear && pnpm --filter @droi/mobile exec expo serve --port ${phonePort}`,
     url: `http://localhost:${phonePort}`,
     reuseExistingServer: !process.env['CI'],
     timeout: 240_000,

@@ -241,7 +241,7 @@ func (a *App) pairingRow(c *ui.Context, st host.Settings) {
 			}
 			ui.Row(c).Wrap().Gap(k.Px(16)).AlignItems(ui.Start).Children(func() {
 				ui.Box(c).Role(ui.RoleImage).Label(L("Pairing QR code")).Size(k.Px(176), k.Px(176)).Shrink(0).Padding(k.Px(8)).
-					Radius(k.Px(10)).Border(1, t.Border).Background(ui.RGBA(255, 255, 255, 1)).Children(func() {
+					Radius(k.Px(10)).Border(1, t.Border).Background(t.ScanBackground).Children(func() {
 					if r.qr != nil {
 						ui.Image(c, r.qr).Fill().Fit(ui.Contain)
 					}

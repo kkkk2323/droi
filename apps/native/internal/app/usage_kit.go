@@ -21,14 +21,9 @@ func (u usageLook) tokensInfo(c *ui.Context, tokens string) {
 	u.Info(c, L("In tokens"), tokens, 11)
 }
 
-func providerColor(class string) ui.Color {
-	switch class {
-	case "anthropic":
-		return ui.Hex("#cc784d")
-	case "openai":
-		return ui.Hex("#1aa68c")
-	case "google":
-		return ui.Hex("#4285f5")
+func providerColor(p *dashkit.Palette, class string) ui.Color {
+	if c, ok := p.Providers[class]; ok {
+		return c
 	}
-	return ui.Hex("#8e8e93")
+	return p.Providers[""]
 }

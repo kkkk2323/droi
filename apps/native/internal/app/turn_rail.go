@@ -298,7 +298,7 @@ func (v *sessionView) turnRail(c *ui.Context, s *session.Session, width float32)
 				top := inset + float32(r.preview)*pitch + pitch/2 - r.scroll.Y
 				ui.Column(c).Role(ui.RoleTooltip).Absolute().Right(k.Px(38)).Top(top).Width(k.Px(288)).Margin(-k.Px(20), 0, 0, 0).
 					Padding(k.Px(10), k.Px(12)).Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).PassThrough().
-					Shadow(0, k.Px(4), k.Px(12), 0, ui.RGBA(0, 0, 0, 0.08)).Children(func() {
+					Shadow(0, k.Px(4), k.Px(12), 0, t.ShadowSoft).Children(func() {
 					k.Text(c, it.prompt, 13, 19.5).FontWeight(500).TextColor(t.PopoverForeground).MaxLines(2)
 					switch {
 					case r.jumpingTo == it.id:

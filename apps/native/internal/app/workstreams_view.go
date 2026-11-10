@@ -642,9 +642,9 @@ func (a *App) archiveWorkstreamDialog(c *ui.Context) {
 	}
 	open := true
 	ui.DialogBase(c, &open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		panel.Role(ui.RoleAlertDialog).Label(L("Archive “%s”?", title)).Width(min(k.Px(420), width-k.Px(32))).Padding(k.Px(20)).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).FillWidth().Gap(k.Px(6)).Children(func() {
 			k.Text(c, L("Archive “%s”?", title), k.Dense(14, 15), 22).Role(ui.RoleHeading).FontWeight(600)
 			k.Text(c, L("Its agents stop and are archived with the orchestrator. Worktrees without changes are deleted; ones with changes stay, and Droi lists them. The shared folder stays."), k.Dense(12, 13), k.Dense(18, 20)).

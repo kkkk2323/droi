@@ -108,7 +108,7 @@ func (a *App) cornerCard(c *ui.Context, label, icon string, body func(), dismiss
 	k, t := a.kit, a.kit.T
 	ui.Row(c).Role(ui.RoleStatus).Label(label).Width(k.Px(288)).AlignItems(ui.Start).Gap(k.Px(10)).
 		Padding(k.Px(12)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
-		Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1)).Children(func() {
+		Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow).Children(func() {
 		k.Icon(c, icon, 16, t.MutedForeground).Margin(k.Px(2), 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Children(body)
 		if k.IconButton(c, "x", L("Dismiss"), 24).Clicked() {

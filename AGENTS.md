@@ -54,12 +54,12 @@ each app declares its own dependencies. TypeScript unit tests sit next to the co
 |---------|-------------|
 | `go run ./apps/native` | Run the native app (needs `droid` on PATH) |
 | `go test ./apps/native/...` | Go unit tests and the native app's view tests |
-| `go vet ./apps/native/...` | Also with `GOOS=windows` when the change touches Windows |
+| `go vet ./apps/native/...` | Once each with `GOOS=darwin`, `windows` and `linux`, as the PR workflow does |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build the native app (`.app` and `.dmg`; `-platform windows/amd64` for Windows) |
 | `pnpm test` | Run vitest once |
 | `pnpm test:e2e:phone` | Export the Phone App for web and run Playwright against it (Fake Daemon) |
 | `pnpm install:phone` | Build a signed Release of the Phone App and install it on the connected iPhone |
-| `pnpm typecheck` | TypeScript validation (root + Phone App + tests) |
+| `pnpm typecheck` | TypeScript validation (root + shared daemon layer + Phone App + tests) |
 | `pnpm lint` / `pnpm lint:fix` | oxlint |
 | `pnpm format` / `pnpm format:check` | oxfmt |
 | `pnpm check` | format check + lint + typecheck |
@@ -76,6 +76,11 @@ Go: a `gofmt` on PATH from another Go lays out `pkg/l10n/zh.go` differently, and
 workflow rejects it (`go test ./apps/native` checks this too). Run
 `pnpm test:e2e:phone` when the Phone App, the shared daemon layer or the Fake Daemon
 changed. For what only an iPhone can show, walk `apps/mobile/DEVICE-CHECKLIST.md`.
+
+What must never break is code, not prose: `.claude/settings.json` and `.claude/hooks/` keep
+keys out of reach and out of commits, refuse force pushes, pushes and commits to main, branch
+switches in the main checkout and committed local pins, and run the checks above before a
+Claude Code turn may end. `.claude/hooks/test.sh <main checkout> <worktree>` checks the hooks.
 
 ## droid-sdk-go
 
@@ -106,7 +111,8 @@ installed types before using an Expo module, and add Expo packages with
   imported as `@droi/daemon-layer/<module>` and uses relative imports inside itself
 - The system's interface font for UI and JetBrains Mono for code (vendored as TTF in
   `apps/native/assets/fonts`; Geist stays for Settings → Font, ADR 0025). Sizes, radii and
-  control heights come from `pkg/theme` and `pkg/kit`: use them, do not hard-code a colour. A size
+  control heights come from `pkg/theme` and `pkg/kit`, and so do colours: `theme.Tokens`, or
+  `dashkit.Palette` in a dashboard. Do not hard-code a colour in a view; add a token. A size
   that differs between Settings → Density's Compact and Comfortable is `k.Dense(compact, comfortable)`
   (ADR 0026).
 - File naming: kebab-case for components, camelCase for utilities
@@ -127,11 +133,12 @@ installed types before using an Expo module, and add Expo packages with
   draws the native app against the Fake Daemon into `docs/screenshot.png` (skipped in a normal run)
 - Prefer `getByRole` / `getByLabel` selectors in Playwright; add `data-testid` only when no accessible name fits
 - E2E tests never need a Factory API key; they run against the Fake Daemon
-- Live tests against a real Daemon, through the local droid-proxy (`dp`) with a cheap model:
-  `FACTORY_API_KEY=$(grep -m1 '^fk-' ~/.config/dp/keys.txt) FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/pkg/host ./apps/native/pkg/gateway ./apps/native/internal/hostrun -run Live -v -timeout 30m`
+- Live tests against a real Daemon, through the local droid-proxy (`dp`) with a cheap model.
+  The key comes from the user: an agent never reads `~/.config/dp/keys.txt`; it asks for one.
+  `FACTORY_API_KEY=<key> FACTORY_API_BASE_URL=$(dp status | awk '/baseURL/ {print $2}') go test ./apps/native/pkg/host ./apps/native/pkg/gateway ./apps/native/internal/hostrun -run Live -v -timeout 30m`
   (`DROI_LIVE_MODEL` defaults to `glm-5.3-flash`; the Daemon runs in a throwaway HOME so the key need not own this computer's Factory registration).
   `internal/hostrun`'s run the Host's Automations and Workstreams through its Gateway on Droi's droid
-  (`~/Library/Application Support/Droi/droid/1.4.1/droid`; `DROID_PATH` picks another), macOS and Linux only
+  (the newest under `~/Library/Application Support/Droi/droid/`; `DROID_PATH` picks another), macOS and Linux only
 
 ## Factory login
 
