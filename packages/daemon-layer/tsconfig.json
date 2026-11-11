@@ -1,0 +1,7 @@
+{
+  "extends": "../../apps/mobile/tsconfig.json",
+  "include": ["src/**/*"],
+  "compilerOptions": {
+    "types": ["node"]
+  }
+}

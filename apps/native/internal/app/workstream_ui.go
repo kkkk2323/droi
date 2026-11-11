@@ -303,9 +303,9 @@ func (a *App) panelDrawer(c *ui.Context, ctx *wsContext, listed []sessions.Summa
 	k, t := a.kit, a.kit.T
 	w, _ := c.Size()
 	ui.DialogBase(c, &s.paneDrawer, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		panel.Role(ui.RoleDialog).Label(L("Workstream panel")).Absolute().Right(0).Top(0).Bottom(0).Width(min(w*0.9, k.Px(360))).
-			Background(t.Background).TextColor(t.Foreground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Background).TextColor(t.Foreground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).Fill().Children(func() { a.workstreamPane(c, ctx, listed, true) })
 	})
 }

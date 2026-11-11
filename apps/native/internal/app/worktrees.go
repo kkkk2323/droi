@@ -185,7 +185,7 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 	}
 	ui.PopoverBase(c, tr, &s.worktreeOpen, func(p ui.Element) {
 		p.Label(L("Worktree")).Width(k.Px(304)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Scroll(c).MaxHeight(k.Px(420)).Children(func() {
 			ui.Column(c).Padding(k.Px(4)).Children(func() {
 				ui.Column(c).Role(ui.RoleGroup).Label(L("Where to work")).Children(func() {
@@ -369,9 +369,9 @@ func (a *App) worktreeDialogView(c *ui.Context) {
 		message = L("Archiving this session will delete its worktree.")
 	}
 	ui.DialogBase(c, &d.open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		panel.Role(ui.RoleAlertDialog).Label(title).Width(min(k.Px(440), w-k.Px(32))).Radius(k.Px(12)).Border(1, t.Border).
-			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).FillWidth().Gap(k.Px(12)).Padding(k.Px(16)).Children(func() {
 			k.Text(c, title, 15, 22).Role(ui.RoleHeading).FontWeight(600)
 			k.Text(c, message, 13, 20).TextColor(t.MutedForeground)
@@ -472,7 +472,7 @@ func (a *App) dangerButton(c *ui.Context, label string, disabled bool) ui.Elemen
 		bg = bg.Alpha(0.88)
 	}
 	b.Background(bg).Children(func() {
-		k.Text(c, label, 13, 20).FontWeight(500).TextColor(ui.RGBA(255, 255, 255, 1))
+		k.Text(c, label, 13, 20).FontWeight(500).TextColor(t.OnFill)
 	})
 	return b
 }

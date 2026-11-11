@@ -221,7 +221,7 @@ func (u Look) PushButton(c *ui.Context, label, name string, primary, disabled bo
 	color := p.Text
 	if primary {
 		b.Background(p.Accent)
-		color = ui.Hex("#ffffff")
+		color = p.OnAccent
 		if b.Pressed() && !disabled {
 			b.Background(p.Accent.Mix(p.Text, 0.15))
 		}
@@ -261,7 +261,7 @@ func (u Look) Segmented(c *ui.Context, selected *int, labels []string, label, ti
 			color, weight := p.SegText, 400
 			switch {
 			case i == *selected:
-				s.Background(p.SegThumb).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.14)).Shadow(0, 0, 0, 0.5, p.Line)
+				s.Background(p.SegThumb).Shadow(0, 1, 2, 0, p.SegShadow).Shadow(0, 0, 0, 0.5, p.Line)
 				color, weight = p.Text, 500
 			case disabled:
 				s.Opacity(0.5)
@@ -302,7 +302,7 @@ func (u Look) Dropdown(c *ui.Context, open *bool, label, value string, options [
 	picked, ok := "", false
 	ui.PopoverBase(c, tr, open, func(panel ui.Element) {
 		panel.Role(ui.RoleList).Label(label).Margin(u.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(u.Px(4)).
-			Radius(u.Px(10)).Border(1, p.Line).Background(p.Card).Shadow(0, u.Px(8), u.Px(20), -u.Px(4), ui.RGBA(0, 0, 0, 0.16))
+			Radius(u.Px(10)).Border(1, p.Line).Background(p.Card).Shadow(0, u.Px(8), u.Px(20), -u.Px(4), p.Shadow)
 		ui.Scroll(c).MaxHeight(u.Px(312)).Children(func() {
 			ui.Column(c).Gap(1).Children(func() {
 				for _, o := range options {

@@ -243,11 +243,11 @@ func (v *sessionView) toolsDialog(c *ui.Context) {
 	ts := &v.tools
 	w, h := c.Size()
 	ui.DialogBase(c, &ts.open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.3))
+		backdrop.Background(t.Scrim)
 		maxH := min(k.Px(640), h*0.85)
 		panel.Role(ui.RoleDialog).Label(L("Skills and MCP servers")).Width(min(k.Px(640), w-k.Px(32))).
 			Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).Clip().
-			Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		ui.Column(c).FillWidth().Children(func() {
 			ui.Row(c).Gap(k.Px(4)).Padding(k.Px(8), k.Px(12)).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 				ui.Row(c).Role(ui.RoleTabList).Label(L("Skills and MCP servers")).Gap(k.Px(2)).Children(func() {

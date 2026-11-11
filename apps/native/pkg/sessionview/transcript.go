@@ -110,7 +110,7 @@ func (v *View) transcriptView(c *ui.Context, s *session.Session, listed []sessio
 				tip += " (" + v.env.ScrollShortcut + ")"
 			}
 			b := k.Button(c, kit.Outline, 32, true, l10n.L("Scroll to latest")).Tooltip(tip).Radius(k.Px(16)).Absolute().Bottom(k.Px(12)).
-				Left(0).Right(0).Margin(0, ui.Auto, 0, ui.Auto).Shadow(0, k.Px(4), k.Px(12), 0, ui.RGBA(0, 0, 0, 0.08))
+				Left(0).Right(0).Margin(0, ui.Auto, 0, ui.Auto).Shadow(0, k.Px(4), k.Px(12), 0, t.ShadowSoft)
 			b.Children(func() { k.Icon(c, "arrow-down", 16, t.Foreground) })
 			if b.Clicked() {
 				v.ScrollToLatest()
@@ -258,7 +258,7 @@ func (v *View) zoomView(c *ui.Context) {
 	maxW, maxH := ww-k.Px(64), wh-k.Px(64)
 	scale := min(float32(1), maxW/float32(w), maxH/float32(h))
 	ui.DialogBase(c, &v.zoomOpen, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, 0.7))
+		backdrop.Background(k.T.ScrimDeep)
 		panel.Label(l10n.L("Enlarged image")).Size(float32(w)*scale, float32(h)*scale).Radius(k.Px(8)).Clip().Cursor(ui.CursorPointer)
 		ui.Image(c, bm).Label(v.zoomLabel).Fill().Fit(ui.Contain)
 		if panel.Clicked() {

@@ -37,7 +37,7 @@ func (u Look) ChartTip(c *ui.Context, target ui.Element, side bool, build func()
 	p := u.P
 	ui.Overlay(c, func() {
 		tip := ui.Column(c).Role(ui.RoleTooltip).PassThrough().Gap(u.Px(4)).Padding(u.Px(8), u.Px(10)).MaxWidth(u.Px(320)).
-			Radius(u.Px(8)).Background(p.Card).Border(1, p.Line).Shadow(0, u.Px(6), u.Px(16), -u.Px(4), ui.RGBA(0, 0, 0, 0.16))
+			Radius(u.Px(8)).Background(p.Card).Border(1, p.Line).Shadow(0, u.Px(6), u.Px(16), -u.Px(4), p.Shadow)
 		if side {
 			tip.AttachTo(target, ui.AnchorRight, ui.AnchorLeft).MarginStart(u.Px(8))
 		} else {
@@ -119,7 +119,7 @@ func (u Look) Chart(c *ui.Context, v ChartView, height float32) {
 // trendColors are the legend's first parts' colors, then Other's.
 func (u Look) trendColors() []ui.Color {
 	p := u.P
-	return []ui.Color{p.Accent, ui.Hex("#8b5cf6"), ui.Hex("#14a3a3"), ui.Hex("#e08a2c"), ui.Hex("#d6578a"), p.Faint}
+	return []ui.Color{p.Accent, p.Series[0], p.Series[1], p.Series[2], p.Series[3], p.Faint}
 }
 
 // PartColor is the color of part i of parts, the last being Other.

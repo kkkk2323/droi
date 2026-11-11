@@ -126,7 +126,7 @@ func (a *App) subagentPopup(c *ui.Context, anchor ui.Element, open *bool, end bo
 		}
 		p.Role(ui.RoleMenu).Label(L("Subagents")).Margin(k.Px(6), 0, 0, 0).Width(min(k.Px(320), w-k.Px(16))).MaxHeight(min(k.Px(384), h-k.Px(60))).Clip().
 			Padding(k.Px(4)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
-			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Column(c).FillWidth().Children(fn)
 	})
 }

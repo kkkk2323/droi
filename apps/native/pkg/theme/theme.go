@@ -63,7 +63,22 @@ type Tokens struct {
 	// SidebarMutedForeground is muted text inside the sidebar, which
 	// Solarized Light+ sets apart from the conversation's.
 	SidebarMutedForeground ui.Color
+	// Shadow lifts a popover, menu or dialog; ShadowSoft a floating bar;
+	// ShadowFaint a small badge. Scrim dims the window behind a dialog,
+	// ScrimDeep behind an enlarged image.
+	Shadow, ShadowSoft, ShadowFaint ui.Color
+	Scrim, ScrimDeep                ui.Color
+	// OnFill is text and marks on a filled Tint or Destructive control, and
+	// a switch's knob. ScanBackground stays white under a QR code so that a
+	// phone's camera reads it in every theme.
+	OnFill, ScanBackground ui.Color
 }
+
+// The same in every theme.
+const (
+	shadow, shadowSoft, shadowFaint = 0.1, 0.08, 0.05
+	scrim, scrimDeep                = 0.3, 0.7
+)
 
 // The workbench separates a neutral navigation rail from the reading surface.
 // Controls use low-alpha ink and a single blue tint for focus and state.
@@ -114,6 +129,13 @@ var light = Tokens{
 	SegmentTrack:           ui.RGBA(0, 0, 0, 0.08),
 	SegmentThumb:           ui.Hex("#ffffff"),
 	SegmentShadow:          ui.RGBA(0, 0, 0, 0.14),
+	Shadow:                 ui.RGBA(0, 0, 0, shadow),
+	ShadowSoft:             ui.RGBA(0, 0, 0, shadowSoft),
+	ShadowFaint:            ui.RGBA(0, 0, 0, shadowFaint),
+	Scrim:                  ui.RGBA(0, 0, 0, scrim),
+	ScrimDeep:              ui.RGBA(0, 0, 0, scrimDeep),
+	OnFill:                 ui.RGBA(255, 255, 255, 1),
+	ScanBackground:         ui.RGBA(255, 255, 255, 1),
 }
 
 var dark = Tokens{
@@ -164,6 +186,13 @@ var dark = Tokens{
 	SegmentTrack:           ui.RGBA(255, 255, 255, 0.06),
 	SegmentThumb:           ui.RGBA(255, 255, 255, 0.14),
 	SegmentShadow:          ui.RGBA(0, 0, 0, 0.35),
+	Shadow:                 ui.RGBA(0, 0, 0, shadow),
+	ShadowSoft:             ui.RGBA(0, 0, 0, shadowSoft),
+	ShadowFaint:            ui.RGBA(0, 0, 0, shadowFaint),
+	Scrim:                  ui.RGBA(0, 0, 0, scrim),
+	ScrimDeep:              ui.RGBA(0, 0, 0, scrimDeep),
+	OnFill:                 ui.RGBA(255, 255, 255, 1),
+	ScanBackground:         ui.RGBA(255, 255, 255, 1),
 }
 
 // Solarized Light+ in the same material: the page a step brighter than its
@@ -215,6 +244,13 @@ var solarized = Tokens{
 	SegmentTrack:           ui.RGBA(88, 110, 117, 0.12),
 	SegmentThumb:           ui.Hex("#fdfaf1"),
 	SegmentShadow:          ui.RGBA(88, 110, 117, 0.24),
+	Shadow:                 ui.RGBA(0, 0, 0, shadow),
+	ShadowSoft:             ui.RGBA(0, 0, 0, shadowSoft),
+	ShadowFaint:            ui.RGBA(0, 0, 0, shadowFaint),
+	Scrim:                  ui.RGBA(0, 0, 0, scrim),
+	ScrimDeep:              ui.RGBA(0, 0, 0, scrimDeep),
+	OnFill:                 ui.RGBA(255, 255, 255, 1),
+	ScanBackground:         ui.RGBA(255, 255, 255, 1),
 }
 
 // Of returns the tokens of a theme; an unknown name is Light.

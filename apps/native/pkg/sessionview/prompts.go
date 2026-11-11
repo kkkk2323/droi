@@ -150,7 +150,7 @@ func (v *View) choiceMark(c *ui.Context, box, checked bool) {
 	if !checked {
 		return
 	}
-	white := ui.RGBA(255, 255, 255, 1)
+	white := t.OnFill
 	m.Border(1, t.Tint).Background(t.Tint).Children(func() {
 		if box {
 			k.Icon(c, "check", 10, white)

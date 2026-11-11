@@ -22,13 +22,14 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/internal/automationwork"
 	"github.com/kkkk2323/droi/apps/native/internal/hostrun"
+	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
 	"github.com/kkkk2323/droi/apps/native/pkg/host"
 )
 
 // liveHost is the Host as the app runs it, with its Services and its
 // Gateway, on a real Daemon in a throwaway HOME. Only with FACTORY_API_KEY
-// set; DROID_PATH picks the droid (Droi's 1.4.1 by default),
+// set; DROID_PATH picks the droid (the newest Droi keeps by default),
 // DROI_LIVE_MODEL the model and FACTORY_API_BASE_URL the proxy.
 type liveHost struct {
 	t                   *testing.T
@@ -48,6 +49,49 @@ type liveHost struct {
 	daemon *droid.Client
 }
 
+// newestDroid is the newest droid in dir, which holds one folder per
+// version as Droi keeps them; "" when there is none. Droi moves to each new
+// droid, so a fixed version would leave the tests skipping.
+func newestDroid(dir string) string {
+	entries, _ := os.ReadDir(dir)
+	newest := ""
+	for _, e := range entries {
+		if _, err := os.Stat(filepath.Join(dir, e.Name(), "droid")); err != nil {
+			continue
+		}
+		if newest == "" || droidhook.CompareVersions(e.Name(), newest) > 0 {
+			newest = e.Name()
+		}
+	}
+	if newest == "" {
+		return ""
+	}
+	return filepath.Join(dir, newest, "droid")
+}
+
+func TestNewestDroidIsTheHighestVersionWithABinary(t *testing.T) {
+	dir := t.TempDir()
+	for _, v := range []string{"1.4.1", "1.10.0", "1.6.1", "2.0.0"} {
+		if err := os.MkdirAll(filepath.Join(dir, v), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if v != "2.0.0" {
+			if err := os.WriteFile(filepath.Join(dir, v, "droid"), nil, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "llm-hook.js"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := newestDroid(dir), filepath.Join(dir, "1.10.0", "droid"); got != want {
+		t.Errorf("newestDroid = %q, want %q", got, want)
+	}
+	if got := newestDroid(filepath.Join(dir, "missing")); got != "" {
+		t.Errorf("newestDroid of a missing folder = %q, want \"\"", got)
+	}
+}
+
 func newLiveHost(t *testing.T) *liveHost {
 	t.Helper()
 	key := os.Getenv("FACTORY_API_KEY")
@@ -60,10 +104,10 @@ func newLiveHost(t *testing.T) *liveHost {
 	}
 	realHome, _ := os.UserHomeDir()
 	if lh.droidPath == "" {
-		lh.droidPath = filepath.Join(realHome, "Library", "Application Support", "Droi", "droid", "1.4.1", "droid")
+		lh.droidPath = newestDroid(filepath.Join(realHome, "Library", "Application Support", "Droi", "droid"))
 	}
 	if _, err := os.Stat(lh.droidPath); err != nil {
-		t.Skipf("no droid at %s (set DROID_PATH): %v", lh.droidPath, err)
+		t.Skipf("no droid at %q (set DROID_PATH): %v", lh.droidPath, err)
 	}
 	lh.root, _ = filepath.EvalSymlinks(t.TempDir())
 	// The Daemon runs `<this binary> host-tools <server>` for the Host's tool

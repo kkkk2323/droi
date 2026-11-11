@@ -181,7 +181,7 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 		}
 		p.Label(l10n.L("Choose a model")).
 			Size(k.Px(480), k.Px(352)).Row().AlignItems(ui.Stretch).Radius(k.Px(12)).Border(1, t.Border).Background(t.Popover).
-			TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), ui.RGBA(0, 0, 0, 0.1))
+			TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(20), k.Px(25), -k.Px(5), t.Shadow)
 		// The rail scrolls: the Daemon can offer more brands than its height holds.
 		ui.Scroll(c).Width(k.Px(56)).Shrink(0).MinHeight(0).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Background(t.Sidebar).Children(func() {
 			ui.Column(c).Role(ui.RoleToolbar).Label(l10n.L("Filter models")).FillWidth().Gap(k.Px(8)).Padding(k.Px(12), k.Px(8)).AlignItems(ui.Center).Children(func() {

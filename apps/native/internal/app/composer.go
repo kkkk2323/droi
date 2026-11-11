@@ -574,7 +574,7 @@ func (a *App) attachmentList(c *ui.Context, images *[]attachments.Image, texts *
 					ui.Image(c, bm).Label(img.Name).Fill().Radius(k.Px(8)).Border(1, t.Border).Fit(ui.Cover)
 				}
 				x := ui.ButtonBase(c).Label(L("Remove %s", img.Name)).Size(k.Px(20), k.Px(20)).Radius(k.Px(10)).Border(1, t.Border).
-					Background(t.Background).Absolute().Top(-k.Px(6)).Right(-k.Px(6)).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.05)).Cursor(ui.CursorPointer)
+					Background(t.Background).Absolute().Top(-k.Px(6)).Right(-k.Px(6)).Shadow(0, 1, 2, 0, t.ShadowFaint).Cursor(ui.CursorPointer)
 				color := t.MutedForeground
 				if x.Hovered() {
 					color = t.Foreground
@@ -656,7 +656,7 @@ func (a *App) suggestionList(c *ui.Context, card ui.Element, items []slash.Item,
 	ui.Overlay(c, func() {
 		list := ui.Column(c).Role(ui.RoleList).Label(L("Commands and skills")).AttachTo(card, ui.AnchorTopLeft, ui.AnchorBottomLeft).
 			Width(card.Bounds().W-k.Px(16)).Margin(0, 0, k.Px(8), k.Px(8)).MaxHeight(k.Px(288)).Padding(k.Px(4)).Radius(k.Px(12)).
-			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Border(1, t.Border).Background(t.Popover).Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		list.Children(func() {
 			for i, item := range items {
 				row := ui.Row(c.Key(item.Name)).Role(ui.RoleListItem).Label("/"+item.Name).Gap(k.Px(10)).Padding(k.Px(6), k.Px(10)).
@@ -844,7 +844,7 @@ func (v *sessionView) speedMeter(c *ui.Context, s *session.Session) {
 		p.AttachTo(b, ui.AnchorTopRight, ui.AnchorBottomRight).Margin(0, 0, k.Px(6), 0).
 			Role(ui.RoleDialog).Label(L("Model speed")).Width(k.Px(280)).Padding(k.Px(10), k.Px(12)).Radius(k.Px(8)).
 			Border(1, t.Border).Background(t.Popover).TextColor(t.PopoverForeground).
-			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), ui.RGBA(0, 0, 0, 0.1))
+			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Column(c).FillWidth().Gap(k.Px(4)).Children(func() {
 			for i, sec := range sections {
 				if i > 0 {
