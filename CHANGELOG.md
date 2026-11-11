@@ -1,3 +1,18 @@
+## 1.95.0 - 2026-11-11
+
+### Added
+
+- Droi reads model prices and billing pools from the droid it runs. Once for each droid build, it asks that droid for its model list: each model's credit multipliers, promotions and billing pool. A model that a newer droid adds, such as Gemini 4 Carbon, is priced on the Observe page as soon as Droi runs that droid, without a new Droi release.
+
+### Changed
+
+- Request-log Credits on the Observe page now include the promotion that was running at the time of each request, as droid counts it. A model that droid does not list still uses Droi's own weights, without promotions.
+- The Key Pool sends a model to a key's Core pool when droid's model list puts it there. Models that were missing from Droi's own list, such as Kimi K3.1 Pro, MiniMax M3.1 Flash, DeepSeek V4.1 Flash 1017 and Mistral Large 4, can now use Core quota.
+- The Session footer shows Credits in a short form, such as 6.13M Credits. Its popover keeps the exact numbers and says that they are already counted at each model's multiplier and promotion, which is how the quota counts them.
+
+### Fixed
+
+- Gemini 4 Carbon requests no longer show as unpriced.
 ## 1.94.0 - 2026-11-10
 
 ### Added
