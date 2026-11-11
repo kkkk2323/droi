@@ -28,6 +28,29 @@ func TestModelBillingPool(t *testing.T) {
 	}
 }
 
+// droid's registry replaces the built-in list: a model it adds to Core
+// routes there, and one it leaves out is Standard-only.
+func TestUseCoreModels(t *testing.T) {
+	old := droidCore.Load()
+	t.Cleanup(func() { droidCore.Store(old) })
+	UseCoreModels(nil)
+	if droidCore.Load() != old {
+		t.Fatal("an empty list replaced the Core models")
+	}
+	UseCoreModels([]string{"Kimi-K3.1-Pro", "kimi-k3"})
+	for model, want := range map[string]string{
+		"kimi-k3.1-pro":      PoolCore,
+		"custom:kimi-k3-0":   PoolCore,
+		"garnet-07-15":       PoolStandard,
+		"claude-opus-5-5":    PoolStandard,
+		"minimax-m3.1-flash": PoolStandard,
+	} {
+		if got := ModelBillingPool(model); got != want {
+			t.Errorf("ModelBillingPool(%q) = %q, want %q", model, got, want)
+		}
+	}
+}
+
 func TestIsCoreModel(t *testing.T) {
 	if !IsCoreModel("kimi-k3") {
 		t.Fatal("kimi-k3 should be a core model")

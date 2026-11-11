@@ -16,6 +16,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/proxy"
 )
 
@@ -70,6 +71,11 @@ type droiDroidState struct {
 	checking  bool
 	checked   bool
 	checkErr  string
+	// models is what the droid of modelsFor says of its models (DroidModels);
+	// modelsBusy: the export runs.
+	models     *droidhook.Models
+	modelsFor  string
+	modelsBusy bool
 	// watch starts the hourly check for a newer droid once; stop ends it.
 	watch, stopped, stopMade sync.Once
 	stop                     chan struct{}
@@ -117,6 +123,56 @@ func (h *Host) DroiDroidState() DroiDroid {
 //
 // Deprecated: use DroiDroidState.
 func (h *Host) PatchedDroidState() DroiDroid { return h.DroiDroidState() }
+
+// DroidModels is what Droi's droid says of its models: credit
+// multipliers, promotions and billing pools, read from its own registry
+// once for each build (droidhook.Store.Models). It is nil while Droi's droid
+// is off, and until the first read ends or when it failed; until a new
+// build's read ends it is the previous build's. A read makes the Key Pool
+// route the registry's Core models to Core.
+func (h *Host) DroidModels() *droidhook.Models {
+	if !h.usesDroiDroid() {
+		return nil
+	}
+	p := h.droi()
+	v := h.Settings.Get().DroiDroidVersion
+	if v == "" || !p.store.Ready(v) {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.modelsFor != v && !p.modelsBusy {
+		p.modelsBusy = true
+		go h.readDroidModels(v)
+	}
+	return p.models
+}
+
+func (h *Host) readDroidModels(version string) {
+	p := h.droi()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	ms, err := p.store.Models(ctx, version)
+	p.mu.Lock()
+	p.modelsBusy, p.modelsFor = false, version
+	if err == nil {
+		p.models = ms
+	}
+	p.mu.Unlock()
+	// A droid whose registry cannot be read keeps the bundled weights and
+	// Core list.
+	if err != nil {
+		return
+	}
+	var core []string
+	for _, m := range ms.Models {
+		if m.BillingPool == keys.PoolCore {
+			core = append(core, m.ID)
+		}
+	}
+	keys.UseCoreModels(core)
+	h.changed()
+}
 
 func (h *Host) droiDroidPath() string {
 	v := h.Settings.Get().DroiDroidVersion
@@ -224,6 +280,7 @@ func (h *Host) prepareDroiDroid(restart bool) {
 		h.RestartDaemon()
 	}
 	p.store.Prune(version)
+	h.DroidModels()
 }
 
 // droidVersionAt is what `droid --version` prints for path, "" when it
@@ -325,6 +382,7 @@ func (h *Host) watchDroiDroid() {
 			if h.usesDroiDroid() && h.droiDroidPath() == "" {
 				h.prepareDroiDroid(true)
 			}
+			h.DroidModels()
 			t := time.NewTicker(time.Hour)
 			defer t.Stop()
 			for {

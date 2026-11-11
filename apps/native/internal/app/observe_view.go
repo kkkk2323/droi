@@ -64,6 +64,9 @@ func (a *App) loadObservation(force bool) {
 	}
 	s.busy = true
 	log, q := s.log, s.query
+	if a.cfg.Host != nil {
+		llmusage.UseDroidModels(a.cfg.Host.DroidModels())
+	}
 	go func() {
 		err := log.Refresh()
 		o := log.Observe(q, time.Now())

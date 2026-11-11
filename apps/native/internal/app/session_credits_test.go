@@ -48,9 +48,9 @@ func TestSessionCreditsComeFromTheDaemonNotModelWeights(t *testing.T) {
 		Type: "session_token_usage_changed", SessionID: id,
 		TokenUsage: usage(12345), InclusiveTokenUsage: ptr(usage(14567)),
 	})
-	h.until("the Daemon's credits without a model-speed measurement", func() bool { return h.hasText("14,567 Credits") })
+	h.until("the Daemon's credits without a model-speed measurement", func() bool { return h.hasText("14.6K Credits") })
 	h.click("Session credits")
-	for _, want := range []string{"This Session", "12,345", "Including subagents", "14,567", "Reported by the Daemon."} {
+	for _, want := range []string{"This Session", "12,345", "Including subagents", "14,567", "Reported by the Daemon.", "Already counted at each model's multiplier and promotion, as the quota counts them."} {
 		if !h.hasText(want) {
 			t.Fatalf("credits lack %q: %q", want, h.tt.Texts())
 		}
@@ -70,7 +70,7 @@ func TestSessionCreditsComeFromTheDaemonNotModelWeights(t *testing.T) {
 		TurnID: "turn-1", TokenUsage: usage(321),
 	})
 	h.settle()
-	if !h.hasText("321") || !h.hasText("14,567 Credits") || h.hasText("642") {
+	if !h.hasText("321") || !h.hasText("14.6K Credits") || h.hasText("642") {
 		t.Fatalf("a replayed notification changed the totals: %q", h.tt.Texts())
 	}
 	// Zero is reported, not unknown. A missing inclusive credit field must
@@ -129,10 +129,10 @@ func TestSessionCreditsPresentation(t *testing.T) {
 				TokenUsage:      protocol.TokenUsage{FactoryCredits: ptr(321.0)},
 				ChildTokenUsage: &protocol.TokenUsage{FactoryCredits: ptr(45.0)},
 			})
-			h.until("the Daemon's session total", func() bool { return h.hasText("14,567 Credits") })
+			h.until("the Daemon's session total", func() bool { return h.hasText("14.6K Credits") })
 			h.click("会话 Credits")
 			h.until("the turn notification is shown too", func() bool { return h.hasText("最近记录的回合") && h.hasText("该回合的子代理") })
-			for _, want := range []string{"本会话", "12,345", "含子代理", "14,567", "最近记录的回合", "321", "该回合的子代理", "45", "回合记录于", "来自 Daemon 的用量报告。"} {
+			for _, want := range []string{"本会话", "12,345", "含子代理", "14,567", "最近记录的回合", "321", "该回合的子代理", "45", "回合记录于", "来自 Daemon 的用量报告。", "已按各模型的倍率和促销折算，和额度扣减的口径一致。"} {
 				if !h.hasText(want) {
 					t.Fatalf("credits lack %q: %q", want, h.tt.Texts())
 				}

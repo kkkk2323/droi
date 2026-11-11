@@ -49,8 +49,9 @@ type TokenWeight struct {
 // has shown, from the droid CLI's cost table: an input token weighs the
 // model's multiplier, an output token that times its output multiplier, and
 // a cache read that times its cache-read multiplier. The CLI applies a
-// running promotion on top, which this table leaves out, and a model that is
-// not here is counted as unpriced.
+// running promotion on top, which this table leaves out. The registry of the
+// droid in use (UseDroidModels) comes first, promotions included; a model in
+// neither is counted as unpriced.
 var StandardTokenWeights = []TokenWeight{
 	{"Opus 5.5", "claude-opus-5-5", 1.6, 8, 0.08, true},
 	{"Opus 5", "claude-opus-5", 2, 10, 0.2, false},
@@ -71,6 +72,7 @@ var StandardTokenWeights = []TokenWeight{
 	{"GPT-6 Sol", "gpt-6-sol", 0.8, 4, 0.08, false},
 	{"GPT-5.6 Luna", "gpt-5.6-luna", 0.08, 0.48, 0.008, false},
 	{"GPT-5.6 Sol", "gpt-5.6-sol", 2, 10, 0.2, false},
+	{"Gemini 4 Carbon", "gemini-4-carbon", 1.6, 8, 0.08, false},
 	{"Gemini 4 Argon", "gemini-4-argon", 1.6, 8, 0.08, false},
 	{"Gemini 3.8 Flash", "gemini-3.8-flash", 0.6, 3, 0.06, false},
 	{"Kimi K3", "kimi-k3", 1.2, 6, 0.12, false},
