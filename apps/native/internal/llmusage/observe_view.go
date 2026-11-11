@@ -434,7 +434,7 @@ func buildGroups(o Observation, g Grouping, sessionName func(string) string) ([]
 func creditsCell(t Totals) Cell {
 	switch {
 	case t.Credits > 0:
-		help := l10n.L("Estimated from bundled model weights; promotions are not included. Not a Daemon-reported charge.") + "\n" + keyMonths(t.Credits)
+		help := l10n.L("Estimated from droid's model weights, promotions included; a model droid lacks uses Droi's own weights without promotions. Not a Daemon-reported charge.") + "\n" + keyMonths(t.Credits)
 		if t.Unpriced > 0 {
 			help += "\n" + l10n.L("%d calls unpriced", t.Unpriced)
 		}

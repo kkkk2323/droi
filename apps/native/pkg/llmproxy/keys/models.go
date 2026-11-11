@@ -3,6 +3,7 @@ package keys
 import (
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Billing pools as reported by Factory. Every request is billed against the
@@ -43,8 +44,29 @@ var coreModelIDs = map[string]bool{
 	"nemotron-3-ultra":       true,
 }
 
+// droidCore is the Core models of the registry of the droid Droi runs
+// (UseCoreModels), in place of coreModelIDs once read.
+var droidCore atomic.Pointer[map[string]bool]
+
+// UseCoreModels makes ids, the models droid's own registry bills against
+// the Droid Core pool, the Core models in place of the built-in list. An
+// empty ids keeps what was there.
+func UseCoreModels(ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	m := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		m[strings.ToLower(id)] = true
+	}
+	droidCore.Store(&m)
+}
+
 // IsCoreModel reports whether modelID is billed against the Droid Core pool.
 func IsCoreModel(modelID string) bool {
+	if m := droidCore.Load(); m != nil {
+		return (*m)[normalizeModelID(modelID)]
+	}
 	return coreModelIDs[normalizeModelID(modelID)]
 }
 

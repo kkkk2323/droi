@@ -132,7 +132,7 @@ func (t *Totals) add(r diag.RequestRecord) {
 	t.CacheRead += u.CacheRead
 	t.CacheWrite += u.CacheWrite
 	t.Reason += u.Reasoning
-	if c, ok := Credits(r.Model, *u); ok {
+	if c, ok := Credits(r.Model, *u, r.Time); ok {
 		t.Credits += c
 	} else if !u.IsZero() {
 		t.Unpriced++
@@ -189,10 +189,11 @@ func (t Totals) MeanTTFT() (int64, bool) {
 	return t.TTFTMs / int64(t.TTFTCalls), true
 }
 
-// Credits are the Standard credits a call spent, as Factory counts them
-// (see TokenWeight); ok is false for a model without a known weight.
-func Credits(model string, u diag.TokenUsage) (float64, bool) {
-	w, ok := weightOf(model)
+// Credits are the Standard credits a call at time at spent, as Factory
+// counts them (see TokenWeight); ok is false for a model without a known
+// weight.
+func Credits(model string, u diag.TokenUsage, at time.Time) (float64, bool) {
+	w, ok := weightOf(model, at)
 	if !ok {
 		return 0, false
 	}
@@ -200,8 +201,11 @@ func Credits(model string, u diag.TokenUsage) (float64, bool) {
 	return w.Input*float64(plain) + w.Input*1.25*float64(u.CacheWrite) + w.CacheRead*float64(u.CacheRead) + w.Output*float64(u.Output), true
 }
 
-func weightOf(model string) (TokenWeight, bool) {
+func weightOf(model string, at time.Time) (TokenWeight, bool) {
 	m := strings.ToLower(model)
+	if w, ok := droidWeightAt(m, at); ok {
+		return w, true
+	}
 	for _, w := range StandardTokenWeights {
 		suffix, matches := strings.CutPrefix(m, w.ID)
 		if matches && (suffix == "" || datedModelSuffix(suffix)) {

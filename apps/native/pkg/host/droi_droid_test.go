@@ -16,6 +16,7 @@ import (
 
 	"github.com/kkkk2323/droi/apps/native/pkg/droidhook"
 	"github.com/kkkk2323/droi/apps/native/pkg/keypool"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
 
 // fakeDroid is a made-up droid that writes its environment to out and, like
@@ -289,5 +290,39 @@ func TestThePatchedDroidMovesToDroisDroid(t *testing.T) {
 	}
 	if _, err := os.Stat(patched); !os.IsNotExist(err) {
 		t.Fatal("the Patched Droid was kept")
+	}
+}
+
+// Droi's droid's registry is read once for each build, in the background,
+// and makes the Key Pool route its Core models to Core.
+func TestDroidModelsReadOnceForEachBuild(t *testing.T) {
+	h, _ := droiHost(t, false)
+	runs := 0
+	ms := &droidhook.Models{Models: []droidhook.Model{{ID: "kimi-k9", BillingPool: keys.PoolCore, TokenMultiplier: 1}, {ID: "claude-opus-9", TokenMultiplier: 2}}}
+	t.Cleanup(droidhook.SetExportForTest(func(_ context.Context, exe, _ string) (*droidhook.Models, error) {
+		runs++
+		if exe != h.droiDroid.store.Path("0.247.0") {
+			t.Errorf("read %s", exe)
+		}
+		return ms, nil
+	}))
+	t.Cleanup(func() { keys.UseCoreModels([]string{"deepseek-v4-pro"}) })
+	deadline := time.Now().Add(5 * time.Second)
+	for h.DroidModels() != ms {
+		if time.Now().After(deadline) {
+			t.Fatal("the models were never read")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.DroidModels()
+	if runs != 1 {
+		t.Errorf("read %d times, want once", runs)
+	}
+	if keys.ModelBillingPool("kimi-k9") != keys.PoolCore || keys.ModelBillingPool("glm-5.3") != keys.PoolStandard {
+		t.Error("the Key Pool does not route droid's Core models")
+	}
+	h.Settings.Update(func(s *Settings) { s.DroidKind = "" })
+	if h.DroidModels() != nil {
+		t.Error("the computer's droid has Droi's droid's models")
 	}
 }

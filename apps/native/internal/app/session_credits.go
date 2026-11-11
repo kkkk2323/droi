@@ -7,6 +7,8 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
+
+	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
 )
 
 type observedTurnCredits struct {
@@ -44,7 +46,7 @@ func (v *sessionView) creditsMeter(c *ui.Context, s *session.Session) {
 	k, t := v.a.kit, v.a.kit.T
 	label := L("Credits")
 	if total != nil {
-		label = L("%s Credits", groupDigits(*total))
+		label = L("%s Credits", llmusage.FormatCredits(*total))
 	}
 	b := ui.ButtonBase(c).Label(L("Session credits")).Height(k.Px(24)).PaddingX(k.Px(6)).Radius(k.Px(6)).Shrink(0).
 		Cursor(ui.CursorPointer).Expanded(v.creditsOpen)
@@ -82,6 +84,7 @@ func (v *sessionView) creditsMeter(c *ui.Context, s *session.Session) {
 				k.Text(c, L("Turn observed %s", turn.at.Local().Format("2006-01-02 15:04:05")), 12, 16).TextColor(t.MutedForeground)
 			}
 			k.Text(c, L("Reported by the Daemon."), 12, 16).TextColor(t.MutedForeground)
+			k.Text(c, L("Already counted at each model's multiplier and promotion, as the quota counts them."), 12, 16).TextColor(t.MutedForeground)
 			k.Text(c, L("Session totals cover its full history. Usage shows separate request estimates."), 12, 16).TextColor(t.MutedForeground)
 		})
 	})
