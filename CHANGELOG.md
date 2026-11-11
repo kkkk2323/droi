@@ -1,3 +1,9 @@
+## 1.95.1 - 2026-11-11
+
+### Fixed
+
+- Some models sometimes write their reasoning into the reply inside `<thinking>…</thinking>` tags instead of sending it as reasoning. The desktop app and the Phone App now show this text as a collapsed Reasoning section, and the rest of the reply stays as usual. Tags that appear later in a reply, or in your own messages, are left as text.
+
 ## 1.95.0 - 2026-11-11
 
 ### Added
