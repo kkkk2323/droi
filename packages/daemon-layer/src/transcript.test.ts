@@ -43,6 +43,41 @@ describe('buildTranscript', () => {
     expect(toolResultText(tools.calls[0]!.result)).toBe('a\nb')
   })
 
+  test('reasoning a model wrote into its reply as <thinking> tags reads as thinking', () => {
+    const reply = (text: string) =>
+      buildTranscript([message('assistant', [{ type: 'text', text }])])[0]?.blocks ?? []
+    expect(reply('<thinking>\nCheck the process.\n</thinking>')).toEqual([
+      {
+        kind: 'thinking',
+        id: expect.any(String),
+        text: 'Check the process.',
+        durationMs: undefined,
+      },
+    ])
+    expect(
+      reply('<thinking>same</thinking><thinking>same</thinking><thinking>more</think>\n\nDone'),
+    ).toEqual([
+      { kind: 'thinking', id: expect.any(String), text: 'same\n\nmore', durationMs: undefined },
+      { kind: 'text', id: expect.any(String), text: 'Done' },
+    ])
+    // A tag later in the reply, or in a user's message, is what they say.
+    expect(reply('Wrap it in `<thinking>` tags.').map((b) => b.kind)).toEqual(['text'])
+    const user = buildTranscript([
+      message('user', [{ type: 'text', text: '<thinking>x</thinking>' }]),
+    ])
+    expect(user[0]!.blocks.map((b) => b.kind)).toEqual(['text'])
+  })
+
+  test('an open <thinking> tag is reasoning only while the reply may stream', () => {
+    const open = message('assistant', [{ type: 'text', text: '<thinking>still going' }])
+    expect(buildTranscript([open])[0]!.blocks.map((b) => b.kind)).toEqual(['thinking'])
+    const after = message('user', [{ type: 'text', text: 'next' }])
+    expect(buildTranscript([open, after])[0]!.blocks).toEqual([
+      { kind: 'text', id: expect.any(String), text: '<thinking>still going' },
+    ])
+    expect(buildTranscript([message('assistant', [{ type: 'text', text: '<thin' }])])).toEqual([])
+  })
+
   test('inline images become image blocks with a data URL', () => {
     const entries = buildTranscript([
       message('user', [
