@@ -158,6 +158,56 @@ func decode[T any](b protocol.ContentBlock) (T, bool) {
 	return v, json.Unmarshal(b.Raw, &v) == nil
 }
 
+const thinkingOpen = "<thinking>"
+
+var thinkingCloses = [...]string{"</thinking>", "</think>"}
+
+// leakedThinking splits a reply into the reasoning a model wrote into it as
+// <thinking>…</thinking> instead of a thinking block, and the rest. Several
+// models do this now and then, most after droid turned their past reasoning
+// into tagged text on a provider switch. Only the start of the reply counts:
+// a tag further on is something the reply says. A tag not yet closed is
+// reasoning while the reply streams; once it ended unclosed, where the
+// reasoning stops cannot be told, so it stays in the reply.
+func leakedThinking(text string, streaming bool) (thinking, reply string) {
+	s := strings.TrimLeft(text, " \t\r\n")
+	if !strings.HasPrefix(s, thinkingOpen) {
+		if streaming && s != "" && strings.HasPrefix(thinkingOpen, s) {
+			return "", ""
+		}
+		return "", text
+	}
+	var parts []string
+	open := false
+	for strings.HasPrefix(s, thinkingOpen) {
+		body := s[len(thinkingOpen):]
+		end, n := -1, 0
+		for _, c := range thinkingCloses {
+			if i := strings.Index(body, c); i >= 0 && (end < 0 || i < end) {
+				end, n = i, len(c)
+			}
+		}
+		if end < 0 {
+			if !streaming {
+				break
+			}
+			end, n, open = len(body), 0, true
+		}
+		// Some models say the same reasoning several times over.
+		if p := strings.TrimSpace(body[:end]); p != "" && !slices.Contains(parts, p) {
+			parts = append(parts, p)
+		}
+		s = strings.TrimLeft(body[end+n:], " \t\r\n")
+	}
+	if parts == nil {
+		if open {
+			return "", ""
+		}
+		return "", text
+	}
+	return strings.Join(parts, "\n\n"), s
+}
+
 // Build makes the transcript of the messages a Session shows.
 func Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	var b Builder
@@ -234,18 +284,20 @@ type seenMessage struct {
 // decodedBlock is what Build reads from one content block, kept while the
 // block's JSON stays the same. Builds share its values, which no one changes.
 type decodedBlock struct {
-	typ, id    string
-	raw        json.RawMessage
-	ok         bool
-	text       string
-	streaming  bool
-	durationMs *float64
-	image      Image
-	use        protocol.ToolUse
-	input      map[string]any
-	rawInput   json.RawMessage
-	keys       []string
-	result     *protocol.ToolResult
+	typ, id   string
+	raw       json.RawMessage
+	ok        bool
+	text      string
+	streaming bool
+	// leaked and reply are a text block's text split by leakedThinking.
+	leaked, reply string
+	durationMs    *float64
+	image         Image
+	use           protocol.ToolUse
+	input         map[string]any
+	rawInput      json.RawMessage
+	keys          []string
+	result        *protocol.ToolResult
 	// call is the call the last Build made of this tool use.
 	call *ToolCall
 }
@@ -257,6 +309,7 @@ func decodeBlock(b protocol.ContentBlock, id string) *decodedBlock {
 		t, _ := decode[protocol.TextBlock](b)
 		d.text, d.ok = t.Text, t.Text != ""
 		d.streaming = d.ok && session.IsStreaming(b)
+		d.leaked, d.reply = leakedThinking(d.text, d.streaming)
 	case protocol.ContentBlockTypeImage:
 		im, _ := decode[protocol.ImageBlock](b)
 		d.image, d.ok = Image{string(im.Source.MediaType), im.Source.Data}, im.Source.Type == "base64"
@@ -384,7 +437,16 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			}
 			switch d.typ {
 			case protocol.ContentBlockTypeText:
-				bs, sp = append(bs, Block{Kind: Text, ID: d.id, Text: d.text, Streaming: d.streaming}), append(sp, span{})
+				text := d.text
+				if role == protocol.MessageRoleAssistant {
+					if d.leaked != "" {
+						bs, sp = append(bs, Block{Kind: Thinking, ID: d.id + ":thinking", Text: d.leaked, Streaming: d.streaming && d.reply == ""}), append(sp, span{})
+					}
+					text = d.reply
+				}
+				if text != "" {
+					bs, sp = append(bs, Block{Kind: Text, ID: d.id, Text: text, Streaming: d.streaming}), append(sp, span{})
+				}
 			case protocol.ContentBlockTypeImage:
 				bs, sp = append(bs, Block{Kind: Picture, ID: d.id, Image: d.image}), append(sp, span{})
 			case protocol.ContentBlockTypeThinking:

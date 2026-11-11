@@ -94,6 +94,62 @@ func TestAttachesResults(t *testing.T) {
 	eq(t, ResultText(es[1].Blocks[1].Calls[0].Result), "a\nb")
 }
 
+func TestLeakedThinking(t *testing.T) {
+	text := func(s string, streaming bool) string {
+		b, _ := json.Marshal(map[string]any{"type": "text", "text": s, "isStreaming": streaming})
+		return "[" + string(b) + "]"
+	}
+	reply := func(s string, streaming bool) *Entry {
+		es := Build([]protocol.FactoryDroidMessage{msg("assistant", text(s, streaming))})
+		if len(es) == 0 {
+			return &Entry{}
+		}
+		return es[0]
+	}
+
+	e := reply("<thinking>\nThe log only shows one line. Check the process.\n</thinking>", false)
+	eq(t, kinds(e), []any{"thinking"})
+	eq(t, e.Blocks[0].Text, "The log only shows one line. Check the process.")
+	eq(t, ReplyText([]*Entry{e}), "")
+
+	e = reply("  <thinking>plan</thinking>\n\nDone, all green.", false)
+	eq(t, kinds(e), []any{"thinking", "text"})
+	eq(t, e.Blocks[1].Text, "Done, all green.")
+	eq(t, ReplyText([]*Entry{e}), "Done, all green.")
+
+	e = reply("<thinking>same</thinking><thinking>same</thinking><thinking>more</think>Answer", false)
+	eq(t, kinds(e), []any{"thinking", "text"})
+	eq(t, e.Blocks[0].Text, "same\n\nmore")
+	eq(t, e.Blocks[1].Text, "Answer")
+
+	// A tag later in the reply, or in a user's message, is what they say.
+	e = reply("Wrap it in `<thinking>` tags.", false)
+	eq(t, kinds(e), []any{"text"})
+	eq(t, e.Blocks[0].Text, "Wrap it in `<thinking>` tags.")
+	es := Build([]protocol.FactoryDroidMessage{msg("user", text("<thinking>x</thinking>", false))})
+	eq(t, es[0].Blocks[0].Kind, Text)
+
+	// While the reply streams an open tag is reasoning; ended unclosed, it stays.
+	e = reply("<thinking>still going", true)
+	eq(t, kinds(e), []any{"thinking"})
+	eq(t, e.Blocks[0].Streaming, true)
+	eq(t, kinds(reply("<thinking>", true)), []any{})
+	eq(t, kinds(reply("<thin", true)), []any{})
+	e = reply("<thinking>never closed. The answer", false)
+	eq(t, kinds(e), []any{"text"})
+	eq(t, e.Blocks[0].Text, "<thinking>never closed. The answer")
+	e = reply("<thinking>a</thinking><thinking>b and the answer", false)
+	eq(t, kinds(e), []any{"thinking", "text"})
+	eq(t, e.Blocks[1].Text, "<thinking>b and the answer")
+
+	// The reasoning keeps its id as the reply streams past it.
+	var bl Builder
+	id := func(s string, streaming bool) string {
+		return bl.Build([]protocol.FactoryDroidMessage{{ID: "m", Role: protocol.MessageRoleAssistant, Content: msg("assistant", text(s, streaming)).Content}})[0].Blocks[0].ID
+	}
+	eq(t, id("<thinking>plan", true), id("<thinking>plan</thinking>Answer", false))
+}
+
 func TestImagesAndTask(t *testing.T) {
 	es := Build([]protocol.FactoryDroidMessage{msg("user", `[{"type":"text","text":"see"},{"type":"image","source":{"type":"base64","mediaType":"image/png","data":"AAAA"}}]`)})
 	eq(t, es[0].Blocks[1].Image, Image{"image/png", "AAAA"})

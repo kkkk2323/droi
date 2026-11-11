@@ -64,6 +64,7 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
   // calls a WaitForScript saw show where that wait sits in the turn.
   const watching = new Map<string, ToolCall>()
   const entries: TranscriptEntry[] = []
+  const lastMessage = messages[messages.length - 1]
   for (const message of messages) {
     // A user-only message is the Daemon telling the user something (a usage
     // limit, a model swap): a system message live, a user message once
@@ -78,9 +79,24 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
     message.content.forEach((block, index) => {
       const id = `${message.id}:${index}`
       switch (block.type) {
-        case 'text':
-          if (block.text) blocks.push({ kind: 'text', id, text: block.text })
+        case 'text': {
+          let text = block.text
+          if (role === 'assistant') {
+            // The SDK does not mark a streaming block: only the very last one can be.
+            const streaming = message === lastMessage && index === message.content.length - 1
+            const split = leakedThinking(text, streaming)
+            if (split.thinking)
+              blocks.push({
+                kind: 'thinking',
+                id: `${id}:thinking`,
+                text: split.thinking,
+                durationMs: undefined,
+              })
+            text = split.reply
+          }
+          if (text) blocks.push({ kind: 'text', id, text })
           break
+        }
         case 'image':
           if (block.source.type === 'base64')
             blocks.push({ kind: 'image', id, src: dataUrl(block.source) })
@@ -147,6 +163,51 @@ export function buildTranscript(messages: readonly FactoryDroidMessage[]): Trans
     })
   }
   return entries
+}
+
+const THINKING_OPEN = '<thinking>'
+const THINKING_CLOSES = ['</thinking>', '</think>']
+
+/**
+ * A reply split into the reasoning a model wrote into it as
+ * `<thinking>…</thinking>` instead of a thinking block, and the rest. Several
+ * models do this now and then, most after droid turned their past reasoning
+ * into tagged text on a provider switch. Only the start of the reply counts:
+ * a tag further on is something the reply says. A tag not yet closed is
+ * reasoning while the reply may still stream; otherwise where the reasoning
+ * stops cannot be told, so it stays in the reply.
+ */
+function leakedThinking(text: string, streaming: boolean): { thinking: string; reply: string } {
+  let s = text.trimStart()
+  if (!s.startsWith(THINKING_OPEN)) {
+    if (streaming && s && THINKING_OPEN.startsWith(s)) return { thinking: '', reply: '' }
+    return { thinking: '', reply: text }
+  }
+  const parts: string[] = []
+  let open = false
+  while (s.startsWith(THINKING_OPEN)) {
+    const body = s.slice(THINKING_OPEN.length)
+    let end = -1
+    let length = 0
+    for (const close of THINKING_CLOSES) {
+      const i = body.indexOf(close)
+      if (i >= 0 && (end < 0 || i < end)) {
+        end = i
+        length = close.length
+      }
+    }
+    if (end < 0) {
+      if (!streaming) break
+      end = body.length
+      open = true
+    }
+    // Some models say the same reasoning several times over.
+    const part = body.slice(0, end).trim()
+    if (part && !parts.includes(part)) parts.push(part)
+    s = body.slice(end + length).trimStart()
+  }
+  if (parts.length === 0) return { thinking: '', reply: open ? '' : text }
+  return { thinking: parts.join('\n\n'), reply: s }
 }
 
 // The SDK hands out the same source object for an image on every read; the
