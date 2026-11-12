@@ -15,11 +15,14 @@ type TokenUsage struct {
 	Output     int64 `json:"output"`
 	CacheRead  int64 `json:"cacheRead,omitempty"`
 	CacheWrite int64 `json:"cacheWrite,omitempty"`
-	Reasoning  int64 `json:"reasoning,omitempty"`
+	// CacheWrite1h are the cache writes kept for an hour, which Factory
+	// bills at 2 input tokens each rather than 1.25; CacheWrite holds them.
+	CacheWrite1h int64 `json:"cacheWrite1h,omitempty"`
+	Reasoning    int64 `json:"reasoning,omitempty"`
 }
 
 func (u TokenUsage) IsZero() bool {
-	return u.Input == 0 && u.Output == 0 && u.CacheRead == 0 && u.CacheWrite == 0 && u.Reasoning == 0
+	return u.Input == 0 && u.Output == 0 && u.CacheRead == 0 && u.CacheWrite == 0 && u.CacheWrite1h == 0 && u.Reasoning == 0
 }
 
 // merge keeps the per-field maximum. Streams report usage more than once
@@ -38,6 +41,9 @@ func (u *TokenUsage) merge(o TokenUsage) {
 	if o.CacheWrite > u.CacheWrite {
 		u.CacheWrite = o.CacheWrite
 	}
+	if o.CacheWrite1h > u.CacheWrite1h {
+		u.CacheWrite1h = o.CacheWrite1h
+	}
 	if o.Reasoning > u.Reasoning {
 		u.Reasoning = o.Reasoning
 	}
@@ -48,7 +54,8 @@ type rawUsage struct {
 	PromptTokens     *int64 `json:"prompt_tokens"`
 	CompletionTokens *int64 `json:"completion_tokens"`
 	PromptDetails    *struct {
-		CachedTokens *int64 `json:"cached_tokens"`
+		CachedTokens     *int64 `json:"cached_tokens"`
+		CacheWriteTokens *int64 `json:"cache_write_tokens"`
 	} `json:"prompt_tokens_details"`
 	CompletionDetails *struct {
 		ReasoningTokens *int64 `json:"reasoning_tokens"`
@@ -57,8 +64,12 @@ type rawUsage struct {
 	// OpenAI responses + Anthropic
 	InputTokens  *int64 `json:"input_tokens"`
 	OutputTokens *int64 `json:"output_tokens"`
+	// Factory's responses also say what the call wrote to the cache, which
+	// it bills as droid prices it: 1.25 input tokens each.
 	InputDetails *struct {
-		CachedTokens *int64 `json:"cached_tokens"`
+		CachedTokens             *int64 `json:"cached_tokens"`
+		CacheWriteTokens         *int64 `json:"cache_write_tokens"`
+		CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
 	} `json:"input_tokens_details"`
 	OutputDetails *struct {
 		ReasoningTokens *int64 `json:"reasoning_tokens"`
@@ -67,6 +78,9 @@ type rawUsage struct {
 	// Anthropic
 	CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     *int64 `json:"cache_read_input_tokens"`
+	CacheCreation            *struct {
+		Ephemeral1h *int64 `json:"ephemeral_1h_input_tokens"`
+	} `json:"cache_creation"`
 }
 
 func (r rawUsage) toTokenUsage() TokenUsage {
@@ -92,7 +106,17 @@ func (r rawUsage) toTokenUsage() TokenUsage {
 	case r.InputDetails != nil && r.InputDetails.CachedTokens != nil:
 		u.CacheRead = *r.InputDetails.CachedTokens
 	}
-	u.CacheWrite = deref(r.CacheCreationInputTokens)
+	switch {
+	case r.CacheCreationInputTokens != nil:
+		u.CacheWrite = *r.CacheCreationInputTokens
+	case r.PromptDetails != nil && r.PromptDetails.CacheWriteTokens != nil:
+		u.CacheWrite = *r.PromptDetails.CacheWriteTokens
+	case r.InputDetails != nil:
+		u.CacheWrite = max(deref(r.InputDetails.CacheWriteTokens), deref(r.InputDetails.CacheCreationInputTokens))
+	}
+	if r.CacheCreation != nil {
+		u.CacheWrite1h = min(deref(r.CacheCreation.Ephemeral1h), u.CacheWrite)
+	}
 	if r.CompletionDetails != nil && r.CompletionDetails.ReasoningTokens != nil {
 		u.Reasoning = *r.CompletionDetails.ReasoningTokens
 	} else if r.OutputDetails != nil && r.OutputDetails.ReasoningTokens != nil {
