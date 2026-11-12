@@ -3,12 +3,17 @@ package app
 import (
 	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 	"github.com/kkkk2323/droid-sdk-go/session"
 
+	"github.com/kkkk2323/droi/apps/native/internal/llmusage"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 )
 
@@ -139,5 +144,66 @@ func TestSessionCreditsPresentation(t *testing.T) {
 			}
 			h.shoot("session-credits-" + theme)
 		})
+	}
+}
+
+// droid counts a Gemini call's cache reads in its input as well, and prices
+// them again at the full input weight; Factory bills them once. The footer
+// takes that off with the request log's calls of the Session.
+func TestSessionCreditsTakeOffDroidsGeminiRecount(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = keyPoolTestHost(t) })
+	h.openSession("One")
+	id := h.a.Route().SessionID
+	pool := h.a.keyPool()
+	if pool == nil {
+		t.Fatal("no Key Pool")
+	}
+	call := diag.RequestRecord{Time: time.Now().Add(-time.Minute), Model: "gemini-4-carbon", Provider: "google", SessionID: id, Status: 200,
+		Usage: &diag.TokenUsage{Input: 430_000, CacheRead: 385_436, Output: 1_575}}
+	line, _ := json.Marshal(call)
+	_ = os.MkdirAll(filepath.Dir(pool.RequestLog()), 0o700)
+	if err := os.WriteFile(pool.RequestLog(), append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	billed, ok := llmusage.Credits(call.Model, *call.Usage, call.Time)
+	if !ok {
+		t.Fatal("Gemini 4 Carbon is unpriced")
+	}
+	// What droid reports: the cache reads again at the input weight.
+	recount := 1.6 * 385_436
+	daemon := math.Round(billed + recount)
+	h.notifyCredits(id, protocol.AgentTurnCompletedNotification{
+		Type: "agent_turn_completed", Reason: protocol.AgentTurnCompletionReasonCompleted, TurnID: "turn-1",
+		TokenUsage: protocol.TokenUsage{FactoryCredits: &daemon}, DurationMs: ptr(120_000.0),
+	})
+	h.notifyCredits(id, protocol.SessionTokenUsageChangedNotification{
+		Type: "session_token_usage_changed", SessionID: id,
+		TokenUsage: protocol.TokenUsage{InputTokens: 430_000, CacheReadTokens: 385_436, OutputTokens: 1_575, FactoryCredits: &daemon},
+	})
+	want := llmusage.FormatCredits(daemon - recount)
+	h.until("the footer without droid's recount", func() bool { return h.hasText(want + " Credits") })
+	h.click("Session credits")
+	h.until("the turn without droid's recount too", func() bool { return h.hasText("Last observed turn") && !h.hasText(groupDigits(daemon)) })
+	for _, s := range []string{groupDigits(daemon - recount), "droid counts a Gemini call's cached input twice", groupDigits(recount)} {
+		if !h.hasText(s) {
+			t.Fatalf("credits lack %q: %q", s, h.tt.Texts())
+		}
+	}
+}
+
+// An Anthropic Session's input leaves the cache out: nothing is taken off,
+// and the request log is not read for it.
+func TestSessionCreditsKeepOtherProviders(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = keyPoolTestHost(t) })
+	h.openSession("One")
+	id := h.a.Route().SessionID
+	credits := 152_818.0
+	h.notifyCredits(id, protocol.SessionTokenUsageChangedNotification{
+		Type: "session_token_usage_changed", SessionID: id,
+		TokenUsage: protocol.TokenUsage{InputTokens: 10, CacheReadTokens: 113_226, CacheCreationTokens: 66_723, OutputTokens: 1_287, FactoryCredits: &credits},
+	})
+	h.until("droid's figure", func() bool { return h.hasText(llmusage.FormatCredits(credits) + " Credits") })
+	if h.a.usage.observe.log != nil {
+		t.Fatal("the request log was read for a Session droid counts right")
 	}
 }
