@@ -31,7 +31,7 @@ We decided:
 - **Otherwise the Daemon's figure stays**: no Key Pool, a Session older than the log, or calls the
   proxy logged before it read a field (OpenAI's cache writes, for Sessions before this change).
 - **The popover says which it is**, and what droid reports when that differs by over 1%.
-- **No correction for a known droid bug.** 1.95.0's footer took droid's Gemini recount off its
+- **No correction for a known droid bug.** #329 took droid's Gemini recount off the footer's
   figure; that fixed one bug and would have missed the next one.
 
 ## Considered Options
