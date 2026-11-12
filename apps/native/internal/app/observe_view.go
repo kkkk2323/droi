@@ -55,15 +55,11 @@ type observeViewKey struct {
 // again, at most every observeRefresh unless forced.
 func (a *App) loadObservation(force bool) {
 	s := &a.usage.observe
-	pool := a.keyPool()
-	if pool == nil || s.busy || !force && !s.at.IsZero() && a.cfg.Now().Sub(s.at) < observeRefresh {
+	if a.keyPool() == nil || s.busy || !force && !s.at.IsZero() && a.cfg.Now().Sub(s.at) < observeRefresh {
 		return
 	}
-	if path := pool.RequestLog(); s.log == nil || s.logPath != path {
-		s.log, s.logPath = llmusage.NewRequestLog(path), path
-	}
 	s.busy = true
-	log, q := s.log, s.query
+	log, q := a.requestLog(), s.query
 	if a.cfg.Host != nil {
 		llmusage.UseDroidModels(a.cfg.Host.DroidModels())
 	}
@@ -86,6 +82,20 @@ func (a *App) loadObservation(force bool) {
 			s.version++
 		})
 	}()
+}
+
+// requestLog is the Key Pool's request log in memory, which the Observe page
+// and the Session footer share; nil without a Key Pool.
+func (a *App) requestLog() *llmusage.RequestLog {
+	s := &a.usage.observe
+	pool := a.keyPool()
+	if pool == nil {
+		return nil
+	}
+	if path := pool.RequestLog(); s.log == nil || s.logPath != path {
+		s.log, s.logPath = llmusage.NewRequestLog(path), path
+	}
+	return s.log
 }
 
 // changeQuery asks the log again at once.

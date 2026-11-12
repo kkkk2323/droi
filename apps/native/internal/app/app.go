@@ -489,6 +489,9 @@ func (a *App) onEvent(e controller.Event) {
 					own: creditValue(&n.TokenUsage), children: creditValue(n.ChildTokenUsage),
 					at: a.cfg.Now(),
 				}
+				if n.DurationMs != nil && *n.DurationMs > 0 {
+					turn.took = time.Duration(*n.DurationMs * float64(time.Millisecond))
+				}
 				a.cfg.Update(func() {
 					if v := a.views[ev.SessionID]; v != nil {
 						v.turnCredits = turn
