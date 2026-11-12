@@ -1,3 +1,9 @@
+## 1.95.2 - 2026-11-12
+
+### Fixed
+
+- The Session footer's Credits now match what Factory bills. droid's own figure was wrong for some models: for Gemini it counted cached input twice, so a Gemini 4 Carbon Session showed about 5 times its real cost; for Claude it priced cache writes that are kept for an hour at the 5-minute price, so it showed less. The footer now prices each call from the tokens its response reported, as the Observe page does, when the request log holds every call of the Session. Otherwise it shows droid's figure, as before. The popover says which one it shows, and droid's figure when the two differ.
+- The Key Pool's request log now records OpenAI's cache writes and Claude's hour-long cache writes, and prices them as Factory does. GPT requests were about 10% under their cost on the Observe page, and Claude requests with hour-long cache writes were under theirs too. Requests recorded before this version keep their old figures.
 ## 1.95.1 - 2026-11-11
 
 ### Fixed
