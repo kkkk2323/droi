@@ -147,63 +147,93 @@ func TestSessionCreditsPresentation(t *testing.T) {
 	}
 }
 
-// droid counts a Gemini call's cache reads in its input as well, and prices
-// them again at the full input weight; Factory bills them once. The footer
-// takes that off with the request log's calls of the Session.
-func TestSessionCreditsTakeOffDroidsGeminiRecount(t *testing.T) {
-	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = keyPoolTestHost(t) })
-	h.openSession("One")
-	id := h.a.Route().SessionID
+// writeCalls puts calls in the Key Pool's request log.
+func writeCalls(t *testing.T, h *harness, calls ...diag.RequestRecord) {
+	t.Helper()
 	pool := h.a.keyPool()
 	if pool == nil {
 		t.Fatal("no Key Pool")
 	}
-	call := diag.RequestRecord{Time: time.Now().Add(-time.Minute), Model: "gemini-4-carbon", Provider: "google", SessionID: id, Status: 200,
-		Usage: &diag.TokenUsage{Input: 430_000, CacheRead: 385_436, Output: 1_575}}
-	line, _ := json.Marshal(call)
+	var b []byte
+	for _, c := range calls {
+		line, _ := json.Marshal(c)
+		b = append(append(b, line...), '\n')
+	}
 	_ = os.MkdirAll(filepath.Dir(pool.RequestLog()), 0o700)
-	if err := os.WriteFile(pool.RequestLog(), append(line, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(pool.RequestLog(), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// droid's own figure misses what Factory bills: for Gemini it counts the
+// cache reads twice. When the request log holds every call of the Session,
+// the footer shows the log's figure, priced from what the responses
+// reported, for the Session and for the turn.
+func TestSessionCreditsComeFromTheRequestLog(t *testing.T) {
+	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = keyPoolTestHost(t) })
+	h.openSession("One")
+	id := h.a.Route().SessionID
+	call := diag.RequestRecord{Time: time.Now().Add(-time.Minute), Model: "gemini-4-carbon", Provider: "google", SessionID: id, Status: 200,
+		Usage: &diag.TokenUsage{Input: 430_000, CacheRead: 385_436, Output: 1_575}}
+	writeCalls(t, h, call)
 	billed, ok := llmusage.Credits(call.Model, *call.Usage, call.Time)
 	if !ok {
 		t.Fatal("Gemini 4 Carbon is unpriced")
 	}
 	// What droid reports: the cache reads again at the input weight.
-	recount := 1.6 * 385_436
-	daemon := math.Round(billed + recount)
+	daemon := math.Round(billed + 1.6*385_436)
 	h.notifyCredits(id, protocol.AgentTurnCompletedNotification{
 		Type: "agent_turn_completed", Reason: protocol.AgentTurnCompletionReasonCompleted, TurnID: "turn-1",
-		TokenUsage: protocol.TokenUsage{FactoryCredits: &daemon}, DurationMs: ptr(120_000.0),
+		TokenUsage: protocol.TokenUsage{InputTokens: 430_000, CacheReadTokens: 385_436, OutputTokens: 1_575, FactoryCredits: &daemon}, DurationMs: ptr(120_000.0),
 	})
 	h.notifyCredits(id, protocol.SessionTokenUsageChangedNotification{
 		Type: "session_token_usage_changed", SessionID: id,
 		TokenUsage: protocol.TokenUsage{InputTokens: 430_000, CacheReadTokens: 385_436, OutputTokens: 1_575, FactoryCredits: &daemon},
 	})
-	want := llmusage.FormatCredits(daemon - recount)
-	h.until("the footer without droid's recount", func() bool { return h.hasText(want + " Credits") })
+	h.until("the log's figure", func() bool { return h.hasText(llmusage.FormatCredits(billed) + " Credits") })
 	h.click("Session credits")
-	h.until("the turn without droid's recount too", func() bool { return h.hasText("Last observed turn") && !h.hasText(groupDigits(daemon)) })
-	for _, s := range []string{groupDigits(daemon - recount), "droid counts a Gemini call's cached input twice", groupDigits(recount)} {
+	// The Session's and the turn's rows show the log's figure; droid's is
+	// only in the note that names it.
+	h.until("the turn's from the log too", func() bool {
+		n := 0
+		for _, s := range h.tt.Texts() {
+			if s == groupDigits(billed) {
+				n++
+			}
+			if s == groupDigits(daemon) {
+				return false
+			}
+		}
+		return n == 2 && h.hasText("Last observed turn")
+	})
+	for _, s := range []string{groupDigits(billed), "Priced from the request log", "droid reports " + groupDigits(daemon)} {
 		if !h.hasText(s) {
 			t.Fatalf("credits lack %q: %q", s, h.tt.Texts())
 		}
 	}
+	if h.hasText("Reported by the Daemon.") {
+		t.Fatalf("the Daemon is named as the source: %q", h.tt.Texts())
+	}
 }
 
-// An Anthropic Session's input leaves the cache out: nothing is taken off,
-// and the request log is not read for it.
-func TestSessionCreditsKeepOtherProviders(t *testing.T) {
+// A log that lacks calls of the Session (its tokens fall short of the
+// Daemon's) leaves the Daemon's figure.
+func TestSessionCreditsKeepTheDaemonsWithoutTheWholeLog(t *testing.T) {
 	h := newHarnessWith(t, oneSession(), "", func(cfg *Config) { cfg.Host = keyPoolTestHost(t) })
 	h.openSession("One")
 	id := h.a.Route().SessionID
+	writeCalls(t, h, diag.RequestRecord{Time: time.Now().Add(-time.Minute), Model: "claude-opus-5-5", Provider: "anthropic", SessionID: id, Status: 200,
+		Usage: &diag.TokenUsage{Input: 179_959, CacheRead: 113_226, CacheWrite: 66_723, Output: 287}})
 	credits := 152_818.0
 	h.notifyCredits(id, protocol.SessionTokenUsageChangedNotification{
 		Type: "session_token_usage_changed", SessionID: id,
 		TokenUsage: protocol.TokenUsage{InputTokens: 10, CacheReadTokens: 113_226, CacheCreationTokens: 66_723, OutputTokens: 1_287, FactoryCredits: &credits},
 	})
-	h.until("droid's figure", func() bool { return h.hasText(llmusage.FormatCredits(credits) + " Credits") })
-	if h.a.usage.observe.log != nil {
-		t.Fatal("the request log was read for a Session droid counts right")
+	h.until("the log was read", func() bool { return !h.a.views[id].logged.at.IsZero() })
+	h.settle()
+	if !h.hasText(llmusage.FormatCredits(credits) + " Credits") {
+		t.Fatalf("the Daemon's figure is not shown: %q", h.tt.Texts())
 	}
+	h.click("Session credits")
+	h.until("the Daemon named as the source", func() bool { return h.hasText("Reported by the Daemon.") })
 }

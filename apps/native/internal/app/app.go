@@ -487,6 +487,7 @@ func (a *App) onEvent(e controller.Event) {
 			if jsonUnmarshal(ev.Raw.Raw, &n) == nil {
 				turn := observedTurnCredits{
 					own: creditValue(&n.TokenUsage), children: creditValue(n.ChildTokenUsage),
+					ownTokens: &n.TokenUsage, childTokens: n.ChildTokenUsage,
 					at: a.cfg.Now(),
 				}
 				if n.DurationMs != nil && *n.DurationMs > 0 {

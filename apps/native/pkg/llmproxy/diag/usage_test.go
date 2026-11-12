@@ -14,6 +14,23 @@ func TestUsageFromJSON_AnthropicFoldsCacheIntoInput(t *testing.T) {
 	}
 }
 
+// Anthropic says how many of the cache writes are kept for an hour, which
+// cost more (a Haiku 5.5 message_start through Factory, 2026-11-12).
+func TestUsageFromJSON_AnthropicHourLongCacheWrites(t *testing.T) {
+	body := `{"type":"message_start","message":{"usage":{"input_tokens":4,"cache_creation_input_tokens":12914,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":2515,"ephemeral_1h_input_tokens":10399},"output_tokens":2}}}`
+	u, ok := UsageFromJSON([]byte(body))
+	if want := (TokenUsage{Input: 12918, Output: 2, CacheWrite: 12914, CacheWrite1h: 10399}); !ok || u != want {
+		t.Fatalf("got %+v want %+v", u, want)
+	}
+	// message_delta repeats the totals without the breakdown: the merge
+	// keeps it.
+	o := NewUsageObserver("text/event-stream")
+	_, _ = o.Write([]byte("data: " + body + "\n\ndata: {\"type\":\"message_delta\",\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":12914,\"cache_read_input_tokens\":0,\"output_tokens\":194}}\n\n"))
+	if u, _ := o.Usage(); u.CacheWrite1h != 10399 || u.Output != 194 {
+		t.Fatalf("stream lost the hour-long writes: %+v", u)
+	}
+}
+
 func TestUsageFromJSON_OpenAIChatAndResponses(t *testing.T) {
 	chat := `{"usage":{"prompt_tokens":500,"completion_tokens":80,"prompt_tokens_details":{"cached_tokens":300},"completion_tokens_details":{"reasoning_tokens":20}}}`
 	u, ok := UsageFromJSON([]byte(chat))
@@ -25,6 +42,18 @@ func TestUsageFromJSON_OpenAIChatAndResponses(t *testing.T) {
 	u, ok = UsageFromJSON([]byte(responses))
 	if !ok || u != (TokenUsage{Input: 700, Output: 90, CacheRead: 100, Reasoning: 30}) {
 		t.Fatalf("responses usage wrong: %+v ok=%v", u, ok)
+	}
+
+	// The prompt counts include the cache writes, as droid reads them.
+	written := `{"type":"response.completed","response":{"usage":{"input_tokens":157634,"input_tokens_details":{"cached_tokens":113427,"cache_write_tokens":44192},"output_tokens":742}}}`
+	u, ok = UsageFromJSON([]byte(written))
+	if !ok || u != (TokenUsage{Input: 157634, Output: 742, CacheRead: 113427, CacheWrite: 44192}) {
+		t.Fatalf("responses cache writes wrong: %+v ok=%v", u, ok)
+	}
+	chatWritten := `{"usage":{"prompt_tokens":500,"completion_tokens":80,"prompt_tokens_details":{"cached_tokens":300,"cache_write_tokens":150}}}`
+	u, ok = UsageFromJSON([]byte(chatWritten))
+	if !ok || u != (TokenUsage{Input: 500, Output: 80, CacheRead: 300, CacheWrite: 150}) {
+		t.Fatalf("chat cache writes wrong: %+v ok=%v", u, ok)
 	}
 
 	if _, ok := UsageFromJSON([]byte(`{"type":"content_block_delta","delta":{"text":"hi"}}`)); ok {

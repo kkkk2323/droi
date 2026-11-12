@@ -198,7 +198,9 @@ func Credits(model string, u diag.TokenUsage, at time.Time) (float64, bool) {
 		return 0, false
 	}
 	plain := max(u.Input-u.CacheRead-u.CacheWrite, 0)
-	return w.Input*float64(plain) + w.Input*1.25*float64(u.CacheWrite) + w.CacheRead*float64(u.CacheRead) + w.Output*float64(u.Output), true
+	hour := min(u.CacheWrite1h, u.CacheWrite)
+	writes := 1.25*float64(u.CacheWrite-hour) + 2*float64(hour)
+	return w.Input*float64(plain) + w.Input*writes + w.CacheRead*float64(u.CacheRead) + w.Output*float64(u.Output), true
 }
 
 func weightOf(model string, at time.Time) (TokenWeight, bool) {

@@ -2,22 +2,19 @@ package llmusage
 
 import (
 	"math"
-	"strings"
 	"time"
-
-	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
 )
 
 // LoggedCredits are what the request log holds of some Sessions' calls.
 type LoggedCredits struct {
 	Calls int
-	// Credits are the calls priced as Factory bills them (see Credits).
+	// Unpriced counts calls with tokens whose model has no known weight.
+	Unpriced int
+	// Credits are the priced calls as Factory bills them (see Credits).
 	Credits float64
-	// Recount is what droid's factoryCredits adds to Credits: droid counts a
-	// Gemini call's cache reads in its input tokens as well, and prices them
-	// again at the full input weight. Factory's billing counter does not
-	// (measured with droid 1.7.1 and 1.9.0 against chat-usage's userTokens).
-	Recount float64
+	// Output, CacheRead and CacheWrite are the calls' tokens, as the
+	// responses reported them.
+	Output, CacheRead, CacheWrite int64
 }
 
 // SessionCredits adds up the calls of the Sessions in ids made from from
@@ -32,30 +29,31 @@ func (l *RequestLog) SessionCredits(ids map[string]bool, from, to time.Time) Log
 		}
 		c, ok := Credits(r.Model, *r.Usage, r.Time)
 		if !ok {
+			if !r.Usage.IsZero() {
+				out.Unpriced++
+			}
 			continue
 		}
 		out.Calls++
 		out.Credits += c
-		if geminiCall(r) {
-			w, _ := weightOf(r.Model, r.Time)
-			out.Recount += w.Input * float64(r.Usage.CacheRead)
-		}
+		out.Output += r.Usage.Output
+		out.CacheRead += r.Usage.CacheRead
+		out.CacheWrite += r.Usage.CacheWrite
 	}
 	return out
 }
 
-func geminiCall(r diag.RequestRecord) bool {
-	return r.Provider == "google" || r.Provider == "" && strings.HasPrefix(strings.ToLower(r.Model), "gemini-")
-}
-
-// Recounted is the Daemon's credits for calls the log holds, less droid's
-// recount, when that matches the log better than daemon itself does; it
-// keeps daemon as it is otherwise, for a droid that stops recounting, or a
-// log that misses calls.
-func (l LoggedCredits) Recounted(daemon float64) (float64, bool) {
-	fixed := daemon - l.Recount
-	if l.Recount <= 0 || fixed < 0 || math.Abs(fixed-l.Credits) >= math.Abs(daemon-l.Credits) {
-		return daemon, false
+// Covers says the log holds every call behind a Daemon figure with these
+// token counts, as droid read them from the responses, and priced them all.
+// A log that misses calls (an archive gone, a Session older than the Key
+// Pool) misses output tokens; one written before the proxy read a field
+// (OpenAI's cache writes) misses those.
+func (l LoggedCredits) Covers(output, cacheRead, cacheWrite float64) bool {
+	if l.Calls == 0 || l.Unpriced > 0 || output <= 0 {
+		return false
 	}
-	return fixed, true
+	same := func(logged int64, daemon float64) bool {
+		return math.Abs(float64(logged)-daemon) <= max(0.01*daemon, 1)
+	}
+	return same(l.Output, output) && same(l.CacheRead, cacheRead) && same(l.CacheWrite, cacheWrite)
 }

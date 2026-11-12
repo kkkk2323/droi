@@ -636,7 +636,8 @@ func (w *CacheWarmer) finish(e *warmEntry, res warmResult) {
 		w.totals.CacheReadTokens += res.usage.CacheRead
 		w.totals.CacheWriteTokens += res.usage.CacheWrite
 		r := cacheReadMultiplier(e.model)
-		w.totals.SpentUnits += r*float64(res.usage.CacheRead) + 1.25*float64(res.usage.CacheWrite) + float64(res.usage.Input-res.usage.CacheRead-res.usage.CacheWrite)
+		hour := min(res.usage.CacheWrite1h, res.usage.CacheWrite)
+		w.totals.SpentUnits += r*float64(res.usage.CacheRead) + 1.25*float64(res.usage.CacheWrite-hour) + 2*float64(hour) + float64(res.usage.Input-res.usage.CacheRead-res.usage.CacheWrite)
 	}
 	if kind != "" {
 		w.totals.Failures++

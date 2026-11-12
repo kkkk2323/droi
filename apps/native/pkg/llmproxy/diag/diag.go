@@ -89,6 +89,7 @@ func (s *SessionCalls) add(rec RequestRecord) {
 		s.Usage.Output += u.Output
 		s.Usage.CacheRead += u.CacheRead
 		s.Usage.CacheWrite += u.CacheWrite
+		s.Usage.CacheWrite1h += u.CacheWrite1h
 		s.Usage.Reasoning += u.Reasoning
 	}
 	s.DurationMs += rec.DurationMs

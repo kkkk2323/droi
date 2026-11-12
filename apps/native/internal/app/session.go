@@ -47,7 +47,7 @@ type sessionView struct {
 	// turnCredits is the last completed turn observed while this view was
 	// kept, not a sum or a difference of Session counters.
 	turnCredits observedTurnCredits
-	creditCuts  creditCuts
+	logged      loggedCredits
 	creditsOpen bool
 	// jobsOpen: the header's background tasks.
 	jobsOpen bool
