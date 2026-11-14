@@ -1,3 +1,13 @@
+## 1.95.3 - 2026-11-14
+
+### Fixed
+
+- Usage's "Used today" no longer stays at 0 while you use the Key Pool. It read only the keys' monthly quota, which Factory reports in whole percents, and one percent of a Max key's month is about 7.7M credits, so a morning's work often moved nothing. "Used today", "Usually by now" and "Whole day" now take the larger of that and the Standard calls in the Key Pool's request log, priced as Factory bills them. The quota still counts what other computers spend with the same keys. The daily limit, how long the pool lasts and the earlier days' bars still come from the quota.
+
+### Changed
+
+- Removing a Daemon-managed worktree now waits up to 15 minutes for the Daemon, as Factory's own app does; Droi gave up after 3. The Go SDK is now generated from `@factory/droid-sdk` 0.11.0.
+
 ## 1.95.2 - 2026-11-12
 
 ### Fixed
