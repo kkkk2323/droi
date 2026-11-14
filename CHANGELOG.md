@@ -1,3 +1,9 @@
+## 1.95.4 - 2026-11-15
+
+### Fixed
+
+- Replies no longer show inline math as its TeX. Some models write an arrow between two steps as `$\rightarrow$`, and Droi showed those characters as they are. Math between single dollar signs is now read as math, and math that Unicode can write is drawn in the text: arrows, comparisons, Greek letters, simple superscripts and subscripts such as `O(n²)` and `xᵢ`, and fractions and roots of single terms. Other math still shows as its TeX. Amounts of money such as `$5` stay as they are, and copying a reply still gives the math as it was written.
+
 ## 1.95.3 - 2026-11-14
 
 ### Fixed
