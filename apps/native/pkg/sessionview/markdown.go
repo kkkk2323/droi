@@ -125,8 +125,11 @@ func (m *Markdown) Options(k *kit.Kit, s MarkdownStyle) *markdown.Options {
 	if s.Roomy > 0 {
 		size = k.Dense(s.Size, s.Roomy)
 	}
+	math := &inlineMath{font: k.Sans, color: color}
 	o := &markdown.Options{
 		Theme:          &markdown.Theme{FontSize: k.Px(size), Font: k.Sans, CodeFont: k.Mono, Text: color, Strong: color, Code: t.Code},
+		Extensions:     mathExtensions,
+		InlineMath:     math.object,
 		LoadImage:      m.Load,
 		ShareSelection: !m.Own,
 	}
@@ -228,9 +231,10 @@ func (m *Markdown) tableOptions(k *kit.Kit, s MarkdownStyle, open bool, col floa
 	if o := m.tables[key]; o != nil {
 		return o
 	}
-	th := *m.Options(k, s).Theme
+	base := m.Options(k, s)
+	th := *base.Theme
 	th.TableMaxColumn = col
-	o := &markdown.Options{Theme: &th, LoadImage: m.Load, ShareSelection: !m.Own}
+	o := &markdown.Options{Theme: &th, Extensions: base.Extensions, InlineMath: base.InlineMath, LoadImage: m.Load, ShareSelection: !m.Own}
 	if open {
 		o.Reveal = &markdown.Reveal{Unit: markdown.AtOnce, Fade: -1}
 	}
