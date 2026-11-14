@@ -888,8 +888,10 @@ func TestASessionTheDaemonNoLongerHasCountsAsArchived(t *testing.T) {
 		t.Fatal("the archived agent is still waited on")
 	}
 	time.Sleep(300 * time.Millisecond)
+	// Only the archived agent must stay quiet: the other one may still have
+	// worked when the Daemon went down, and is rightly reported.
 	for _, m := range f.messages(made.OrchestratorID) {
-		if strings.HasPrefix(m, "[From agent") {
+		if strings.HasPrefix(m, "[From agent") && strings.Contains(m, gone) {
 			t.Fatalf("the orchestrator was told %q", m)
 		}
 	}
