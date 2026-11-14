@@ -68,7 +68,7 @@ func TestSpendCountsABiggerPlan(t *testing.T) {
 		b = append(append(b, line...), '\n')
 	}
 	os.WriteFile(path, b, 0o600)
-	if s, ok := ReadSpend(path, now); !ok || s.Today != 20 {
+	if s, ok := ReadSpend(path, now, nil); !ok || s.Today != 20 {
 		t.Fatalf("spend %+v %v", s, ok)
 	}
 }

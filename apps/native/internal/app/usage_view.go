@@ -140,8 +140,13 @@ func (a *App) loadSpend(force bool) {
 	}
 	s.spendBusy = true
 	path := pool.UsageLog()
+	log := a.requestLog()
 	go func() {
-		spend, ok := llmusage.ReadSpend(path, time.Now())
+		var logged llmusage.Logged
+		if log != nil && log.Refresh() == nil {
+			logged = log.StandardSpend
+		}
+		spend, ok := llmusage.ReadSpend(path, time.Now(), logged)
 		a.cfg.Update(func() {
 			s.spendBusy, s.spendAt = false, a.cfg.Now()
 			s.spend, s.hasSpend = spend, ok

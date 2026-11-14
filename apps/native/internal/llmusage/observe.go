@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/diag"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
 
 // RequestLog is the Key Pool's request log in memory, for the Observe page:
@@ -18,6 +19,9 @@ type RequestLog struct {
 	reader  *diag.LogReader
 	records []diag.RequestRecord
 	strs    map[string]string
+	// first is the earliest record's time: the log holds every call from
+	// then on.
+	first time.Time
 }
 
 func NewRequestLog(path string) *RequestLog {
@@ -28,7 +32,34 @@ func NewRequestLog(path string) *RequestLog {
 func (l *RequestLog) Refresh() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.reader.Read(func(r diag.RequestRecord) { l.records = append(l.records, l.slim(r)) })
+	return l.reader.Read(func(r diag.RequestRecord) {
+		if l.first.IsZero() || r.Time.Before(l.first) {
+			l.first = r.Time
+		}
+		l.records = append(l.records, l.slim(r))
+	})
+}
+
+// StandardSpend is a Logged for ReadSpend: the calls served from the
+// Standard pool from from to to, priced as Factory bills them, in percent
+// of a Pro key's month. Calls of a model without a known weight count as
+// nothing.
+func (l *RequestLog) StandardSpend(from, to time.Time) (float64, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.first.IsZero() || l.first.After(from) {
+		return 0, false
+	}
+	total := 0.0
+	for _, r := range l.records {
+		if r.Pool != keys.PoolStandard || r.Usage == nil || r.Time.Before(from) || !r.Time.Before(to) {
+			continue
+		}
+		if c, ok := Credits(r.Model, *r.Usage, r.Time); ok {
+			total += c
+		}
+	}
+	return total / MonthlyStandardCredits * 100, true
 }
 
 // slim drops what the page never shows and shares the strings that repeat,

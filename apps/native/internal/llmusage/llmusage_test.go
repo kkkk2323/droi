@@ -2,6 +2,7 @@ package llmusage
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -174,7 +175,7 @@ func TestSpendIsTheRiseOfEachKeysMonthlyUse(t *testing.T) {
 	add(midnight.Add(6*time.Hour), 11)
 	path := writeUsageLog(t, t.TempDir(), now.AddDate(0, 0, 10), readings, order)
 
-	s, ok := ReadSpend(path, now)
+	s, ok := ReadSpend(path, now, nil)
 	if !ok {
 		t.Fatal("no spend read")
 	}
@@ -195,11 +196,72 @@ func TestSpendIsTheRiseOfEachKeysMonthlyUse(t *testing.T) {
 	if len(s.Daily) != 3 || s.Daily[len(s.Daily)-1].Spent != 5 {
 		t.Errorf("daily = %+v", s.Daily)
 	}
-	if _, ok := ReadSpend(filepath.Join(t.TempDir(), "missing.jsonl"), now); ok {
+	if _, ok := ReadSpend(filepath.Join(t.TempDir(), "missing.jsonl"), now, nil); ok {
 		t.Error("a missing log reads as spend")
 	}
 }
 
+// A Max key's monthly quota moves in whole percents, 7.7M credits each:
+// a morning's calls read as nothing there. The request log sees each one.
+func TestTodayCountsTheRequestLogBelowAWholePercent(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.Local)
+	midnight := time.Date(2026, 10, 20, 0, 0, 0, 0, time.Local)
+	readings := map[time.Time]float64{}
+	var order []time.Time
+	add := func(at time.Time, used float64) {
+		readings[at], order = used, append(order, at)
+	}
+	// Yesterday's whole day rose 3 points; today none so far.
+	add(midnight.AddDate(0, 0, -1), 50)
+	add(midnight.AddDate(0, 0, -1).Add(18*time.Hour), 53)
+	add(midnight.Add(11*time.Hour), 53)
+	usage := writeUsageLog(t, t.TempDir(), now.AddDate(0, 0, 10), readings, order)
+
+	opus := func(at time.Time, pool string, read int64) diag.RequestRecord {
+		return diag.RequestRecord{Time: at, Model: "claude-opus-5-5", Pool: pool, Status: 200, Usage: &diag.TokenUsage{Input: read, CacheRead: read}}
+	}
+	percent := func(read int64) float64 { return float64(read) * 0.08 / MonthlyStandardCredits * 100 }
+	records := []diag.RequestRecord{
+		// Before yesterday: the log reaches back past both days.
+		opus(midnight.AddDate(0, 0, -2), "standard", 1),
+		// Yesterday morning, less than the quota's 3 points that day.
+		opus(midnight.AddDate(0, 0, -1).Add(9*time.Hour), "standard", 20_000_000),
+		// Today: a Standard call, one served from the Core pool, and one
+		// after now.
+		opus(midnight.Add(9*time.Hour), "standard", 50_000_000),
+		opus(midnight.Add(10*time.Hour), "core", 900_000_000),
+		opus(now.Add(time.Hour), "standard", 900_000_000),
+	}
+	log := NewRequestLog(writeRequestLog(t, records))
+	if err := log.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, ok := ReadSpend(usage, now, log.StandardSpend)
+	if !ok {
+		t.Fatal("no spend read")
+	}
+	if want := percent(50_000_000); math.Abs(s.Today-want) > 1e-9 {
+		t.Errorf("today = %v, want the logged %v", s.Today, want)
+	}
+	if got := s.Daily[len(s.Daily)-1].Spent; got != s.Today {
+		t.Errorf("today's bar = %v, want %v", got, s.Today)
+	}
+	// By noon yesterday the log saw more than the quota; over the whole day
+	// the quota's rise is more.
+	if want := percent(20_000_000); s.Days != 1 || math.Abs(s.UsualByNow-want) > 1e-9 || s.UsualDay != 3 {
+		t.Errorf("usual by now = %v, day = %v over %d days, want %v and 3 over 1", s.UsualByNow, s.UsualDay, s.Days, want)
+	}
+
+	// A log that starts after midnight misses some of today: the quota counts.
+	late := NewRequestLog(writeRequestLog(t, records[2:]))
+	if err := late.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := ReadSpend(usage, now, late.StandardSpend); s.Today != 0 || s.UsualByNow != 0 {
+		t.Errorf("a log from after midnight counted: today %v, usual %v", s.Today, s.UsualByNow)
+	}
+}
 func TestRunwayLastsUntilTheMonthsRunOut(t *testing.T) {
 	now := time.Now()
 	pool := []keys.KeyState{
