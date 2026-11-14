@@ -22,7 +22,8 @@ type Spend struct {
 	Today float64
 	// UsualByNow and UsualDay average the Days whole days before today (up
 	// to 7): up to this time of day, and the whole day. Days is 0 when the
-	// log does not reach back to yesterday's midnight.
+	// log does not reach back to yesterday's midnight. These three take the
+	// Logged spend where it is more (see ReadSpend).
 	UsualByNow, UsualDay float64
 	Days                 int
 	// Recent is the spend per day over the last 7×24 hours; HasRecent is
@@ -53,9 +54,19 @@ type spendDelta struct {
 	spent float64
 }
 
+// Logged is the Standard spend a request log holds from from to to, in the
+// unit of Spend; ok is false when the log does not reach back to from.
+type Logged func(from, to time.Time) (spent float64, ok bool)
+
 // ReadSpend reads the usage log at path as of now. ok is false when the log
 // is missing or holds no monthly Standard reading.
-func ReadSpend(path string, now time.Time) (Spend, bool) {
+//
+// A key's monthly quota is read in whole percents, 7.7M credits on a Max
+// key, so a day's first calls often read as nothing. Today's figures take
+// what logged holds of the same time where that is more; logged may be nil.
+// The log misses what other computers spend with the keys, which the quota
+// counts, so neither is the whole.
+func ReadSpend(path string, now time.Time, logged Logged) (Spend, bool) {
 	deltas, first, ok := readSpendDeltas(path)
 	if !ok {
 		return Spend{}, false
@@ -69,17 +80,26 @@ func ReadSpend(path string, now time.Time) (Spend, bool) {
 		}
 		return total
 	}
+	spent := func(from, to time.Time) float64 {
+		q := sum(from, to)
+		if logged != nil {
+			if l, ok := logged(from, to); ok && l > q {
+				return l
+			}
+		}
+		return q
+	}
 	var s Spend
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	s.Today = sum(midnight, now)
+	s.Today = spent(midnight, now)
 	elapsed := now.Sub(midnight)
 	for k := 1; k <= 7; k++ {
 		start := midnight.AddDate(0, 0, -k)
 		if start.Before(first) {
 			break
 		}
-		s.UsualByNow += sum(start, start.Add(elapsed))
-		s.UsualDay += sum(start, start.AddDate(0, 0, 1))
+		s.UsualByNow += spent(start, start.Add(elapsed))
+		s.UsualDay += spent(start, start.AddDate(0, 0, 1))
 		s.Days++
 	}
 	if s.Days > 0 {
@@ -98,11 +118,11 @@ func ReadSpend(path string, now time.Time) (Spend, bool) {
 		if start.Before(first) && k > 0 {
 			continue
 		}
-		end := start.AddDate(0, 0, 1)
-		if end.After(now) {
-			end = now
+		day := DaySpend{Day: start, Spent: sum(start, start.AddDate(0, 0, 1))}
+		if k == 0 {
+			day.Spent = s.Today
 		}
-		s.Daily = append(s.Daily, DaySpend{Day: start, Spent: sum(start, end)})
+		s.Daily = append(s.Daily, day)
 	}
 	return s, true
 }
