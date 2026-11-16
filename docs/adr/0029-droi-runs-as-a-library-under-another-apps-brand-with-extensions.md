@@ -16,6 +16,7 @@ We decided:
 - **An extension is a struct of optional parts: `pkg/extension`.** Each part plugs into a seam that Droi itself uses, so it costs Droi nothing when empty:
   - `Overlay`: MCP servers (pre-approved and at a chosen autonomy, as Memory's, single tools at their own), hooks, environment and models, added to the Runtime Overlay at each Daemon start (`host.Config.Overlay`, `host.OverlayOptions`).
   - `SystemPrompt`: appended after Settings' System Prompt Addition (`host.Config.AppendSystemPrompt`).
+  - `HiddenTools`: droid's tools left out of every Session, the Clients' and the Host's own Automations and Workstreams (`host.Config.HiddenTools`, disabledToolIds from droid 1.2.0), read at each Session start: droid's WebSearch, say, while the extension serves a web search of its own.
   - `Commands`: subcommands of the app's executable, so an MCP server ships inside it as Memory's does; `pkg/mcpserver` is the stdio protocol the Memory Server uses.
   - `Pages`: sidebar rows under Automations that open a page in the main panel; `SettingsTabs`: Settings sections in Droi's groups or one of their own. Both draw with an `extension.Env` (the Kit, the Controller, the Host, preferences).
   - `ToolViews` and `Components`: how a tool's calls and a json-render element type of its own show in a Session (`sessionview.RegisterToolView`, `sessionview.RegisterComponent`), for query results as tables and charts.
@@ -27,7 +28,7 @@ We decided:
 - **It can keep the Patched Droid's downloads on a mirror of its own** (`Options.RecipesURL`, `Options.DroidDownloads`), where GitHub or Factory's downloads are slow or out of reach: copies of the published recipes and of Factory's droid builds, in the same layout (ADR 0027). The recipes are still checked against Droi's key, so the mirror cannot inject code of its own.
 - **It can preset what new Sessions start with** (`Options.Presets`, a `defaults.Presets`): Session Defaults such as the model, the reasoning effort and the compaction limit, and this device's tool mode. The window gives them to this computer's Daemon (`daemon.update_session_defaults`) the first time it connects, once per `Version`, which the preferences keep: what the user changes afterwards stays, and the app raises the version to give changed presets. A window that shows another computer leaves that computer's defaults alone, and `droi host`, which has no window, gives none. `AutoUpdate` is different: it turns About's "Install updates automatically" on wherever the user has not set that switch, with no version, since the user's own setting is kept once made.
 - **Dashboards draw with `pkg/dashkit`,** the Usage tab's cards, metrics, meters, controls and charts, moved out of `internal/app`.
-- `droi host` takes the same brand, the extensions' Overlay, SystemPrompt and Start, `OwnFactoryHome` and the mirror.
+- `droi host` takes the same brand, the extensions' Overlay, SystemPrompt, HiddenTools and Start, `OwnFactoryHome` and the mirror.
 
 ## Considered Options
 

@@ -2,6 +2,7 @@ package host
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
@@ -23,15 +24,47 @@ func (h *Host) SystemPromptAddition() string {
 	return strings.Join(parts, "\n\n")
 }
 
-// clientHiddenTools is Config.ClientHiddenTools, nil from a droid that does
-// not take MCP selectors and llm ids in disabledToolIds.
+// clientHiddenTools is Config.ClientHiddenTools, then Config.HiddenTools;
+// nil from a droid that does not take MCP selectors and llm ids in
+// disabledToolIds.
 func (h *Host) clientHiddenTools() []string {
-	// DroidVersion reads the droid on disk (Droi's droid when the Key Pool
-	// is on), which differs from the running Daemon's only until it restarts.
-	if h.cfg.ClientHiddenTools == nil || olderThan(h.DroidVersion(), hiddenToolsDroid) {
+	if h.cfg.ClientHiddenTools == nil && h.cfg.HiddenTools == nil {
 		return nil
 	}
-	return h.cfg.ClientHiddenTools()
+	if h.olderThanHiddenToolsDroid() {
+		return nil
+	}
+	var ids []string
+	if h.cfg.ClientHiddenTools != nil {
+		ids = h.cfg.ClientHiddenTools()
+	}
+	return addNew(ids, h.HiddenTools())
+}
+
+// HiddenTools is Config.HiddenTools, which the Host's own Sessions leave out
+// too; nil from a droid that does not take MCP selectors and llm ids in
+// disabledToolIds.
+func (h *Host) HiddenTools() []string {
+	if h.cfg.HiddenTools == nil || h.olderThanHiddenToolsDroid() {
+		return nil
+	}
+	return h.cfg.HiddenTools()
+}
+
+func (h *Host) olderThanHiddenToolsDroid() bool {
+	// DroidVersion reads the droid on disk (Droi's droid when the Key Pool
+	// is on), which differs from the running Daemon's only until it restarts.
+	return olderThan(h.DroidVersion(), hiddenToolsDroid)
+}
+
+// addNew is ids with those of more it lacks.
+func addNew(ids, more []string) []string {
+	for _, id := range more {
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // GatewayOptions is the Gateway of h's computer, as the app and `droi host`

@@ -588,6 +588,32 @@ func TestTheReloadAfterTheRunnersOwnConnectHidesWhatTheSessionHid(t *testing.T) 
 	}
 }
 
+func TestEverySessionTheRunnerOpensOrLoadsHidesTheHostsHiddenTools(t *testing.T) {
+	d := fakedaemon.Start(t, fakedaemon.Scenario{Sessions: []fakedaemon.SessionSpec{{Title: "Agent", Cwd: repo}}})
+	r, _ := start(t, d, "", func(c *Config) { c.HiddenTools = func() []string { return []string{"WebSearch", "RunAutomation"} } })
+	ctx := testContext(t)
+	if _, err := r.Open(ctx, Spec{Cwd: repo, DisabledTools: []string{"RunAutomation"}}); err != nil {
+		t.Fatal(err)
+	}
+	init, err := d.WaitForRequest("daemon.initialize_session", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p struct {
+		DisabledToolIDs []string `json:"disabledToolIds"`
+	}
+	if err := json.Unmarshal(init.Params, &p); err != nil || !reflect.DeepEqual(p.DisabledToolIDs, []string{"RunAutomation", "WebSearch"}) {
+		t.Errorf("initialize_session hides %v (%v)", p.DisabledToolIDs, err)
+	}
+	loaded := d.Sessions[0].SessionID
+	if err := r.Load(ctx, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if got := hiddenOnLoads(t, d, loaded); !reflect.DeepEqual(got, [][]string{{"WebSearch", "RunAutomation"}}) {
+		t.Errorf("load_session hides %v", got)
+	}
+}
+
 // A load that finds the Session's worker running reuses it without handing
 // it the load's disabledToolIds, as with a Session just handed off: Load
 // gives them to the worker through its settings too.

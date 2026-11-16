@@ -65,6 +65,7 @@ func StartServices(h *host.Host) *Services {
 		Credential:           h.Credential,
 		HasCredential:        h.HasCredential,
 		SystemPromptAddition: h.SystemPromptAddition,
+		HiddenTools:          h.HiddenTools,
 		ToolMode:             func() protocol.ToolExecutionMode { return deviceToolMode(h.ToolMode()) },
 		OnChange:             h.OnChange,
 		Log:                  func(m string) { log.Println("[host sessions]", m) },

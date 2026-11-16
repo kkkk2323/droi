@@ -39,6 +39,8 @@ type Options struct {
 	// host.Config's fields of the same names, Overlay given the Host.
 	Overlay            func(h *host.Host) host.OverlayOptions
 	AppendSystemPrompt func() string
+	// HiddenTools, optional, is host.Config's HiddenTools, given the Host.
+	HiddenTools func(h *host.Host) []string
 	// Start, optional, is called once the Host has started, with Run's ctx;
 	// it returns at once and leaves its work to goroutines of its own.
 	Start func(ctx context.Context, h *host.Host)
@@ -93,6 +95,9 @@ func Run(ctx context.Context, o Options) error {
 		return svc.Overlay(app)
 	}
 	cfg.ClientHiddenTools = func() []string { return svc.ClientHiddenTools() }
+	if o.HiddenTools != nil {
+		cfg.HiddenTools = func() []string { return o.HiddenTools(h) }
+	}
 	h = host.New(cfg)
 	if err := checkDroid(h); err != nil {
 		return err

@@ -62,6 +62,11 @@ type Config struct {
 	// Factory's tools that Droi does its own way, and the Host's tools only
 	// its own Sessions use.
 	ClientHiddenTools func() []string
+	// HiddenTools, optional, are the tools every Session leaves out, its
+	// Clients' and the Host's own (Automations, Workstreams), read at every
+	// Session start: the app's choice, such as a web search of its own in
+	// place of droid's WebSearch.
+	HiddenTools func() []string
 }
 
 // Host starts and watches the Daemon and supplies the Factory credential.

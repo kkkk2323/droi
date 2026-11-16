@@ -2,6 +2,7 @@ package droiapp
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -74,6 +75,22 @@ func (x *extensions) overlay(h *host.Host) host.OverlayOptions {
 		}
 	}
 	return o
+}
+
+// hiddenTools are the tools the extensions leave out of h's Sessions.
+func (x *extensions) hiddenTools(h *host.Host) []string {
+	var ids []string
+	for _, e := range x.list {
+		if e.HiddenTools == nil {
+			continue
+		}
+		for _, id := range e.HiddenTools(h) {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
 }
 
 // start runs the extensions' Start, each on a goroutine of its own.
