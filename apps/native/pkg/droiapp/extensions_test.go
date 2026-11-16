@@ -1,6 +1,7 @@
 package droiapp
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -64,6 +65,20 @@ func TestExtensionsJoin(t *testing.T) {
 	}
 	if newExtensions(nil).signIn != nil {
 		t.Error("a sign-in page without an extension")
+	}
+}
+
+func TestExtensionsHideToolsOnce(t *testing.T) {
+	x := newExtensions([]extension.Extension{
+		{HiddenTools: func(*host.Host) []string { return []string{"WebSearch", "mcp:corp/old"} }},
+		{},
+		{HiddenTools: func(*host.Host) []string { return []string{"WebSearch", "FetchUrl"} }},
+	})
+	if got := x.hiddenTools(nil); !slices.Equal(got, []string{"WebSearch", "mcp:corp/old", "FetchUrl"}) {
+		t.Errorf("hidden %v", got)
+	}
+	if got := newExtensions(nil).hiddenTools(nil); got != nil {
+		t.Errorf("hidden without an extension: %v", got)
 	}
 }
 

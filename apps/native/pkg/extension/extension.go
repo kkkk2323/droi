@@ -31,6 +31,12 @@ type Extension struct {
 	// such as keeping the credential it handed the Host current. ctx ends
 	// when the app quits.
 	Start func(ctx context.Context, h *host.Host)
+	// HiddenTools are droid's tools it leaves out of every Session, the
+	// Clients' and the Host's own, read at every Session start: tool ids
+	// ("WebSearch"), llm ids or MCP selectors ("mcp:<server>/<tool>"), from
+	// droid 1.2.0. An extension that serves a tool of its own in place of
+	// one of droid's hides droid's while its own is there.
+	HiddenTools func(h *host.Host) []string
 	// SystemPrompt is added to the System Prompt Addition at every Session
 	// start, after the one Settings holds: how to use its tools, say.
 	SystemPrompt func() string

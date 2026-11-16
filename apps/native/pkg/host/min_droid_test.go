@@ -43,6 +43,44 @@ func TestClientsKeepTheHostsHiddenToolsFromDroid120On(t *testing.T) {
 	}
 }
 
+func TestTheAppsHiddenToolsLeaveEverySessionFromDroid120On(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a shell")
+	}
+	clients := []string{"CreateAutomation", "WebSearch"}
+	app := []string{"WebSearch", "mcp:corp/old"}
+	for version, want := range map[string][2][]string{
+		"1.1.9": {nil, nil},
+		"1.2.0": {{"CreateAutomation", "WebSearch", "mcp:corp/old"}, app},
+	} {
+		path := filepath.Join(t.TempDir(), "droid")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\necho "+version+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		h := New(Config{
+			UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" },
+			ClientHiddenTools: func() []string { return slices.Clone(clients) },
+			HiddenTools:       func() []string { return app },
+		})
+		h.Settings.Update(func(s *Settings) { s.DroidPath = OptString(path) })
+		if got := h.GatewayOptions("1", nil).DisabledTools(); !slices.Equal(got, want[0]) {
+			t.Errorf("droid %s: Clients hide %v, want %v", version, got, want[0])
+		}
+		if got := h.HiddenTools(); !slices.Equal(got, want[1]) {
+			t.Errorf("droid %s: the Host's Sessions hide %v, want %v", version, got, want[1])
+		}
+	}
+	path := filepath.Join(t.TempDir(), "droid")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho 1.4.1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := New(Config{UserData: t.TempDir(), Home: t.TempDir(), Env: func(string) string { return "" }, HiddenTools: func() []string { return app }})
+	h.Settings.Update(func(s *Settings) { s.DroidPath = OptString(path) })
+	if got := h.GatewayOptions("1", nil).DisabledTools(); !slices.Equal(got, app) {
+		t.Errorf("only the app's: %v", got)
+	}
+}
+
 // oldDroidHost is a Host whose droid is 0.200.0 and runs update as the
 // shell script given.
 func oldDroidHost(t *testing.T, update string) *Host {

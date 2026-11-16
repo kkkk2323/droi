@@ -126,6 +126,7 @@ func Run(o Options) {
 				Version:            version,
 				Executable:         executable(),
 				Overlay:            exts.overlay,
+				HiddenTools:        exts.hiddenTools,
 				Start:              exts.start,
 				AppendSystemPrompt: exts.systemPrompt,
 				OwnFactoryHome:     o.OwnFactoryHome,
@@ -174,6 +175,7 @@ func Run(o Options) {
 		Overlay:            func() host.OverlayOptions { return svc.Overlay(exts.overlay(h)) },
 		AppendSystemPrompt: exts.systemPrompt,
 		ClientHiddenTools:  func() []string { return svc.ClientHiddenTools() },
+		HiddenTools:        func() []string { return exts.hiddenTools(h) },
 	})
 	svc = hostrun.StartServices(h)
 	extCtx, stopExtensions := context.WithCancel(context.Background())

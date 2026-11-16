@@ -34,6 +34,10 @@ type Config struct {
 	// with (host.Host.HasCredential); without one the Runner waits for
 	// OnChange instead of trying.
 	HasCredential func() bool
+	// HiddenTools, optional, are disabledToolIds every Session the Runner
+	// opens or loads gets besides its own (host.Host.HiddenTools), read each
+	// time.
+	HiddenTools func() []string
 	// SystemPromptAddition, optional, is added after Droid's system prompt
 	// of every Session the Runner opens, as the Gateway adds it to a
 	// Client's (host.Host.SystemPromptAddition).
@@ -338,6 +342,7 @@ func (r *Runner) log(s string) {
 // Open starts a Session and sends it the Spec's Prompt. A Session that
 // started but did not take the Prompt answers its Opened with the error.
 func (r *Runner) Open(ctx context.Context, s Spec) (Opened, error) {
+	s.DisabledTools = r.disabled(s.DisabledTools)
 	yes := true
 	p := protocol.InitializeSessionParams{
 		SessionID:       uuid.NewString(),
@@ -421,6 +426,20 @@ func (r *Runner) prompt(ctx context.Context, sessionID, text string) error {
 	return err
 }
 
+// disabled is ids, then Config.HiddenTools that ids lacks.
+func (r *Runner) disabled(ids []string) []string {
+	if r.cfg.HiddenTools == nil {
+		return ids
+	}
+	all := slices.Clone(ids)
+	for _, id := range r.cfg.HiddenTools() {
+		if !slices.Contains(all, id) {
+			all = append(all, id)
+		}
+	}
+	return all
+}
+
 // systemPrompt is the System Prompt Addition, then spec's, a blank line
 // between; "" when both are blank.
 func (r *Runner) systemPrompt(spec string) string {
@@ -441,6 +460,7 @@ func (r *Runner) systemPrompt(spec string) string {
 // gets, as Spec's DisabledTools: for a Session the Host did not open, such
 // as one a Session of its was handed off to.
 func (r *Runner) Load(ctx context.Context, sessionID string, disabledTools ...string) error {
+	disabledTools = r.disabled(disabledTools)
 	added := r.follow(sessionID, true)
 	r.hide(sessionID, disabledTools)
 	if _, err := r.ctl.LoadSession(ctx, protocol.LoadSessionParams{SessionID: sessionID, DisabledToolIDs: disabledTools}); err != nil {
