@@ -1,3 +1,9 @@
+## 1.96.0 - 2026-11-16
+
+### Added
+
+- Apps built on Droi can leave droid's own tools out of every Session: `extension.Extension.HiddenTools` names tool ids, llm ids or MCP selectors, and the Host hides them from the Sessions of its Clients, its Automations and its Workstreams alike, read at each Session start (droid 1.2.0 and newer). Anlan Droi uses it to hide droid's WebSearch while its company web search is there. `droi host` takes them too.
+
 ## 1.95.4 - 2026-11-15
 
 ### Fixed
