@@ -2,7 +2,6 @@ package app
 
 import (
 	"cmp"
-	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,17 +17,21 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
-const prRefreshInterval = 15 * time.Second
+const (
+	prRefreshInterval = 15 * time.Second
+	maxPRLookups      = 20
+)
 
 // workstreamPR is one pull request associated with a Workstream agent.
 type workstreamPR struct {
-	URL        string
-	Number     int
-	Title      string
-	State      string // "open", "draft", "merged", "closed"
-	SessionID  string
-	AgentTitle string
-	Branch     string
+	URL          string
+	Number       int
+	Title        string
+	State        string // "open", "draft", "merged", "closed"
+	SessionID    string
+	AgentTitle   string
+	Branch       string
+	fromArtifact bool
 }
 
 type prCache struct {
@@ -91,6 +94,26 @@ func prRepoSlug(raw string) string {
 		return ""
 	}
 	return strings.ToLower(host + "/" + repo)
+}
+
+func prRepoShort(raw string) string {
+	slug := prRepoSlug(raw)
+	if slug == "" {
+		return ""
+	}
+	if _, repo, ok := strings.Cut(slug, "/"); ok && repo != "" {
+		return repo
+	}
+	return slug
+}
+
+func prDisplayURL(raw string) string {
+	norm := normalizePRURL(raw)
+	if norm == "" {
+		return ""
+	}
+	norm = strings.TrimPrefix(norm, "https://")
+	return strings.TrimPrefix(norm, "http://")
 }
 
 func stripFencedCode(text string) string {
@@ -190,40 +213,6 @@ func extractPRURLs(text string) []string {
 		}
 	}
 	return out
-}
-
-func (a *App) sessionPRURLs(id string) []string {
-	s := a.sessionOf(id)
-	if s == nil {
-		return nil
-	}
-	var seen []string
-	add := func(text string) {
-		for _, u := range extractPRURLs(text) {
-			if !slices.Contains(seen, u) {
-				seen = append(seen, u)
-			}
-		}
-	}
-	s.ReadMessages(func(msgs []protocol.FactoryDroidMessage) {
-		for _, m := range msgs {
-			if m.Role != protocol.MessageRoleAssistant {
-				continue
-			}
-			for _, b := range m.Content {
-				if b.Type != protocol.ContentBlockTypeText {
-					continue
-				}
-				var tb struct {
-					Text string `json:"text"`
-				}
-				if json.Unmarshal(b.Raw, &tb) == nil {
-					add(tb.Text)
-				}
-			}
-		}
-	})
-	return seen
 }
 
 func findGitConfigPaths(dir string) []string {
@@ -450,16 +439,17 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 			}
 		}
 		type candidatePR struct {
-			url   string
-			title string
+			url          string
+			title        string
+			fromArtifact bool
 		}
 		var candidates []candidatePR
-		addCandidate := func(u, prTitle string, checkRemote bool) {
+		addCandidate := func(u, prTitle string, fromArtifact bool) {
 			norm := normalizePRURL(u)
 			if norm == "" {
 				return
 			}
-			if checkRemote && len(remotes) > 0 {
+			if len(remotes) > 0 {
 				if slug := prRepoSlug(norm); slug == "" || !remotes[slug] {
 					return
 				}
@@ -469,10 +459,13 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 					if candidates[i].title == "" && prTitle != "" {
 						candidates[i].title = prTitle
 					}
+					if fromArtifact {
+						candidates[i].fromArtifact = true
+					}
 					return
 				}
 			}
-			candidates = append(candidates, candidatePR{url: norm, title: prTitle})
+			candidates = append(candidates, candidatePR{url: norm, title: prTitle, fromArtifact: fromArtifact})
 		}
 		ids := []string{sid}
 		if ag.SessionID != "" && ag.SessionID != sid {
@@ -485,19 +478,14 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 			if sum := findSummary(listed, id); sum != nil {
 				for _, art := range sum.Artifacts {
 					if art.Kind == string(protocol.SessionArtifactKindPullRequest) {
-						addCandidate(art.URL, art.Title, false)
+						addCandidate(art.URL, art.Title, true)
 					}
 				}
 			}
 		}
 		if ag.LastReport != nil {
 			for _, u := range extractPRURLs(ag.LastReport.Text) {
-				addCandidate(u, "", true)
-			}
-		}
-		for _, id := range ids {
-			for _, u := range a.sessionPRURLs(id) {
-				addCandidate(u, "", true)
+				addCandidate(u, "", false)
 			}
 		}
 		for _, cand := range candidates {
@@ -506,13 +494,13 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 			}
 			seenURL[cand.url] = true
 			plan.fallback = append(plan.fallback, workstreamPR{
-				URL:        cand.url,
-				Number:     prNumberFromURL(cand.url),
-				Title:      cand.title,
-				State:      "open",
-				SessionID:  ag.SessionID,
-				AgentTitle: title,
-				Branch:     ag.Branch,
+				URL:          cand.url,
+				Number:       prNumberFromURL(cand.url),
+				Title:        cand.title,
+				State:        "open",
+				SessionID:    ag.SessionID,
+				AgentTitle:   title,
+				fromArtifact: cand.fromArtifact,
 			})
 			sub, err := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectURL{
 				Kind:      protocol.DaemonPullRequestSubjectKindURL,
@@ -552,7 +540,7 @@ func (a *App) loadWorkstreamPRs(ctx *wsContext, force bool) {
 	}
 	resolve := a.workstreams.resolvePRs
 	if resolve == nil && a.ctl == nil {
-		list, byAgent := mergeWorkstreamPRs(nil, plan.fallback, plan.agents, false)
+		list, byAgent := mergeWorkstreamPRs(nil, plan.fallback, plan.agents, true, nil)
 		pc.have, pc.wsID, pc.sig, pc.at = true, ctx.id, plan.sig, now
 		pc.list, pc.byAgent = list, byAgent
 		return
@@ -561,8 +549,6 @@ func (a *App) loadWorkstreamPRs(ctx *wsContext, force bool) {
 	shouldInvalidate := force || sigChanged
 	pc.reading = true
 	go func() {
-		var res *protocol.ResolvePullRequestStatusesResult
-		var err error
 		lookups := make([]protocol.DaemonPullRequestLookup, 0, len(plan.subjects))
 		for _, sub := range plan.subjects {
 			reason := protocol.DaemonPullRequestLookupReasonBranchResolved
@@ -582,23 +568,43 @@ func (a *App) loadWorkstreamPRs(ctx *wsContext, force bool) {
 			}
 			lookups = append(lookups, lookup)
 		}
-		params := protocol.ResolvePullRequestStatusesParams{Lookups: lookups}
-		if resolve != nil {
-			res, err = resolve(a.ctx, params)
-		} else {
-			cl, cerr := a.ctl.Client()
-			if cerr != nil {
-				err = cerr
-			} else {
-				res, err = cl.ResolvePullRequestStatuses(a.ctx, params)
+		var resolved []protocol.DaemonPullRequestStatusResult
+		failedURLs := map[string]bool{}
+		markBatchFailed := func(batch []protocol.DaemonPullRequestLookup) {
+			for _, lk := range batch {
+				if sv, err := lk.Subject.Value(); err == nil {
+					if u, ok := sv.(*protocol.DaemonPullRequestSubjectURL); ok {
+						if key := normalizePRURL(u.URL); key != "" {
+							failedURLs[key] = true
+						}
+					}
+				}
 			}
 		}
-		var resolved []protocol.DaemonPullRequestStatusResult
-		rpcOK := err == nil && res != nil
-		if rpcOK {
-			resolved = res.Statuses
+		var callFn func(protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error)
+		if resolve != nil {
+			callFn = func(p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+				return resolve(a.ctx, p)
+			}
+		} else if cl, cerr := a.ctl.Client(); cerr != nil {
+			markBatchFailed(lookups)
+		} else {
+			callFn = func(p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+				return cl.ResolvePullRequestStatuses(a.ctx, p)
+			}
 		}
-		list, byAgent := mergeWorkstreamPRs(resolved, plan.fallback, plan.agents, rpcOK)
+		if callFn != nil {
+			for i := 0; i < len(lookups); i += maxPRLookups {
+				batch := lookups[i:min(i+maxPRLookups, len(lookups))]
+				res, err := callFn(protocol.ResolvePullRequestStatusesParams{Lookups: batch})
+				if err == nil && res != nil {
+					resolved = append(resolved, res.Statuses...)
+				} else {
+					markBatchFailed(batch)
+				}
+			}
+		}
+		list, byAgent := mergeWorkstreamPRs(resolved, plan.fallback, plan.agents, false, failedURLs)
 		a.cfg.Update(func() {
 			pc.reading, pc.have = false, true
 			pc.wsID, pc.sig, pc.at = wsID, plan.sig, a.cfg.Now()
@@ -641,7 +647,7 @@ func resultAllowsURLFallback(r protocol.DaemonPullRequestStatusResult) (string, 
 	return "", false
 }
 
-func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallback []workstreamPR, agents map[string]prAgentMeta, rpcOK bool) ([]workstreamPR, map[string][]workstreamPR) {
+func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallback []workstreamPR, agents map[string]prAgentMeta, offline bool, failedURLs map[string]bool) ([]workstreamPR, map[string][]workstreamPR) {
 	byURL := map[string]workstreamPR{}
 	var order []string
 	upsert := func(pr workstreamPR) {
@@ -679,7 +685,7 @@ func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallba
 	for _, r := range results {
 		if pr, ok := prFromResult(r, agents); ok {
 			upsert(pr)
-		} else if rpcOK {
+		} else if !offline {
 			if key, ok := resultAllowsURLFallback(r); ok {
 				fallbackAllowed[key] = true
 			}
@@ -697,7 +703,7 @@ func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallba
 			}
 			continue
 		}
-		if !rpcOK || fallbackAllowed[key] {
+		if offline || fallbackAllowed[key] || (fb.fromArtifact && failedURLs[key]) {
 			upsert(fb)
 		}
 	}
@@ -717,19 +723,28 @@ func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallba
 
 func prFromResult(r protocol.DaemonPullRequestStatusResult, agents map[string]prAgentMeta) (workstreamPR, bool) {
 	var sid, subjURL string
+	isBranchSubject := false
 	if sv, err := r.Subject.Value(); err == nil {
 		switch s := sv.(type) {
 		case *protocol.DaemonPullRequestSubjectBranch:
 			sid = s.SessionID
+			isBranchSubject = true
 		case *protocol.DaemonPullRequestSubjectURL:
 			sid, subjURL = s.SessionID, s.URL
 		}
 	}
+	if isBranchSubject && r.IsDefaultBranch != nil && *r.IsDefaultBranch {
+		return workstreamPR{}, false
+	}
 	meta := agents[sid]
+	branch := r.Branch
+	if isBranchSubject && branch == "" {
+		branch = meta.branch
+	}
 	pr := workstreamPR{
 		SessionID:  cmp.Or(meta.tab, sid),
 		AgentTitle: meta.title,
-		Branch:     cmp.Or(r.Branch, meta.branch),
+		Branch:     branch,
 	}
 	if r.Record != nil {
 		st := string(r.Record.State)
@@ -887,11 +902,18 @@ func (a *App) prRow(c *ui.Context, pr workstreamPR) {
 	if pr.Number > 0 {
 		num = "#" + strconv.Itoa(pr.Number)
 	}
-	heading := cmp.Or(pr.Title, pr.Branch, pr.URL)
-	if num != "" && pr.Title != "" {
+	var heading string
+	switch {
+	case num != "" && pr.Title != "":
 		heading = num + " " + pr.Title
-	} else if num != "" {
-		heading = num + " · " + heading
+	case pr.Title != "":
+		heading = pr.Title
+	case num != "" && prRepoShort(pr.URL) != "":
+		heading = prRepoShort(pr.URL) + num
+	case prDisplayURL(pr.URL) != "":
+		heading = prDisplayURL(pr.URL)
+	default:
+		heading = cmp.Or(num, pr.Branch, L("PR"))
 	}
 	var subParts []string
 	subParts = append(subParts, statusLabel)
