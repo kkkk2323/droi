@@ -885,8 +885,8 @@ func TestWorkstreamSettingsAgentReasoningLevelsAndQueuedSave(t *testing.T) {
 		return len(settings) == 2 && settings[1].AgentModel == "gpt-5" && settings[1].AgentReasoningEffort == "xhigh"
 	})
 	h.settle()
-	// Also verify the Agent reasoning dropdown exposes Extra high in UI.
-	h.click("Agent reasoning")
-	h.until("xhigh option", func() bool { return h.finds("Extra high") })
+	// Also verify the Agent reasoning dropdown opens and exposes Extra high in UI.
+	h.click("Agent reasoning level")
+	h.until("xhigh option", func() bool { return h.hasText("Low") && h.hasText("Extra high") })
 	h.shot("workstream-settings-reasoning")
 }

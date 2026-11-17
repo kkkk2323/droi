@@ -490,7 +490,7 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 				a.settingsRow(c, L("Orchestrator reasoning"), L("Reasoning level for the orchestrator."), func() {
 					opts := effortOptions(orchEfforts)
 					cur := cmp.Or(orchEffort, models.DefaultReasoningEffortOf(choices, orchModel))
-					if next, ok := a.kit.FieldSelect(c, L("Orchestrator reasoning"), cur, opts, orch == ""); ok {
+					if next, ok := a.kit.FieldSelect(c, L("Orchestrator reasoning level"), cur, opts, orch == ""); ok {
 						setOrch(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(next)})
 					}
 				})
@@ -514,7 +514,7 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 				if agentEffort != "" {
 					cur = agentEffort
 				}
-				if next, ok := a.kit.FieldSelect(c, L("Agent reasoning"), cur, opts, w == nil); ok {
+				if next, ok := a.kit.FieldSelect(c, L("Agent reasoning level"), cur, opts, w == nil); ok {
 					if next == inheritEffort {
 						next = ""
 					}

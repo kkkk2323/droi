@@ -258,8 +258,8 @@ func TestWorkstreamShotsForTheReview(t *testing.T) {
 			_, settings, _ := fake.calls()
 			return len(settings) == 1 && settings[0].AgentReasoningEffort == "xhigh"
 		})
-		h.click("Agent reasoning")
-		h.until("xhigh menu", func() bool { return h.finds("Low") && h.finds("Extra high") })
+		h.click("Agent reasoning level")
+		h.until("xhigh menu", func() bool { return h.hasText("Low") && h.hasText("Extra high") })
 		h.shot("workstream-sync-06-settings-reasoning")
 	})
 	t.Run("sync 07 transcript activity and rename", func(t *testing.T) {
