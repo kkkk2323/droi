@@ -73,6 +73,9 @@ type Coordinator struct {
 	claimed map[string]bool
 	// starting are the agents spawn_agent is making Sessions for.
 	starting []*starting
+	// failedTurns counts consecutive failed turns per agent until a turn
+	// completes or the agent successfully reports.
+	failedTurns map[*Agent]int
 
 	// subsMu guards the subscribers of OnChange, which dirty tells to be
 	// called.
@@ -93,7 +96,7 @@ func New(cfg Config) *Coordinator {
 	c := &Coordinator{
 		cfg: cfg, links: newLineage(cfg.SessionsDir), all: loadAll(cfg.Dir, cfg.Log), activity: map[string]time.Time{},
 		queue: map[*Agent]chan struct{}{}, news: map[string]chan struct{}{}, claimed: map[string]bool{},
-		subs: map[int]func(){}, dirty: make(chan struct{}, 1),
+		failedTurns: map[*Agent]int{}, subs: map[int]func(){}, dirty: make(chan struct{}, 1),
 	}
 	c.life, c.end = context.WithCancel(context.Background())
 	c.unsubscribe = cfg.Sessions.Subscribe(c.hear)
@@ -386,11 +389,11 @@ func (c *Coordinator) sendGoal(ctx context.Context, orch, goal string) error {
 }
 
 func orchestratorHidden() []string {
-	return append(slices.Clone(automationwork.FactoryAutomationTools), hostToolsSelector(ToolReport)...)
+	return slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools, hostToolsSelector(ToolReport))
 }
 
 func agentHidden() []string {
-	return append(slices.Clone(automationwork.FactoryAutomationTools), hostToolsSelector(orchestratorTools...)...)
+	return slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools, hostToolsSelector(orchestratorTools...))
 }
 
 // orchestratorTag is w's orchestrator's droi.workstream tag; under c.mu or
@@ -985,7 +988,51 @@ func (c *Coordinator) report(ctx context.Context, w *Workstream, a *Agent, kind,
 	c.save(w)
 	title, id := a.Title, a.SessionID
 	c.mu.Unlock()
-	return c.send(ctx, c.newest(ctx, w, nil), orchestratorHidden(), reportMessage(title, id, kind, text))
+	if err := c.send(ctx, c.newest(ctx, w, nil), orchestratorHidden(), reportMessage(title, id, kind, text)); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	delete(c.failedTurns, a)
+	c.mu.Unlock()
+	return nil
+}
+
+// renameAgent changes an agent's title when its area of responsibility
+// changes, refusing if the user already renamed it in a client. Run in the
+// agent's line of work.
+func (c *Coordinator) renameAgent(ctx context.Context, w *Workstream, a *Agent, newTitle string) (string, error) {
+	id := c.newest(ctx, w, a)
+	c.mu.Lock()
+	oldTitle, userRenamed := a.Title, a.UserRenamed
+	c.mu.Unlock()
+
+	s, err := c.follow(ctx, id, agentHidden())
+	if err != nil {
+		if userRenamed {
+			return "", fmt.Errorf("The user renamed agent %q (%s), so its title stays.", oldTitle, id)
+		}
+		if hostsession.IsSessionNotFound(err) {
+			return "", fmt.Errorf("Agent %q (%s) is no longer in the Daemon.", oldTitle, id)
+		}
+		return "", fmt.Errorf("The agent was not renamed: %v", err)
+	}
+	live := cleanTitle(s.Title())
+	if userRenamed || (live != "" && live != oldTitle) {
+		currentTitle := cmp.Or(live, oldTitle)
+		c.update(w, func() {
+			a.Title = currentTitle
+			a.UserRenamed = true
+		})
+		return "", fmt.Errorf("The user renamed agent %q (%s), so its title stays.", currentTitle, id)
+	}
+	if newTitle == oldTitle {
+		return fmt.Sprintf("Agent %q (%s) already has that title.", newTitle, id), nil
+	}
+	if err := c.cfg.Sessions.Rename(ctx, id, newTitle); err != nil {
+		return "", fmt.Errorf("The agent was not renamed: %v", err)
+	}
+	c.update(w, func() { a.Title = newTitle })
+	return fmt.Sprintf("Renamed agent %q (%s) (was %q).", newTitle, id, oldTitle), nil
 }
 
 // interrupt stops an agent's turn, which the orchestrator then no longer
@@ -1032,7 +1079,10 @@ func (c *Coordinator) archiveAgent(ctx context.Context, w *Workstream, a *Agent)
 	if err := c.archiveLinks(ctx, earlier); err != nil {
 		return removed, kept, err
 	}
-	c.update(w, func() { a.ArchivedAt = c.now() })
+	c.update(w, func() {
+		a.ArchivedAt = c.now()
+		delete(c.failedTurns, a)
+	})
 	return removed, kept, nil
 }
 
@@ -1209,16 +1259,27 @@ func (c *Coordinator) turnEnded(e hostsession.TurnEnded) {
 	if working(c.cfg.Sessions.Session(e.SessionID)) {
 		return
 	}
+	var (
+		awaiting, reported bool
+		title, advice      string
+	)
 	c.mu.Lock()
-	awaiting, reported := a.Awaiting, a.ReportedSinceMessage
+	awaiting, reported = a.Awaiting, a.ReportedSinceMessage
 	a.Awaiting = false
+	switch {
+	case isFailureCompletion(e.Reason):
+		c.failedTurns[a]++
+		advice = failureGuidance(e.Reason, c.failedTurns[a])
+	case e.Reason == protocol.AgentTurnCompletionReasonCompleted || e.Reason == protocol.AgentTurnCompletionReasonSpecHandoff:
+		delete(c.failedTurns, a)
+	}
 	c.save(w)
-	title := a.Title
+	title = a.Title
 	c.mu.Unlock()
 	ctx, cancel := context.WithTimeout(c.life, time.Minute)
 	defer cancel()
 	failed := e.Reason != protocol.AgentTurnCompletionReasonCompleted
-	if msg := endNotice(title, e.SessionID, turnReason(e), failed, reported, e.LastReply); awaiting && msg != "" {
+	if msg := endNotice(title, e.SessionID, turnReason(e), failed, reported, advice, e.LastReply); awaiting && msg != "" {
 		if err := c.send(ctx, c.newest(ctx, w, nil), orchestratorHidden(), msg); err != nil {
 			c.cfg.Log("telling the orchestrator of agent " + e.SessionID + ": " + err.Error())
 		}
@@ -1309,7 +1370,7 @@ func (c *Coordinator) resumeAgent(ctx context.Context, w *Workstream, a *Agent) 
 	if s != nil {
 		reply = lastReply(s)
 	}
-	if err := c.send(ctx, orch, orchestratorHidden(), endNotice(title, id, restartReason, true, reported, reply)); err != nil {
+	if err := c.send(ctx, orch, orchestratorHidden(), endNotice(title, id, restartReason, true, reported, "", reply)); err != nil {
 		c.cfg.Log("telling the orchestrator of agent " + id + ": " + err.Error())
 	}
 }
