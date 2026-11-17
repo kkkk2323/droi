@@ -184,3 +184,66 @@ func TestDecodeChoices(t *testing.T) {
 		t.Errorf("DecodeChoices = %+v", got)
 	}
 }
+
+func TestReasoningEffortsOfIncludesCustomAndXHighMax(t *testing.T) {
+	custom := true
+	choices := ToChoices([]protocol.ModelMetadata{
+		{
+			ID:                        "auto",
+			DisplayName:               "Auto",
+			Kind:                      "router",
+			SupportedReasoningEfforts: []protocol.ReasoningEffort{"none"},
+		},
+		{
+			ID:                        "gpt-5.3-codex",
+			DisplayName:               "GPT-5.3 Codex",
+			ModelProvider:             "openai",
+			SupportedReasoningEfforts: []protocol.ReasoningEffort{"low", "medium", "high", "xhigh"},
+			DefaultReasoningEffort:    "medium",
+		},
+		{
+			ID:                        "claude-opus-4-6",
+			DisplayName:               "Claude Opus 4.6",
+			ModelProvider:             "anthropic",
+			SupportedReasoningEfforts: []protocol.ReasoningEffort{"off", "low", "medium", "high", "max"},
+			DefaultReasoningEffort:    "high",
+		},
+		{
+			ID:                        "custom:magpie-codex-gpt-5-3-codex-0a1b2c",
+			DisplayName:               "Magpie · GPT-5.3 Codex",
+			ModelProvider:             "generic-chat-completion-api",
+			IsCustom:                  &custom,
+			SupportedReasoningEfforts: []protocol.ReasoningEffort{"off", "low", "medium", "high"},
+		},
+		{
+			ID:                        "custom:my-opus-4-6",
+			DisplayName:               "My Opus 4.6",
+			ModelProvider:             "anthropic",
+			IsCustom:                  &custom,
+			BehavesLikeModelID:        "claude-opus-4-6",
+			SupportedReasoningEfforts: []protocol.ReasoningEffort{"low", "medium", "high"},
+		},
+		{
+			ID:                        "custom:plain-chat",
+			DisplayName:               "Plain Chat",
+			ModelProvider:             "generic-chat-completion-api",
+			IsCustom:                  &custom,
+			SupportedReasoningEfforts: []protocol.ReasoningEffort{"none"},
+		},
+	})
+	if got, want := ReasoningEffortsOf(choices, "gpt-5.3-codex"), []string{"low", "medium", "high", "xhigh"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("builtin codex efforts = %v, want %v", got, want)
+	}
+	if got, want := DefaultReasoningEffortOf(choices, "claude-opus-4-6"), "high"; got != want {
+		t.Errorf("default effort = %q, want %q", got, want)
+	}
+	if got, want := ReasoningEffortsOf(choices, "custom:magpie-codex-gpt-5-3-codex-0a1b2c"), []string{"off", "low", "medium", "high", "xhigh"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("magpie codex efforts = %v, want %v", got, want)
+	}
+	if got, want := ReasoningEffortsOf(choices, "custom:my-opus-4-6"), []string{"off", "low", "medium", "high", "max"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("behavesLike opus efforts = %v, want %v", got, want)
+	}
+	if got, want := ReasoningEffortsOf(choices, "custom:plain-chat"), []string{"none"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("non-reasoning custom efforts = %v, want %v", got, want)
+	}
+}

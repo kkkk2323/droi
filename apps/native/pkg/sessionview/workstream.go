@@ -123,6 +123,16 @@ func (v *View) workstreamRow(c *ui.Context, call *transcript.ToolCall, tool stri
 		if failure != "" {
 			r.panel = plain(failure)
 		}
+	case transcript.ToolRenameAgent:
+		r.icon = "pencil"
+		if r.state != transcript.CallFailed {
+			if next, _ := call.Input["title"].(string); strings.TrimSpace(next) != "" {
+				r.line = transcript.WorkstreamLine(call, tool, strings.TrimSpace(next))
+			}
+		}
+		if failure != "" {
+			r.panel = plain(failure)
+		}
 	case transcript.ToolArchiveAgent:
 		r.icon = "archive"
 		if text := transcript.ResultText(call.Result); text != "" {
@@ -289,18 +299,82 @@ func (v *View) lifted(b transcript.Block) bool {
 }
 
 // groupHeader is the line over a run of calls done to several agents: what
-// was done to how many, with a spinner while any call runs.
-func (v *View) groupHeader(c *ui.Context, call *transcript.ToolCall, label string) {
+// was done to how many. Clicking it folds or unfolds the group's calls.
+func (v *View) groupHeader(c *ui.Context, groupKey string, call *transcript.ToolCall, label string) {
 	k, t := v.look()
 	tool, _ := transcript.WorkstreamTool(call)
 	icon := map[string]string{
 		transcript.ToolSpawnAgent: "bot", transcript.ToolSendMessage: "send",
-		transcript.ToolInterruptAgent: "square", transcript.ToolArchiveAgent: "archive",
+		transcript.ToolInterruptAgent: "square", transcript.ToolRenameAgent: "pencil",
+		transcript.ToolArchiveAgent: "archive",
 	}[tool]
-	ui.Row(c).Role(ui.RoleStatus).Label(label).Height(k.Px(24)).Gap(k.Px(6)).AlignItems(ui.Center).Children(func() {
-		k.Icon(c, icon, 12, t.MutedForeground)
-		k.Text(c, label, 12, 16).FontWeight(500).TextColor(t.MutedForeground).SingleLine()
+	open := v.flag("wsgroup:"+groupKey, true)
+	tr := ui.ButtonBase(c).Label(label).Expanded(*open).AlignSelf(ui.Start).Height(k.Px(24)).Gap(k.Px(6)).PaddingX(k.Px(6)).
+		Margin(0, 0, 0, -k.Px(6)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+	color := t.MutedForeground
+	hovered := tr.Hovered() || tr.Focused()
+	if hovered {
+		color = t.Foreground
+	}
+	tr.Children(func() {
+		k.Icon(c, icon, 12, color)
+		k.Text(c, label, 12, 16).FontWeight(500).TextColor(color).SingleLine()
+		rot := float32(0)
+		if *open {
+			rot = 90
+		}
+		ch := k.Icon(c, "chevron-right", 12, color).Rotate(rot)
+		if *open && !hovered {
+			ch.Opacity(0)
+		}
 	})
+	if tr.Clicked() {
+		*open = !*open
+		v.rowsGen++
+		v.hold()
+	}
+}
+
+// activitySegmentRow is the trigger of a folded run of thinking and regular
+// tool calls in a Workstream orchestrator's transcript.
+func (v *View) activitySegmentRow(c *ui.Context, r transcriptRow) {
+	k, t := v.look()
+	open := v.flag(r.key, false)
+	label := l10n.L("Activity · %d events", r.segEvents)
+	if r.segWorking {
+		label = l10n.L("Working · %d events", r.segEvents)
+	}
+	accLabel := label
+	var failedLabel string
+	if r.segFailed > 0 {
+		failedLabel = l10n.L("%d failed", r.segFailed)
+		accLabel = label + ", " + failedLabel
+	}
+	tr := ui.ButtonBase(c).Label(accLabel).Expanded(*open).AlignSelf(ui.Start).Height(k.Px(24)).Gap(k.Px(6)).PaddingX(k.Px(6)).
+		Margin(0, 0, 0, -k.Px(6)).Radius(k.Px(8)).Cursor(ui.CursorPointer)
+	color := t.MutedForeground
+	if tr.Hovered() || tr.Focused() {
+		color = t.Foreground
+	}
+	tr.Children(func() {
+		if r.segWorking {
+			k.Spinner(c, 12, color)
+		}
+		k.Text(c, label, 12, 16).FontWeight(500).TextColor(color).SingleLine()
+		if failedLabel != "" {
+			k.Text(c, failedLabel, 11.5, 16).TextColor(t.DestructiveForeground).FontFeatures("tnum").SingleLine()
+		}
+		rot := float32(0)
+		if *open {
+			rot = 90
+		}
+		k.Icon(c, "chevron-right", 12, color).Rotate(rot)
+	})
+	if tr.Clicked() {
+		*open = !*open
+		v.rowsGen++
+		v.hold()
+	}
 }
 
 // agentMessageCard is a message the Host gave the orchestrator for an agent's

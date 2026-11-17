@@ -1,8 +1,13 @@
 package app
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
@@ -298,6 +303,9 @@ func TestAgentTabsClose(t *testing.T) {
 	if st := h.a.wsState("ws-1"); len(st.Tabs) != 2 || st.Active != "agent-2" {
 		t.Fatalf("state %+v", st)
 	}
+	// Hide the side panel so both tabs stand side by side at readable width.
+	h.click("Hide panel")
+	h.until("the panel gone", func() bool { return h.finds("Show panel") })
 	// The first tab's menu closes what is to its right.
 	h.tabMenu("gRPC endpoints", "Close tabs to the right")
 	h.until("one tab", func() bool { return len(h.a.wsState("ws-1").Tabs) == 1 })
@@ -472,4 +480,431 @@ func TestWorkstreamSettingsSaveTheAgentModel(t *testing.T) {
 		_, settings, _ := fake.calls()
 		return len(settings) == 1 && settings[0].AgentModel == "claude-sonnet-5-5"
 	})
+}
+
+// Many open agent tabs stay readable in a scrollable strip without shrinking
+// the orchestrator tab or pushing the bar's action buttons off-screen.
+func TestAgentTabsScrollHorizontallyWhenOverflowing(t *testing.T) {
+	sc := workstreamsScenario()
+	w := paymentWorkstream()
+	for i := 4; i <= 7; i++ {
+		id := fmt.Sprintf("agent-%d", i)
+		title := fmt.Sprintf("Worker %d", i)
+		sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{
+			Title: title, Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
+			Extra: map[string]any{"sessionId": id, "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1")}},
+		})
+		w.Agents = append(w.Agents, gateway.WorkstreamAgent{SessionID: id, Title: title, CreatedAt: w.CreatedAt})
+	}
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	h.openOrchestrator()
+	h.until("agent rows", func() bool { return h.finds("Worker 7, Idle") })
+	for _, id := range []string{"agent-1", "agent-2", "agent-4", "agent-5", "agent-6", "agent-7"} {
+		h.a.openAgent("ws-1", id)
+		h.frame()
+	}
+	h.settle()
+	orch, ok := h.tt.Find("Payment migration lead")
+	if !ok || orch.W < 100 {
+		t.Fatalf("orchestrator tab missing or crushed: %+v", orch)
+	}
+	settingsBtn, ok := h.tt.Find("Workstream settings")
+	if !ok || settingsBtn.X+settingsBtn.W > refW {
+		t.Fatalf("settings button pushed out of view: %+v", settingsBtn)
+	}
+	lastTab, ok := h.tt.Find("Close Worker 7")
+	if !ok || lastTab.W == 0 {
+		t.Fatalf("scrolled active tab close button not visible: %+v", lastTab)
+	}
+}
+
+// Sidebar rows allow inline renaming via context menu (Enter saves, Escape
+// cancels) and inline symbol picking without breaking row navigation.
+func TestSidebarWorkstreamRenameAndInlineSymbolPicker(t *testing.T) {
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}
+	h := workstreamsHarness(t, fake, nil)
+	h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+
+	// Inline symbol picker on the row's icon button.
+	h.click("Change symbol for Payment migration lead")
+	h.until("the symbol grid", func() bool { return h.finds("Workstream symbol: target") })
+	h.click("Workstream symbol: target")
+	h.until("the symbol edit", func() bool {
+		for _, e := range fake.edited() {
+			if e.Symbol != nil && *e.Symbol == "target" && e.Title == nil {
+				return true
+			}
+		}
+		return false
+	})
+
+	// Escape cancels inline rename without sending an edit.
+	if err := h.tt.RightClick("Payment migration lead"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if err := h.tt.ChooseMenuItem("Rename"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	h.until("rename input", func() bool { return h.finds("Workstream name") })
+	h.tt.Key(0, ui.KeyEscape)
+	h.frame()
+	if h.finds("Workstream name") {
+		t.Fatal("rename input stayed after Escape")
+	}
+
+	// Enter commits inline rename.
+	if err := h.tt.RightClick("Payment migration lead"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	if err := h.tt.ChooseMenuItem("Rename"); err != nil {
+		t.Fatal(err)
+	}
+	h.frame()
+	h.replaceText("Workstream name", "Checkout v2")
+	h.tt.Key(0, ui.KeyEnter)
+	h.until("the name edit", func() bool {
+		for _, e := range fake.edited() {
+			if e.Title != nil && *e.Title == "Checkout v2" && e.Symbol == nil {
+				return true
+			}
+		}
+		return false
+	})
+
+	// Clicking the row title still navigates to the orchestrator page.
+	h.click("Payment migration lead")
+	h.until("the orchestrator page", func() bool { return h.finds("Workstream tabs") })
+}
+
+// Focused rows in the Agents panel navigate with ArrowUp, ArrowDown, Home and
+// End while previewing the corresponding agent tab.
+func TestAgentsPanelKeyboardNavigation(t *testing.T) {
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.until("rows", func() bool { return h.finds("gRPC endpoints, Idle") && h.finds("Client switch, Idle") })
+
+	// Move keyboard focus via Tab until it lands on the first visible Agent row.
+	for range 80 {
+		if h.tt.Focused("Client switch, Idle") {
+			break
+		}
+		h.tt.Key(0, ui.KeyTab)
+		h.frame()
+	}
+	if !h.tt.Focused("Client switch, Idle") {
+		t.Fatal("could not tab to first agent row")
+	}
+
+	h.tt.Key(0, ui.KeyDown)
+	h.until("second agent focused and opened", func() bool {
+		return h.tt.Focused("gRPC endpoints, Idle") && h.a.wsState("ws-1").Active == "agent-1"
+	})
+	// Focus must stay on the panel list rather than jumping to the newly opened tab's composer.
+	h.settle()
+	if !h.tt.Focused("gRPC endpoints, Idle") {
+		t.Fatal("composer stole focus after keyboard navigation")
+	}
+
+	h.tt.Key(0, ui.KeyUp)
+	h.until("first agent focused and opened", func() bool {
+		return h.tt.Focused("Client switch, Idle") && h.a.wsState("ws-1").Active == "agent-2"
+	})
+	h.tt.Key(0, ui.KeyEnd)
+	h.until("end agent", func() bool { return h.tt.Focused("gRPC endpoints, Idle") })
+	h.tt.Key(0, ui.KeyHome)
+	h.until("home agent", func() bool { return h.tt.Focused("Client switch, Idle") })
+}
+
+// The Goal tab shows an empty state when no plan exists, then renders
+// plan.md (or promise.md fallback) from the shared folder.
+func TestGoalTabShowsPlanMarkdownAndEmptyState(t *testing.T) {
+	dir := t.TempDir()
+	w := paymentWorkstream()
+	w.SharedFolder = dir
+	clock := &movedClock{}
+	openedCh := make(chan string, 1)
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, func(cfg *Config) {
+		cfg.Now = clock.now
+		cfg.OpenPath = func(p string) error { openedCh <- p; return nil }
+	})
+	h.openOrchestrator()
+	h.click("Goal")
+	h.until("empty state", func() bool { return h.hasText("No plan yet") })
+
+	planPath := filepath.Join(dir, "plan.md")
+	if err := os.WriteFile(planPath, []byte("# Migration Plan\n\n- Step one\n- Step two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clock.move(2 * time.Second)
+	h.until("plan rendered", func() bool {
+		return h.hasText("plan.md") && h.hasText("Migration Plan") && h.hasText("Step one")
+	})
+
+	h.click("Open plan.md")
+	select {
+	case got := <-openedCh:
+		if got != planPath {
+			t.Fatalf("opened = %q, want %q", got, planPath)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for OpenPath(%q)", planPath)
+	}
+
+	// Removing plan.md falls back to promise.md when present.
+	if err := os.Remove(planPath); err != nil {
+		t.Fatal(err)
+	}
+	promisePath := filepath.Join(dir, "promise.md")
+	if err := os.WriteFile(promisePath, []byte("## Promise\n\nAll tests stay green.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clock.move(2 * time.Second)
+	h.until("promise rendered", func() bool {
+		return h.hasText("promise.md") && h.hasText("All tests stay green.")
+	})
+}
+
+// §5.1: Agent tabs clip inside their scrollable strip and never overlap the
+// right-side action buttons even when subagent and git controls narrow the bar.
+func TestAgentTabsClipAndNeverOverlapRightToolbar(t *testing.T) {
+	sc := workstreamsScenario()
+	sc.Sessions = append(sc.Sessions,
+		fakedaemon.SessionSpec{
+			Title: "Orch subagent task", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
+			Extra: map[string]any{
+				"sessionId": "sub-orch-1",
+				"subagent": map[string]any{
+					"callingSessionId": "orch-1", "callingToolUseId": "toolu_osub1",
+					"subagentType": "worker", "description": "Orch subagent task", "status": "completed",
+				},
+			},
+		},
+		fakedaemon.SessionSpec{
+			Title: "Subagent task", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
+			Extra: map[string]any{
+				"sessionId": "sub-1",
+				"subagent": map[string]any{
+					"callingSessionId": "agent-7", "callingToolUseId": "toolu_sub1",
+					"subagentType": "worker", "description": "Subagent task", "status": "completed",
+				},
+			},
+		},
+	)
+	w := paymentWorkstream()
+	for i := 4; i <= 7; i++ {
+		id := fmt.Sprintf("agent-%d", i)
+		title := fmt.Sprintf("Very long worker tab %d", i)
+		sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{
+			Title: title, Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
+			Extra: map[string]any{"sessionId": id, "tags": []map[string]any{workstreamTag("ws-1", sessions.WorkstreamAgent, "orch-1")}},
+		})
+		w.Agents = append(w.Agents, gateway.WorkstreamAgent{SessionID: id, Title: title, CreatedAt: w.CreatedAt})
+	}
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	h.openOrchestrator()
+	h.until("agent rows", func() bool { return h.finds("Very long worker tab 7, Idle") })
+	for _, id := range []string{"agent-1", "agent-2", "agent-4", "agent-5", "agent-6", "agent-7"} {
+		h.a.openAgent("ws-1", id)
+		h.frame()
+	}
+	h.settle()
+	subBtn, ok := h.tt.Find("1 subagent")
+	if !ok {
+		t.Fatalf("expected subagent toolbar button, got none")
+	}
+	tabList, ok := h.tt.Find("Workstream tabs")
+	if !ok {
+		t.Fatalf("expected Workstream tabs")
+	}
+	if tabList.X+tabList.W > subBtn.X+1 {
+		t.Fatalf("tabList (%+v) overlaps subagent toolbar button (%+v)", tabList, subBtn)
+	}
+	if !h.finds("Orchestrator subagents") {
+		t.Fatalf("expected top-level Orchestrator subagents group in panel")
+	}
+	h.shot("workstream-tabs-clipped")
+}
+
+// §5.2 & §5.3: Worker Task subagents stay collapsed by default under their owning
+// Worker row, expand on click to jump to the subagent session, and every agent
+// state + group header renders its status icon.
+func TestWorkerSubagentsCollapsedByDefaultAndAllStateIcons(t *testing.T) {
+	sc := workstreamsScenario()
+	sc.Sessions = append(sc.Sessions,
+		fakedaemon.SessionSpec{
+			Title: "Trace RPC layer", Cwd: "/Users/dev/pay-worktrees/grpc", Messages: []fakedaemon.Message{{Role: "user", Text: "trace"}},
+			Extra: map[string]any{
+				"sessionId": "sub-w1",
+				"subagent": map[string]any{
+					"callingSessionId": "agent-1", "callingToolUseId": "toolu_w1",
+					"subagentType": "worker", "description": "Trace RPC layer", "status": "completed",
+				},
+			},
+		},
+		fakedaemon.SessionSpec{
+			Title: "Check TLS certs", Cwd: "/Users/dev/pay-worktrees/grpc", Messages: []fakedaemon.Message{{Role: "user", Text: "tls"}},
+			Extra: map[string]any{
+				"sessionId": "sub-w2",
+				"subagent": map[string]any{
+					"callingSessionId": "agent-1", "callingToolUseId": "toolu_w2",
+					"subagentType": "worker", "description": "Check TLS certs", "status": "completed",
+				},
+			},
+		},
+	)
+	w := paymentWorkstream()
+	at := time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339)
+	w.Agents = append(w.Agents, gateway.WorkstreamAgent{
+		SessionID: "agent-blocked", Title: "Blocked worker", Branch: "droi/blocked", CreatedAt: at,
+		LastReport: &gateway.WorkstreamReport{Kind: "blocked", Text: "Waiting on schema", At: at},
+	})
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	h.openOrchestrator()
+	h.until("subagent toggle", func() bool { return h.finds("gRPC endpoints, 2 subagents") })
+	if h.finds("Trace RPC layer, Subagent") {
+		t.Fatal("worker subagents should start collapsed by default")
+	}
+	// All visible state icons have clear accessible status labels.
+	for _, want := range []string{"Done", "Blocked", "Idle"} {
+		if !h.finds(want) {
+			t.Fatalf("missing agent status icon label %q", want)
+		}
+	}
+	h.click("Archived")
+	h.until("archived icon", func() bool { return h.finds("Archived") })
+
+	// Expanding worker subagents reveals them and allows opening one.
+	h.click("gRPC endpoints, 2 subagents")
+	h.until("expanded subagent", func() bool { return h.finds("Trace RPC layer, Subagent") })
+	h.shot("workstream-subagents-expanded")
+	h.click("Trace RPC layer, Subagent")
+	h.until("navigated to subagent", func() bool { return h.a.Route().SessionID == "sub-w1" })
+}
+
+// §5.4: Files panel organizes the shared folder into a collapsible tree (folders
+// collapsed by default, auto-expanded while searching).
+func TestFilesPanelRendersCollapsibleFolderTree(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "perf", "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "perf", "data", "metrics.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "perf", "report.md"), []byte("# Perf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	w := paymentWorkstream()
+	w.SharedFolder = dir
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	h.openOrchestrator()
+	h.click("Files")
+	h.until("tree root", func() bool { return h.finds("perf") && h.finds("readme.txt") })
+	if h.finds(filepath.Join("perf", "report.md")) || h.finds(filepath.Join("perf", "data", "metrics.json")) {
+		t.Fatal("nested files should stay hidden while folder is collapsed")
+	}
+	h.shot("workstream-files-tree-collapsed")
+
+	h.click("perf")
+	h.until("perf expanded", func() bool { return h.finds("data") && h.finds(filepath.Join("perf", "report.md")) })
+	h.click("data")
+	h.until("data expanded", func() bool { return h.finds(filepath.Join("perf", "data", "metrics.json")) })
+
+	// Collapse perf again, then verify searching auto-expands matching directories.
+	h.click("perf")
+	h.until("perf collapsed", func() bool { return !h.finds(filepath.Join("perf", "report.md")) })
+	h.click("Search files")
+	h.tt.Type("metrics")
+	h.until("search auto-expanded", func() bool { return h.finds(filepath.Join("perf", "data", "metrics.json")) })
+}
+
+// §5.5: PRs tab and clickable Agent row PR badges resolve statuses from the
+// Daemon and fall back to PR URLs in agent reports.
+func TestPRsTabAndAgentRowBadges(t *testing.T) {
+	w := paymentWorkstream()
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: "Opened https://github.com/acme/pay/pull/219 for review.",
+		At:   w.CreatedAt,
+	}
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	num219 := float64(219)
+	num210 := float64(210)
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		sub1, _ := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectURL{
+			Kind: protocol.DaemonPullRequestSubjectKindURL, SessionID: "agent-1", URL: "https://github.com/acme/pay/pull/219",
+		})
+		sub2, _ := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectBranch{
+			Kind: protocol.DaemonPullRequestSubjectKindBranch, SessionID: "agent-2",
+		})
+		return &protocol.ResolvePullRequestStatusesResult{
+			Statuses: []protocol.DaemonPullRequestStatusResult{
+				{
+					Subject: sub1,
+					Branch:  "droi/grpc-endpoints",
+					Record: &protocol.DaemonPullRequestRecord{
+						State:  protocol.DaemonPullRequestStateOpen,
+						URL:    "https://github.com/acme/pay/pull/219",
+						Title:  "Migrate gRPC endpoints",
+						Number: &num219,
+					},
+				},
+				{
+					Subject: sub2,
+					Branch:  "droi/client-switch",
+					Record: &protocol.DaemonPullRequestRecord{
+						State:  protocol.DaemonPullRequestStateMerged,
+						URL:    "https://github.com/acme/pay/pull/210",
+						Title:  "Switch client adapter",
+						Number: &num210,
+					},
+				},
+			},
+		}, nil
+	}
+	h.openOrchestrator()
+	h.until("agent PR badge", func() bool {
+		return h.finds("Pull request #219, Open") && h.finds("Pull request #210, Merged")
+	})
+	h.click("PRs")
+	h.until("PRs list", func() bool {
+		return h.hasText("#219 Migrate gRPC endpoints") && h.hasText("#210 Switch client adapter")
+	})
+	h.shot("workstream-prs-tab")
+}
+
+// §5.6: Workstream settings exposes separate Orchestrator/Agent reasoning level
+// selects (including Extra high / xhigh) and queues rapid saves instead of
+// dropping them while another save is in flight.
+func TestWorkstreamSettingsAgentReasoningLevelsAndQueuedSave(t *testing.T) {
+	gate := make(chan struct{})
+	fake := &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}, setGate: gate}
+	h := workstreamsHarness(t, fake, nil)
+	h.openOrchestrator()
+	h.click("Workstream settings")
+	h.until("settings dialog", func() bool { return h.finds("Orchestrator model") && h.finds("Agent reasoning") })
+	if h.finds("Orchestrator reasoning") {
+		t.Fatal("Auto Model only supports none and should hide Orchestrator reasoning")
+	}
+
+	// Pick GPT-5 as Agent model, then pick Extra high (xhigh) from Agent reasoning.
+	h.a.saveAgentModel("ws-1", "gpt-5", "")
+	// While the first save is blocked on gate, trigger a second change to xhigh.
+	h.a.saveAgentModel("ws-1", "gpt-5", "xhigh")
+	close(gate)
+	h.until("queued xhigh saved", func() bool {
+		_, settings, _ := fake.calls()
+		return len(settings) == 2 && settings[1].AgentModel == "gpt-5" && settings[1].AgentReasoningEffort == "xhigh"
+	})
+	h.settle()
+	// Also verify the Agent reasoning dropdown opens and exposes Extra high in UI.
+	h.click("Agent reasoning level")
+	h.until("xhigh option", func() bool { return h.hasText("Low") && h.hasText("Extra high") })
+	h.shot("workstream-settings-reasoning")
 }

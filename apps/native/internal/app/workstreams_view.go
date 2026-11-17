@@ -17,6 +17,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/models"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessionview"
 )
 
 // The Host tells of no change to its Workstream records, such as an agent's
@@ -97,9 +98,11 @@ type workstreamsState struct {
 	newOpen bool
 	form    workstreamForm
 	// acting is the action under way; notice is what the last one said,
-	// an error when noticeErr.
-	acting, notice string
-	noticeErr      bool
+	// an error when noticeErr. pendingAgentSave holds the newest agent
+	// model/effort choice while a save request is already in flight.
+	acting, notice   string
+	noticeErr        bool
+	pendingAgentSave *gateway.WorkstreamSettings
 	// script is the Host's list of the models that may use Script.
 	script   scriptModels
 	noticeAt time.Time
@@ -112,9 +115,25 @@ type workstreamsState struct {
 	// query filters the agents the side panel lists, fileQuery its files.
 	query, fileQuery string
 	// paneDrawer shows the side panel over the page of a narrow window;
-	// files is the shared folder's list, read in the background.
-	paneDrawer bool
-	files      filesCache
+	// files, expandedDirs, goal and prs hold the side panel's cached reads.
+	paneDrawer   bool
+	files        filesCache
+	expandedDirs map[string]bool
+	goal         goalCache
+	goalMD       sessionview.Markdown
+	prs          prCache
+	resolvePRs   func(context.Context, protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error)
+	// renaming, rename and symbolFor drive inline Workstream renaming and
+	// symbol picking in the sidebar.
+	renaming, rename string
+	symbolFor        string
+	// agentHandles tracks Agent row handles for keyboard navigation;
+	// scrollToAgent and scrollToTab scroll a newly selected row or tab into view.
+	agentHandles  map[string]ui.Handle
+	scrollToAgent string
+	scrollToTab   string
+	tabListW      float32
+	orchTabW      float32
 	// tabMenuOpen is the orchestrator tab's menu; paneDrag the side panel's
 	// width, in px of the default text size, while its edge is dragged.
 	tabMenuOpen bool
@@ -545,6 +564,11 @@ func (a *App) wsAct(action string, fn func() (string, error), failed func(error)
 			if err != nil {
 				s.notice = failed(err)
 			}
+			if pending := s.pendingAgentSave; pending != nil {
+				s.pendingAgentSave = nil
+				a.saveAgentModel(pending.ID, pending.AgentModel, pending.AgentReasoningEffort)
+				return
+			}
 			a.loadWorkstreams(true)
 		})
 	}()
@@ -603,22 +627,26 @@ func (a *App) agentStatus(ag gateway.WorkstreamAgent) (string, string) {
 
 // fitEffort keeps effort for the model id when it supports it, else "".
 func fitEffort(choices []models.Choice, id, effort string) string {
-	for _, m := range choices {
-		if m.ID == id && slices.Contains(m.ReasoningEfforts, effort) {
-			return effort
-		}
+	if effort != "" && slices.Contains(models.ReasoningEffortsOf(choices, id), effort) {
+		return effort
 	}
 	return ""
 }
 
 // saveAgentModel sets a Workstream's agent model settings, shown at once.
+// Rapid consecutive changes while a save is already in flight queue the latest
+// choice instead of dropping it.
 func (a *App) saveAgentModel(id, model, effort string) {
 	gw := a.cfg.Gateway
-	if gw == nil || a.workstreams.acting != "" {
+	if gw == nil {
 		return
 	}
 	if w := a.findWorkstream(id); w != nil {
 		w.AgentModel, w.AgentReasoningEffort = model, effort
+	}
+	if a.workstreams.acting != "" {
+		a.workstreams.pendingAgentSave = &gateway.WorkstreamSettings{ID: id, AgentModel: model, AgentReasoningEffort: effort}
+		return
 	}
 	a.wsAct("save", func() (string, error) {
 		err := gw.SetWorkstreamAgentSettings(a.ctx, gateway.WorkstreamSettings{ID: id, AgentModel: model, AgentReasoningEffort: effort})

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
@@ -26,11 +28,14 @@ const (
 	ToolSendMessage    = "send_message"
 	ToolListAgents     = "list_agents"
 	ToolInterruptAgent = "interrupt_agent"
+	ToolRenameAgent    = "rename_agent"
 	ToolArchiveAgent   = "archive_agent"
 	ToolReport         = "report"
 )
 
-var orchestratorTools = []string{ToolSpawnAgent, ToolSendMessage, ToolListAgents, ToolInterruptAgent, ToolArchiveAgent}
+const maxAgentTitle = 120
+
+var orchestratorTools = []string{ToolSpawnAgent, ToolSendMessage, ToolListAgents, ToolInterruptAgent, ToolRenameAgent, ToolArchiveAgent}
 
 func hostToolsSelector(tools ...string) []string { return hosttools.Selector(ServerName, tools...) }
 
@@ -64,7 +69,7 @@ var toolList = []map[string]any{
 	},
 	{
 		"name":        ToolListAgents,
-		"description": "List this workstream's agents: state, last activity, worktree, branch and last report.",
+		"description": "List this workstream's agents: state, last activity, worktree, branch, transcript_path and last report.",
 		"inputSchema": object(map[string]any{
 			"include_archived": map[string]any{"type": "boolean", "description": "Also list archived agents."},
 		}),
@@ -73,6 +78,14 @@ var toolList = []map[string]any{
 		"name":        ToolInterruptAgent,
 		"description": "End the agent's turn; it keeps its session and can get more work.",
 		"inputSchema": object(map[string]any{"agent_id": agentID}, "agent_id"),
+	},
+	{
+		"name":        ToolRenameAgent,
+		"description": "Change an agent's title when its area of responsibility changes, never to show progress or status. Refused if the user already renamed the agent.",
+		"inputSchema": object(map[string]any{
+			"agent_id": agentID,
+			"title":    map[string]any{"type": "string", "description": "The agent's new short title naming its area of responsibility."},
+		}, "agent_id", "title"),
 	},
 	{
 		"name":        ToolArchiveAgent,
@@ -181,6 +194,23 @@ func (c *Coordinator) Call(ctx context.Context, tool string, args map[string]any
 			return mcpserver.Result{}, fmt.Errorf("The agent was not interrupted: %v", err)
 		}
 		return mcpserver.Text(fmt.Sprintf("Interrupted agent %q (%s).", a.Title, c.sessionOf(a)), false), nil
+	case ToolRenameAgent:
+		title := cleanTitle(str(args, "title"))
+		if title == "" {
+			return mcpserver.Result{}, errors.New("rename_agent needs a non-empty title.")
+		}
+		if utf8.RuneCountInString(title) > maxAgentTitle {
+			return mcpserver.Result{}, fmt.Errorf("rename_agent title is longer than %d characters.", maxAgentTitle)
+		}
+		var msg string
+		err := c.inOrder(ctx, a, func(ctx context.Context) (err error) {
+			msg, err = c.renameAgent(ctx, w, a, title)
+			return err
+		})
+		if err != nil {
+			return mcpserver.Result{}, err
+		}
+		return mcpserver.Text(msg, false), nil
 	default:
 		var (
 			removed bool
@@ -239,17 +269,19 @@ type listedReport struct {
 }
 
 type listedAgent struct {
-	AgentID      string        `json:"agent_id"`
-	Title        string        `json:"title"`
-	Status       string        `json:"status"`
-	LastActivity string        `json:"last_activity"`
-	Worktree     string        `json:"worktree,omitempty"`
-	Branch       string        `json:"branch,omitempty"`
-	LastReport   *listedReport `json:"last_report,omitempty"`
+	AgentID        string        `json:"agent_id"`
+	Title          string        `json:"title"`
+	Status         string        `json:"status"`
+	LastActivity   string        `json:"last_activity"`
+	Worktree       string        `json:"worktree,omitempty"`
+	Branch         string        `json:"branch,omitempty"`
+	TranscriptPath string        `json:"transcript_path,omitempty"`
+	LastReport     *listedReport `json:"last_report,omitempty"`
 }
 
 // listAgents answers w's agents as JSON: their states from the Runner's
-// store for the ones it follows, else from the Daemon's opened Sessions.
+// store for the ones it follows, else from the Daemon's opened Sessions,
+// rolling up any active child Task subagent sessions.
 func (c *Coordinator) listAgents(ctx context.Context, w *Workstream, archived bool) (mcpserver.Result, error) {
 	c.mu.Lock()
 	var agents []Agent
@@ -264,6 +296,9 @@ func (c *Coordinator) listAgents(ctx context.Context, w *Workstream, archived bo
 	}
 	c.mu.Unlock()
 	var opened map[string]protocol.DaemonOpenedSessionInfo
+	if slices.ContainsFunc(agents, func(a Agent) bool { return a.ArchivedAt == "" }) {
+		opened = c.openedSessions(ctx)
+	}
 	out := make([]listedAgent, 0, len(agents))
 	for _, a := range agents {
 		var (
@@ -271,23 +306,36 @@ func (c *Coordinator) listAgents(ctx context.Context, w *Workstream, archived bo
 			permissions, asked int
 		)
 		last := activity[a.SessionID]
-		if s := c.cfg.Sessions.Session(a.SessionID); s != nil && c.cfg.Sessions.Following(a.SessionID) {
-			state = s.WorkingState()
-			permissions, asked = c.cfg.Sessions.Pending(a.SessionID)
-			if t := s.WorkingStateChangedAt(); t.After(last) {
-				last = t
-			}
-		} else if a.ArchivedAt == "" {
-			if opened == nil {
-				opened = c.openedSessions(ctx)
-			}
-			if o, ok := opened[a.SessionID]; ok {
+		if a.ArchivedAt == "" {
+			if s := c.cfg.Sessions.Session(a.SessionID); s != nil && c.cfg.Sessions.Following(a.SessionID) {
+				state = s.WorkingState()
+				permissions, asked = c.cfg.Sessions.Pending(a.SessionID)
+				if t := s.WorkingStateChangedAt(); t.After(last) {
+					last = t
+				}
+			} else if o, ok := opened[a.SessionID]; ok {
 				state = o.WorkingState
 				if o.PendingPermissionRequestCount != nil {
 					permissions = int(*o.PendingPermissionRequestCount)
 				}
 				if o.PendingAskUserRequestCount != nil {
 					asked = int(*o.PendingAskUserRequestCount)
+				}
+			}
+			for _, o := range opened {
+				if o.CallingSessionID != a.SessionID || o.SessionID == a.SessionID {
+					continue
+				}
+				if (o.PendingPermissionRequestCount != nil && *o.PendingPermissionRequestCount > 0) ||
+					o.WorkingState == protocol.DroidWorkingStateWaitingForToolConfirmation {
+					permissions++
+				}
+				if o.PendingAskUserRequestCount != nil && *o.PendingAskUserRequestCount > 0 {
+					asked++
+				}
+				if (state == "" || state == protocol.DroidWorkingStateIdle) &&
+					o.WorkingState != "" && o.WorkingState != protocol.DroidWorkingStateIdle {
+					state = o.WorkingState
 				}
 			}
 		}
@@ -308,6 +356,11 @@ func (c *Coordinator) listAgents(ctx context.Context, w *Workstream, archived bo
 			}
 		}
 		l := listedAgent{AgentID: a.SessionID, Title: a.Title, Status: status, Worktree: a.WorktreePath, Branch: a.Branch}
+		if file := c.links.transcript(a.SessionID); file != "" {
+			if _, err := os.Stat(file); err == nil {
+				l.TranscriptPath = file
+			}
+		}
 		if !last.IsZero() {
 			l.LastActivity = last.UTC().Format(time.RFC3339)
 		}

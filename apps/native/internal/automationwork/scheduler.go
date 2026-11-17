@@ -27,12 +27,25 @@ import (
 // trigger and the run's id as its metadata.
 const TagName = sessions.DroiAutomationTag
 
-// FactoryAutomationTools are the llm ids of Factory's own Automation tools.
+// FactoryAutomationTools are the llm ids of Factory's own Automation tools
+// (both the legacy top-level names and the 1.11+ droid-commands names).
 // An Automation they make syncs to Factory, so Droi's Sessions leave them
 // out (disabledToolIds).
 var FactoryAutomationTools = []string{
 	"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation",
 	"DeleteAutomation", "RunAutomation", "ListAutomationTemplates",
+	"automations_create", "automations_list", "automations_read", "automations_edit",
+	"automations_delete", "automations_run", "automations_templates_list",
+}
+
+// FactoryMissionTools are the llm ids of Factory's own Workstreams
+// (mission-v2) tools, hidden so an imported or legacy official session
+// opened in Droi never mixes Factory's cloud tools into Droi.
+var FactoryMissionTools = []string{
+	"SpawnAgent", "SendMessage", "ListAgents", "InterruptAgent",
+	"RenameAgent", "ArchiveAgent", "CreateListener",
+	"SetPrAutofix", "SetWorkstreamPrAutofix",
+	"CreateTask", "ReadTask", "ListTasks", "UpdateTask", "DeleteTask",
 }
 
 // workstreamTools is Droi's Workstream server, for a Workstream's Sessions
@@ -40,11 +53,11 @@ var FactoryAutomationTools = []string{
 const workstreamTools = "mcp:droi-workstream"
 
 // RunHiddenTools are the tools a run's Session leaves out: Factory's
-// Automation tools, Droi's Workstream tools, and Droi's Automation tools,
-// with which a run could rewrite what an Automation that runs without
-// asking does.
+// Automation and Workstreams tools, Droi's Workstream tools, and Droi's
+// Automation tools, with which a run could rewrite what an Automation that
+// runs without asking does.
 func RunHiddenTools() []string {
-	return slices.Concat(FactoryAutomationTools, []string{workstreamTools, "mcp:" + ServerName})
+	return slices.Concat(FactoryAutomationTools, FactoryMissionTools, []string{workstreamTools, "mcp:" + ServerName})
 }
 
 // halfStartTries is how many starts in a row of a scheduled run may end in

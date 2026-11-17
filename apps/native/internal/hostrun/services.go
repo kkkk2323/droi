@@ -73,6 +73,7 @@ func StartServices(h *host.Host) *Services {
 	// Factory's own Automation tools make an Automation that syncs to
 	// Factory: Droi's Sessions use Droi's.
 	s.HideFromClients(automationwork.FactoryAutomationTools...)
+	s.HideFromClients(automationwork.FactoryMissionTools...)
 	s.HideFromClients(hosttools.Selector(workstream.ServerName)...)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel

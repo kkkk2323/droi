@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -128,39 +129,86 @@ func (a *App) workstreamsHeader(c *ui.Context, open bool, list []sessions.Summar
 // or work.
 func (a *App) workstreamRow(c *ui.Context, s sessions.Summary, selected bool, doing activity.Activity) {
 	k, t := a.kit, a.kit.T
+	id, _, _ := sessions.Workstream(s.Tags)
+	if id != "" && a.workstreams.renaming == id {
+		a.workstreamRenameField(c, s, id)
+		return
+	}
 	a.sidebar.numbered = append(a.sidebar.numbered, s.SessionID)
 	n := len(a.sidebar.numbered)
-	b := ui.ButtonBase(c.Key(s.SessionID)).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
-		Gap(k.Px(2)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(8)).Radius(k.Px(6)).Cursor(ui.CursorPointer)
-	kit.Selected(b, selected)
+	canEdit := !a.following() && a.cfg.Gateway != nil && !a.workstreams.older && id != ""
+	sym := sessions.WorkstreamSymbol(s.Tags)
+	symOpen := canEdit && a.workstreams.symbolFor == id
+
+	row := ui.Row(c.Key(s.SessionID)).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(4)).Gap(k.Px(4)).AlignItems(ui.Start).Radius(k.Px(6))
 	switch {
 	case selected:
-		b.Background(t.SidebarAccent)
-	case b.Hovered():
-		b.Background(t.SidebarAccent.Alpha(0.5))
+		row.Background(t.SidebarAccent)
+	case row.Hovered():
+		row.Background(t.SidebarAccent.Alpha(0.5))
 	}
-	b.Children(func() {
-		ui.Row(c).Gap(k.Px(8)).AlignItems(ui.Center).Children(func() {
-			k.IconStroke(c, sessions.WorkstreamSymbol(s.Tags), 1.6, 14, t.SidebarForeground).Role(ui.RoleImage).Label(L("Workstream"))
-			title := k.Text(c, s.Title, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
-			if a.sidebar.unread[s.SessionID] {
-				title.FontWeight(500)
-				kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
+	row.Children(func() {
+		symBtn := ui.ButtonBase(c).Label(L("Change symbol for %s", s.Title)).Tooltip(L("Workstream symbol")).
+			Expanded(symOpen).Disabled(!canEdit).Size(k.Px(22), k.Px(22)).Radius(k.Px(6)).Center()
+		if canEdit {
+			symBtn.Cursor(ui.CursorPointer)
+			if symOpen || symBtn.Hovered() {
+				symBtn.Background(t.SidebarAccent)
 			}
-			if n <= 9 && c.Modifiers() == ui.Cmd {
-				k.Text(c, shortcut(sessionCommand(n)), 11, k.Dense(15, 16.5)).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
-			} else {
-				k.Text(c, relativeTime(time.UnixMilli(sessions.UsedAt(s, a.sidebar.times)), a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).
-					TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
-			}
+		}
+		symBtn.Children(func() {
+			k.IconStroke(c, sym, 1.6, 14, t.SidebarForeground).Role(ui.RoleImage).Label(L("Workstream"))
 		})
-		a.rowStatus(c, s, selected, doing, 30)
+		if canEdit && symBtn.Clicked() {
+			if symOpen {
+				a.workstreams.symbolFor = ""
+			} else {
+				a.workstreams.symbolFor = id
+			}
+		}
+		if symOpen {
+			open := true
+			ui.PopoverBase(c, symBtn, &open, func(p ui.Element) {
+				a.symbolGrid(c, p, sym, func(picked string) {
+					open = false
+					a.workstreams.symbolFor = ""
+					if picked != sym {
+						a.editWorkstream(id, nil, &picked)
+					}
+				})
+			})
+			if !open {
+				a.workstreams.symbolFor = ""
+			}
+		}
+
+		b := ui.ButtonBase(c).Label(s.Title).Tooltip(s.Title).Column().AlignItems(ui.Stretch).Justify(ui.Start).
+			Grow(1).MinWidth(0).Gap(k.Px(2)).Cursor(ui.CursorPointer)
+		kit.Selected(b, selected)
+		b.Children(func() {
+			ui.Row(c).Gap(k.Px(6)).AlignItems(ui.Center).MinHeight(k.Px(22)).Children(func() {
+				title := k.Text(c, s.Title, k.Dense(12, 13), k.Dense(18, 19.5)).TextColor(t.Foreground).SingleLine().Grow(1).Shrink(1)
+				if a.sidebar.unread[s.SessionID] {
+					title.FontWeight(500)
+					kit.Dot(c, k.Px(6), t.Info).Role(ui.RoleImage).Label(L("Unread"))
+				}
+				if n <= 9 && c.Modifiers() == ui.Cmd {
+					k.Text(c, shortcut(sessionCommand(n)), 11, k.Dense(15, 16.5)).TextColor(t.Foreground).FontFeatures("tnum").Shrink(0)
+				} else {
+					k.Text(c, relativeTime(time.UnixMilli(sessions.UsedAt(s, a.sidebar.times)), a.cfg.Now()), k.Dense(10, 11), k.Dense(15, 16.5)).
+						TextColor(t.SidebarMutedForeground).FontFeatures("tnum").Shrink(0)
+				}
+			})
+			a.rowStatus(c, s, selected, doing, 8)
+		})
+		if b.Clicked() {
+			a.Go(Route{Name: "session", SessionID: s.SessionID})
+		}
 	})
-	if b.Clicked() {
-		a.Go(Route{Name: "session", SessionID: s.SessionID})
-	}
-	b.ContextMenu(func(m *ui.Menu) {
-		id, _, _ := sessions.Workstream(s.Tags)
+	row.ContextMenu(func(m *ui.Menu) {
+		if canEdit && m.Item(L("Rename")).Chosen() {
+			a.workstreams.renaming, a.workstreams.rename = id, s.Title
+		}
 		if m.Item(L("Workstream settings")).Chosen() {
 			a.openWorkstreamSettings(id)
 		}
@@ -170,6 +218,28 @@ func (a *App) workstreamRow(c *ui.Context, s sessions.Summary, selected bool, do
 		m.Separator()
 		if m.Item(L("Copy session ID")).Chosen() {
 			c.WriteClipboard(s.SessionID)
+		}
+	})
+}
+
+// workstreamRenameField edits a Workstream's title in place: Enter saves, Escape cancels.
+func (a *App) workstreamRenameField(c *ui.Context, s sessions.Summary, id string) {
+	k, t := a.kit, a.kit.T
+	ui.Row(c.Key(s.SessionID)).Radius(k.Px(8)).Background(t.SidebarAccent).Padding(k.Px(6), k.Px(8), k.Px(6), k.Px(8)).Children(func() {
+		in := ui.TextInputBase(c, &a.workstreams.rename).Label(L("Workstream name")).AutoFocus().Grow(1).Height(k.Px(30)).PaddingX(k.Px(6)).
+			Radius(k.Px(6)).Border(1, t.Border).Background(t.Background).FontSize(k.Px(13)).TextColor(t.Foreground)
+		done := func(save bool) {
+			title := strings.TrimSpace(a.workstreams.rename)
+			a.workstreams.renaming = ""
+			if save && title != "" && title != s.Title {
+				a.editWorkstream(id, &title, nil)
+			}
+		}
+		switch {
+		case in.Submitted():
+			done(true)
+		case in.Shortcut(0, ui.KeyEscape):
+			done(false)
 		}
 	})
 }

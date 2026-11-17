@@ -67,6 +67,9 @@ type Agent struct {
 	// started, for ToolModeModel; its settings file has the later ones.
 	ToolMode      string `json:"toolMode,omitempty"`
 	ToolModeModel string `json:"toolModeModel,omitempty"`
+	// UserRenamed records that the user manually changed the agent's title
+	// in a client, so rename_agent must preserve the user's title.
+	UserRenamed bool `json:"userRenamed,omitempty"`
 }
 
 // Report is what an agent reported last.

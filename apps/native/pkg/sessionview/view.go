@@ -94,6 +94,10 @@ type Env struct {
 	// Empty draws what stands in for a Session with no messages yet, and
 	// reports whether it did; false keeps the prompt to start.
 	Empty func(c *ui.Context) bool
+	// FoldActivity collapses consecutive thinking and non-Workstream tool
+	// blocks into expandable Activity segments (used for Workstream
+	// orchestrator sessions).
+	FoldActivity bool
 }
 
 // Revisions counts each Session's changes in the Store, for its View to
@@ -446,6 +450,15 @@ func (v *View) Flag(key string, def bool) *bool {
 }
 
 func (v *View) flag(key string, def bool) *bool { return v.Flag(key, def) }
+
+// SetFoldActivity switches activity segment folding for this View,
+// invalidating cached rows when the setting changes.
+func (v *View) SetFoldActivity(on bool) {
+	if v.env.FoldActivity != on {
+		v.env.FoldActivity = on
+		v.rowsGen++
+	}
+}
 
 // sweep drops the decoded results and pictures no frame used lately.
 func (v *View) sweep() {

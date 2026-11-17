@@ -29,15 +29,18 @@ const (
 	rowNested
 	// rowGroup is the header of a run of calls done to several agents.
 	rowGroup
+	// rowActivitySegment is the trigger of a folded run of regular activity.
+	rowActivitySegment
 	rowTurnEnd
 )
 
 type transcriptRow struct {
-	kind  rowKind
-	key   string
-	e     *transcript.Entry
-	block int
-	call  *transcript.ToolCall
+	kind     rowKind
+	key      string
+	e        *transcript.Entry
+	block    int
+	subBlock *transcript.Block
+	call     *transcript.ToolCall
 	// top and bottom are the room above and below the row, in px.
 	top, bottom float32
 	// first: the first call of its cluster, or the first nested call of
@@ -46,8 +49,13 @@ type transcriptRow struct {
 	// grouped: the call is under a group's header; lifted: the row stands at
 	// the top, not in a cluster.
 	grouped, lifted bool
-	// label is a group header's text.
-	label string
+	// inSegment marks rows drawn inside an expanded activity segment.
+	inSegment bool
+	// label is a group header's text; groupKey identifies its fold state.
+	label, groupKey string
+	// segEvents, segFailed and segWorking describe a rowActivitySegment.
+	segEvents, segFailed int
+	segWorking           bool
 	// streaming: the entry streams and this is its last text.
 	streaming bool
 	end       transcript.TurnEnd
@@ -117,6 +125,9 @@ func (v *View) cutRows(rc *rowCache, entries []*transcript.Entry, streamingID st
 		if from == len(entries) && from == len(rc.entries) {
 			return rc.rows
 		}
+		if v.env.FoldActivity && from > 0 && from < len(rc.turns) && (from >= len(entries) || !entries[from].User) {
+			from = rc.turns[from].first
+		}
 	}
 	var st turnState
 	if from < len(rc.starts) {
@@ -132,21 +143,28 @@ func (v *View) cutRows(rc *rowCache, entries []*transcript.Entry, streamingID st
 		rc.streamingAt = -1
 	}
 	rows := rc.rows
+	turnRowStart := len(rows)
 	for i := from; i < len(entries); i++ {
 		e := entries[i]
 		if e.ID == streamingID {
 			rc.streamingAt = i
 		}
-		rc.starts = append(rc.starts, len(rows))
-		rc.turns = append(rc.turns, st)
 		if e.User {
+			if v.env.FoldActivity && turnRowStart < len(rows) {
+				rows = v.foldActivityTurn(rows, turnRowStart, streamingID)
+			}
+			rc.starts = append(rc.starts, len(rows))
+			rc.turns = append(rc.turns, st)
 			if !st.hasStart {
 				st.startedAt, st.hasStart = e.CreatedAt, true
 			}
 			st.first = i
 			rows = append(rows, transcriptRow{kind: rowUser, key: e.ID, e: e})
+			turnRowStart = len(rows)
 			continue
 		}
+		rc.starts = append(rc.starts, len(rows))
+		rc.turns = append(rc.turns, st)
 		replied := len(e.Blocks) > 0 && e.Blocks[len(e.Blocks)-1].Kind == transcript.Text
 		closes := !running
 		if i+1 < len(entries) {
@@ -158,6 +176,9 @@ func (v *View) cutRows(rc *rowCache, entries []*transcript.Entry, streamingID st
 			st.hasStart = false
 		}
 		rows = v.cutEntry(rows, entries, i, st.first, streamingID, end, closes)
+	}
+	if v.env.FoldActivity && turnRowStart < len(rows) {
+		rows = v.foldActivityTurn(rows, turnRowStart, streamingID)
 	}
 	rc.rows, rc.entries, rc.streamingID, rc.running, rc.gen = rows, entries, streamingID, running, v.rowsGen
 	return rows
@@ -186,45 +207,64 @@ func (v *View) cutEntry(rows []transcriptRow, entries []*transcript.Entry, i, tu
 			last := e.ID == streamingID && i == len(e.Blocks)-1
 			add(transcriptRow{kind: rowBlock, key: key, block: i, streaming: last}, 8, 8)
 		case transcript.Tools:
-			if v.lifted(b) {
-				// Only the Workstream's own calls: their rows stand at the
-				// top, without a "Used N tools" over them.
-				first := true
-				for _, run := range transcript.WorkstreamRuns(transcript.LeafCalls(b.Calls)) {
-					label, grouped := transcript.WorkstreamGroup(run)
-					if grouped {
-						r := transcriptRow{kind: rowGroup, lifted: true, key: key + "/" + run[0].Use.ID + "/group", block: i, call: run[0], label: label, first: first}
-						if first {
-							add(r, 8, 8)
-						} else {
-							r.e = e
-							rows = append(rows, r)
+			for _, part := range v.splitToolsBlock(b) {
+				if part.lifted {
+					// Only the Workstream's own calls: their rows stand at the
+					// top, without a "Used N tools" over them.
+					first := true
+					for _, run := range transcript.WorkstreamRuns(transcript.LeafCalls(part.block.Calls)) {
+						label, grouped := transcript.WorkstreamGroup(run)
+						groupKey := ""
+						groupOpen := true
+						if grouped {
+							groupKey = part.block.ID + "/" + run[0].Use.ID
+							groupOpen = *v.flag("wsgroup:"+groupKey, true)
+							r := transcriptRow{kind: rowGroup, lifted: true, key: key + "/" + run[0].Use.ID + "/group", block: i, call: run[0], label: label, groupKey: groupKey, first: first}
+							if first {
+								add(r, 8, 8)
+							} else {
+								r.e = e
+								rows = append(rows, r)
+							}
+							first = false
 						}
-						first = false
-					}
-					for _, call := range run {
-						r := transcriptRow{kind: rowCall, lifted: true, key: key + "/" + call.Use.ID, block: i, call: call, first: first, grouped: grouped}
-						if first {
-							add(r, 8, 8)
-						} else {
-							r.e = e
-							rows = append(rows, r)
+						if !groupOpen {
+							continue
 						}
-						first = false
+						for _, call := range run {
+							r := transcriptRow{kind: rowCall, lifted: true, key: key + "/" + call.Use.ID, block: i, call: call, first: first, grouped: grouped}
+							if first {
+								add(r, 8, 8)
+							} else {
+								r.e = e
+								rows = append(rows, r)
+							}
+							first = false
+						}
 					}
+					continue
 				}
-				continue
-			}
-			add(transcriptRow{kind: rowCluster, key: key, block: i}, 8, 8)
-			if !*v.flag("cluster:"+b.ID, true) {
-				continue
-			}
-			j := 0
-			for _, call := range b.Calls {
-				rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0})
-				j++
-				for k, inner := range call.Nested {
-					rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: k == 0})
+				sub := part.block
+				var subPtr *transcript.Block
+				if part.split {
+					subCopy := sub
+					subPtr = &subCopy
+				}
+				rowKey := key
+				if part.split {
+					rowKey = key + "/" + sub.Calls[0].Use.ID + "/cluster"
+				}
+				add(transcriptRow{kind: rowCluster, key: rowKey, block: i, subBlock: subPtr}, 8, 8)
+				if !*v.flag("cluster:"+sub.ID, true) {
+					continue
+				}
+				j := 0
+				for _, call := range sub.Calls {
+					rows = append(rows, transcriptRow{kind: rowCall, key: key + "/" + call.Use.ID, e: e, block: i, call: call, first: j == 0})
+					j++
+					for k, inner := range call.Nested {
+						rows = append(rows, transcriptRow{kind: rowNested, key: key + "/" + call.Use.ID + "/" + inner.Use.ID, e: e, block: i, call: inner, first: k == 0})
+					}
 				}
 			}
 		default:
@@ -251,11 +291,11 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 		return
 	}
 	color := t.Foreground
-	if r.e.IsError {
+	if r.e != nil && r.e.IsError {
 		color = t.DestructiveForeground
 	}
 	col := v.column(c).Padding(k.Px(r.top), k.Px(24), k.Px(r.bottom), k.Px(24)).TextColor(color)
-	if r.kind != rowCall && r.kind != rowNested && r.kind != rowGroup {
+	if r.kind != rowCall && r.kind != rowNested && r.kind != rowGroup && r.kind != rowActivitySegment {
 		col.Role(ui.RoleGroup).Label(l10n.L("Assistant"))
 	}
 	if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Text {
@@ -272,7 +312,11 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 			}
 		})
 	}
-	col.Children(func() {
+	draw := func() {
+		if r.kind == rowActivitySegment {
+			v.activitySegmentRow(c, r)
+			return
+		}
 		if r.block < 0 {
 			return
 		}
@@ -298,13 +342,19 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 				k.Text(c, transcript.FormatTurnEnd(r.end, v.env.Now()), 12, 16).TextColor(t.MutedForeground)
 			})
 		case rowCluster:
-			v.cluster(c, r.e.Blocks[r.block])
+			b := r.e.Blocks[r.block]
+			if r.subBlock != nil {
+				b = *r.subBlock
+			}
+			v.cluster(c, b)
+		case rowActivitySegment:
+			v.activitySegmentRow(c, r)
 		case rowGroup:
 			gap := k.Px(4)
 			if r.first {
 				gap = 0
 			}
-			ui.Column(c).Padding(gap, 0, 0, 0).Children(func() { v.groupHeader(c, r.call, r.label) })
+			ui.Column(c).Padding(gap, 0, 0, 0).Children(func() { v.groupHeader(c, r.groupKey, r.call, r.label) })
 		case rowCall, rowNested:
 			if r.lifted {
 				gap := k.Px(2)
@@ -370,7 +420,174 @@ func (v *View) row(c *ui.Context, r transcriptRow) {
 				v.specCard(c, b.Call)
 			}
 		}
+	}
+	col.Children(func() {
+		if r.inSegment {
+			ui.Column(c).Margin(0, 0, 0, k.Px(7)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border).
+				Padding(0, 0, 0, k.Px(12)).Children(draw)
+			return
+		}
+		draw()
 	})
+}
+
+// foldActivityTurn merges runs of consecutive non-interactive thinking and
+// non-lifted tool clusters within one turn into expandable Activity segments.
+func (v *View) foldActivityTurn(rows []transcriptRow, start int, streamingID string) []transcriptRow {
+	turn := slices.Clone(rows[start:])
+	out := rows[:start]
+	var seg []transcriptRow
+	events, failed := 0, 0
+	working := false
+	flush := func() {
+		if len(seg) == 0 {
+			return
+		}
+		if events < 2 {
+			out = append(out, seg...)
+		} else {
+			segKey := "actseg:" + seg[0].key
+			open := *v.flag(segKey, false)
+			hdr := transcriptRow{
+				kind:       rowActivitySegment,
+				key:        segKey,
+				e:          seg[0].e,
+				top:        seg[0].top,
+				bottom:     seg[len(seg)-1].bottom,
+				segEvents:  events,
+				segFailed:  failed,
+				segWorking: working,
+			}
+			if open {
+				hdr.bottom = 4
+				out = append(out, hdr)
+				for idx, sr := range seg {
+					sr.inSegment = true
+					if idx == 0 {
+						sr.top = 4
+					}
+					out = append(out, sr)
+				}
+			} else {
+				out = append(out, hdr)
+			}
+		}
+		seg = nil
+		events, failed, working = 0, 0, false
+	}
+
+	for i := 0; i < len(turn); {
+		r := turn[i]
+		if r.kind == rowBlock && r.block >= 0 && r.e.Blocks[r.block].Kind == transcript.Thinking {
+			seg = append(seg, r)
+			events++
+			if r.e.ID == streamingID && r.block == len(r.e.Blocks)-1 {
+				working = true
+			}
+			i++
+			continue
+		}
+		if r.kind == rowCluster && r.block >= 0 {
+			b := r.e.Blocks[r.block]
+			if r.subBlock != nil {
+				b = *r.subBlock
+			}
+			ev, fl, wk := activityBlockStats(b)
+			seg = append(seg, r)
+			j := i + 1
+			for j < len(turn) && (turn[j].kind == rowCall || turn[j].kind == rowNested) && !turn[j].lifted {
+				seg = append(seg, turn[j])
+				j++
+			}
+			events += ev
+			failed += fl
+			working = working || wk
+			i = j
+			continue
+		}
+		flush()
+		out = append(out, r)
+		i++
+	}
+	flush()
+	return out
+}
+
+type toolBlockPart struct {
+	block  transcript.Block
+	lifted bool
+	split  bool
+}
+
+// splitToolsBlock separates top-level liftable Workstream tool calls from
+// regular tool calls when activity folding is active, so that a Read followed
+// by spawn_agent in consecutive turns never swallows spawn_agent into Activity.
+func (v *View) splitToolsBlock(b transcript.Block) []toolBlockPart {
+	if !v.env.FoldActivity || len(b.Calls) <= 1 {
+		return []toolBlockPart{{block: b, lifted: v.lifted(b)}}
+	}
+	isCallLifted := func(call *transcript.ToolCall) bool {
+		return v.lifted(transcript.Block{Kind: transcript.Tools, Calls: []*transcript.ToolCall{call}})
+	}
+	firstLifted := isCallLifted(b.Calls[0])
+	mixed := false
+	for _, call := range b.Calls[1:] {
+		if isCallLifted(call) != firstLifted {
+			mixed = true
+			break
+		}
+	}
+	if !mixed {
+		return []toolBlockPart{{block: b, lifted: firstLifted}}
+	}
+	var parts []toolBlockPart
+	for i := 0; i < len(b.Calls); {
+		l := isCallLifted(b.Calls[i])
+		j := i + 1
+		for j < len(b.Calls) && isCallLifted(b.Calls[j]) == l {
+			j++
+		}
+		calls := b.Calls[i:j]
+		sub := transcript.Block{Kind: transcript.Tools, ID: b.ID + "#" + calls[0].Use.ID, Calls: calls}
+		parts = append(parts, toolBlockPart{block: sub, lifted: l, split: true})
+		i = j
+	}
+	return parts
+}
+
+func activityBlockStats(b transcript.Block) (events, failed int, working bool) {
+	leaves := transcript.LeafCalls(b.Calls)
+	for _, call := range leaves {
+		events++
+		switch transcript.StateOf(call) {
+		case transcript.CallRunning:
+			working = true
+		case transcript.CallFailed:
+			failed++
+		}
+	}
+	for _, call := range b.Calls {
+		if !call.Lifecycle {
+			continue
+		}
+		run := transcript.ReadScriptRun(call)
+		if len(call.Nested) == 0 {
+			events++
+			switch {
+			case transcript.StateOf(call) == transcript.CallRunning || run.Status == "running":
+				working = true
+			case transcript.StateOf(call) == transcript.CallFailed || run.Status == "failed" || run.Status == "cancelled" || run.Status == "stalled":
+				failed++
+			}
+			continue
+		}
+		if run.Status == "running" {
+			working = true
+		} else if (transcript.StateOf(call) == transcript.CallFailed || run.Status == "failed" || run.Status == "cancelled" || run.Status == "stalled") && failed == 0 {
+			failed++
+		}
+	}
+	return events, failed, working
 }
 
 // userEntry is the user's bubble on the right.

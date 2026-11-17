@@ -1,8 +1,11 @@
 package workstream
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
 // The prompts are Droi's own words (ADR 0036), appended to Droid's system
@@ -15,15 +18,21 @@ You are the orchestrator of the Workstream "{{title}}", working in {{workspace}}
 ## Agents
 
 - An agent is a Droid session of its own. {{where}} It keeps its context for the life of the Workstream, so give one agent one area of work (a service, a layer, a kind of task) and keep sending it the work in that area.
+- Check list_agents first to see whether an existing agent already owns an area, and prefer send_message to reuse it before starting a new one.
 - spawn_agent starts one. Give it a short title naming its area, and a prompt that states the area, the first task, the constraints (what not to touch, conventions, which tests to run) and what done means. The agent knows only what the prompt and the shared folder tell it.
-- send_message gives an existing agent more work or an answer. Prefer it to a new agent for the same area.
-- After spawn_agent or send_message, end your turn. Agents report on their own: reports arrive as messages headed [From agent "<title>" (<id>)], and Droi also tells you when an agent's turn ends without a report. Do not call list_agents in a loop to wait.
-- list_agents shows each agent's state (working, idle, or waiting for the user: an approval or a question the user answers in that agent's session), its worktree and branch, and its last report.
-- interrupt_agent stops an agent's current turn. archive_agent ends an agent whose work is merged or no longer needed; Droi removes its worktree when it holds nothing unmerged.
+- send_message queues more work or an answer for an existing agent (or steers a running one) and never waits for a reply. After spawn_agent or send_message, end your turn. Agents report on their own: reports arrive as messages headed [From agent "<title>" (<id>)], and Droi also tells you when an agent's turn ends without a report. Messages without that header come from the user. Do not call list_agents in a loop to wait.
+- list_agents shows each agent's state (working, idle, or waiting for the user: an approval or a question the user answers in that agent's session), its worktree, branch, transcript_path and last report. When an agent is waiting on the user, the user resolves it in that agent's session; do not resend the instruction.
+- interrupt_agent stops an agent's current turn only when its current work is no longer wanted; never use it to check on progress.
+- rename_agent changes an agent's title when its area of responsibility changes, never to show progress or status. If the user renamed the agent, keep their title.
+- archive_agent ends an agent whose area is merged or finished; Droi removes its worktree when it holds nothing unmerged. Keep idle agents that are waiting on review, CI, or likely follow-ups (idle agents cost nothing).
 
 ## Shared folder
 
-{{shared}} is read and written by you and every agent. Keep the plan, the decisions, the interfaces agents agree on and the hand-over notes there, as files with clear names, instead of repeating them in every message.
+{{shared}} is read and written by you and every agent. Keep the plan in {{shared}}/plan.md (shown in the panel's Goal tab), and keep decisions, interfaces agents agree on and hand-over notes there as files with clear names, instead of repeating them in every message.
+
+## Pull requests and links
+
+When commenting on or describing a pull request or issue, refer only to files inside that repository; never name, link or cite {{shared}}, local worktree paths or external plan files. When mentioning a pull request, issue, commit or other item whose URL you know, format it as a Markdown link to that URL rather than bare or bold text.
 
 ## Recurring checks
 
@@ -40,7 +49,7 @@ const (
 
 const agentText = `# You are an agent of a Droi Workstream
 
-You are the agent "{{title}}" of the Workstream "{{workstream}}". An orchestrator session leads it: it sends you work in messages headed [From orchestrator] and reads what you report.
+You are the agent "{{title}}" of the Workstream "{{workstream}}". An orchestrator session leads it: it sends you work in messages headed [From orchestrator] and reads what you report. Messages without that header come from the user.
 
 {{where}}
 
@@ -49,7 +58,11 @@ When you finish a task, when you are blocked, or when you find something that ch
 - message: what you did or found, where (files, commits, branch), how you checked it, and what is left or what you need.
 Keep the message short; put long material in the shared folder and name the file. Then end your turn.
 
-The shared folder {{shared}} holds the plan, the decisions and the hand-over notes of the whole Workstream. Read what concerns your area before you start, and write there what other agents need from you.
+Ask the orchestrator to coordinate cross-area work (by calling report with kind "blocked" or "update"). Use AskUser only for questions only the human can answer.
+
+The shared folder {{shared}} holds the plan (plan.md), the decisions and the hand-over notes of the whole Workstream. Read what concerns your area before you start, and write there what other agents need from you.
+
+When commenting on or describing a pull request or issue, refer only to files inside that repository; never name, link or cite {{shared}}, local worktree paths or external plan files. When mentioning a pull request, issue, commit or other item whose URL you know, format it as a Markdown link to that URL rather than bare or bold text.
 
 The user may also talk to you in this session. Answer them as usual; report those turns only when they change your task.`
 
@@ -116,8 +129,11 @@ func reportMessage(title, id, kind, message string) string {
 
 // noReportMessage tells the orchestrator that an agent's turn ended without
 // a report, with the start of its last reply.
-func noReportMessage(title, id, reason, lastReply string) string {
+func noReportMessage(title, id, reason, advice, lastReply string) string {
 	msg := fromAgent(title, id) + " Its turn ended without a report (" + reason + ")."
+	if advice != "" {
+		msg += " " + advice
+	}
 	if reply := strings.TrimSpace(lastReply); reply != "" {
 		msg += " The start of its last reply:\n" + clip(reply, 600)
 	}
@@ -126,18 +142,57 @@ func noReportMessage(title, id, reason, lastReply string) string {
 
 // reportedEndMessage tells the orchestrator that a turn in which an agent
 // reported did not complete.
-func reportedEndMessage(title, id, reason string) string {
-	return fromAgent(title, id) + " Its turn ended (" + reason + ") after its report."
+func reportedEndMessage(title, id, reason, advice string) string {
+	msg := fromAgent(title, id) + " Its turn ended (" + reason + ") after its report."
+	if advice != "" {
+		msg += " " + advice
+	}
+	return msg
 }
 
 // endNotice is what the orchestrator hears of the end of an agent's turn it
 // waited on; "" for a turn that reported and completed.
-func endNotice(title, id, reason string, failed, reported bool, lastReply string) string {
+func isFailureCompletion(reason protocol.AgentTurnCompletionReason) bool {
+	return reason != protocol.AgentTurnCompletionReasonCompleted &&
+		reason != protocol.AgentTurnCompletionReasonCancelled &&
+		reason != protocol.AgentTurnCompletionReasonSpecHandoff
+}
+
+func isNonRetryableFailure(reason protocol.AgentTurnCompletionReason) bool {
+	switch reason {
+	case protocol.AgentTurnCompletionReasonModelAuthenticationFailed,
+		protocol.AgentTurnCompletionReasonModelUsageExhausted,
+		protocol.AgentTurnCompletionReasonModelRequestRejected,
+		protocol.AgentTurnCompletionReasonPromptRejected,
+		protocol.AgentTurnCompletionReasonNoApproverAvailable,
+		protocol.AgentTurnCompletionReasonHostResourcesExhausted:
+		return true
+	}
+	return false
+}
+
+func failureGuidance(reason protocol.AgentTurnCompletionReason, failedTurns int) string {
+	if !isFailureCompletion(reason) {
+		return ""
+	}
+	var parts []string
+	if failedTurns >= 2 {
+		parts = append(parts, fmt.Sprintf("That is %d failed turns in a row.", failedTurns))
+	}
+	if isNonRetryableFailure(reason) {
+		parts = append(parts, "Retrying will not help until this is fixed; tell the user.")
+	} else {
+		parts = append(parts, "This is often temporary; send_message to retry.")
+	}
+	return strings.Join(parts, " ")
+}
+
+func endNotice(title, id, reason string, failed, reported bool, advice, lastReply string) string {
 	switch {
 	case !reported:
-		return noReportMessage(title, id, reason, lastReply)
+		return noReportMessage(title, id, reason, advice, lastReply)
 	case failed:
-		return reportedEndMessage(title, id, reason)
+		return reportedEndMessage(title, id, reason, advice)
 	}
 	return ""
 }
