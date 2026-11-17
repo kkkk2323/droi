@@ -486,7 +486,7 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 					setOrch(p)
 				})
 			})
-			if orchEfforts := workstreamEffortLevels(choices, orchModel, orchEffort); len(orchEfforts) > 0 {
+			if orchEfforts := workstreamEffortLevels(choices, orchModel, orchEffort); len(orchEfforts) > 0 && !(len(orchEfforts) == 1 && orchEfforts[0] == "none") {
 				a.settingsRow(c, L("Orchestrator reasoning"), L("Reasoning level for the orchestrator."), func() {
 					opts := effortOptions(orchEfforts)
 					cur := cmp.Or(orchEffort, models.DefaultReasoningEffortOf(choices, orchModel))

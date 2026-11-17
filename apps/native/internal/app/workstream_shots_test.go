@@ -252,7 +252,7 @@ func TestWorkstreamShotsForTheReview(t *testing.T) {
 		h.tt.SetSize(refW, 820)
 		h.openOrchestrator()
 		h.click("Workstream settings")
-		h.until("settings", func() bool { return h.finds("Orchestrator reasoning") && h.finds("Agent reasoning") })
+		h.until("settings", func() bool { return h.finds("Orchestrator model") && h.finds("Agent reasoning") })
 		h.a.saveAgentModel("ws-1", "gpt-5", "xhigh")
 		h.until("saved xhigh", func() bool {
 			_, settings, _ := fake.calls()

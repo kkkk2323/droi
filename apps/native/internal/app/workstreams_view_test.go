@@ -873,7 +873,10 @@ func TestWorkstreamSettingsAgentReasoningLevelsAndQueuedSave(t *testing.T) {
 	h := workstreamsHarness(t, fake, nil)
 	h.openOrchestrator()
 	h.click("Workstream settings")
-	h.until("settings dialog", func() bool { return h.finds("Orchestrator reasoning") && h.finds("Agent reasoning") })
+	h.until("settings dialog", func() bool { return h.finds("Orchestrator model") && h.finds("Agent reasoning") })
+	if h.finds("Orchestrator reasoning") {
+		t.Fatal("Auto Model only supports none and should hide Orchestrator reasoning")
+	}
 
 	// Pick GPT-5 as Agent model, then pick Extra high (xhigh) from Agent reasoning.
 	h.a.saveAgentModel("ws-1", "gpt-5", "")
