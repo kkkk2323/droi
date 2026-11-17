@@ -92,7 +92,7 @@ func TestServicesCarryTheRegisteredToolServersAndTheHiddenTools(t *testing.T) {
 	s.HideFromClients("CreateAutomation", "mcp:droi-workstream")
 	s.HideFromClients("CreateAutomation")
 	got := s.ClientHiddenTools()
-	if want := append(slices.Clone(automationwork.FactoryAutomationTools), "mcp:droi-workstream"); !slices.Equal(got, want) {
+	if want := append(slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools), "mcp:droi-workstream"); !slices.Equal(got, want) {
 		t.Fatalf("hidden %v, want %v", got, want)
 	}
 	got[0] = "changed"

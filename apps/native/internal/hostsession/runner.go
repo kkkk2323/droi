@@ -580,6 +580,22 @@ func (r *Runner) UpdateSettings(ctx context.Context, p protocol.UpdateSessionSet
 	return err
 }
 
+// Rename changes a Session's title in the Daemon.
+func (r *Runner) Rename(ctx context.Context, sessionID, title string) error {
+	cl, err := r.ctl.Client()
+	if err != nil {
+		return err
+	}
+	res, err := cl.RenameSession(ctx, protocol.RenameSessionParams{SessionID: sessionID, Title: title})
+	if err != nil {
+		return err
+	}
+	if !res.Success {
+		return errors.New("the Daemon did not rename the session")
+	}
+	return nil
+}
+
 // Client is the Runner's connection to the Daemon, for the calls the
 // Runner does not wrap.
 func (r *Runner) Client() (*droid.Client, error) { return r.ctl.Client() }

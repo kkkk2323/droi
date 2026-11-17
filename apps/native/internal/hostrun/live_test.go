@@ -507,7 +507,7 @@ func TestLiveAutomations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		lh.checkHidden(t, "4: the Client Session", init.SessionID, append(slices.Clone(automationwork.FactoryAutomationTools), "mcp:droi-workstream"))
+		lh.checkHidden(t, "4: the Client Session", init.SessionID, append(slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools), "mcp:droi-workstream"))
 		var servers []protocol.MCPServerStatusInfo
 		waitFor(t, 60*time.Second, "the Host's tool servers to connect", func() bool {
 			res, err := c.ListMCPServers(ctx, protocol.ListMCPServersParams{SessionID: init.SessionID})
@@ -884,8 +884,8 @@ func TestLiveWorkstreams(t *testing.T) {
 	} else {
 		t.Logf("6: MCP tools the agent's model is given: %v", given)
 	}
-	lh.checkHidden(t, "6: the orchestrator", orch, append(slices.Clone(automationwork.FactoryAutomationTools), "mcp:droi-workstream/report"))
-	lh.checkHidden(t, "6: the agent", agent.SessionID, append(slices.Clone(automationwork.FactoryAutomationTools), "mcp:droi-workstream/spawn_agent", "mcp:droi-workstream/send_message"))
+	lh.checkHidden(t, "6: the orchestrator", orch, append(slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools), "mcp:droi-workstream/report"))
+	lh.checkHidden(t, "6: the agent", agent.SessionID, append(slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools), "mcp:droi-workstream/spawn_agent", "mcp:droi-workstream/send_message", "mcp:droi-workstream/rename_agent"))
 
 	t.Run("7 loop tool", func(t *testing.T) {
 		c, err := droid.Dial(ctx, droid.Options{URL: lh.socket, Credential: &droid.Credential{APIKey: gateway.APIKeyPlaceholder}})
@@ -979,7 +979,7 @@ func TestLiveWorkstreams(t *testing.T) {
 			_, a := find()
 			return a != nil && a.SessionID == next
 		})
-		hidden := append(slices.Clone(automationwork.FactoryAutomationTools), "mcp:droi-workstream/spawn_agent", "mcp:droi-workstream/send_message")
+		hidden := append(slices.Concat(automationwork.FactoryAutomationTools, automationwork.FactoryMissionTools), "mcp:droi-workstream/spawn_agent", "mcp:droi-workstream/send_message", "mcp:droi-workstream/rename_agent")
 		lh.checkHidden(t, "9: the handed-off agent", next, hidden)
 		if given := mcpTools(t, ctx, lh.daemon, next); given["droi-workstream"] != 1 {
 			t.Errorf("9: the handed-off agent's model is given %v, want only report of droi-workstream", given)

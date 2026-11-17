@@ -219,7 +219,7 @@ func TestARunStartsOnTimeAndEnds(t *testing.T) {
 		r.AutomationID != a.ID || r.RunID == "" {
 		t.Fatalf("run %+v", r)
 	}
-	if want := []string{"CreateAutomation", "ListAutomations", "ReadAutomation", "EditAutomation", "DeleteAutomation", "RunAutomation", "ListAutomationTemplates", "mcp:droi-workstream", "mcp:droi-automations"}; !slices.Equal(r.DisabledTools, want) {
+	if want := RunHiddenTools(); !slices.Equal(r.DisabledTools, want) {
 		t.Fatalf("disabled tools %v", r.DisabledTools)
 	}
 	if len(r.Tags) != 1 || r.Tags[0].Name != TagName || r.Tags[0].Metadata["automationId"] != a.ID ||
