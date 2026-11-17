@@ -18,6 +18,7 @@ const (
 	ToolSendMessage    = "send_message"
 	ToolListAgents     = "list_agents"
 	ToolInterruptAgent = "interrupt_agent"
+	ToolRenameAgent    = "rename_agent"
 	ToolArchiveAgent   = "archive_agent"
 	ToolReport         = "report"
 )
@@ -30,7 +31,7 @@ func WorkstreamTool(c *ToolCall) (tool string, ok bool) {
 		return "", false
 	}
 	switch name {
-	case ToolSpawnAgent, ToolSendMessage, ToolListAgents, ToolInterruptAgent, ToolArchiveAgent, ToolReport:
+	case ToolSpawnAgent, ToolSendMessage, ToolListAgents, ToolInterruptAgent, ToolRenameAgent, ToolArchiveAgent, ToolReport:
 		return name, true
 	}
 	return "", false
@@ -96,6 +97,8 @@ func WorkstreamLine(c *ToolCall, tool, name string) string {
 		return pick(l10n.N("Messaging %s"), l10n.N("Messaged %s"), l10n.N("Failed to message %s"))
 	case ToolInterruptAgent:
 		return pick(l10n.N("Interrupting %s"), l10n.N("Interrupted %s"), l10n.N("Failed to interrupt %s"))
+	case ToolRenameAgent:
+		return pick(l10n.N("Renaming %s"), l10n.N("Renamed %s"), l10n.N("Failed to rename %s"))
 	case ToolArchiveAgent:
 		return pick(l10n.N("Archiving %s"), l10n.N("Archived %s"), l10n.N("Failed to archive %s"))
 	case ToolListAgents:
@@ -118,7 +121,7 @@ func fill(key string, args ...any) string {
 // group: the same thing done to several agents.
 func groupable(tool string) bool {
 	switch tool {
-	case ToolSpawnAgent, ToolSendMessage, ToolInterruptAgent, ToolArchiveAgent:
+	case ToolSpawnAgent, ToolSendMessage, ToolInterruptAgent, ToolRenameAgent, ToolArchiveAgent:
 		return true
 	}
 	return false
@@ -174,6 +177,8 @@ func WorkstreamGroup(run []*ToolCall) (label string, ok bool) {
 			l10n.N("Failed to send message to %d agents")},
 		ToolInterruptAgent: {l10n.N("Interrupting %d agents"), l10n.N("Interrupted %d agents"), l10n.N("Interrupted %d of %d agents"),
 			l10n.N("Failed to interrupt %d agents")},
+		ToolRenameAgent: {l10n.N("Renaming %d agents"), l10n.N("Renamed %d agents"), l10n.N("Renamed %d of %d agents"),
+			l10n.N("Failed to rename %d agents")},
 		ToolArchiveAgent: {l10n.N("Archiving %d agents"), l10n.N("Archived %d agents"), l10n.N("Archived %d of %d agents"), l10n.N("Failed to archive %d agents")},
 	}[tool]
 	switch {

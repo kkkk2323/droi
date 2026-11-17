@@ -31,6 +31,7 @@ type fakeWorkstreams struct {
 	createErr error
 	kept      []string
 	edits     []gateway.WorkstreamEdit
+	setGate   chan struct{}
 }
 
 // Edit makes the fake a gateway.WorkstreamEditor.
@@ -65,6 +66,12 @@ func (f *fakeWorkstreams) Create(_ context.Context, w gateway.NewWorkstream) (ga
 }
 
 func (f *fakeWorkstreams) SetAgentSettings(_ context.Context, s gateway.WorkstreamSettings) error {
+	f.mu.Lock()
+	gate := f.setGate
+	f.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.settings = append(f.settings, s)

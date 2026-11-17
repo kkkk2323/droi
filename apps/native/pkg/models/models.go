@@ -15,10 +15,12 @@ import (
 
 // Choice is a model the Daemon offers.
 type Choice struct {
-	ID               string
-	Label            string
-	ReasoningEfforts []string
-	Disabled         bool
+	ID                     string
+	Label                  string
+	ReasoningEfforts       []string
+	DefaultReasoningEffort string
+	IsCustom               bool
+	Disabled               bool
 	// Provider is the Daemon's provider id (anthropic, openai, ...); "" for
 	// the Auto router.
 	Provider string
@@ -35,11 +37,18 @@ func choiceOf(m protocol.ModelMetadata, disabled bool) Choice {
 	for i, e := range m.SupportedReasoningEfforts {
 		efforts[i] = string(e)
 	}
-	c := Choice{ID: m.ID, Label: m.DisplayName, ReasoningEfforts: efforts, Disabled: disabled}
+	c := Choice{
+		ID:                     m.ID,
+		Label:                  m.DisplayName,
+		ReasoningEfforts:       efforts,
+		DefaultReasoningEffort: string(m.DefaultReasoningEffort),
+		IsCustom:               m.IsCustom != nil && *m.IsCustom,
+		Disabled:               disabled,
+	}
 	if m.Kind != "router" {
 		c.Provider = string(m.ModelProvider)
 	}
-	if m.IsCustom != nil && *m.IsCustom {
+	if c.IsCustom {
 		c.BehavesLike = m.BehavesLikeModelID
 	} else {
 		c.Multiplier = m.TokenMultiplier
@@ -181,6 +190,142 @@ func BrandsOf(models []Choice) []Brand {
 func FormatMultiplier(multiplier float64) string {
 	rounded, _ := strconv.ParseFloat(strconv.FormatFloat(multiplier, 'f', 2, 64), 64)
 	return strconv.FormatFloat(rounded, 'f', -1, 64) + "×"
+}
+
+// EffortOrder lists known reasoning efforts from lowest to highest so merged
+// or custom-model lists keep a predictable order.
+var EffortOrder = []string{"none", "off", "minimal", "low", "medium", "high", "xhigh", "max", "dynamic"}
+
+// ReasoningEffortsOf returns the reasoning efforts modelID supports. For a
+// custom or Magpie gateway model that supports reasoning, any higher levels
+// (such as xhigh or max) from its BehavesLike reference or matching built-in
+// model family are merged in so they are never stripped out.
+func ReasoningEffortsOf(choices []Choice, modelID string) []string {
+	idx := slices.IndexFunc(choices, func(m Choice) bool { return m.ID == modelID })
+	if idx < 0 {
+		return nil
+	}
+	m := choices[idx]
+	efforts := slices.Clone(m.ReasoningEfforts)
+	if !m.IsCustom {
+		return efforts
+	}
+	if len(efforts) == 1 && efforts[0] == "none" {
+		return efforts
+	}
+	var ref *Choice
+	if m.BehavesLike != "" {
+		if j := slices.IndexFunc(choices, func(c Choice) bool { return !c.IsCustom && c.ID == m.BehavesLike }); j >= 0 {
+			ref = &choices[j]
+		}
+	}
+	if ref == nil {
+		ref = matchingBuiltInChoice(choices, m.ID)
+	}
+	if ref != nil && len(ref.ReasoningEfforts) > 0 && !(len(ref.ReasoningEfforts) == 1 && ref.ReasoningEfforts[0] == "none") {
+		efforts = mergeEfforts(efforts, ref.ReasoningEfforts)
+	}
+	return efforts
+}
+
+// DefaultReasoningEffortOf returns the model's preferred default reasoning effort.
+func DefaultReasoningEffortOf(choices []Choice, modelID string) string {
+	efforts := ReasoningEffortsOf(choices, modelID)
+	if idx := slices.IndexFunc(choices, func(m Choice) bool { return m.ID == modelID }); idx >= 0 {
+		def := choices[idx].DefaultReasoningEffort
+		if def != "" && (len(efforts) == 0 || slices.Contains(efforts, def)) {
+			return def
+		}
+	}
+	if slices.Contains(efforts, "medium") {
+		return "medium"
+	}
+	if slices.Contains(efforts, "high") {
+		return "high"
+	}
+	if len(efforts) > 0 {
+		return efforts[0]
+	}
+	return ""
+}
+
+func matchingBuiltInChoice(choices []Choice, customID string) *Choice {
+	norm := normalizeModelKey(customID)
+	if norm == "" {
+		return nil
+	}
+	var best *Choice
+	bestScore := 0
+	for i := range choices {
+		c := &choices[i]
+		if c.IsCustom || len(c.ReasoningEfforts) == 0 || (len(c.ReasoningEfforts) == 1 && c.ReasoningEfforts[0] == "none") {
+			continue
+		}
+		ref := normalizeModelKey(c.ID)
+		if ref == "" {
+			continue
+		}
+		score := 0
+		switch {
+		case norm == ref:
+			score = len(ref) + 100
+		case strings.Contains(norm, ref):
+			score = len(ref)
+		}
+		if score > bestScore {
+			bestScore, best = score, c
+		}
+	}
+	return best
+}
+
+func normalizeModelKey(id string) string {
+	s := strings.ToLower(strings.TrimSpace(id))
+	if rest, ok := strings.CutPrefix(s, magpieIDPrefix); ok {
+		// Strip trailing gateway hash "-<hex6+>" if present.
+		if dash := strings.LastIndex(rest, "-"); dash > 0 && len(rest)-dash-1 >= 6 {
+			isHex := true
+			for _, r := range rest[dash+1:] {
+				if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+					isHex = false
+					break
+				}
+			}
+			if isHex {
+				rest = rest[:dash]
+			}
+		}
+		s = rest
+	}
+	s = strings.TrimPrefix(s, "custom:")
+	if slash := strings.LastIndex(s, "/"); slash >= 0 {
+		s = s[slash+1:]
+	}
+	s = strings.ReplaceAll(s, ".", "-")
+	return s
+}
+
+func mergeEfforts(a, b []string) []string {
+	seen := map[string]bool{}
+	var unknown []string
+	for _, list := range [][]string{a, b} {
+		for _, e := range list {
+			if e == "" || seen[e] {
+				continue
+			}
+			seen[e] = true
+			if !slices.Contains(EffortOrder, e) {
+				unknown = append(unknown, e)
+			}
+		}
+	}
+	var out []string
+	for _, e := range EffortOrder {
+		if seen[e] {
+			out = append(out, e)
+		}
+	}
+	return append(out, unknown...)
 }
 
 // EffortLabels names the reasoning efforts the Daemon offers. The names stay

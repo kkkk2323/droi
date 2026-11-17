@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"errors"
 	"net/http"
 	"slices"
@@ -174,29 +175,37 @@ func (a *App) symbolPicker(c *ui.Context, f *workstreamForm) {
 		f.symbolOpen = !f.symbolOpen
 	}
 	ui.PopoverBase(c, b, &f.symbolOpen, func(p ui.Element) {
-		p.Role(ui.RoleDialog).Label(L("Workstream symbol")).Margin(k.Px(6), 0, 0, 0).Padding(k.Px(8)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).
-			Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
-		ui.Column(c).Gap(k.Px(2)).Children(func() {
-			const perRow = 6
-			for start := 0; start < len(sessions.WorkstreamSymbols); start += perRow {
-				ui.Row(c).Gap(k.Px(2)).Children(func() {
-					for _, sym := range sessions.WorkstreamSymbols[start:min(start+perRow, len(sessions.WorkstreamSymbols))] {
-						on := sym == f.symbol
-						cell := kit.Selected(ui.ButtonBase(c.Key(sym)).Label(L("Workstream symbol: %s", sym)).Tooltip(sym), on).Size(k.Px(32), k.Px(32)).Radius(k.Px(6)).Center().Cursor(ui.CursorPointer)
-						switch {
-						case on:
-							cell.Background(t.Accent)
-						case cell.Hovered():
-							cell.Background(t.Muted)
-						}
-						cell.Children(func() { k.Icon(c, sym, 16, t.Foreground) })
-						if cell.Clicked() {
-							f.symbol, f.symbolOpen = sym, false
-						}
-					}
-				})
-			}
+		a.symbolGrid(c, p, f.symbol, func(sym string) {
+			f.symbol, f.symbolOpen = sym, false
 		})
+	})
+}
+
+// symbolGrid draws the 6-column Workstream symbol popover grid.
+func (a *App) symbolGrid(c *ui.Context, p ui.Element, current string, onPick func(string)) {
+	k, t := a.kit, a.kit.T
+	p.Role(ui.RoleDialog).Label(L("Workstream symbol")).Margin(k.Px(6), 0, 0, 0).Padding(k.Px(8)).Radius(k.Px(8)).Border(1, t.Border).Background(t.Popover).
+		Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
+	ui.Column(c).Gap(k.Px(2)).Children(func() {
+		const perRow = 6
+		for start := 0; start < len(sessions.WorkstreamSymbols); start += perRow {
+			ui.Row(c).Gap(k.Px(2)).Children(func() {
+				for _, sym := range sessions.WorkstreamSymbols[start:min(start+perRow, len(sessions.WorkstreamSymbols))] {
+					on := sym == current
+					cell := kit.Selected(ui.ButtonBase(c.Key(sym)).Label(L("Workstream symbol: %s", sym)).Tooltip(sym), on).Size(k.Px(32), k.Px(32)).Radius(k.Px(6)).Center().Cursor(ui.CursorPointer)
+					switch {
+					case on:
+						cell.Background(t.Accent)
+					case cell.Hovered():
+						cell.Background(t.Muted)
+					}
+					cell.Children(func() { k.Icon(c, sym, 16, t.Foreground) })
+					if cell.Clicked() {
+						onPick(sym)
+					}
+				}
+			})
+		}
 	})
 }
 
@@ -240,6 +249,72 @@ func (a *App) startWorkstream() {
 		go a.refreshList()
 		a.Go(Route{Name: "session", SessionID: made.OrchestratorID})
 	})
+}
+
+// mergeWorkstreamChoices combines defaults models with session-loaded
+// AvailableModels so every model's full ReasoningEfforts and
+// DefaultReasoningEffort are visible in Workstream settings.
+func mergeWorkstreamChoices(base, extra []models.Choice) []models.Choice {
+	if len(base) == 0 {
+		return extra
+	}
+	if len(extra) == 0 {
+		return base
+	}
+	out := slices.Clone(base)
+	byID := make(map[string]int, len(out))
+	for i, c := range out {
+		byID[c.ID] = i
+	}
+	for _, m := range extra {
+		if idx, ok := byID[m.ID]; ok {
+			if len(m.ReasoningEfforts) > 0 {
+				out[idx].ReasoningEfforts = m.ReasoningEfforts
+			}
+			if m.DefaultReasoningEffort != "" {
+				out[idx].DefaultReasoningEffort = m.DefaultReasoningEffort
+			}
+			if m.IsCustom {
+				out[idx].IsCustom = true
+			}
+			if m.BehavesLike != "" {
+				out[idx].BehavesLike = m.BehavesLike
+			}
+		} else {
+			byID[m.ID] = len(out)
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func workstreamEffortLevels(choices []models.Choice, modelID, current string) []string {
+	levels := models.ReasoningEffortsOf(choices, modelID)
+	if len(levels) == 0 {
+		if current != "" {
+			return []string{current}
+		}
+		return []string{"medium"}
+	}
+	if current != "" && !slices.Contains(levels, current) {
+		levels = append(slices.Clone(levels), current)
+	}
+	return levels
+}
+
+func effortOptions(levels []string) []kit.Option {
+	out := make([]kit.Option, 0, len(levels))
+	for _, e := range levels {
+		out = append(out, kit.Option{Value: e, Label: settingsview.EffortLabel(e)})
+	}
+	return out
+}
+
+func inheritEffortLabel(orchEffort string) string {
+	if orchEffort != "" && orchEffort != "none" {
+		return L("Inherit (%s)", settingsview.EffortLabel(orchEffort))
+	}
+	return L("Inherit")
 }
 
 // inheritLabel is the agents' own model choice of "none", with what it comes
@@ -306,6 +381,9 @@ func (a *App) openWorkstreamSettings(id string) {
 			s.settings.symbol.symbol = sessions.WorkstreamSymbol(sel.Tags)
 		}
 	}
+	if a.defaults != nil && a.sessionDefaults() == nil {
+		a.defaults.Reload()
+	}
 	a.loadScriptModels(true)
 }
 
@@ -349,9 +427,7 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 		if set.ModelID != "" {
 			orchModel, orchEffort = set.ModelID, string(set.ReasoningEffort)
 		}
-		if len(choices) == 0 {
-			choices = models.ToChoices(os.AvailableModels())
-		}
+		choices = mergeWorkstreamChoices(choices, models.ToChoices(os.AvailableModels()))
 	}
 	setOrch := func(p protocol.UpdateSessionSettingsParams) {
 		p.SessionID = orch
@@ -400,16 +476,50 @@ func (a *App) workstreamSettingsDialog(c *ui.Context) {
 			})
 			k.Text(c, L("Models"), k.Dense(12, 13), 18).FontWeight(500).TextColor(t.MutedForeground).Margin(k.Px(14), 0, 0, 0)
 			a.settingsRow(c, L("Orchestrator model"), L("Plans the workstream and coordinates its agents. Applies from its next turn."), func() {
-				settingsview.ModelEffortField(c, a.kit, a.prefs, L("Orchestrator model"), "", orch == "", &f.orchOpen, &f.orchPicker, choices, orchModel, orchEffort,
-					func(next string) { setOrch(protocol.UpdateSessionSettingsParams{ModelID: next}) },
-					func(next string) {
-						setOrch(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(next)})
-					})
+				settingsview.ModelField(c, a.kit, a.prefs, L("Orchestrator model"), orch == "", &f.orchOpen, &f.orchPicker, choices, orchModel, func(next string) {
+					p := protocol.UpdateSessionSettingsParams{ModelID: next}
+					if sup := models.ReasoningEffortsOf(choices, next); len(sup) > 0 && !slices.Contains(sup, orchEffort) {
+						if def := models.DefaultReasoningEffortOf(choices, next); def != "" {
+							p.ReasoningEffort = protocol.ReasoningEffort(def)
+						}
+					}
+					setOrch(p)
+				})
 			})
+			if orchEfforts := workstreamEffortLevels(choices, orchModel, orchEffort); len(orchEfforts) > 0 {
+				a.settingsRow(c, L("Orchestrator reasoning"), L("Reasoning level for the orchestrator."), func() {
+					opts := effortOptions(orchEfforts)
+					cur := cmp.Or(orchEffort, models.DefaultReasoningEffortOf(choices, orchModel))
+					if next, ok := a.kit.FieldSelect(c, L("Orchestrator reasoning"), cur, opts, orch == ""); ok {
+						setOrch(protocol.UpdateSessionSettingsParams{ReasoningEffort: protocol.ReasoningEffort(next)})
+					}
+				})
+			}
 			a.settingsRow(c, L("Agent model"), L("Model for all agents. Running agents switch at their next turn; Inherit applies only to new agents."), func() {
-				settingsview.ModelEffortField(c, a.kit, a.prefs, L("Agent model"), inheritLabel(choices, orchModel, orchEffort), w == nil, &f.agentOpen, &f.agentPicker, choices, agentModel, agentEffort,
-					func(next string) { a.saveAgentModel(id, next, fitEffort(choices, next, agentEffort)) },
-					func(next string) { a.saveAgentModel(id, agentModel, next) })
+				settingsview.ModelFieldOr(c, a.kit, a.prefs, L("Agent model"), inheritLabel(choices, orchModel, orchEffort), w == nil, &f.agentOpen, &f.agentPicker, choices, agentModel, func(next string) {
+					nextEffort := ""
+					if agentEffort != "" {
+						effTarget := cmp.Or(next, orchModel)
+						nextEffort = fitEffort(choices, effTarget, agentEffort)
+					}
+					a.saveAgentModel(id, next, nextEffort)
+				})
+			})
+			a.settingsRow(c, L("Agent reasoning"), L("Reasoning level for agents. Inherit follows the orchestrator."), func() {
+				const inheritEffort = "__inherit__"
+				effTarget := cmp.Or(agentModel, orchModel)
+				levels := workstreamEffortLevels(choices, effTarget, cmp.Or(agentEffort, orchEffort))
+				opts := append([]kit.Option{{Value: inheritEffort, Label: inheritEffortLabel(orchEffort)}}, effortOptions(levels)...)
+				cur := inheritEffort
+				if agentEffort != "" {
+					cur = agentEffort
+				}
+				if next, ok := a.kit.FieldSelect(c, L("Agent reasoning"), cur, opts, w == nil); ok {
+					if next == inheritEffort {
+						next = ""
+					}
+					a.saveAgentModel(id, agentModel, next)
+				}
 			})
 			a.scriptHint(c, orchModel, agentModel)
 			a.workstreamNotice(c)

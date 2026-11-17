@@ -173,6 +173,8 @@ func TestAScriptWithOtherCallsOrAFailureKeepsItsShell(t *testing.T) {
 	}
 	mixed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"}), nested("n2", "Read", map[string]any{"file_path": "/x"})},
 		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false), wsResult("n2", "text", false)}, "completed")
+	mixed.until("the folded segment", func() bool { return mixed.finds("Activity · 2 events") })
+	mixed.click("Activity · 2 events")
 	mixed.until("the rows", func() bool { return mixed.hasText("Alpha") && mixed.hasText("Used 2 tools") })
 	failed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"})},
 		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false)}, "failed")
@@ -181,4 +183,80 @@ func TestAScriptWithOtherCallsOrAFailureKeepsItsShell(t *testing.T) {
 	printed := build([]map[string]any{nested("n1", "spawn_agent", map[string]any{"title": "Alpha", "prompt": "a"})},
 		[]fakedaemon.Message{wsResult("n1", `Started agent "Alpha" (agent-7).`, false)}, "completed", "hello from the script")
 	printed.until("the shell", func() bool { return printed.hasText("Alpha") && printed.hasText("Script") })
+}
+
+// rename_agent shows its dedicated row and group header, and group headers
+// fold and unfold their calls when clicked.
+func TestRenameAgentRowAndGroupFold(t *testing.T) {
+	sc := workstreamsScenario()
+	sc.Sessions[1].Messages = []fakedaemon.Message{
+		{Role: "user", Text: "Rename them"},
+		{Role: "assistant", Content: []map[string]any{
+			wsUse("r1", "rename_agent", map[string]any{"agent_id": "agent-1", "title": "gRPC API"}),
+			wsUse("r2", "rename_agent", map[string]any{"agent_id": "agent-2", "title": "SDK switch"}),
+		}},
+		wsResult("r1", `Renamed agent "gRPC API" (agent-1) (was "gRPC endpoints").`, false),
+		wsResult("r2", `The user renamed agent "Client switch" (agent-2), so its title stays.`, true),
+	}
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.until("the rename group", func() bool {
+		return h.hasText("Renamed 1 of 2 agents") && h.hasText("Renamed gRPC API") && h.hasText("Failed to rename Client switch")
+	})
+	h.click("Renamed 1 of 2 agents")
+	h.until("folded", func() bool {
+		return h.hasText("Renamed 1 of 2 agents") && !h.hasText("Renamed gRPC API") && !h.hasText("Failed to rename Client switch")
+	})
+	h.click("Renamed 1 of 2 agents")
+	h.until("expanded", func() bool {
+		return h.hasText("Renamed gRPC API") && h.hasText("Failed to rename Client switch")
+	})
+	h.click("Failed to rename Client switch")
+	h.until("the failure reason", func() bool { return h.hasText("The user renamed agent") })
+}
+
+// Consecutive thinking and regular tools fold into an Activity segment on the
+// orchestrator's page while Workstream tools and final text stay outside, and
+// an agent's own tab does not fold them.
+func TestOrchestratorTranscriptFoldsConsecutiveActivity(t *testing.T) {
+	sc := workstreamsScenario()
+	sc.Sessions[1].Messages = []fakedaemon.Message{
+		{Role: "user", Text: "Inspect and delegate"},
+		{Role: "assistant", Content: []map[string]any{
+			{"type": "thinking", "thinking": "Checking files first.", "signature": "sig1"},
+			{"type": "tool_use", "id": "t1", "name": "Read", "input": map[string]any{"file_path": "/a.go"}},
+			{"type": "tool_use", "id": "t2", "name": "Grep", "input": map[string]any{"pattern": "foo"}},
+		}},
+		wsResult("t1", "ok", false),
+		wsResult("t2", "boom", true),
+		{Role: "assistant", Content: []map[string]any{
+			wsUse("s1", "spawn_agent", map[string]any{"title": "Worker", "prompt": "Do it"}),
+		}},
+		wsResult("s1", `Started agent "Worker" (agent-9).`, false),
+		{Role: "assistant", Content: []map[string]any{{"type": "text", "text": "Delegated to Worker."}}},
+	}
+	sc.Sessions[2].Messages = []fakedaemon.Message{
+		{Role: "user", Text: "Run checks"},
+		{Role: "assistant", Content: []map[string]any{
+			{"type": "thinking", "thinking": "Agent thinking.", "signature": "sig2"},
+			{"type": "tool_use", "id": "a1", "name": "Read", "input": map[string]any{"file_path": "/b.go"}},
+		}},
+		wsResult("a1", "ok", false),
+	}
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{paymentWorkstream()}}, nil)
+	h.openOrchestrator()
+	h.until("activity segment", func() bool {
+		return h.hasText("Activity · 3 events") && h.hasText("1 failed") && h.hasText("Worker") && h.hasText("Delegated to Worker.")
+	})
+	if h.hasText("Reasoning") || h.hasText("Used 2 tools") {
+		t.Fatalf("activity showed before expanding segment: %q", h.tt.Texts())
+	}
+	h.click("Activity · 3 events, 1 failed")
+	h.until("expanded activity", func() bool {
+		return h.hasText("Reasoning") && h.hasText("Used 2 tools") && h.hasText("Read: /a.go") && h.hasText("Grep: foo")
+	})
+
+	// Switching to an agent tab must not fold its regular activity.
+	h.click("gRPC endpoints, Idle")
+	h.until("agent transcript", func() bool { return h.hasText("Reasoning") && h.hasText("Used Read") && !h.hasText("Activity ·") })
 }

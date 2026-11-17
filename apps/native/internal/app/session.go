@@ -67,6 +67,7 @@ type sessionView struct {
 func (a *App) view(id string) *sessionView {
 	v := a.views[id]
 	if v == nil {
+		sel := findSummary(a.listedNow(), id)
 		v = &sessionView{a: a, id: id, attached: map[string]*ui.Bitmap{}, rail: railState{preview: -1}}
 		v.View = sessionview.New(id, sessionview.Env{
 			Controller:  a.ctl,
@@ -93,6 +94,7 @@ func (a *App) view(id string) *sessionView {
 				a.welcomeBlock(c, v.ws)
 				return true
 			},
+			FoldActivity: sel != nil && sessions.IsWorkstreamOrchestrator(sel.Tags),
 		})
 		d := a.drafts.Load(id)
 		text, texts := pasted.Split(d.Text)

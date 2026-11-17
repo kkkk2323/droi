@@ -71,9 +71,12 @@ func TestTheFilesPanelKeepsTheNewestAndReadsRarely(t *testing.T) {
 	w := paymentWorkstream()
 	w.SharedFolder = dir
 	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	h.tt.SetSize(refW, 900)
 	h.openOrchestrator()
 	h.click("Files")
-	h.until("the newest first", func() bool { return h.hasText("zz/newest.md") })
+	h.until("the newest folder", func() bool { return h.finds("zz") })
+	h.click("zz")
+	h.until("the newest first", func() bool { return h.finds(filepath.Join("zz", "newest.md")) && h.hasText("newest.md") })
 	before := h.a.workstreams.files.reads
 	for range 30 {
 		h.tt.Frame()

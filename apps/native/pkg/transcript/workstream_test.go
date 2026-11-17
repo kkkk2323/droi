@@ -42,6 +42,24 @@ func TestAWorkstreamLineFollowsTheCall(t *testing.T) {
 	if got := WorkstreamLine(send, ToolSendMessage, "Docs"); got != "Failed to message Docs" {
 		t.Fatalf("failed: %q", got)
 	}
+	if tool, ok := WorkstreamTool(wsCall("rename_agent", nil, "", false)); !ok || tool != ToolRenameAgent {
+		t.Fatal("rename_agent is a Workstream tool")
+	}
+	renRun := wsCall("rename_agent", map[string]any{"agent_id": "a1b2", "title": "API"}, "", false)
+	if got := WorkstreamLine(renRun, ToolRenameAgent, "API"); got != "Renaming API" {
+		t.Fatalf("rename running: %q", got)
+	}
+	renDone := wsCall("rename_agent", map[string]any{"agent_id": "a1b2", "title": "API"}, `Renamed agent "API" (a1b2) (was "Docs").`, false)
+	if got := WorkstreamLine(renDone, ToolRenameAgent, "API"); got != "Renamed API" {
+		t.Fatalf("rename done: %q", got)
+	}
+	if id, title := AgentOf(renDone); id != "a1b2" || title != "API" {
+		t.Fatalf("rename AgentOf: %q %q", id, title)
+	}
+	renFail := wsCall("rename_agent", map[string]any{"agent_id": "a1b2", "title": "API"}, `The user renamed agent "Docs" (a1b2), so its title stays.`, true)
+	if got := WorkstreamLine(renFail, ToolRenameAgent, "Docs"); got != "Failed to rename Docs" {
+		t.Fatalf("rename failed: %q", got)
+	}
 }
 
 func TestTheAgentACallIsAbout(t *testing.T) {
@@ -83,6 +101,22 @@ func TestCallsOfOneToolGroupWhileTheyFollowEachOther(t *testing.T) {
 	}
 	if got, _ := WorkstreamGroup([]*ToolCall{c, c}); got != "Failed to start 2 agents" {
 		t.Fatalf("failed: %q", got)
+	}
+	r1 := wsCall("rename_agent", map[string]any{"agent_id": "1", "title": "One"}, `Renamed agent "One" (1) (was "A").`, false)
+	r2 := wsCall("rename_agent", map[string]any{"agent_id": "2", "title": "Two"}, `Renamed agent "Two" (2) (was "B").`, false)
+	rFail := wsCall("rename_agent", map[string]any{"agent_id": "3", "title": "Three"}, "locked", true)
+	rWait := wsCall("rename_agent", map[string]any{"agent_id": "4", "title": "Four"}, "", false)
+	if got, _ := WorkstreamGroup([]*ToolCall{r1, r2}); got != "Renamed 2 agents" {
+		t.Fatalf("rename done group: %q", got)
+	}
+	if got, _ := WorkstreamGroup([]*ToolCall{r1, rFail}); got != "Renamed 1 of 2 agents" {
+		t.Fatalf("rename partial group: %q", got)
+	}
+	if got, _ := WorkstreamGroup([]*ToolCall{r1, rWait}); got != "Renaming 2 agents" {
+		t.Fatalf("rename running group: %q", got)
+	}
+	if got, _ := WorkstreamGroup([]*ToolCall{rFail, rFail}); got != "Failed to rename 2 agents" {
+		t.Fatalf("rename failed group: %q", got)
 	}
 }
 

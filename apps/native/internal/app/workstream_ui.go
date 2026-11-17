@@ -18,6 +18,8 @@ import (
 // The side panel's tabs.
 const (
 	panelAgents = "agents"
+	panelGoal   = "goal"
+	panelPRs    = "prs"
 	panelFiles  = "files"
 )
 
@@ -32,9 +34,11 @@ type workstreamUI struct {
 	Panel  string `json:"panel,omitempty"`
 	Closed bool   `json:"closed,omitempty"`
 	// ArchivedOpen unfolds the panel's archived agents; Folded are the other
-	// groups the user folded.
-	ArchivedOpen bool     `json:"archivedOpen,omitempty"`
-	Folded       []string `json:"folded,omitempty"`
+	// groups the user folded; SubagentsOpen lists agents whose Task
+	// subagents tree is expanded (collapsed by default).
+	ArchivedOpen  bool     `json:"archivedOpen,omitempty"`
+	Folded        []string `json:"folded,omitempty"`
+	SubagentsOpen []string `json:"subagentsOpen,omitempty"`
 }
 
 // folded is whether the panel keeps group folded: the archived agents until
@@ -59,9 +63,26 @@ func (u *workstreamUI) toggleFold(group string) {
 	u.Folded = append(u.Folded, group)
 }
 
+func (u workstreamUI) subagentsExpanded(id string) bool {
+	return slices.Contains(u.SubagentsOpen, id)
+}
+
+func (u *workstreamUI) toggleSubagents(id string) {
+	if i := slices.Index(u.SubagentsOpen, id); i >= 0 {
+		u.SubagentsOpen = slices.Delete(u.SubagentsOpen, i, i+1)
+		return
+	}
+	u.SubagentsOpen = append(u.SubagentsOpen, id)
+}
+
 func (u workstreamUI) panel() string {
-	if u.Panel == panelFiles {
+	switch u.Panel {
+	case panelFiles:
 		return panelFiles
+	case panelGoal:
+		return panelGoal
+	case panelPRs:
+		return panelPRs
 	}
 	return panelAgents
 }
@@ -88,7 +109,7 @@ func (a *App) setWsState(id string, change func(*workstreamUI)) {
 	if u.Active != "" && !slices.Contains(u.Tabs, u.Active) {
 		u.Active = ""
 	}
-	if len(u.Tabs) == 0 && u.Panel == "" && !u.Closed && !u.ArchivedOpen && len(u.Folded) == 0 {
+	if len(u.Tabs) == 0 && u.Panel == "" && !u.Closed && !u.ArchivedOpen && len(u.Folded) == 0 && len(u.SubagentsOpen) == 0 {
 		delete(s.ui, id)
 	} else {
 		s.ui[id] = u
@@ -128,6 +149,7 @@ func (a *App) orchestratorSession(wsID string) string {
 // orchestrator's, opening the tab when there is none.
 func (a *App) openAgent(wsID, agent string) {
 	a.workstreams.paneDrawer = false
+	a.workstreams.scrollToTab = agent
 	a.setWsState(wsID, func(u *workstreamUI) {
 		if !slices.Contains(u.Tabs, agent) {
 			u.Tabs = append(u.Tabs, agent)
@@ -152,6 +174,9 @@ func (a *App) showAgent(agent string) {
 
 // showTab makes the tab of agent the shown one, "" the orchestrator's.
 func (a *App) showTab(wsID, agent string) {
+	if agent != "" {
+		a.workstreams.scrollToTab = agent
+	}
 	a.setWsState(wsID, func(u *workstreamUI) { u.Active = agent })
 	if agent != "" {
 		a.showAgent(agent)
@@ -257,6 +282,7 @@ func (a *App) workstreamPage(c *ui.Context, orch sessions.Summary, listed []sess
 	v := a.view(active)
 	a.showing = active
 	v.ws = ctx
+	v.SetFoldActivity(!agent)
 	v.chrome = func(c *ui.Context, s *session.Session, loaded bool, workspace string, nav subagentNav) {
 		a.workstreamTabs(c, ctx, v, s, loaded, workspace, nav)
 	}
@@ -374,12 +400,47 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 			sp := ui.Box(c).Shrink(0)
 			sp.Width(sp.Animate("width", leading, 200*time.Millisecond))
 		}
-		ui.Row(c).Role(ui.RoleTabList).Label(L("Workstream tabs")).Grow(1).MinWidth(0).Gap(k.Px(4)).AlignItems(ui.Center).Children(func() {
-			a.orchestratorTab(c, ctx)
-			for i, tab := range ctx.st.Tabs {
-				a.agentTab(c, ctx, i, tab, listed)
+		tabList := ui.Row(c).Role(ui.RoleTabList).Label(L("Workstream tabs")).Grow(1).MinWidth(0).Gap(k.Px(4)).AlignItems(ui.Center).Clip()
+		avail := a.workstreams.tabListW - a.workstreams.orchTabW - k.Px(4)
+		nTabs := len(ctx.st.Tabs)
+		minTabW := k.Px(112)
+		maxTabW := k.Px(180)
+		scrollTabs := nTabs > 1
+		tabWidth := float32(0)
+		switch {
+		case nTabs == 1 && avail > 0 && avail < maxTabW:
+			tabWidth = max(k.Px(72), avail)
+		case scrollTabs:
+			tabWidth = minTabW
+			if avail > 0 {
+				per := (avail - float32(nTabs-1)*k.Px(4)) / float32(nTabs)
+				tabWidth = min(maxTabW, max(minTabW, per))
+			}
+		}
+		tabList.Children(func() {
+			orchEl := a.orchestratorTab(c, ctx)
+			if nTabs > 0 {
+				if scrollTabs {
+					ui.ScrollHorizontal(c).Grow(1).MinWidth(0).Height(k.Px(32)).Gap(k.Px(4)).AlignItems(ui.Center).Clip().Children(func() {
+						for i, tab := range ctx.st.Tabs {
+							a.agentTab(c, ctx, i, tab, listed, tabWidth)
+						}
+					})
+				} else {
+					ui.Row(c).Grow(1).MinWidth(0).Gap(k.Px(4)).AlignItems(ui.Center).Clip().Children(func() {
+						for i, tab := range ctx.st.Tabs {
+							a.agentTab(c, ctx, i, tab, listed, tabWidth)
+						}
+					})
+				}
+			}
+			if ow := orchEl.Bounds().W; ow > 0 {
+				a.workstreams.orchTabW = ow
 			}
 		})
+		if lw := tabList.Bounds().W; lw > 0 {
+			a.workstreams.tabListW = lw
+		}
 		ui.Row(c).Gap(k.Px(2)).Shrink(0).Children(func() {
 			v.jobsMenu(c)
 			v.subagentMenu(c, nav)
@@ -399,7 +460,7 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 
 // orchestratorTab is the tab of the Workstream's orchestrator: its symbol and
 // name, in the tint that marks it, and the menu of the Workstream.
-func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext) {
+func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext) ui.Element {
 	k, t := a.kit, a.kit.T
 	title := ctx.title()
 	selected := !ctx.agentShown
@@ -443,15 +504,25 @@ func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext) {
 			}
 		})
 	})
+	return tab
 }
 
 // agentTab is an agent's tab: its name and a button that closes it; the menu
 // of the right button closes this tab, those after it, or all.
-func (a *App) agentTab(c *ui.Context, ctx *wsContext, i int, id string, listed []sessions.Summary) {
+func (a *App) agentTab(c *ui.Context, ctx *wsContext, i int, id string, listed []sessions.Summary, fixedW float32) {
 	k, t := a.kit, a.kit.T
 	title := a.agentTitle(ctx, id, listed)
 	selected := ctx.agentShown && ctx.st.Active == id
-	tab := ui.Row(c.Key("tab:" + id)).Height(k.Px(30)).Shrink(1).MinWidth(k.Px(72)).MaxWidth(k.Px(180)).Radius(k.Px(8)).AlignItems(ui.Center)
+	tab := ui.Row(c.Key("tab:" + id)).Height(k.Px(30)).Radius(k.Px(8)).AlignItems(ui.Center)
+	if fixedW > 0 {
+		tab.Width(fixedW).Shrink(0)
+	} else {
+		tab.Shrink(1).MinWidth(k.Px(112)).MaxWidth(k.Px(180))
+	}
+	if a.workstreams.scrollToTab == id {
+		tab.ScrollIntoView()
+		a.workstreams.scrollToTab = ""
+	}
 	switch {
 	case selected:
 		tab.Background(t.SidebarAccent)
