@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -907,4 +908,286 @@ func TestWorkstreamSettingsAgentReasoningLevelsAndQueuedSave(t *testing.T) {
 	h.click("Agent reasoning level")
 	h.until("xhigh option", func() bool { return h.hasText("Low") && h.hasText("Extra high") })
 	h.shot("workstream-settings-reasoning")
+}
+
+func TestGitRemoteSlugsAndMarkdownCodeStripping(t *testing.T) {
+	// Normal .git/config with GitHub SSH and HTTPS remotes.
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `[core]
+	repositoryformatversion = 0
+[remote "origin"]
+	url = git@github.com:kkkk2323/droi.git
+[remote "gitlab"]
+	url = ssh://git@gitlab.example.com:2222/group/sub/repo.git
+`
+	if err := os.WriteFile(filepath.Join(repo, ".git", "config"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	slugs := gitRemoteSlugs(repo)
+	for _, want := range []string{"github.com/kkkk2323/droi", "gitlab.example.com/group/sub/repo"} {
+		if !slugs[want] {
+			t.Fatalf("missing remote slug %q in %v", want, slugs)
+		}
+	}
+
+	// Git worktree with .git file pointing to worktree gitdir and commondir.
+	mainGit := filepath.Join(t.TempDir(), ".git")
+	wtGitDir := filepath.Join(mainGit, "worktrees", "wt1")
+	wtDir := filepath.Join(t.TempDir(), "wt1")
+	if err := os.MkdirAll(wtGitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mainGit, "config"), []byte("[remote \"origin\"]\n\turl = https://github.com/kkkk2323/droi.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGitDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtDir, ".git"), []byte("gitdir: "+wtGitDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wtSlugs := gitRemoteSlugs(wtDir)
+	if !wtSlugs["github.com/kkkk2323/droi"] {
+		t.Fatalf("worktree remote slugs = %v", wtSlugs)
+	}
+
+	if got := prRepoSlug("https://gitlab.example.com/group/sub/repo/-/merge_requests/42"); got != "gitlab.example.com/group/sub/repo" {
+		t.Fatalf("prRepoSlug gitlab = %q", got)
+	}
+	if got := prRepoSlug("https://github.com/kkkk2323/droi/pull/337"); got != "github.com/kkkk2323/droi" {
+		t.Fatalf("prRepoSlug github = %q", got)
+	}
+
+	// Markdown code stripping removes fenced/inline code but preserves normal links and [`#337`](url).
+	md := "```go\nurl := \"https://github.com/kkkk2323/droi/pull/999\"\n```\n" +
+		"~~~\nhttps://github.com/kkkk2323/droi/pull/998\n~~~\n" +
+		"Ignore `https://github.com/kkkk2323/droi/pull/888` and `[#777](https://github.com/kkkk2323/droi/pull/777)`.\n" +
+		"Keep [`#337`](https://github.com/kkkk2323/droi/pull/337) and [#336](https://github.com/kkkk2323/droi/pull/336)."
+	got := extractPRURLs(md)
+	want := []string{"https://github.com/kkkk2323/droi/pull/337", "https://github.com/kkkk2323/droi/pull/336"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("extractPRURLs = %v, want %v", got, want)
+	}
+}
+
+func TestPRsIgnoreToolResultsCodeBlocksAndExternalRepos(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".git", "config"), []byte("[remote \"origin\"]\n\turl = git@github.com:kkkk2323/droi.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sc := workstreamsScenario()
+	sc.Sessions[2].Messages = []fakedaemon.Message{
+		{Role: "user", Text: "Check https://github.com/kkkk2323/droi/pull/701"},
+		{Role: "assistant", Content: []map[string]any{
+			wsUse("t1", "Read", map[string]any{"file_path": "/tmp/test.go"}),
+		}},
+		wsResult("t1", `fixture := "https://github.com/acme/pay/pull/219"`, false),
+		{Role: "assistant", Text: "```go\nurl := \"https://github.com/kkkk2323/droi/pull/999\"\n```\nSee `https://github.com/kkkk2323/droi/pull/888`.\nCompare with https://github.com/acme/pay/pull/210.\nOpened https://github.com/kkkk2323/droi/pull/337"},
+	}
+
+	w := paymentWorkstream()
+	w.Workspace = repo
+	w.Agents[0].Branch = ""
+	w.Agents[1].Branch = ""
+	w.Agents[2].Branch = ""
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: "Opened https://github.com/kkkk2323/droi/pull/337 and compared https://github.com/acme/pay/pull/210",
+		At:   w.CreatedAt,
+	}
+
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	var seenURLs []string
+	var seenReasons []protocol.DaemonPullRequestLookupReason
+	num337 := float64(337)
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		var statuses []protocol.DaemonPullRequestStatusResult
+		for _, lk := range p.Lookups {
+			seenReasons = append(seenReasons, lk.Reason)
+			if sv, err := lk.Subject.Value(); err == nil {
+				if u, ok := sv.(*protocol.DaemonPullRequestSubjectURL); ok {
+					seenURLs = append(seenURLs, u.URL)
+					if u.URL == "https://github.com/kkkk2323/droi/pull/337" {
+						statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+							Subject: lk.Subject,
+							Branch:  "droid/pr-fix",
+							Record: &protocol.DaemonPullRequestRecord{
+								State:  protocol.DaemonPullRequestStateOpen,
+								URL:    u.URL,
+								Title:  "Fix PR extraction",
+								Number: &num337,
+							},
+						})
+					}
+				}
+			}
+		}
+		return &protocol.ResolvePullRequestStatusesResult{Statuses: statuses}, nil
+	}
+
+	h.openOrchestrator()
+	// Open agent-1 so its session messages (including ToolResult and fenced code) are loaded.
+	h.click("gRPC endpoints")
+	h.until("real PR #337 badge", func() bool {
+		return h.finds("Pull request #337, Open")
+	})
+	h.settle()
+
+	for _, bad := range []string{"#219", "#210", "#999", "#888", "#701"} {
+		if h.hasText(bad) || h.finds("Pull request "+bad+", Open") {
+			t.Fatalf("unexpected false PR %s shown in texts=%q", bad, h.tt.Texts())
+		}
+	}
+	for _, u := range seenURLs {
+		if u != "https://github.com/kkkk2323/droi/pull/337" {
+			t.Fatalf("unexpected lookup URL %q", u)
+		}
+	}
+	if !slices.Contains(seenReasons, protocol.DaemonPullRequestLookupReasonTranscriptLink) {
+		t.Fatalf("expected TranscriptLink lookup reason, got %v", seenReasons)
+	}
+
+	h.click("PRs")
+	h.until("PRs list has #337", func() bool {
+		return h.hasText("#337 Fix PR extraction")
+	})
+	if h.hasText("#219") || h.hasText("#210") || h.hasText("#999") || h.hasText("#888") || h.hasText("#701") {
+		t.Fatalf("PRs list leaked false PRs: %q", h.tt.Texts())
+	}
+}
+
+func TestPRsDoNotResurrectDisprovedFallbackAndInvalidateOnChange(t *testing.T) {
+	w := paymentWorkstream()
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: strings.Join([]string{
+			"Real: https://github.com/acme/pay/pull/337",
+			"None: https://github.com/acme/pay/pull/219",
+			"Failed: https://github.com/acme/pay/pull/210",
+			"RateLimited: https://github.com/acme/pay/pull/205",
+		}, "\n"),
+		At: w.CreatedAt,
+	}
+	fake := &fakeWorkstreams{list: []gateway.Workstream{w}}
+	h := workstreamsHarness(t, fake, nil)
+
+	num337 := float64(337)
+	merged := false
+	var sawInvalidate bool
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		var statuses []protocol.DaemonPullRequestStatusResult
+		for _, lk := range p.Lookups {
+			if lk.Invalidate != nil && *lk.Invalidate {
+				sawInvalidate = true
+			}
+			sv, err := lk.Subject.Value()
+			if err != nil {
+				continue
+			}
+			u, ok := sv.(*protocol.DaemonPullRequestSubjectURL)
+			if !ok {
+				continue
+			}
+			switch u.URL {
+			case "https://github.com/acme/pay/pull/337":
+				st := protocol.DaemonPullRequestStateOpen
+				if merged {
+					st = protocol.DaemonPullRequestStateMerged
+				}
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record: &protocol.DaemonPullRequestRecord{
+						State: st, URL: u.URL, Title: "Real PR", Number: &num337,
+					},
+				})
+			case "https://github.com/acme/pay/pull/219":
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record:  &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateNone},
+				})
+			case "https://github.com/acme/pay/pull/210":
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record: &protocol.DaemonPullRequestRecord{
+						State:  protocol.DaemonPullRequestStateUnavailable,
+						Reason: protocol.DaemonPullRequestUnavailableReasonLookupFailed,
+					},
+				})
+			case "https://github.com/acme/pay/pull/205":
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record: &protocol.DaemonPullRequestRecord{
+						State:  protocol.DaemonPullRequestStateUnavailable,
+						Reason: protocol.DaemonPullRequestUnavailableReasonRateLimited,
+					},
+				})
+			}
+		}
+		return &protocol.ResolvePullRequestStatusesResult{Statuses: statuses}, nil
+	}
+
+	h.openOrchestrator()
+	h.until("real and rate-limited PRs", func() bool {
+		return h.finds("Pull request #337, Open") && h.finds("Pull request #205, Open")
+	})
+	if h.finds("Pull request #219, Open") || h.finds("Pull request #210, Open") {
+		t.Fatalf("disproved PRs were resurrected via fallback: %q", h.tt.Texts())
+	}
+
+	// Archiving the agent changes sig and must trigger Invalidate: true without waiting 15s.
+	merged = true
+	fake.mu.Lock()
+	fake.list[0].Agents[0].ArchivedAt = time.Now().UTC().Format(time.RFC3339)
+	fake.mu.Unlock()
+	h.a.loadWorkstreams(true)
+	h.until("archived group", func() bool { return h.finds("Archived") })
+	h.click("Archived")
+	h.until("PR #337 refreshed to Merged", func() bool {
+		return sawInvalidate && h.finds("Pull request #337, Merged")
+	})
+}
+
+func TestAgentRowLongChineseTitleAndMorePRsButton(t *testing.T) {
+	w := paymentWorkstream()
+	longTitle := "Factory App 界面与交互调研"
+	w.Agents[0].Title = longTitle
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+
+	num340, num338, num337 := float64(340), float64(338), float64(337)
+	h.a.workstreams.resolvePRs = func(_ context.Context, _ protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		sub1, _ := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectBranch{Kind: protocol.DaemonPullRequestSubjectKindBranch, SessionID: "agent-1"})
+		return &protocol.ResolvePullRequestStatusesResult{
+			Statuses: []protocol.DaemonPullRequestStatusResult{
+				{Subject: sub1, Branch: "b1", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateOpen, URL: "https://github.com/acme/pay/pull/337", Title: "Third", Number: &num337}},
+				{Subject: sub1, Branch: "b2", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateOpen, URL: "https://github.com/acme/pay/pull/340", Title: "Newest", Number: &num340}},
+				{Subject: sub1, Branch: "b3", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateMerged, URL: "https://github.com/acme/pay/pull/338", Title: "Second", Number: &num338}},
+			},
+		}, nil
+	}
+
+	h.openOrchestrator()
+	h.until("two PR badges and +1", func() bool {
+		return h.hasText(longTitle) &&
+			h.finds("Pull request #340, Open") &&
+			h.finds("Pull request #338, Merged") &&
+			h.finds("Show all 3 pull requests")
+	})
+	if h.finds("Pull request #337, Open") {
+		t.Fatal("expected at most 2 direct PR badges on agent row")
+	}
+
+	h.click("Show all 3 pull requests")
+	h.until("switched to PRs tab", func() bool {
+		return h.hasText("#340 Newest") && h.hasText("#338 Second") && h.hasText("#337 Third")
+	})
 }

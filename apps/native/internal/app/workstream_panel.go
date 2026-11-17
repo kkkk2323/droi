@@ -495,10 +495,23 @@ func (a *App) paneAgentRow(c *ui.Context, ctx *wsContext, r paneRow) {
 			if b.Clicked() && !r.starting {
 				a.openAgent(ctx.id, r.tab)
 			}
-			for _, pr := range prs {
-				a.agentPRBadge(c, pr)
-			}
 		})
+		if len(prs) > 0 {
+			ui.Row(c.Key("prs:"+key)).Margin(0, k.Px(8), k.Px(3), k.Px(32)).Gap(k.Px(4)).AlignItems(ui.Center).Children(func() {
+				shown := prs
+				more := 0
+				if len(shown) > 2 {
+					more = len(shown) - 2
+					shown = shown[:2]
+				}
+				for _, pr := range shown {
+					a.agentPRBadge(c, pr)
+				}
+				if more > 0 {
+					a.agentMorePRsBadge(c, ctx.id, more, len(prs))
+				}
+			})
+		}
 		if len(r.subagents) > 0 && !r.starting && r.tab != "" {
 			a.subagentsToggleAndList(c, ctx, r.tab, r.title, r.subagents)
 		}

@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"encoding/json"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -63,11 +65,121 @@ func prNumberFromURL(raw string) int {
 	return n
 }
 
+func prRepoSlug(raw string) string {
+	norm := normalizePRURL(raw)
+	if norm == "" {
+		return ""
+	}
+	u, err := url.Parse(norm)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	p := strings.Trim(u.Path, "/")
+	lp := strings.ToLower(p)
+	var repo string
+	switch {
+	case strings.Index(lp, "/pull/") > 0:
+		repo = p[:strings.Index(lp, "/pull/")]
+	case strings.Index(lp, "/-/merge_requests/") > 0:
+		repo = p[:strings.Index(lp, "/-/merge_requests/")]
+	case strings.Index(lp, "/merge_requests/") > 0:
+		repo = p[:strings.Index(lp, "/merge_requests/")]
+	}
+	repo = strings.Trim(repo, "/")
+	if host == "" || repo == "" {
+		return ""
+	}
+	return strings.ToLower(host + "/" + repo)
+}
+
+func stripFencedCode(text string) string {
+	lines := strings.Split(text, "\n")
+	kept := make([]string, 0, len(lines))
+	inFence := false
+	var fenceChar byte
+	fenceLen := 0
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(strings.TrimSuffix(line, "\r"), " \t")
+		if !inFence {
+			if len(trimmed) >= 3 && (trimmed[0] == '`' || trimmed[0] == '~') {
+				ch := trimmed[0]
+				n := 0
+				for n < len(trimmed) && trimmed[n] == ch {
+					n++
+				}
+				rest := trimmed[n:]
+				if n >= 3 && !(ch == '`' && strings.ContainsRune(rest, '`')) {
+					inFence = true
+					fenceChar = ch
+					fenceLen = n
+					continue
+				}
+			}
+			kept = append(kept, line)
+			continue
+		}
+		if len(trimmed) >= fenceLen && trimmed[0] == fenceChar {
+			n := 0
+			for n < len(trimmed) && trimmed[n] == fenceChar {
+				n++
+			}
+			if n >= fenceLen && strings.Trim(trimmed[n:], " \t") == "" {
+				inFence = false
+			}
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+func stripInlineCode(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	for i := 0; i < len(text); {
+		if text[i] != '`' {
+			b.WriteByte(text[i])
+			i++
+			continue
+		}
+		tickLen := 0
+		for i+tickLen < len(text) && text[i+tickLen] == '`' {
+			tickLen++
+		}
+		closed := false
+		for j := i + tickLen; j < len(text); {
+			if text[j] != '`' {
+				j++
+				continue
+			}
+			runLen := 0
+			for j+runLen < len(text) && text[j+runLen] == '`' {
+				runLen++
+			}
+			if runLen == tickLen {
+				i = j + runLen
+				closed = true
+				break
+			}
+			j += runLen
+		}
+		if !closed {
+			b.WriteString(text[i : i+tickLen])
+			i += tickLen
+		}
+	}
+	return b.String()
+}
+
+func stripMarkdownCode(text string) string {
+	return stripInlineCode(stripFencedCode(text))
+}
+
 func extractPRURLs(text string) []string {
 	if text == "" {
 		return nil
 	}
-	matches := prURLRe.FindAllString(text, -1)
+	cleaned := stripMarkdownCode(text)
+	matches := prURLRe.FindAllString(cleaned, -1)
 	if len(matches) == 0 {
 		return nil
 	}
@@ -95,22 +207,186 @@ func (a *App) sessionPRURLs(id string) []string {
 	}
 	s.ReadMessages(func(msgs []protocol.FactoryDroidMessage) {
 		for _, m := range msgs {
+			if m.Role != protocol.MessageRoleAssistant {
+				continue
+			}
 			for _, b := range m.Content {
-				switch b.Type {
-				case protocol.ContentBlockTypeText:
-					var tb struct {
-						Text string `json:"text"`
-					}
-					if json.Unmarshal(b.Raw, &tb) == nil {
-						add(tb.Text)
-					}
-				case protocol.ContentBlockTypeToolResult:
-					add(string(b.Raw))
+				if b.Type != protocol.ContentBlockTypeText {
+					continue
+				}
+				var tb struct {
+					Text string `json:"text"`
+				}
+				if json.Unmarshal(b.Raw, &tb) == nil {
+					add(tb.Text)
 				}
 			}
 		}
 	})
 	return seen
+}
+
+func findGitConfigPaths(dir string) []string {
+	if dir == "" {
+		return nil
+	}
+	cur := filepath.Clean(dir)
+	for {
+		dotGit := filepath.Join(cur, ".git")
+		info, err := os.Stat(dotGit)
+		if err == nil {
+			if info.IsDir() {
+				return []string{filepath.Join(dotGit, "config")}
+			}
+			b, rerr := os.ReadFile(dotGit)
+			if rerr != nil {
+				return nil
+			}
+			var gitdir string
+			for _, line := range strings.Split(string(b), "\n") {
+				line = strings.TrimSpace(line)
+				if len(line) >= len("gitdir:") && strings.EqualFold(line[:len("gitdir:")], "gitdir:") {
+					gitdir = strings.TrimSpace(line[len("gitdir:"):])
+					break
+				}
+			}
+			if gitdir == "" {
+				return nil
+			}
+			if !filepath.IsAbs(gitdir) {
+				gitdir = filepath.Join(cur, gitdir)
+			}
+			var paths []string
+			if cb, cerr := os.ReadFile(filepath.Join(gitdir, "commondir")); cerr == nil {
+				common := strings.TrimSpace(string(cb))
+				if common != "" {
+					if !filepath.IsAbs(common) {
+						common = filepath.Join(gitdir, common)
+					}
+					paths = append(paths, filepath.Join(common, "config"))
+				}
+			}
+			paths = append(paths, filepath.Join(gitdir, "config"))
+			return paths
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			break
+		}
+		cur = parent
+	}
+	return nil
+}
+
+func stripGitConfigComment(line string) string {
+	inQuote := false
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '"':
+			inQuote = !inQuote
+		case '#', ';':
+			if !inQuote {
+				return line[:i]
+			}
+		}
+	}
+	return line
+}
+
+func parseGitConfigRemotes(data string) []string {
+	var urls []string
+	inRemote := false
+	for _, rawLine := range strings.Split(data, "\n") {
+		line := strings.TrimSpace(strings.TrimSuffix(rawLine, "\r"))
+		if line == "" || line[0] == '#' || line[0] == ';' {
+			continue
+		}
+		if line[0] == '[' && line[len(line)-1] == ']' {
+			inner := strings.TrimSpace(line[1 : len(line)-1])
+			inRemote = len(inner) > len("remote") &&
+				strings.EqualFold(inner[:len("remote")], "remote") &&
+				(inner[len("remote")] == ' ' || inner[len("remote")] == '\t' || inner[len("remote")] == '"')
+			continue
+		}
+		if !inRemote {
+			continue
+		}
+		line = strings.TrimSpace(stripGitConfigComment(line))
+		key, val, ok := strings.Cut(line, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "url") {
+			continue
+		}
+		val = strings.TrimSpace(val)
+		val = strings.Trim(val, `"'`)
+		if val != "" {
+			urls = append(urls, val)
+		}
+	}
+	return urls
+}
+
+func normalizeGitRemoteSlug(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		host := strings.ToLower(u.Hostname())
+		p := strings.Trim(u.Path, "/")
+		p = strings.TrimSuffix(p, ".git")
+		p = strings.Trim(p, "/")
+		if host == "" || p == "" {
+			return ""
+		}
+		return strings.ToLower(host + "/" + p)
+	}
+	colon := strings.IndexByte(raw, ':')
+	if colon <= 0 {
+		return ""
+	}
+	if at := strings.IndexByte(raw, '@'); at >= 0 && at < colon {
+		raw = raw[at+1:]
+		colon = strings.IndexByte(raw, ':')
+	}
+	host, p, ok := strings.Cut(raw, ":")
+	if !ok {
+		return ""
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	p = strings.Trim(strings.TrimSpace(p), "/")
+	p = strings.TrimSuffix(p, ".git")
+	p = strings.Trim(p, "/")
+	if host == "" || p == "" {
+		return ""
+	}
+	return strings.ToLower(host + "/" + p)
+}
+
+func gitRemoteSlugs(dir string) map[string]bool {
+	paths := findGitConfigPaths(dir)
+	if len(paths) == 0 {
+		return nil
+	}
+	var slugs map[string]bool
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for _, u := range parseGitConfigRemotes(string(b)) {
+			if slug := normalizeGitRemoteSlug(u); slug != "" {
+				if slugs == nil {
+					slugs = map[string]bool{}
+				}
+				slugs[slug] = true
+			}
+		}
+	}
+	return slugs
 }
 
 type prQueryPlan struct {
@@ -132,6 +408,19 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 	if ctx.w == nil {
 		return plan
 	}
+	listed := a.listedNow()
+	remotesByDir := map[string]map[string]bool{}
+	remotesFor := func(dir string) map[string]bool {
+		if dir == "" {
+			return nil
+		}
+		if r, ok := remotesByDir[dir]; ok {
+			return r
+		}
+		r := gitRemoteSlugs(dir)
+		remotesByDir[dir] = r
+		return r
+	}
 	var sigParts []string
 	sigParts = append(sigParts, ctx.id)
 	seenURL := map[string]bool{}
@@ -139,9 +428,16 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 		sid := a.resolve(ag.SessionID)
 		title := trimOr(ag.Title, L("Agent"))
 		cwd := cmp.Or(ag.WorktreePath, ctx.w.Workspace)
+		repoDir := cmp.Or(ctx.w.Workspace, ag.WorktreePath)
+		remotes := remotesFor(repoDir)
 		meta := prAgentMeta{tab: ag.SessionID, resolvedID: sid, title: title, branch: ag.Branch}
 		plan.agents[ag.SessionID] = meta
 		plan.agents[sid] = meta
+		reportAt := ""
+		if ag.LastReport != nil {
+			reportAt = ag.LastReport.At
+		}
+		sigParts = append(sigParts, "a:"+ag.SessionID+":"+sid+":"+ag.ArchivedAt+":"+ag.LastActivityAt+":"+reportAt)
 		if ag.Branch != "" || cwd != "" {
 			sub, err := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectBranch{
 				Kind:      protocol.DaemonPullRequestSubjectKindBranch,
@@ -153,27 +449,66 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 				sigParts = append(sigParts, "b:"+sid+":"+ag.Branch)
 			}
 		}
-		var urls []string
-		if ag.LastReport != nil {
-			for _, u := range extractPRURLs(ag.LastReport.Text) {
-				if !slices.Contains(urls, u) {
-					urls = append(urls, u)
+		type candidatePR struct {
+			url   string
+			title string
+		}
+		var candidates []candidatePR
+		addCandidate := func(u, prTitle string, checkRemote bool) {
+			norm := normalizePRURL(u)
+			if norm == "" {
+				return
+			}
+			if checkRemote && len(remotes) > 0 {
+				if slug := prRepoSlug(norm); slug == "" || !remotes[slug] {
+					return
+				}
+			}
+			for i := range candidates {
+				if candidates[i].url == norm {
+					if candidates[i].title == "" && prTitle != "" {
+						candidates[i].title = prTitle
+					}
+					return
+				}
+			}
+			candidates = append(candidates, candidatePR{url: norm, title: prTitle})
+		}
+		ids := []string{sid}
+		if ag.SessionID != "" && ag.SessionID != sid {
+			ids = append(ids, ag.SessionID)
+		}
+		for _, id := range ids {
+			if id == "" {
+				continue
+			}
+			if sum := findSummary(listed, id); sum != nil {
+				for _, art := range sum.Artifacts {
+					if art.Kind == string(protocol.SessionArtifactKindPullRequest) {
+						addCandidate(art.URL, art.Title, false)
+					}
 				}
 			}
 		}
-		for _, u := range a.sessionPRURLs(sid) {
-			if !slices.Contains(urls, u) {
-				urls = append(urls, u)
+		if ag.LastReport != nil {
+			for _, u := range extractPRURLs(ag.LastReport.Text) {
+				addCandidate(u, "", true)
 			}
 		}
-		for _, u := range urls {
-			if seenURL[u] {
+		for _, id := range ids {
+			for _, u := range a.sessionPRURLs(id) {
+				addCandidate(u, "", true)
+			}
+		}
+		for _, cand := range candidates {
+			if seenURL[cand.url] {
 				continue
 			}
-			seenURL[u] = true
+			seenURL[cand.url] = true
 			plan.fallback = append(plan.fallback, workstreamPR{
-				URL:        u,
-				Number:     prNumberFromURL(u),
+				URL:        cand.url,
+				Number:     prNumberFromURL(cand.url),
+				Title:      cand.title,
 				State:      "open",
 				SessionID:  ag.SessionID,
 				AgentTitle: title,
@@ -183,11 +518,11 @@ func (a *App) buildPRQueryPlan(ctx *wsContext) prQueryPlan {
 				Kind:      protocol.DaemonPullRequestSubjectKindURL,
 				SessionID: sid,
 				Cwd:       cwd,
-				URL:       u,
+				URL:       cand.url,
 			})
 			if err == nil {
 				plan.subjects = append(plan.subjects, sub)
-				sigParts = append(sigParts, "u:"+sid+":"+u)
+				sigParts = append(sigParts, "u:"+sid+":"+cand.url)
 			}
 		}
 	}
@@ -202,7 +537,8 @@ func (a *App) loadWorkstreamPRs(ctx *wsContext, force bool) {
 	pc := &a.workstreams.prs
 	plan := a.buildPRQueryPlan(ctx)
 	now := a.cfg.Now()
-	stale := !pc.have || pc.wsID != ctx.id || pc.sig != plan.sig || now.Sub(pc.at) >= prRefreshInterval
+	sigChanged := pc.have && pc.wsID == ctx.id && pc.sig != plan.sig
+	stale := !pc.have || pc.wsID != ctx.id || sigChanged || now.Sub(pc.at) >= prRefreshInterval
 	if !force && !stale {
 		return
 	}
@@ -216,26 +552,31 @@ func (a *App) loadWorkstreamPRs(ctx *wsContext, force bool) {
 	}
 	resolve := a.workstreams.resolvePRs
 	if resolve == nil && a.ctl == nil {
-		list, byAgent := mergeWorkstreamPRs(nil, plan.fallback, plan.agents)
+		list, byAgent := mergeWorkstreamPRs(nil, plan.fallback, plan.agents, false)
 		pc.have, pc.wsID, pc.sig, pc.at = true, ctx.id, plan.sig, now
 		pc.list, pc.byAgent = list, byAgent
 		return
 	}
+	wsID := ctx.id
+	shouldInvalidate := force || sigChanged
 	pc.reading = true
 	go func() {
 		var res *protocol.ResolvePullRequestStatusesResult
 		var err error
-		reason := protocol.DaemonPullRequestLookupReasonBranchResolved
-		if force {
-			reason = protocol.DaemonPullRequestLookupReasonManualRefresh
-		}
 		lookups := make([]protocol.DaemonPullRequestLookup, 0, len(plan.subjects))
 		for _, sub := range plan.subjects {
+			reason := protocol.DaemonPullRequestLookupReasonBranchResolved
+			if sub.Kind == protocol.DaemonPullRequestSubjectKindURL {
+				reason = protocol.DaemonPullRequestLookupReasonTranscriptLink
+			}
+			if force {
+				reason = protocol.DaemonPullRequestLookupReasonManualRefresh
+			}
 			lookup := protocol.DaemonPullRequestLookup{
 				Subject: sub,
 				Reason:  reason,
 			}
-			if force {
+			if shouldInvalidate {
 				inv := true
 				lookup.Invalidate = &inv
 			}
@@ -253,19 +594,54 @@ func (a *App) loadWorkstreamPRs(ctx *wsContext, force bool) {
 			}
 		}
 		var resolved []protocol.DaemonPullRequestStatusResult
-		if err == nil && res != nil {
+		rpcOK := err == nil && res != nil
+		if rpcOK {
 			resolved = res.Statuses
 		}
-		list, byAgent := mergeWorkstreamPRs(resolved, plan.fallback, plan.agents)
+		list, byAgent := mergeWorkstreamPRs(resolved, plan.fallback, plan.agents, rpcOK)
 		a.cfg.Update(func() {
 			pc.reading, pc.have = false, true
-			pc.wsID, pc.sig, pc.at = ctx.id, plan.sig, a.cfg.Now()
+			pc.wsID, pc.sig, pc.at = wsID, plan.sig, a.cfg.Now()
 			pc.list, pc.byAgent = list, byAgent
 		})
 	}()
 }
 
-func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallback []workstreamPR, agents map[string]prAgentMeta) ([]workstreamPR, map[string][]workstreamPR) {
+func isFallbackUnavailableReason(r protocol.DaemonPullRequestUnavailableReason) bool {
+	return r == protocol.DaemonPullRequestUnavailableReasonRateLimited ||
+		r == protocol.DaemonPullRequestUnavailableReasonUnsupportedRemote
+}
+
+func resultAllowsURLFallback(r protocol.DaemonPullRequestStatusResult) (string, bool) {
+	sv, err := r.Subject.Value()
+	if err != nil {
+		return "", false
+	}
+	u, ok := sv.(*protocol.DaemonPullRequestSubjectURL)
+	if !ok {
+		return "", false
+	}
+	key := normalizePRURL(u.URL)
+	if key == "" {
+		return "", false
+	}
+	if r.Record != nil {
+		if r.Record.State == protocol.DaemonPullRequestStateUnavailable && isFallbackUnavailableReason(r.Record.Reason) {
+			return key, true
+		}
+		return "", false
+	}
+	if r.Status != nil {
+		if stv, err := r.Status.Value(); err == nil {
+			if unavail, ok := stv.(*protocol.DaemonPullRequestStatusUnavailable); ok && isFallbackUnavailableReason(unavail.Reason) {
+				return key, true
+			}
+		}
+	}
+	return "", false
+}
+
+func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallback []workstreamPR, agents map[string]prAgentMeta, rpcOK bool) ([]workstreamPR, map[string][]workstreamPR) {
 	byURL := map[string]workstreamPR{}
 	var order []string
 	upsert := func(pr workstreamPR) {
@@ -299,27 +675,43 @@ func mergeWorkstreamPRs(results []protocol.DaemonPullRequestStatusResult, fallba
 		byURL[key] = pr
 		order = append(order, key)
 	}
+	fallbackAllowed := map[string]bool{}
 	for _, r := range results {
-		pr, ok := prFromResult(r, agents)
-		if ok {
+		if pr, ok := prFromResult(r, agents); ok {
 			upsert(pr)
+		} else if rpcOK {
+			if key, ok := resultAllowsURLFallback(r); ok {
+				fallbackAllowed[key] = true
+			}
 		}
 	}
 	for _, fb := range fallback {
-		if _, ok := byURL[normalizePRURL(fb.URL)]; !ok {
+		key := normalizePRURL(fb.URL)
+		if key == "" {
+			continue
+		}
+		if cur, ok := byURL[key]; ok {
+			if cur.Title == "" && fb.Title != "" {
+				cur.Title = fb.Title
+				byURL[key] = cur
+			}
+			continue
+		}
+		if !rpcOK || fallbackAllowed[key] {
 			upsert(fb)
 		}
 	}
 	list := make([]workstreamPR, 0, len(order))
-	byAgent := map[string][]workstreamPR{}
 	for _, key := range order {
-		pr := byURL[key]
-		list = append(list, pr)
+		list = append(list, byURL[key])
+	}
+	slices.SortStableFunc(list, func(x, y workstreamPR) int { return cmp.Compare(y.Number, x.Number) })
+	byAgent := map[string][]workstreamPR{}
+	for _, pr := range list {
 		if pr.SessionID != "" {
 			byAgent[pr.SessionID] = append(byAgent[pr.SessionID], pr)
 		}
 	}
-	slices.SortStableFunc(list, func(x, y workstreamPR) int { return cmp.Compare(y.Number, x.Number) })
 	return list, byAgent
 }
 
@@ -423,6 +815,24 @@ func (a *App) agentPRBadge(c *ui.Context, pr workstreamPR) {
 	})
 	if b.Clicked() {
 		c.OpenURL(pr.URL)
+	}
+}
+
+func (a *App) agentMorePRsBadge(c *ui.Context, wsID string, more, total int) {
+	k, t := a.kit, a.kit.T
+	label := "+" + strconv.Itoa(more)
+	tip := L("Show all %d pull requests", total)
+	b := ui.ButtonBase(c.Key("pr-more")).Label(tip).Tooltip(tip).
+		Height(k.Px(18)).PaddingX(k.Px(5)).AlignItems(ui.Center).Shrink(0).Radius(k.Px(4)).
+		Border(1, t.Border).Background(t.Muted.Alpha(0.5)).Cursor(ui.CursorPointer)
+	if b.Hovered() {
+		b.Background(t.Muted)
+	}
+	b.Children(func() {
+		k.Text(c, label, 10, 14).FontWeight(500).TextColor(t.MutedForeground).Font(k.Mono)
+	})
+	if b.Clicked() {
+		a.setWsState(wsID, func(u *workstreamUI) { u.Panel = panelPRs })
 	}
 }
 

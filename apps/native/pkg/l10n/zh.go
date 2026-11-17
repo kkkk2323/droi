@@ -1719,6 +1719,7 @@ var zh = map[string]string{
 	"Reasoning level for agents. Inherit follows the orchestrator.":  "Agent 使用的 Reasoning 级别。“继承”会跟随编排会话设置。",
 	"Reasoning level for the orchestrator.":                          "编排会话使用的 Reasoning 级别。",
 	"Refresh pull requests":                                          "刷新 PR 列表",
+	"Show all %d pull requests":                                      "查看全部 %d 个 PR",
 	"Agent reasoning level":                                          "选择 Agent Reasoning 级别",
 	"Orchestrator reasoning level":                                   "选择编排会话 Reasoning 级别",
 	"Orchestrator subagents":                                         "编排器子 Agent",
