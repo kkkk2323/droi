@@ -39,9 +39,18 @@ type Summary struct {
 	// Worktree is the Daemon-managed worktree the Session runs in, nil for
 	// none or once it was removed.
 	Worktree *Worktree
+	// Artifacts are PRs and other resources recorded for the Session by the Daemon.
+	Artifacts []Artifact
 	// OrganizationID is the Factory organization the Session belongs to,
 	// "" for one from before droid kept it, which every organization lists.
 	OrganizationID string `json:",omitempty"`
+}
+
+// Artifact is a PR or other resource recorded for a Session by the Daemon.
+type Artifact struct {
+	Kind  string
+	URL   string
+	Title string
 }
 
 // Worktree is a Session's worktree: a checkout of RepoRoot at Path, on Branch.

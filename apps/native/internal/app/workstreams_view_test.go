@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -907,4 +908,489 @@ func TestWorkstreamSettingsAgentReasoningLevelsAndQueuedSave(t *testing.T) {
 	h.click("Agent reasoning level")
 	h.until("xhigh option", func() bool { return h.hasText("Low") && h.hasText("Extra high") })
 	h.shot("workstream-settings-reasoning")
+}
+
+func TestGitRemoteSlugsAndMarkdownCodeStripping(t *testing.T) {
+	// Normal .git/config with GitHub SSH and HTTPS remotes.
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `[core]
+	repositoryformatversion = 0
+[remote "origin"]
+	url = git@github.com:kkkk2323/droi.git
+[remote "gitlab"]
+	url = ssh://git@gitlab.example.com:2222/group/sub/repo.git
+`
+	if err := os.WriteFile(filepath.Join(repo, ".git", "config"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	slugs := gitRemoteSlugs(repo)
+	for _, want := range []string{"github.com/kkkk2323/droi", "gitlab.example.com/group/sub/repo"} {
+		if !slugs[want] {
+			t.Fatalf("missing remote slug %q in %v", want, slugs)
+		}
+	}
+
+	// Git worktree with .git file pointing to worktree gitdir and commondir.
+	mainGit := filepath.Join(t.TempDir(), ".git")
+	wtGitDir := filepath.Join(mainGit, "worktrees", "wt1")
+	wtDir := filepath.Join(t.TempDir(), "wt1")
+	if err := os.MkdirAll(wtGitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mainGit, "config"), []byte("[remote \"origin\"]\n\turl = https://github.com/kkkk2323/droi.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtGitDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtDir, ".git"), []byte("gitdir: "+wtGitDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wtSlugs := gitRemoteSlugs(wtDir)
+	if !wtSlugs["github.com/kkkk2323/droi"] {
+		t.Fatalf("worktree remote slugs = %v", wtSlugs)
+	}
+
+	if got := prRepoSlug("https://gitlab.example.com/group/sub/repo/-/merge_requests/42"); got != "gitlab.example.com/group/sub/repo" {
+		t.Fatalf("prRepoSlug gitlab = %q", got)
+	}
+	if got := prRepoSlug("https://github.com/kkkk2323/droi/pull/337"); got != "github.com/kkkk2323/droi" {
+		t.Fatalf("prRepoSlug github = %q", got)
+	}
+
+	// Markdown code stripping removes fenced/inline code but preserves normal links and [`#337`](url).
+	md := "```go\nurl := \"https://github.com/kkkk2323/droi/pull/999\"\n```\n" +
+		"~~~\nhttps://github.com/kkkk2323/droi/pull/998\n~~~\n" +
+		"Ignore `https://github.com/kkkk2323/droi/pull/888` and `[#777](https://github.com/kkkk2323/droi/pull/777)`.\n" +
+		"Keep [`#337`](https://github.com/kkkk2323/droi/pull/337) and [#336](https://github.com/kkkk2323/droi/pull/336)."
+	got := extractPRURLs(md)
+	want := []string{"https://github.com/kkkk2323/droi/pull/337", "https://github.com/kkkk2323/droi/pull/336"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("extractPRURLs = %v, want %v", got, want)
+	}
+}
+
+func TestPRsIgnoreChatHistoryCodeBlocksAndExternalRepos(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".git", "config"), []byte("[remote \"origin\"]\n\turl = git@github.com:kkkk2323/droi.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify summariesOf maps DaemonAvailableSessionInfo.Artifacts into sessions.Summary.
+	mapped := summariesOf([]protocol.DaemonAvailableSessionInfo{{
+		SessionID: "agent-1",
+		Artifacts: []protocol.SessionArtifact{
+			{Kind: protocol.SessionArtifactKindPullRequest, URL: "https://github.com/kkkk2323/droi/pull/338", Title: "Artifact PR"},
+		},
+	}})
+	if len(mapped) != 1 || len(mapped[0].Artifacts) != 1 || mapped[0].Artifacts[0].URL != "https://github.com/kkkk2323/droi/pull/338" {
+		t.Fatalf("summariesOf did not map Artifacts: %+v", mapped)
+	}
+
+	sc := workstreamsScenario()
+	sc.Sessions[2].Messages = []fakedaemon.Message{
+		{Role: "user", Text: "Check https://github.com/kkkk2323/droi/pull/701"},
+		{Role: "assistant", Content: []map[string]any{
+			wsUse("t1", "Read", map[string]any{"file_path": "/tmp/test.go"}),
+		}},
+		wsResult("t1", `fixture := "https://github.com/acme/pay/pull/219"`, false),
+		{Role: "assistant", Text: "Referenced historical https://github.com/kkkk2323/droi/pull/335 and https://github.com/kkkk2323/droi/pull/336.\n```go\nurl := \"https://github.com/kkkk2323/droi/pull/999\"\n```\nSee `https://github.com/kkkk2323/droi/pull/888`."},
+	}
+
+	w := paymentWorkstream()
+	w.Workspace = repo
+	w.Agents[0].Branch = ""
+	w.Agents[1].Branch = ""
+	w.Agents[2].Branch = ""
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: "```go\n\"https://github.com/kkkk2323/droi/pull/999\"\n```\nOpened https://github.com/kkkk2323/droi/pull/337 and compared https://github.com/acme/pay/pull/210",
+		At:   w.CreatedAt,
+	}
+
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	var seenURLs []string
+	var seenReasons []protocol.DaemonPullRequestLookupReason
+	num337, num338 := float64(337), float64(338)
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		var statuses []protocol.DaemonPullRequestStatusResult
+		for _, lk := range p.Lookups {
+			seenReasons = append(seenReasons, lk.Reason)
+			if sv, err := lk.Subject.Value(); err == nil {
+				if u, ok := sv.(*protocol.DaemonPullRequestSubjectURL); ok {
+					seenURLs = append(seenURLs, u.URL)
+					switch u.URL {
+					case "https://github.com/kkkk2323/droi/pull/337":
+						statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+							Subject: lk.Subject,
+							Branch:  "droid/pr-fix",
+							Record: &protocol.DaemonPullRequestRecord{
+								State:  protocol.DaemonPullRequestStateOpen,
+								URL:    u.URL,
+								Title:  "Fix PR extraction",
+								Number: &num337,
+							},
+						})
+					case "https://github.com/kkkk2323/droi/pull/338":
+						statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+							Subject: lk.Subject,
+							Record: &protocol.DaemonPullRequestRecord{
+								State:  protocol.DaemonPullRequestStateMerged,
+								URL:    u.URL,
+								Title:  "Artifact PR",
+								Number: &num338,
+							},
+						})
+					}
+				}
+			}
+		}
+		return &protocol.ResolvePullRequestStatusesResult{Statuses: statuses}, nil
+	}
+
+	h.openOrchestrator()
+	h.a.mu.Lock()
+	for i := range h.a.listed {
+		if h.a.listed[i].SessionID == "agent-1" {
+			h.a.listed[i].Artifacts = []sessions.Artifact{
+				{Kind: string(protocol.SessionArtifactKindPullRequest), URL: "https://github.com/kkkk2323/droi/pull/338", Title: "Artifact PR"},
+				{Kind: string(protocol.SessionArtifactKindPullRequest), URL: "https://github.com/acme/pay/pull/210", Title: "External Artifact"},
+			}
+		}
+	}
+	h.a.listRev++
+	h.a.mu.Unlock()
+	// Open agent-1 so its session messages (including Assistant history & ToolResult) are loaded.
+	h.until("agent row ready", func() bool { return h.hasText("gRPC endpoints") })
+	h.click("gRPC endpoints")
+	h.until("real PR #338 and #337 badges", func() bool {
+		return h.finds("Pull request #338, Merged") && h.finds("Pull request #337, Open")
+	})
+	h.settle()
+
+	for _, bad := range []string{"#335", "#336", "#219", "#210", "#999", "#888", "#701"} {
+		if h.hasText(bad) || h.finds("Pull request "+bad+", Open") {
+			t.Fatalf("unexpected false PR %s shown in texts=%q", bad, h.tt.Texts())
+		}
+	}
+	for _, u := range seenURLs {
+		if u != "https://github.com/kkkk2323/droi/pull/337" && u != "https://github.com/kkkk2323/droi/pull/338" {
+			t.Fatalf("unexpected lookup URL %q", u)
+		}
+	}
+	if !slices.Contains(seenReasons, protocol.DaemonPullRequestLookupReasonTranscriptLink) {
+		t.Fatalf("expected TranscriptLink lookup reason, got %v", seenReasons)
+	}
+
+	h.click("PRs")
+	h.until("PRs list has #338 and #337", func() bool {
+		return h.hasText("#338 Artifact PR") && h.hasText("#337 Fix PR extraction")
+	})
+	for _, bad := range []string{"#335", "#336", "#219", "#210", "#999", "#888", "#701"} {
+		if h.hasText(bad) {
+			t.Fatalf("PRs list leaked false PR %s: %q", bad, h.tt.Texts())
+		}
+	}
+}
+
+func TestPRLookupsChunkedToMax20(t *testing.T) {
+	w := paymentWorkstream()
+	var links []string
+	for n := 101; n <= 125; n++ {
+		links = append(links, fmt.Sprintf("https://github.com/acme/pay/pull/%d", n))
+	}
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: strings.Join(links, "\n"),
+		At:   w.CreatedAt,
+	}
+	w.Agents[1].Branch = ""
+	w.Agents[2].Branch = ""
+
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	var batchSizes []int
+	totalLookups := 0
+	num101, num125 := float64(101), float64(125)
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		batchSizes = append(batchSizes, len(p.Lookups))
+		totalLookups += len(p.Lookups)
+		if len(p.Lookups) > maxPRLookups {
+			return nil, fmt.Errorf("too many lookups: %d", len(p.Lookups))
+		}
+		var statuses []protocol.DaemonPullRequestStatusResult
+		for _, lk := range p.Lookups {
+			if sv, err := lk.Subject.Value(); err == nil {
+				if u, ok := sv.(*protocol.DaemonPullRequestSubjectURL); ok {
+					switch u.URL {
+					case "https://github.com/acme/pay/pull/101":
+						statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+							Subject: lk.Subject,
+							Record:  &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateMerged, URL: u.URL, Title: "First batch PR", Number: &num101},
+						})
+					case "https://github.com/acme/pay/pull/125":
+						statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+							Subject: lk.Subject,
+							Record:  &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateOpen, URL: u.URL, Title: "Second batch PR", Number: &num125},
+						})
+					}
+				}
+			}
+		}
+		return &protocol.ResolvePullRequestStatusesResult{Statuses: statuses}, nil
+	}
+
+	h.openOrchestrator()
+	h.until("merged results across chunks", func() bool {
+		return h.finds("Pull request #125, Open") && h.finds("Pull request #101, Merged")
+	})
+	if len(batchSizes) < 2 || totalLookups != 28 {
+		t.Fatalf("expected >=2 chunked batches totaling 28 lookups, got batches=%v total=%d", batchSizes, totalLookups)
+	}
+	for _, n := range batchSizes {
+		if n == 0 || n > maxPRLookups {
+			t.Fatalf("invalid batch size %d in %v", n, batchSizes)
+		}
+	}
+}
+
+func TestPRsIgnoreDefaultBranchAndAvoidForcingBranchOnURL(t *testing.T) {
+	w := paymentWorkstream()
+	w.Agents[0].Branch = "main"
+	w.Agents[1].Branch = "droid/pr"
+	w.Agents[1].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: "See https://github.com/kkkk2323/droi/pull/337",
+		At:   w.CreatedAt,
+	}
+	w.Agents[2].Branch = ""
+
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	isDefault := true
+	num90, num337 := float64(90), float64(337)
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		var statuses []protocol.DaemonPullRequestStatusResult
+		for _, lk := range p.Lookups {
+			sv, err := lk.Subject.Value()
+			if err != nil {
+				continue
+			}
+			switch s := sv.(type) {
+			case *protocol.DaemonPullRequestSubjectBranch:
+				if s.SessionID == "agent-1" {
+					statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+						Subject:         lk.Subject,
+						Branch:          "main",
+						IsDefaultBranch: &isDefault,
+						Record: &protocol.DaemonPullRequestRecord{
+							State:  protocol.DaemonPullRequestStateOpen,
+							URL:    "https://github.com/kkkk2323/droi/pull/90",
+							Title:  "Default branch leak",
+							Number: &num90,
+						},
+					})
+				}
+			case *protocol.DaemonPullRequestSubjectURL:
+				if s.URL == "https://github.com/kkkk2323/droi/pull/337" {
+					statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+						Subject: lk.Subject,
+						Record: &protocol.DaemonPullRequestRecord{
+							State:  protocol.DaemonPullRequestStateOpen,
+							URL:    s.URL,
+							Number: &num337,
+						},
+					})
+				}
+			}
+		}
+		return &protocol.ResolvePullRequestStatusesResult{Statuses: statuses}, nil
+	}
+
+	h.openOrchestrator()
+	h.until("URL PR #337 badge", func() bool {
+		return h.finds("Pull request #337, Open")
+	})
+	if h.finds("Pull request #90, Open") {
+		t.Fatal("default branch PR #90 should be ignored")
+	}
+
+	h.click("PRs")
+	h.until("PRs row without title uses short repo ref", func() bool {
+		return h.hasText("kkkk2323/droi#337")
+	})
+	for _, txt := range h.tt.Texts() {
+		if strings.Contains(txt, "droid/pr") {
+			t.Fatalf("URL lookup PR should not inherit local agent branch droid/pr; got %q", h.tt.Texts())
+		}
+	}
+}
+
+func TestPRFallbackTightenedOnRPCError(t *testing.T) {
+	sc := workstreamsScenario()
+	w := paymentWorkstream()
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: "Mentioned https://github.com/acme/pay/pull/337",
+		At:   w.CreatedAt,
+	}
+
+	h := workstreamsHarnessOf(t, sc, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+	h.a.workstreams.resolvePRs = func(_ context.Context, _ protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		return nil, fmt.Errorf("daemon rpc error")
+	}
+
+	h.openOrchestrator()
+	h.a.mu.Lock()
+	for i := range h.a.listed {
+		if h.a.listed[i].SessionID == "agent-1" {
+			h.a.listed[i].Artifacts = []sessions.Artifact{
+				{Kind: string(protocol.SessionArtifactKindPullRequest), URL: "https://github.com/acme/pay/pull/338", Title: "Artifact fallback"},
+			}
+		}
+	}
+	h.a.listRev++
+	h.a.mu.Unlock()
+	h.frame()
+
+	h.until("artifact fallback shown on RPC error", func() bool {
+		return h.finds("Pull request #338, Open")
+	})
+	h.settle()
+	if h.finds("Pull request #337, Open") {
+		t.Fatal("unverified LastReport URL should not fall back to green Open when Daemon RPC errors")
+	}
+}
+
+func TestPRsDoNotResurrectDisprovedFallbackAndInvalidateOnChange(t *testing.T) {
+	w := paymentWorkstream()
+	w.Agents[0].LastReport = &gateway.WorkstreamReport{
+		Kind: "done",
+		Text: strings.Join([]string{
+			"Real: https://github.com/acme/pay/pull/337",
+			"None: https://github.com/acme/pay/pull/219",
+			"Failed: https://github.com/acme/pay/pull/210",
+			"RateLimited: https://github.com/acme/pay/pull/205",
+		}, "\n"),
+		At: w.CreatedAt,
+	}
+	fake := &fakeWorkstreams{list: []gateway.Workstream{w}}
+	h := workstreamsHarness(t, fake, nil)
+
+	num337 := float64(337)
+	merged := false
+	var sawInvalidate bool
+	h.a.workstreams.resolvePRs = func(_ context.Context, p protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		var statuses []protocol.DaemonPullRequestStatusResult
+		for _, lk := range p.Lookups {
+			if lk.Invalidate != nil && *lk.Invalidate {
+				sawInvalidate = true
+			}
+			sv, err := lk.Subject.Value()
+			if err != nil {
+				continue
+			}
+			u, ok := sv.(*protocol.DaemonPullRequestSubjectURL)
+			if !ok {
+				continue
+			}
+			switch u.URL {
+			case "https://github.com/acme/pay/pull/337":
+				st := protocol.DaemonPullRequestStateOpen
+				if merged {
+					st = protocol.DaemonPullRequestStateMerged
+				}
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record: &protocol.DaemonPullRequestRecord{
+						State: st, URL: u.URL, Title: "Real PR", Number: &num337,
+					},
+				})
+			case "https://github.com/acme/pay/pull/219":
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record:  &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateNone},
+				})
+			case "https://github.com/acme/pay/pull/210":
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record: &protocol.DaemonPullRequestRecord{
+						State:  protocol.DaemonPullRequestStateUnavailable,
+						Reason: protocol.DaemonPullRequestUnavailableReasonLookupFailed,
+					},
+				})
+			case "https://github.com/acme/pay/pull/205":
+				statuses = append(statuses, protocol.DaemonPullRequestStatusResult{
+					Subject: lk.Subject,
+					Record: &protocol.DaemonPullRequestRecord{
+						State:  protocol.DaemonPullRequestStateUnavailable,
+						Reason: protocol.DaemonPullRequestUnavailableReasonRateLimited,
+					},
+				})
+			}
+		}
+		return &protocol.ResolvePullRequestStatusesResult{Statuses: statuses}, nil
+	}
+
+	h.openOrchestrator()
+	h.until("real and rate-limited PRs", func() bool {
+		return h.finds("Pull request #337, Open") && h.finds("Pull request #205, Open")
+	})
+	if h.finds("Pull request #219, Open") || h.finds("Pull request #210, Open") {
+		t.Fatalf("disproved PRs were resurrected via fallback: %q", h.tt.Texts())
+	}
+
+	// Archiving the agent changes sig and must trigger Invalidate: true without waiting 15s.
+	merged = true
+	fake.mu.Lock()
+	fake.list[0].Agents[0].ArchivedAt = time.Now().UTC().Format(time.RFC3339)
+	fake.mu.Unlock()
+	h.a.loadWorkstreams(true)
+	h.until("archived group", func() bool { return h.finds("Archived") })
+	h.click("Archived")
+	h.until("PR #337 refreshed to Merged", func() bool {
+		return sawInvalidate && h.finds("Pull request #337, Merged")
+	})
+}
+
+func TestAgentRowLongChineseTitleAndMorePRsButton(t *testing.T) {
+	w := paymentWorkstream()
+	longTitle := "Factory App 界面与交互调研"
+	w.Agents[0].Title = longTitle
+	h := workstreamsHarness(t, &fakeWorkstreams{list: []gateway.Workstream{w}}, nil)
+
+	num340, num338, num337 := float64(340), float64(338), float64(337)
+	h.a.workstreams.resolvePRs = func(_ context.Context, _ protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+		sub1, _ := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectBranch{Kind: protocol.DaemonPullRequestSubjectKindBranch, SessionID: "agent-1"})
+		return &protocol.ResolvePullRequestStatusesResult{
+			Statuses: []protocol.DaemonPullRequestStatusResult{
+				{Subject: sub1, Branch: "b1", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateOpen, URL: "https://github.com/acme/pay/pull/337", Title: "Third", Number: &num337}},
+				{Subject: sub1, Branch: "b2", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateOpen, URL: "https://github.com/acme/pay/pull/340", Title: "Newest", Number: &num340}},
+				{Subject: sub1, Branch: "b3", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateMerged, URL: "https://github.com/acme/pay/pull/338", Title: "Second", Number: &num338}},
+			},
+		}, nil
+	}
+
+	h.openOrchestrator()
+	h.until("two PR badges and +1", func() bool {
+		return h.hasText(longTitle) &&
+			h.finds("Pull request #340, Open") &&
+			h.finds("Pull request #338, Merged") &&
+			h.finds("Show all 3 pull requests")
+	})
+	if h.finds("Pull request #337, Open") {
+		t.Fatal("expected at most 2 direct PR badges on agent row")
+	}
+
+	h.click("Show all 3 pull requests")
+	h.until("switched to PRs tab", func() bool {
+		return h.hasText("#340 Newest") && h.hasText("#338 Second") && h.hasText("#337 Third")
+	})
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/gateway"
+	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
@@ -299,5 +301,60 @@ func TestWorkstreamShotsForTheReview(t *testing.T) {
 			return h.finds("Activity · 2 events") && h.hasText("Renamed 1 of 2 agents") && h.hasText("Renamed gRPC API")
 		})
 		h.shot("workstream-sync-07-transcript-activity-rename")
+	})
+	t.Run("zh archived long title and multi pr", func(t *testing.T) {
+		threeHoursAgo := time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339)
+		w := gateway.Workstream{
+			ID:             "ws-1",
+			Title:          "Droi 迭代优化",
+			Workspace:      "/Users/dev/droi",
+			OrchestratorID: "orch-1",
+			CreatedAt:      threeHoursAgo,
+			Agents: []gateway.WorkstreamAgent{
+				{SessionID: "agent-1", Title: "Factory App 界面与交互调研", Branch: "droid/pr", CreatedAt: threeHoursAgo, ArchivedAt: threeHoursAgo},
+				{SessionID: "agent-2", Title: "Droid CLI 提示词与工具调研", Branch: "droid/cli", CreatedAt: threeHoursAgo, ArchivedAt: threeHoursAgo},
+			},
+		}
+		sc := workstreamsScenario()
+		fake := &fakeWorkstreams{list: []gateway.Workstream{w}}
+		h := startHarnessGateway(t, sc, "", "", func(o *gateway.Options) { o.Workstreams = fake }, func(cfg *Config) {
+			prefs.Language.Set(cfg.Prefs, string(l10n.Chinese))
+			prefs.WorkstreamPane.Set(cfg.Prefs, 300)
+		})
+		closeTransport(t, h)
+		t.Cleanup(func() { l10n.Set("", "") })
+
+		num337, num335, num332 := float64(337), float64(335), float64(332)
+		h.a.workstreams.resolvePRs = func(_ context.Context, _ protocol.ResolvePullRequestStatusesParams) (*protocol.ResolvePullRequestStatusesResult, error) {
+			sub1, _ := protocol.NewDaemonPullRequestSubject(protocol.DaemonPullRequestSubjectBranch{Kind: protocol.DaemonPullRequestSubjectKindBranch, SessionID: "agent-1"})
+			return &protocol.ResolvePullRequestStatusesResult{
+				Statuses: []protocol.DaemonPullRequestStatusResult{
+					{Subject: sub1, Branch: "droid/pr", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateMerged, URL: "https://github.com/kkkk2323/droi/pull/337", Title: "Workstream UI sync", Number: &num337}},
+					{Subject: sub1, Branch: "droid/tex", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateMerged, URL: "https://github.com/kkkk2323/droi/pull/335", Title: "Inline math TeX", Number: &num335}},
+					{Subject: sub1, Branch: "droid/old", Record: &protocol.DaemonPullRequestRecord{State: protocol.DaemonPullRequestStateOpen, URL: "https://github.com/kkkk2323/droi/pull/332", Title: "Footer billing", Number: &num332}},
+				},
+			}, nil
+		}
+		h.tt.SetSize(refW, 820)
+		h.until("the Session list", func() bool { return h.hasText("Payment migration lead") })
+		h.a.Go(Route{Name: "session", SessionID: "orch-1"})
+		h.until("zh workstream page", func() bool { return h.finds("Workstream 标签页") && h.finds("已归档") })
+		h.click("已归档")
+		h.until("zh archived rows and badges", func() bool {
+			return h.hasText("Factory App 界面与交互调研") &&
+				h.hasText("Droid CLI 提示词与工具调研") &&
+				h.finds("PR #337，已合并") &&
+				h.finds("查看全部 3 个 PR")
+		})
+		h.shot("workstream-zh-pr-fix-300")
+
+		// Narrow drawer width: min(312*0.9, 360) ~= 280.8px.
+		h.tt.SetSize(312, 720)
+		h.until("show panel button", func() bool { return h.finds("显示面板") })
+		h.click("显示面板")
+		h.until("zh 280px drawer", func() bool {
+			return h.hasText("Factory App 界面与交互调研") && h.finds("PR #337，已合并")
+		})
+		h.shot("workstream-zh-pr-fix-280")
 	})
 }

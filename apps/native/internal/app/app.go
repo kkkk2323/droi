@@ -741,6 +741,15 @@ func summariesOf(list []protocol.DaemonAvailableSessionInfo) []sessions.Summary 
 		if w := s.Worktree; w != nil && w.RemovedAt == "" && w.Path != "" {
 			sum.Worktree = &sessions.Worktree{Path: w.Path, Branch: w.Branch, RepoRoot: w.RepoRoot, Lifecycle: string(w.Lifecycle)}
 		}
+		for _, art := range s.Artifacts {
+			if art.URL != "" {
+				sum.Artifacts = append(sum.Artifacts, sessions.Artifact{
+					Kind:  string(art.Kind),
+					URL:   art.URL,
+					Title: art.Title,
+				})
+			}
+		}
 		out = append(out, sum)
 	}
 	return out
