@@ -1,3 +1,22 @@
+## 1.97.0 - 2026-11-17
+
+### Added
+
+- Workstreams' side panel now includes Goal and PRs tabs. Goal renders `plan.md`, `PLAN.md`, or `promise.md` from the workstream's shared folder, and PRs resolves pull request states, titles, and links for each agent branch or reported link while showing clickable `#number` badges on agent rows.
+- The Agents tab groups each worker's `Task` subagents in a collapsible tree below its row and lists direct orchestrator subagents in a top-level Orchestrator subagents group, with semantic status icons and colors across every group header and agent row state.
+- Orchestrators and the sidebar now support `rename_agent` (preserving titles you set by hand), inline sidebar workstream renaming and symbol picking, and keyboard navigation across the Agents list.
+- Orchestrator transcripts fold consecutive tool and thinking turns into collapsible `Activity · N events` (`Working · N events` while running) segments, with dedicated rows and collapsible groups for `rename_agent`.
+
+### Changed
+
+- The Files tab now organizes shared files into a collapsible folder tree instead of a flat list, expanding matching paths automatically while searching.
+- Workstream orchestrator and worker prompts, consecutive failure triage (separating retryable transient errors from permanent ones), `list_agents` subagent rollups with `transcript_path`, and hidden tool lists now match Droid 1.12.1, keeping cloud-only `mission-v2` and `automations_*` tools out of local Host sessions.
+
+### Fixed
+
+- Long and overflowing agent tabs in the Workstreams header now scroll inside a clipped strip that keeps the active tab's close button whole and never overlaps the right-side subagent menu or settings buttons.
+- Workstream settings now separate `Orchestrator reasoning` and `Agent reasoning` dropdowns (hiding `Orchestrator reasoning` when the orchestrator model only supports `none`), preserve `xhigh` and `max` levels for built-in and custom models, and queue rapid model or effort changes instead of dropping in-flight saves.
+
 ## 1.96.0 - 2026-11-16
 
 ### Added
