@@ -418,10 +418,10 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 			}
 		}
 		tabList.Children(func() {
-			orchEl := a.orchestratorTab(c, ctx)
+			orchEl := a.orchestratorTab(c, ctx, nTabs > 0)
 			if nTabs > 0 {
 				if scrollTabs {
-					ui.ScrollHorizontal(c).Grow(1).MinWidth(0).Height(k.Px(32)).Gap(k.Px(4)).AlignItems(ui.Center).Clip().Children(func() {
+					ui.ScrollHorizontal(c).Grow(1).MinWidth(minTabW).Height(k.Px(32)).Gap(k.Px(4)).AlignItems(ui.Center).Clip().Children(func() {
 						for i, tab := range ctx.st.Tabs {
 							a.agentTab(c, ctx, i, tab, listed, tabWidth)
 						}
@@ -460,11 +460,16 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 
 // orchestratorTab is the tab of the Workstream's orchestrator: its symbol and
 // name, in the tint that marks it, and the menu of the Workstream.
-func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext) ui.Element {
+func (a *App) orchestratorTab(c *ui.Context, ctx *wsContext, hasAgentTabs bool) ui.Element {
 	k, t := a.kit, a.kit.T
 	title := ctx.title()
 	selected := !ctx.agentShown
-	tab := ui.Row(c.Key("tab:orchestrator")).Height(k.Px(30)).Shrink(0).MaxWidth(k.Px(240)).Radius(k.Px(8)).AlignItems(ui.Center)
+	tab := ui.Row(c.Key("tab:orchestrator")).Height(k.Px(30)).Radius(k.Px(8)).AlignItems(ui.Center)
+	if hasAgentTabs {
+		tab.Shrink(1).MinWidth(k.Px(104)).MaxWidth(k.Px(140))
+	} else {
+		tab.Shrink(0).MaxWidth(k.Px(240))
+	}
 	switch {
 	case selected:
 		tab.Background(t.Info.Alpha(0.14))
