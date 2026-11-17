@@ -1721,4 +1721,5 @@ var zh = map[string]string{
 	"Refresh pull requests":                                          "刷新 PR 列表",
 	"Agent reasoning level":                                          "选择 Agent Reasoning 级别",
 	"Orchestrator reasoning level":                                   "选择编排会话 Reasoning 级别",
+	"Orchestrator subagents":                                         "编排器子 Agent",
 }

@@ -401,10 +401,18 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 			sp.Width(sp.Animate("width", leading, 200*time.Millisecond))
 		}
 		tabList := ui.Row(c).Role(ui.RoleTabList).Label(L("Workstream tabs")).Grow(1).MinWidth(0).Gap(k.Px(4)).AlignItems(ui.Center).Clip()
-		avail := a.workstreams.tabListW - a.workstreams.orchTabW - k.Px(4)
 		nTabs := len(ctx.st.Tabs)
 		minTabW := k.Px(112)
 		maxTabW := k.Px(180)
+		orchMax := k.Px(240)
+		if nTabs > 0 && a.workstreams.tabListW > 0 && a.workstreams.tabListW-orchMax-k.Px(4) < minTabW {
+			orchMax = max(k.Px(96), a.workstreams.tabListW-minTabW-k.Px(8))
+		}
+		orchW := a.workstreams.orchTabW
+		if orchW == 0 || orchW > orchMax {
+			orchW = orchMax
+		}
+		avail := a.workstreams.tabListW - orchW - k.Px(4)
 		scrollTabs := nTabs > 1
 		tabWidth := float32(0)
 		switch {
@@ -413,13 +421,13 @@ func (a *App) workstreamTabs(c *ui.Context, ctx *wsContext, v *sessionView, s *s
 		case scrollTabs:
 			tabWidth = minTabW
 			if avail > 0 {
-				per := (avail - float32(nTabs-1)*k.Px(4)) / float32(nTabs)
-				tabWidth = min(maxTabW, max(minTabW, per))
+				if avail < minTabW+k.Px(20) {
+					tabWidth = max(k.Px(88), avail)
+				} else {
+					per := (avail - float32(nTabs-1)*k.Px(4)) / float32(nTabs)
+					tabWidth = min(maxTabW, max(minTabW, per))
+				}
 			}
-		}
-		orchMax := k.Px(240)
-		if nTabs > 0 && a.workstreams.tabListW > 0 && a.workstreams.tabListW-orchMax-k.Px(4) < minTabW {
-			orchMax = max(k.Px(116), a.workstreams.tabListW-minTabW-k.Px(8))
 		}
 		tabList.Children(func() {
 			orchEl := a.orchestratorTab(c, ctx, orchMax)

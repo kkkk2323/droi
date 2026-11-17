@@ -506,9 +506,55 @@ func (a *App) paneAgentRow(c *ui.Context, ctx *wsContext, r paneRow) {
 }
 
 func (a *App) orchSubagentsGroup(c *ui.Context, ctx *wsContext, subs []subagentTreeRow) {
-	k := a.kit
-	ui.Column(c.Key("group:orch-subagents")).Margin(k.Px(6), 0, 0, 0).Children(func() {
-		a.subagentsToggleAndList(c, ctx, "orch:"+ctx.orch.SessionID, L("Orchestrator"), subs)
+	k, t := a.kit, a.kit.T
+	key := "orch:" + ctx.orch.SessionID
+	title := L("Orchestrator subagents")
+	open := ctx.st.subagentsExpanded(key)
+	running := 0
+	for _, sub := range subs {
+		if sub.hasRun && subagents.IsRunning(sub.run.Status) {
+			running++
+		}
+	}
+	ui.Column(c.Key("group:orch-subagents")).Margin(k.Px(4), 0, 0, 0).Children(func() {
+		head := ui.ButtonBase(c).Label(title).Expanded(open).AlignSelf(ui.Stretch).Height(k.Px(k.Dense(24, 28))).Gap(k.Px(6)).PaddingX(k.Px(6)).Radius(k.Px(8)).
+			Justify(ui.Start).Cursor(ui.CursorPointer)
+		color := t.MutedForeground
+		hovered := head.Hovered()
+		if hovered {
+			head.Background(t.Muted.Alpha(0.5))
+			color = t.Foreground
+		}
+		head.Children(func() {
+			if running > 0 {
+				k.Spinner(c, 12, t.Info)
+			} else {
+				k.Icon(c, "git-fork", 12, color)
+			}
+			k.Text(c, title, k.Dense(11, 12), k.Dense(16, 18)).Role(ui.RoleHeading).FontWeight(500).TextColor(color).SingleLine()
+			k.Text(c, strconv.Itoa(len(subs)), k.Dense(11, 12), k.Dense(16, 18)).TextColor(t.MutedForeground).FontFeatures("tnum")
+			rot := float32(0)
+			if open {
+				rot = 90
+			}
+			ch := k.Icon(c, "chevron-right", 12, color).Rotate(rot)
+			if open && !hovered && !head.Focused() {
+				ch.Opacity(0)
+			}
+		})
+		if head.Clicked() {
+			a.setWsState(ctx.id, func(u *workstreamUI) { u.toggleSubagents(key) })
+		}
+		if !open {
+			return
+		}
+		ui.Column(c.Key("sublist:"+key)).Role(ui.RoleList).Label(title).Gap(1).
+			Margin(0, 0, k.Px(4), k.Px(12)).BorderWidth(0, 0, 0, 1).BorderColor(t.Border.Alpha(0.7)).Padding(0, 0, 0, k.Px(6)).
+			Children(func() {
+				for _, sub := range subs {
+					a.subagentItemRow(c, sub)
+				}
+			})
 	})
 }
 

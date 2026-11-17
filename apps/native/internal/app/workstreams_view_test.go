@@ -671,16 +671,28 @@ func TestGoalTabShowsPlanMarkdownAndEmptyState(t *testing.T) {
 // right-side action buttons even when subagent and git controls narrow the bar.
 func TestAgentTabsClipAndNeverOverlapRightToolbar(t *testing.T) {
 	sc := workstreamsScenario()
-	sc.Sessions = append(sc.Sessions, fakedaemon.SessionSpec{
-		Title: "Subagent task", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
-		Extra: map[string]any{
-			"sessionId": "sub-1",
-			"subagent": map[string]any{
-				"callingSessionId": "orch-1", "callingToolUseId": "toolu_sub1",
-				"subagentType": "worker", "description": "Subagent task", "status": "completed",
+	sc.Sessions = append(sc.Sessions,
+		fakedaemon.SessionSpec{
+			Title: "Orch subagent task", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
+			Extra: map[string]any{
+				"sessionId": "sub-orch-1",
+				"subagent": map[string]any{
+					"callingSessionId": "orch-1", "callingToolUseId": "toolu_osub1",
+					"subagentType": "worker", "description": "Orch subagent task", "status": "completed",
+				},
 			},
 		},
-	})
+		fakedaemon.SessionSpec{
+			Title: "Subagent task", Cwd: "/Users/dev/pay", Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}},
+			Extra: map[string]any{
+				"sessionId": "sub-1",
+				"subagent": map[string]any{
+					"callingSessionId": "agent-7", "callingToolUseId": "toolu_sub1",
+					"subagentType": "worker", "description": "Subagent task", "status": "completed",
+				},
+			},
+		},
+	)
 	w := paymentWorkstream()
 	for i := 4; i <= 7; i++ {
 		id := fmt.Sprintf("agent-%d", i)
@@ -709,6 +721,9 @@ func TestAgentTabsClipAndNeverOverlapRightToolbar(t *testing.T) {
 	}
 	if tabList.X+tabList.W > subBtn.X+1 {
 		t.Fatalf("tabList (%+v) overlaps subagent toolbar button (%+v)", tabList, subBtn)
+	}
+	if !h.finds("Orchestrator subagents") {
+		t.Fatalf("expected top-level Orchestrator subagents group in panel")
 	}
 	h.shot("workstream-tabs-clipped")
 }
