@@ -1,3 +1,10 @@
+## 1.97.1 - 2026-11-17
+
+### Fixed
+
+- Workstreams' PRs tab and agent PR badges no longer pick up pull request URLs from tool output, chat messages, code blocks, or other repositories. PR candidates now come only from each agent's branch (skipping the repository's default branch), pull request artifacts recorded by the Daemon, and the agent's last report filtered to the workspace's Git remotes, queried in batches of 20 with cache invalidation when an agent reports or archives.
+- Agent PR badges in the Agents panel now sit on an aligned sub-row below the agent's title (up to two badges plus a `+N` button that opens the PRs tab) instead of sharing the title line and squeezing long titles out of narrow panels.
+
 ## 1.97.0 - 2026-11-17
 
 ### Added
