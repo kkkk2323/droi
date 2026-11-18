@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -87,5 +88,35 @@ func TestAQueuedMessageCopiesItsSelection(t *testing.T) {
 	h.frame()
 	if got := h.tt.Clipboard(); got == "" || !strings.HasPrefix(text, got) {
 		t.Fatalf("copied %q", got)
+	}
+}
+
+// A finger held on Queue hands the message to the running turn, as ⌘↩ does on
+// a keyboard; a tap queues it after the turn.
+func TestAPhonesQueueHeldHandsTheMessageToTheTurn(t *testing.T) {
+	h := newHarnessWith(t, deployScenario(slowTurn()), "", func(c *Config) { c.Phone = true; c.InsetTop = false })
+	h.tt.SetSize(402, 874)
+	h.openSession("Deploy")
+	h.send("Deploy it")
+	h.until("the turn to run", func() bool { _, ok := h.tt.Find("Cancel"); return ok })
+	_ = h.tt.Click("Message")
+	h.frame()
+	h.tt.Type("use the staging key")
+	h.frame()
+	q, ok := h.tt.Find("Queue")
+	if !ok {
+		t.Fatal("no Queue button")
+	}
+	x, y := q.X+q.W/2, q.Y+q.H/2
+	h.tt.FingerDown(x, y)
+	h.tt.Advance(700 * time.Millisecond)
+	h.tt.FingerUp(x, y)
+	h.frame()
+	req, err := h.d.WaitForRequest("daemon.add_user_message", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(req.Params), `"queuePlacement":"end_of_turn"`) {
+		t.Fatalf("held Queue sent %s", req.Params)
 	}
 }

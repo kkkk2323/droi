@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/mobile"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/brands"
 	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
@@ -173,6 +174,10 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 		}
 		*open = false
 	}
+	if k.Phone {
+		modelSheet(c, k, store, open, st, choices, rows, favorites, value, effort, levels, onEffort, tools, pick)
+		return
+	}
 	ui.PopoverBase(c, tr, open, func(p ui.Element) {
 		if field {
 			p.AttachTo(tr, ui.AnchorBottomRight, ui.AnchorTopRight).Margin(k.Px(4), 0, 0, 0)
@@ -275,7 +280,7 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 							fallbackRow(c, k, row.Label, i == active, value == "", func() { st.highlight = i }, func() { pick("") })
 							continue
 						}
-						modelRow(c, k, store, row, i == active, row.ID == value, slices.Contains(favorites, row.ID), func() { st.highlight = i }, func() {
+						modelRow(c, k, store, row, i == active, row.ID == value, slices.Contains(favorites, row.ID), false, func() { st.highlight = i }, func() {
 							if !row.Disabled {
 								pick(row.ID)
 							}
@@ -314,6 +319,127 @@ func modelPickerAs(c *ui.Context, k *kit.Kit, store *prefs.Store, field bool, na
 	})
 }
 
+// modelSheet is the picker on a phone: a sheet from the bottom of the screen
+// rather than a popover a pointer aims at, which a phone's width cuts off.
+// Its search waits for a tap, as the keyboard would cover half of it; the
+// brands are chips above the list instead of a rail beside it, and the
+// effort and tools wrap as chips rather than run off a segmented row.
+func modelSheet(c *ui.Context, k *kit.Kit, store *prefs.Store, open *bool, st *PickerState, choices []models.Choice, rows []models.Row, favorites []string, value, effort string, levels []string, onEffort func(string), tools *ToolModeChoice, pick func(string)) {
+	t := k.T
+	searching := st.query != ""
+	bg := t.Popover
+	// One height: at a lower detent the panel's bottom, with the effort, would
+	// rest below the screen.
+	mobile.Sheet(c, open, mobile.SheetOptions{Detents: []float32{0.86}, Background: &bg, Label: l10n.L("Choose a model")}, func() {
+		chip := func(key, label string, on bool, icon func(color ui.Color)) ui.Element {
+			b := ui.ButtonBase(c.Key(key)).Label(label).Checked(on).Height(k.Px(36)).Gap(k.Px(6)).PaddingX(k.Px(12)).
+				Radius(k.Px(8)).Border(1, t.Border).Shrink(0)
+			if on {
+				b.Background(t.Accent)
+			}
+			b.Children(func() {
+				if icon != nil {
+					icon(t.Foreground)
+				}
+				k.Text(c, label, 13, 18).FontWeight(500).TextColor(t.Foreground).SingleLine()
+			})
+			return b
+		}
+		ui.Column(c).Grow(1).MinHeight(0).Gap(k.Px(8)).TextColor(t.PopoverForeground).Children(func() {
+			// The sheet is modal, which gives the focus to what is first in
+			// it: the title takes it, not the search.
+			k.Text(c, l10n.L("Choose a model"), 15, 22).Role(ui.RoleHeading).FontWeight(600).PaddingX(k.Px(16)).TabStop(false).AutoFocus()
+			ui.Row(c).Gap(k.Px(8)).Margin(0, k.Px(16), 0, k.Px(16)).PaddingX(k.Px(12)).Height(k.Px(40)).Radius(k.Px(10)).
+				Background(t.Muted).AlignItems(ui.Center).Shrink(0).Children(func() {
+				k.Icon(c, "search", 14, t.MutedForeground)
+				ui.TextInputBase(c, &st.query).Label(l10n.L("Search models")).Placeholder(l10n.L("Search models…")).
+					Grow(1).MinWidth(0).FontSize(k.Px(16)).TextColor(t.Foreground)
+			})
+			ui.Row(c).Role(ui.RoleToolbar).Label(l10n.L("Filter models")).Wrap().Gap(k.Px(6)).PaddingX(k.Px(16)).Shrink(0).Children(func() {
+				fav := st.filter == models.FilterFavorites && st.brand == ""
+				if chip("favorites", l10n.L("Favorites"), fav && !searching, func(color ui.Color) { k.Icon(c, "star", 14, color) }).Clicked() {
+					st.brand, st.filter = "", models.FilterFavorites
+					if fav {
+						st.filter = models.FilterAll
+					}
+				}
+				if models.HasMagpie(choices) {
+					on := st.filter == models.FilterMagpie && st.brand == ""
+					if chip("magpie", l10n.L("Magpie"), on && !searching, func(color ui.Color) { k.Icon(c, "plug", 14, color) }).Clicked() {
+						st.brand, st.filter = "", models.FilterMagpie
+						if on {
+							st.filter = models.FilterAll
+						}
+					}
+				}
+				for _, b := range models.BrandsOf(choices) {
+					on := st.brand == b
+					if chip(string(b), l10n.T(models.BrandLabels[b]), on && !searching, func(color ui.Color) { brandIcon(c, k, b, 14, color) }).Clicked() {
+						st.filter, st.brand = models.FilterAll, b
+						if on {
+							st.brand = ""
+						}
+					}
+				}
+			})
+			ui.Scroll(c).Grow(1).MinHeight(0).BorderWidth(1, 0, 1, 0).BorderColor(t.Border).Children(func() {
+				ui.Column(c).Role(ui.RoleList).Label(l10n.L("Models")).Padding(k.Px(6), k.Px(8)).Children(func() {
+					if len(rows) == 0 {
+						msg := l10n.L("No models.")
+						switch {
+						case searching:
+							msg = l10n.L("No models match.")
+						case st.filter == models.FilterFavorites && st.brand == "":
+							msg = l10n.L("Star a model to keep it here.")
+						}
+						ui.Box(c).Height(k.Px(160)).Center().Children(func() {
+							k.Text(c, msg, 13, 18).TextColor(t.MutedForeground)
+						})
+					}
+					for _, row := range rows {
+						if row.ID == "" {
+							fallbackRow(c, k, row.Label, false, value == "", func() {}, func() { pick("") })
+							continue
+						}
+						modelRow(c, k, store, row, false, row.ID == value, slices.Contains(favorites, row.ID), true, func() {}, func() {
+							if !row.Disabled {
+								pick(row.ID)
+							}
+						})
+					}
+				})
+			})
+			choose := func(title, name, value string, opts []kit.Option, onChange func(string)) {
+				ui.Column(c).Gap(k.Px(6)).PaddingX(k.Px(16)).Shrink(0).Children(func() {
+					k.Text(c, title, 12, 16).TextColor(t.MutedForeground)
+					ui.Row(c).Role(ui.RoleRadioGroup).Label(name).Wrap().Gap(k.Px(6)).Children(func() {
+						for _, o := range opts {
+							if chip(o.Value, o.Label, o.Value == value, nil).Role(ui.RoleRadio).Clicked() && o.Value != value {
+								onChange(o.Value)
+							}
+						}
+					})
+				})
+			}
+			if len(levels) > 0 && onEffort != nil {
+				opts := make([]kit.Option, len(levels))
+				for i, l := range levels {
+					opts[i] = kit.Option{Value: l, Label: EffortLabel(l)}
+				}
+				choose(l10n.L("Reasoning"), l10n.L("Reasoning effort"), effort, opts, onEffort)
+			}
+			if tools != nil {
+				opts := make([]kit.Option, len(defaults.ToolModes))
+				for i, m := range defaults.ToolModes {
+					opts[i] = kit.Option{Value: string(m), Label: l10n.T(defaults.ToolModeLabels[m])}
+				}
+				choose(l10n.L("Tools"), l10n.L("Tool calls"), string(tools.Value), opts, func(v string) { tools.OnChange(defaults.ToolMode(v)) })
+			}
+			ui.Box(c).Height(k.Px(4)).Shrink(0)
+		})
+	})
+}
+
 // fallbackRow is the list's choice of no model of its own.
 func fallbackRow(c *ui.Context, k *kit.Kit, label string, highlighted, selected bool, hover, click func()) {
 	t := k.T
@@ -338,9 +464,15 @@ func fallbackRow(c *ui.Context, k *kit.Kit, label string, highlighted, selected 
 	}
 }
 
-func modelRow(c *ui.Context, k *kit.Kit, store *prefs.Store, row models.Row, highlighted, selected, starred bool, hover, click func()) {
+// modelRow is a model of the list. On a touch screen (touch) it is taller,
+// for a finger, and its star always shows: nothing hovers there.
+func modelRow(c *ui.Context, k *kit.Kit, store *prefs.Store, row models.Row, highlighted, selected, starred, touch bool, hover, click func()) {
 	t := k.T
-	r := kit.Selected(ui.Row(c.Key(row.ID)).Role(ui.RoleListItem).Label(row.Label), selected).Gap(k.Px(12)).Padding(k.Px(8), k.Px(10)).
+	padY := k.Px(8)
+	if touch {
+		padY = k.Px(10)
+	}
+	r := kit.Selected(ui.Row(c.Key(row.ID)).Role(ui.RoleListItem).Label(row.Label), selected).Gap(k.Px(12)).Padding(padY, k.Px(10)).
 		Radius(k.Px(8)).Cursor(ui.CursorPointer)
 	if _, _, over := r.PointerPosition(); over && !highlighted {
 		hover()
@@ -380,7 +512,7 @@ func modelRow(c *ui.Context, k *kit.Kit, store *prefs.Store, row models.Row, hig
 		color := t.MutedForeground
 		if starred {
 			color = t.Attention
-		} else if !highlighted && !star.Focused() {
+		} else if !highlighted && !touch && !star.Focused() {
 			star.Opacity(0)
 		}
 		if star.Hovered() {

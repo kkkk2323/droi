@@ -24,6 +24,9 @@ type Kit struct {
 	Rem float32
 	// Compact is Settings → Density's Compact: smaller text and controls.
 	Compact bool
+	// Phone is the Phone App's screen: pickers open as sheets from the
+	// bottom, not popovers a pointer aims at.
+	Phone bool
 }
 
 // New makes the kit of a theme, font choice and text size.

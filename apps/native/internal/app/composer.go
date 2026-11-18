@@ -382,6 +382,11 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 							if q.Clicked() {
 								submit("")
 							}
+							// A finger held on it hands the message to the running turn,
+							// as ⌘↩ does.
+							if q.LongPressed() {
+								submit(protocol.QueuePlacementEndOfTurn)
+							}
 						}
 						return
 					}
