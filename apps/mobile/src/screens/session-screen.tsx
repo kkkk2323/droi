@@ -1,0 +1,327 @@
+// An open Session: its transcript, and what came before a compaction when
+// the reader asks for it. Loading it subscribes this phone to its
+// notifications, which is also what makes its activity show in the list.
+import { takePendingPrompt } from '@droi/daemon-layer/pending-prompt'
+import { LOAD_STATE } from '@droi/daemon-layer/sdk-enums'
+import { continuationChain, type SessionSummary } from '@droi/daemon-layer/sessions'
+import {
+  callerTrail,
+  subagentSiblings,
+  subagentsOf,
+  useListNewSubagents,
+  type SessionRef,
+} from '@droi/daemon-layer/subagents'
+import { COMPACT_COMMAND, useCompact } from '@droi/daemon-layer/use-compact'
+import { useContextUsage } from '@droi/daemon-layer/use-context-usage'
+import { useGitChanges } from '@droi/daemon-layer/use-git-changes'
+import { usePrompts } from '@droi/daemon-layer/use-prompts'
+import { useSession, useSessions } from '@droi/daemon-layer/use-session'
+import { useSessionSettings } from '@droi/daemon-layer/use-session-settings'
+import { useSlashItems } from '@droi/daemon-layer/use-slash-items'
+import { useOlderMessages } from '@droi/daemon-layer/use-older-messages'
+import type { QueuedContent } from '@droi/daemon-layer/use-queued-messages'
+import { loadDraft, saveDraft } from '@droi/daemon-layer/drafts'
+import { useTurn } from '@droi/daemon-layer/use-turn'
+import { agentsOf, orchestratorOf, workstreamOf } from '@droi/daemon-layer/workstreams'
+import { Stack, useFocusEffect, useRouter } from 'expo-router'
+import { useHeaderHeight } from 'expo-router/react-navigation'
+import { ChevronUp } from 'lucide-react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native'
+import { Spinner } from '../ui/activity'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Composer, type ComposerHandle, type Submission } from '../composer/composer'
+import { lastSessionOf } from '../computers/store'
+import { ConnectionGate } from '../connection/connection-notices'
+import { sessionPath, useConnectedComputer } from '../sessions/connected-computer'
+import { ComposerFooter, ComposerShelf } from '../composer/composer-shelf'
+import { hasPrompt, PromptArea } from '../composer/prompt-cards'
+import { SessionSettingsBar } from '../composer/session-settings'
+import { SubagentsButton, SubagentTitle } from '../sessions/subagent-nav'
+import { AgentsButton, AgentTitle } from '../sessions/workstream-nav'
+import { ToolsButton } from '../tools/tools-sheet'
+import { GitChangesButton } from '../transcript/git-changes'
+import { TranscriptView } from '../transcript/transcript-view'
+import { Text } from '../ui/primitives'
+import { TextScale } from '../ui/text-scale'
+import { space } from '../ui/theme'
+import { useColors } from '../ui/use-colors'
+
+/** The Session a route names, on the connected computer, behind its connection notices. */
+export function OpenSessionScreen({ sessionId }: { sessionId: string }) {
+  const colors = useColors()
+  const router = useRouter()
+  const connected = useConnectedComputer()
+  const computerId = connected?.computer.id
+  // The Session on screen is the one a launch reopens.
+  useFocusEffect(
+    useCallback(() => {
+      if (computerId) lastSessionOf(computerId).set(sessionId)
+    }, [computerId, sessionId]),
+  )
+  if (!connected) return null
+  const all = connected.sessions.sessions
+  const session = connected.find(sessionId)
+  const chain = session ? continuationChain(all, session) : []
+  const workstream = session ? workstreamOf(session.tags) : null
+  const lead = session && workstream?.role === 'agent' ? orchestratorOf(all, session) : null
+  return (
+    <ConnectionGate computer={connected.computer}>
+      {session ? (
+        <SessionScreen
+          key={session.sessionId}
+          session={session}
+          chain={chain}
+          trail={callerTrail(all, session)}
+          siblings={subagentSiblings(all, session)}
+          subagents={subagentsOf(all, [session.sessionId, ...chain.map((s) => s.sessionId)])}
+          agents={workstream?.role === 'orchestrator' ? agentsOf(all, session) : null}
+          orchestrator={lead ? { sessionId: lead.sessionId, title: lead.title } : null}
+          onContinued={(next) => router.replace(sessionPath(next))}
+        />
+      ) : !connected.sessions.live ? (
+        <View style={styles.loading}>
+          <Spinner size={16} color={colors.mutedForeground} />
+          <Text tone="muted" size="sm">
+            Loading session…
+          </Text>
+        </View>
+      ) : (
+        <Text role="alert" style={styles.message}>
+          This session is not on {connected.computer.name}’s list.
+        </Text>
+      )}
+    </ConnectionGate>
+  )
+}
+
+export function SessionScreen({
+  session,
+  chain,
+  trail,
+  siblings,
+  subagents,
+  agents,
+  orchestrator,
+  onContinued,
+}: {
+  session: SessionSummary
+  /** `/compact` moved the conversation to a new Session; show that one. */
+  onContinued: (sessionId: string) => void
+  /** The listed Sessions this one continues after compactions, nearest first. */
+  chain: readonly SessionSummary[]
+  /** For a subagent: the Sessions above it, its main Session first. */
+  trail: readonly SessionRef[]
+  /** For a subagent: every subagent of the same caller, itself included. */
+  siblings: readonly SessionSummary[]
+  /** The subagents this Session (or an earlier link of its chain) called. */
+  subagents: readonly SessionSummary[]
+  /** For a Workstream's orchestrator: its agents; null for any other Session. */
+  agents: readonly SessionSummary[] | null
+  /** For a Workstream agent: the orchestrator it reports to, when the list has it. */
+  orchestrator: SessionRef | null
+}) {
+  const colors = useColors()
+  const insets = useSafeAreaInsets()
+  const headerHeight = useHeaderHeight()
+  const view = useSession(session.sessionId)
+  useListNewSubagents(view.transcript)
+  const loaded = view.loadState === LOAD_STATE.loaded
+  const turn = useTurn(session.sessionId)
+  const settings = useSessionSettings(session.sessionId)
+  const contextUsage = useContextUsage(session.sessionId, { loaded, modelId: settings.modelId })
+  const slashItems = useSlashItems(session.sessionId)
+  const prompts = usePrompts(session.sessionId)
+  const compaction = useCompact(session.sessionId, session.tags)
+  const isRunning = view.workingState !== 'idle' || compaction.isCompacting
+  const gitChanges = useGitChanges(session.sessionId, { loaded, running: isRunning })
+  const older = useOlderMessages(session.sessionId)
+  const [sentCount, setSentCount] = useState(0)
+  // A paused queued message taken back goes into the composer; while a Prompt
+  // stands in for the composer it waits in the draft instead.
+  const composer = useRef<ComposerHandle>(null)
+  const takeBack = (content: QueuedContent) => {
+    if (composer.current) {
+      composer.current.insert(content)
+      return
+    }
+    const draft = loadDraft(session.sessionId)
+    saveDraft(session.sessionId, {
+      text: draft.text.trim() ? `${content.text}\n${draft.text}` : content.text,
+      images: [...content.images, ...draft.images],
+    })
+  }
+  // A message typed on the New session page goes out once the Session can take it.
+  const send = turn.send
+  useEffect(() => {
+    if (!loaded) return
+    const prompt = takePendingPrompt(session.sessionId)
+    if (prompt) void send(prompt.text, { images: prompt.images })
+  }, [loaded, session.sessionId, send])
+  const submit = ({ text, images, placement }: Submission) => {
+    setSentCount((n) => n + 1)
+    const command = COMPACT_COMMAND.exec(text.trim())
+    if (command && images.length === 0) {
+      void compaction.compact(command[1]).then((next) => {
+        if (next) onContinued(next)
+      })
+      return
+    }
+    void turn.send(text, { images, placement })
+  }
+  // Earlier Sessions load one per tap, nearest first; each can be large.
+  const [revealed, setRevealed] = useState(0)
+  const shown = chain.slice(0, revealed).reverse()
+  const earlierViews = useSessions(shown.map((s) => s.sessionId))
+  const earlier = useMemo(() => earlierViews.map((v) => v.transcript), [earlierViews])
+  const nextEarlier = chain[revealed]
+  const earlierError = earlierViews.find((v) => v.loadError)?.loadError
+
+  const lead = view.hasOlderMessages ? (
+    older.error ? (
+      <Text
+        role="alert"
+        size="xs"
+        style={[styles.leadRow, { color: colors.destructiveForeground }]}
+      >
+        Previous messages did not load: {older.error}
+      </Text>
+    ) : (
+      <Pressable
+        role="button"
+        disabled={older.isLoading}
+        onPress={() => void older.load()}
+        style={styles.leadRow}
+      >
+        {older.isLoading ? (
+          <Spinner size={14} color={colors.mutedForeground} />
+        ) : (
+          <ChevronUp size={14} color={colors.mutedForeground} />
+        )}
+        <Text tone="muted" size="xs">
+          {older.isLoading ? 'Loading previous messages…' : 'Load previous messages'}
+        </Text>
+      </Pressable>
+    )
+  ) : earlierError ? (
+    <Text role="alert" size="xs" style={[styles.leadRow, { color: colors.destructiveForeground }]}>
+      Earlier messages did not load: {earlierError}
+    </Text>
+  ) : earlierViews.some((v) => v.loadState !== LOAD_STATE.loaded) ? (
+    <View style={styles.leadRow}>
+      <Spinner size={14} color={colors.mutedForeground} />
+      <Text tone="muted" size="xs">
+        Loading earlier messages…
+      </Text>
+    </View>
+  ) : nextEarlier ? (
+    <Pressable role="button" onPress={() => setRevealed(revealed + 1)} style={styles.leadRow}>
+      <ChevronUp size={14} color={colors.mutedForeground} />
+      <Text tone="muted" size="xs">
+        Continued from “{nextEarlier.title}” · Show earlier messages
+      </Text>
+    </Pressable>
+  ) : null
+
+  const headerTitle =
+    trail.length > 0 ? (
+      <SubagentTitle
+        sessionId={session.sessionId}
+        title={session.title}
+        trail={trail}
+        siblings={siblings}
+      />
+    ) : orchestrator ? (
+      <AgentTitle title={session.title} orchestrator={orchestrator} />
+    ) : null
+  const actions = (
+    <View style={styles.actions}>
+      {agents ? <AgentsButton agents={agents} /> : null}
+      <SubagentsButton subagents={subagents} />
+      <GitChangesButton changes={gitChanges} />
+      <ToolsButton sessionId={session.sessionId} />
+    </View>
+  )
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
+    >
+      <Stack.Screen
+        options={{
+          title: session.title,
+          headerTitle: headerTitle ? () => headerTitle : undefined,
+          headerRight: () => actions,
+        }}
+      />
+      <TextScale>
+        {view.loadError ? (
+          <Text role="alert" style={[styles.message, { color: colors.destructiveForeground }]}>
+            {view.loadError}
+          </Text>
+        ) : !loaded && view.messages.length === 0 ? (
+          <View style={styles.loading}>
+            <Spinner size={16} color={colors.mutedForeground} />
+            <Text tone="muted" size="sm">
+              Loading session…
+            </Text>
+          </View>
+        ) : (
+          <TranscriptView
+            transcript={view.transcript}
+            earlier={earlier}
+            workingState={compaction.isCompacting ? 'compacting_conversation' : view.workingState}
+            lead={lead}
+            scrollToEndKey={sentCount}
+          />
+        )}
+        <View style={{ paddingBottom: Math.max(insets.bottom, space.sm) }}>
+          <ComposerShelf sessionId={session.sessionId} onTake={takeBack} />
+          {hasPrompt(prompts) ? (
+            // The Prompt stands in for the composer; the draft comes back after.
+            <PromptArea sessionId={session.sessionId} />
+          ) : (
+            <Composer
+              isRunning={isRunning}
+              disabled={!view.hasLoaded}
+              onSend={submit}
+              onCancel={() => void turn.cancel()}
+              error={turn.sendError ?? compaction.error}
+              draftKey={session.sessionId}
+              slashItems={slashItems}
+              accessory={<SessionSettingsBar sessionId={session.sessionId} />}
+              ref={composer}
+            />
+          )}
+          <ComposerFooter
+            sessionId={session.sessionId}
+            workspace={session.cwd}
+            usage={contextUsage}
+          />
+        </View>
+      </TextScale>
+    </KeyboardAvoidingView>
+  )
+}
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  actions: { flexDirection: 'row', alignItems: 'center' },
+  message: { padding: space.lg },
+  loading: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.sm,
+  },
+  leadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 44,
+    paddingVertical: space.sm,
+  },
+})

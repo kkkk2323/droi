@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
-# Build the Phone App (apps/native/phone, MyGo) and install it on the connected
-# iPhone: `pnpm install:phone`. Signed with the Apple Development certificate
-# in the keychain; with a free Apple account the profile lasts seven days, so
-# run this again to renew it.
+# Build the Phone App and install it on the connected iPhone: `pnpm install:phone`.
+# A Release build with the JS bundle inside, signed with the Apple Development
+# certificate in the keychain. With a free Apple account the signature lasts
+# seven days; run this again to renew it.
 # DROI_IPHONE picks a device (name or UDID) when several are connected;
 # APPLE_TEAM_ID overrides the team read from the certificate.
-# Needs Xcode signed in to the Apple account (Settings → Accounts) and xcodegen
-# (brew install xcodegen), which makes the throwaway project Xcode creates the
-# profile for.
+# DROI_HTTP_DOMAINS lets the app use plain http to more domain suffixes
+# (comma separated, e.g. "myhome" for laptop.myhome reached through Surge).
+# Keep it in apps/mobile/.env.local (git-ignored); Expo reads that file itself.
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
-native="$root/apps/native"
-id=$(node -p 'require(process.argv[1]).identifier' "$native/phone/mygo.json")
-version=$(node -p 'require(process.argv[1]).version' "$native/phone/mygo.json")
+cd "$(dirname "$0")/../apps/mobile"
+# CocoaPods fails on non-ASCII paths without a UTF-8 locale.
+export LANG="${LANG:-en_US.UTF-8}" LC_ALL="${LC_ALL:-en_US.UTF-8}"
 
 if [ -z "${APPLE_TEAM_ID:-}" ]; then
   APPLE_TEAM_ID=$(security find-certificate -c "Apple Development" -p 2>/dev/null |
@@ -25,6 +24,7 @@ if [ -z "$APPLE_TEAM_ID" ]; then
   echo "Xcode → Settings → Accounts and create one, or set APPLE_TEAM_ID." >&2
   exit 1
 fi
+export APPLE_TEAM_ID
 
 device="${DROI_IPHONE:-}"
 if [ -z "$device" ]; then
@@ -50,39 +50,27 @@ if [ -z "$device" ]; then
   exit 1
 fi
 
-# Xcode creates a free account's profile only for a project it builds, so build
-# an empty app of the same identifier for the device first; MyGo then signs
-# with the profile it left.
-work=$(mktemp -d)
-trap 'rm -rf "$work" "${devices:-}"' EXIT
-cat > "$work/Main.swift" <<'SWIFT'
-import SwiftUI
-@main struct ProfileApp: App { var body: some Scene { WindowGroup { Text("Droi") } } }
-SWIFT
-cat > "$work/project.yml" <<YAML
-name: DroiProfile
-targets:
-  DroiProfile:
-    type: application
-    platform: iOS
-    deploymentTarget: "17.0"
-    sources: [Main.swift]
-    settings:
-      PRODUCT_BUNDLE_IDENTIFIER: $id
-      DEVELOPMENT_TEAM: $APPLE_TEAM_ID
-      CODE_SIGN_STYLE: Automatic
-      GENERATE_INFOPLIST_FILE: YES
-YAML
-(cd "$work" && xcodegen generate --quiet)
-xcodebuild -project "$work/DroiProfile.xcodeproj" -scheme DroiProfile -configuration Debug \
-  -destination "id=$device" -derivedDataPath "$work/build" -allowProvisioningUpdates -quiet build
-
-(cd "$native" && go tool mygo build -platform ios phone)
-ipa="$native/phone/build/ios-arm64/droi-phone-$version.ipa"
-# devicectl drops the connection installing an .ipa; the .app inside installs.
-(cd "$work" && unzip -q "$ipa" 'Payload/*')
-xcrun devicectl device install app --device "$device" "$work/Payload/Droi.app"
-xcrun devicectl device process launch --device "$device" "$id" >/dev/null ||
+npx expo prebuild --platform ios --no-install
+(cd ios && pod install)
+# Not `expo run:ios`: only xcodebuild can be told to create the provisioning
+# profile a free account needs (-allowProvisioningUpdates).
+xcodebuild -workspace ios/Droi.xcworkspace -scheme Droi -configuration Release \
+  -destination "id=$device" -derivedDataPath build -allowProvisioningUpdates \
+  DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic -quiet build
+app=build/Build/Products/Release-iphoneos/Droi.app
+# When pod install cannot reach React Native's prebuilt core, it builds React Native
+# from source without a word, but Expo's precompiled modules still load React.framework:
+# that app quits at launch. Refuse to install a build missing a framework it loads.
+missing=$(for fw in "$app"/Frameworks/*.framework; do otool -L "$fw/$(basename "$fw" .framework)"; done |
+  sed -n 's|^[[:space:]]*@rpath/\([^/]*\.framework\)/.*|\1|p' | sort -u |
+  while read -r name; do [ -d "$app/Frameworks/$name" ] || echo "$name"; done)
+if [ -n "$missing" ]; then
+  echo "The build lacks $(echo $missing), which its frameworks load, so it would quit at launch." >&2
+  echo "pod install likely could not reach React Native's prebuilt core; check the network and run this again." >&2
+  exit 1
+fi
+xcrun devicectl device install app --device "$device" "$app"
+xcrun devicectl device process launch --device "$device" com.kkkk2323.droi >/dev/null ||
   echo "Installed but not launched: is the iPhone locked, or the developer not trusted yet?"
-echo "Installed Droi $version on the iPhone."
+echo "Installed Droi $(node -p 'require("../native/mygo.json").version') on the iPhone."
 echo "First install: trust the developer in Settings → General → VPN & Device Management."

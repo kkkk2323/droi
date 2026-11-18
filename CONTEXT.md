@@ -1,6 +1,6 @@
 # Droi
 
-Droi is a desktop and iPhone front end for the Factory Droid coding agent. It does not run the agent itself; it presents and controls agent conversations that live in the Droid Daemon.
+Droi is a desktop, iPhone and mobile-web front end for the Factory Droid coding agent. It does not run the agent itself; it presents and controls agent conversations that live in the Droid Daemon.
 
 ## Language
 
@@ -71,8 +71,8 @@ A Client that is not the Desktop Shell window of the Host it is connected to: th
 _Avoid_: mobile, web mode, browser mode, LAN mode
 
 **Phone App**:
-The native iPhone Client, built from the desktop app's own window drawn by MyGo on iOS (`apps/native/phone`, ADR 0040). It is the Remote Client, runs no Host of its own, and offers nothing the desktop lacks.
-_Avoid_: mobile app, iOS app, iOS Client, mobile web
+The native iPhone Client (`apps/mobile`, Expo, ADR 0006). It is the Remote Client, and it offers nothing the desktop lacks. `apps/native/phone`, the desktop window drawn by MyGo on the iPhone, is kept as an example of it until the switch (ADR 0041).
+_Avoid_: mobile app, iOS app, iOS Client
 
 **Pairing Token**:
 The secret a Remote Client presents to the Gateway to prove it was authorised on the Host's computer. There is one token per Host, shown as a QR code and link in the Desktop Shell settings or printed by the Host's command line; resetting it revokes every Remote Client at once. The Local Client presents a separate per-launch token to its own Host instead, so a reset never touches the desktop window.

@@ -1,3 +1,12 @@
+## 1.98.1 - 2026-11-18
+
+### Changed
+
+- The Phone App is the Expo app again (ADR 0041): `pnpm install:phone` builds and installs it as in 1.97.1, and it pairs once after an install over the MyGo app. The MyGo Phone App of 1.98.0 stays in `apps/native/phone` as an example until MyGo's mobile support matures, and `pnpm install:phone:mygo` installs it.
+
+### Fixed
+
+- Two view tests of the MyGo Phone App no longer fail now and then on one CPU, where they clicked before the Session's settings came.
 ## 1.98.0 - 2026-11-18
 
 ### Added

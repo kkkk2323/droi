@@ -1,0 +1,56 @@
+// Reasoning, folded away by default like the web Client's.
+import { formatDuration } from '@droi/daemon-layer/transcript'
+import { ChevronRight } from 'lucide-react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
+import { Markdown } from '../markdown/markdown'
+import { Text } from '../ui/primitives'
+import { space } from '../ui/theme'
+import { useColors } from '../ui/use-colors'
+import { Folded, useFold } from './fold'
+
+export function ThinkingSection({
+  text,
+  durationMs,
+  isStreaming,
+}: {
+  text: string
+  durationMs: number | undefined
+  isStreaming: boolean
+}) {
+  const colors = useColors()
+  const fold = useFold()
+  const label = durationMs
+    ? `Reasoned for ${formatDuration(durationMs)}`
+    : isStreaming
+      ? 'Reasoning…'
+      : 'Reasoning'
+  return (
+    <View>
+      <Pressable
+        role="button"
+        aria-expanded={fold.open}
+        onPress={fold.toggle}
+        style={styles.trigger}
+      >
+        <Text tone="muted" size="sm">
+          {label}
+        </Text>
+        <ChevronRight
+          size={14}
+          color={colors.mutedForeground}
+          style={{ transform: [{ rotate: fold.open ? '90deg' : '0deg' }] }}
+        />
+      </Pressable>
+      <Folded fold={fold}>
+        <View style={[styles.panel, { borderLeftColor: colors.border }]}>
+          <Markdown text={text} muted />
+        </View>
+      </Folded>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  trigger: { flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 44 },
+  panel: { borderLeftWidth: 2, paddingLeft: space.md, paddingBottom: space.sm },
+})

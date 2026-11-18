@@ -1,0 +1,71 @@
+// The Phone App's root: loads fonts and app storage before the first screen,
+// then a stack whose first page is the connected computer's own stack (its
+// Session list, Sessions and New session) and whose settings and pairing
+// pages are pushed on top.
+import '../polyfills'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { setPreferenceStorage } from '@droi/daemon-layer/local-preference'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { useFonts } from 'expo-font'
+import { Stack } from 'expo-router'
+import * as SplashScreen from 'expo-splash-screen'
+import { StatusBar } from 'expo-status-bar'
+import { Suspense, use } from 'react'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { hydrateStorage } from '../lib/app-storage'
+import { appQueryClient } from '../query-client'
+import { useStackScreenOptions } from '../ui/stack-options'
+import { applyThemeChoice, themeChoice, useColorSchemeName } from '../ui/use-colors'
+
+// JetBrains Mono, the code face. The interface face is the system's own,
+// which needs no font file.
+import JetBrainsMonoRegular from '../../assets/fonts/JetBrainsMono-Regular.ttf'
+import JetBrainsMonoMedium from '../../assets/fonts/JetBrainsMono-Medium.ttf'
+
+export const unstable_settings = { initialRouteName: '(connected)' }
+
+void SplashScreen.preventAutoHideAsync()
+
+const storageReady = hydrateStorage(AsyncStorage).then((storage) => {
+  setPreferenceStorage(storage)
+  applyThemeChoice()
+  themeChoice.subscribe(() => applyThemeChoice())
+})
+
+export default function RootLayout() {
+  return (
+    <Suspense fallback={null}>
+      <Root />
+    </Suspense>
+  )
+}
+
+function Root() {
+  use(storageReady)
+  const [fontsLoaded, fontError] = useFonts({
+    JetBrainsMono_400Regular: JetBrainsMonoRegular,
+    JetBrainsMono_500Medium: JetBrainsMonoMedium,
+  })
+  const screenOptions = useStackScreenOptions()
+  const scheme = useColorSchemeName()
+
+  if (!fontsLoaded && !fontError) return null
+  void SplashScreen.hideAsync()
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={appQueryClient}>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <Stack screenOptions={screenOptions}>
+          <Stack.Screen name="(connected)" options={{ headerShown: false, title: 'Sessions' }} />
+          <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="session-defaults" options={{ title: 'Session defaults' }} />
+          <Stack.Screen name="pair" options={{ title: 'Add a computer' }} />
+          <Stack.Screen name="scan" options={{ title: 'Scan QR code' }} />
+          <Stack.Screen name="computers" options={{ title: 'Paired computers' }} />
+          <Stack.Screen name="computer/[id]" options={{ title: 'Computer' }} />
+        </Stack>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
+  )
+}

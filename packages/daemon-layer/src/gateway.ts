@@ -1,0 +1,200 @@
+// Contract between the Gateway (Desktop Shell) and the Client. Both sides import
+// this file so the WebSocket path, the query parameter and the /meta shape
+// cannot drift apart.
+
+/**
+ * WebSocket path the Client connects to; frames are forwarded to the Daemon.
+ * A plain GET on the same path answers 204 or 401 so a Client can tell a bad
+ * Pairing Token apart from an unreachable Daemon, which browsers hide behind
+ * one opaque WebSocket error.
+ */
+export const GATEWAY_DAEMON_PATH = '/daemon'
+
+/** Query parameter carrying the Pairing Token on the WebSocket upgrade. */
+export const GATEWAY_TOKEN_QUERY = 'token'
+
+/**
+ * An endpoint of the Gateway at gatewayHttpUrl: an origin, or a Relay's address with its path
+ * (https://relay.example.com/c/<Relay Id>, ADR 0034), which the endpoint's path goes after.
+ */
+export function gatewayEndpoint(gatewayHttpUrl: string, path: string): URL {
+  const url = new URL(gatewayHttpUrl)
+  url.pathname = url.pathname.replace(/\/+$/, '') + path
+  url.search = ''
+  url.hash = ''
+  return url
+}
+
+/** Read-only endpoint describing the Desktop Shell. Never contains secrets. */
+export const GATEWAY_META_PATH = '/meta'
+
+export interface GatewayMeta {
+  app: 'Droi'
+  version: string
+  remoteAccess: boolean
+  /** The computer's display name, as the user named it in the system settings. */
+  name: string
+  /** Stable id of the computer; survives restarts, Pairing Token resets and address changes. */
+  computerId: string
+  /**
+   * Where a phone reaches the computer through its Relay (ADR 0034), "" without one. Absent
+   * from a Droi older than the Relay.
+   */
+  relay?: string
+}
+
+/**
+ * Value the Client puts in `daemon.authenticate.params.apiKey`. The Gateway
+ * replaces it with the real Factory API key, so its content never matters; a
+ * fixed marker keeps the frame recognisable in logs and tests.
+ */
+export const GATEWAY_API_KEY_PLACEHOLDER = 'droi-gateway'
+
+/**
+ * Scratch Workspaces (ADR 0008): the Gateway answers these itself, POST with
+ * the token in the query. Creating answers 201 with a ScratchWorkspaceCreated;
+ * trash and restore take the folder in the `path` query parameter and answer
+ * 204. No body and no custom header, so a browser sends them without a preflight.
+ */
+export const GATEWAY_SCRATCH_PATH = '/scratch-workspaces'
+export const GATEWAY_SCRATCH_TRASH_PATH = '/scratch-workspaces/trash'
+export const GATEWAY_SCRATCH_RESTORE_PATH = '/scratch-workspaces/restore'
+export const GATEWAY_SCRATCH_PATH_QUERY = 'path'
+
+export interface ScratchWorkspaceCreated {
+  path: string
+}
+
+export function gatewayScratchUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  endpoint: string,
+  path?: string,
+): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, endpoint)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (path !== undefined) url.searchParams.set(GATEWAY_SCRATCH_PATH_QUERY, path)
+  return url.toString()
+}
+
+/**
+ * Where the Daemon keeps a Session's transcript on the computer, for pasting
+ * into another Session. GET with the token and the Session id in the query;
+ * answers 200 with a SessionFileFound, or 404 when there is no such file.
+ */
+export const GATEWAY_SESSION_FILE_PATH = '/session-file'
+export const GATEWAY_SESSION_ID_QUERY = 'sessionId'
+
+export interface SessionFileFound {
+  path: string
+}
+
+export function gatewaySessionFileUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_SESSION_FILE_PATH)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
+  return url.toString()
+}
+
+/**
+ * How the computer's window lists its Sessions, so that a phone lists them the
+ * same way: GET answers a SessionListOrder, or 404 from a Gateway with no
+ * window. POST on the pin path, with kind, key and pinned, pins or unpins on
+ * the computer and answers 204.
+ */
+export const GATEWAY_SESSION_LIST_PATH = '/session-list'
+export const GATEWAY_SESSION_PIN_PATH = '/session-list/pin'
+
+export interface SessionListOrder {
+  pinnedSessions: string[]
+  pinnedWorkspaces: string[]
+  /** The Workspace groups' keys in the order the window last showed them. */
+  workspaceOrder: string[]
+  /** 'recent' or 'created'; '' is 'recent'. */
+  sessionSort: string
+  /** 'time', or '' for the Workspaces. */
+  sessionView: string
+}
+
+export type PinKind = 'session' | 'workspace'
+
+export function gatewaySessionListUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  pin?: { kind: PinKind; key: string; pinned: boolean },
+): string {
+  const url = gatewayEndpoint(
+    gatewayHttpUrl,
+    pin ? GATEWAY_SESSION_PIN_PATH : GATEWAY_SESSION_LIST_PATH,
+  )
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (pin) {
+    url.searchParams.set('kind', pin.kind)
+    url.searchParams.set('key', pin.key)
+    url.searchParams.set('pinned', String(pin.pinned))
+  }
+  return url.toString()
+}
+
+/**
+ * The Session Times (ADR 0032): when the user last sent each Session a message, when its last
+ * turn ended and when a Client last showed it, in Unix ms. GET answers a SessionTimesSnapshot:
+ * every Session's (`full`), or with `after` those changed after that revision, once one
+ * changes or the Gateway's long poll (25 s) has passed. POST on the viewed path, with the
+ * Session id, notes a Client showing the Session and answers 204. A Gateway that keeps none
+ * answers 404.
+ */
+export const GATEWAY_SESSION_TIMES_PATH = '/session-times'
+export const GATEWAY_SESSION_VIEWED_PATH = '/session-times/viewed'
+export const GATEWAY_AFTER_QUERY = 'after'
+
+export interface SessionTimes {
+  sentAt?: number
+  endedAt?: number
+  viewedAt?: number
+}
+
+export interface SessionTimesSnapshot {
+  rev: number
+  full?: boolean
+  sessions: Record<string, SessionTimes>
+}
+
+export function gatewaySessionTimesUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  after: number,
+): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_SESSION_TIMES_PATH)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  if (after) url.searchParams.set(GATEWAY_AFTER_QUERY, String(after))
+  return url.toString()
+}
+
+export function gatewaySessionViewedUrl(
+  gatewayHttpUrl: string,
+  pairingToken: string,
+  sessionId: string,
+): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_SESSION_VIEWED_PATH)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  url.searchParams.set(GATEWAY_SESSION_ID_QUERY, sessionId)
+  return url.toString()
+}
+
+export function gatewayDaemonUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_DAEMON_PATH)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  return url.toString()
+}
+
+export function gatewayPairingCheckUrl(gatewayHttpUrl: string, pairingToken: string): string {
+  const url = gatewayEndpoint(gatewayHttpUrl, GATEWAY_DAEMON_PATH)
+  url.searchParams.set(GATEWAY_TOKEN_QUERY, pairingToken)
+  return url.toString()
+}

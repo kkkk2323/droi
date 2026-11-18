@@ -1,5 +1,5 @@
 ---
-status: superseded by ADR-0040
+status: accepted
 ---
 
 # The Phone App is a native Expo Client that shares the web Client's daemon layer

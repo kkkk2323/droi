@@ -198,9 +198,10 @@ preferred Open in app) are kept per computer: this computer's stay under their o
 key with `@` and the computer id added. Drafts and Session stats are keyed by Session id and need
 no split.
 
-## The Phone App
+## The MyGo Phone App example
 
-The Phone App is this window on an iPhone (`phone/`, ADR 0040): MyGo's iOS target draws
+The Phone App users install is the Expo one in `apps/mobile`. `phone/` is kept as an example
+until MyGo's mobile support matures (ADR 0041): this window on an iPhone (ADR 0040), where MyGo's iOS target draws
 `internal/app`'s views with `Config.Phone`, following one Paired Computer through its Gateway
 and running no Host of its own. `main.go` opens on the pairing page until a computer is paired,
 then builds the window's insides for that computer, reconnecting with a backoff and at once when
@@ -214,7 +215,7 @@ their Pairing Tokens in the app's `preferences.json`, through `internal/computer
 desktop.
 
 ```sh
-pnpm install:phone                    # sign it and install it on the connected iPhone
+pnpm install:phone:mygo               # sign it and install it on the connected iPhone
 go test ./apps/native/internal/app -run TestPhoneDevGateway -v -timeout 0   # DROI_PHONE_DEV=1
 cd apps/native && go tool mygo build -platform ios/simulator phone   # the simulator's build
 ```
@@ -225,7 +226,8 @@ account's development profile, then builds and installs the app with it. The pro
 days, so run it again to renew it. `DROI_PHONE_DEV=1` serves the README's Fake Daemon through a
 Gateway on `127.0.0.1:41499`, which the app pairs with as
 `http://127.0.0.1:41499/#pair=phone-dev-token`. [DEVICE-CHECKLIST.md](phone/DEVICE-CHECKLIST.md)
-is what only a real iPhone shows.
+is what only a real iPhone shows. It has the Expo app's bundle identifier, so either install
+replaces the other; `pnpm install:phone` puts the Expo app back.
 
 ## Layout
 
