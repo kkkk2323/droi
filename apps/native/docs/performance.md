@@ -64,14 +64,47 @@ them, frames took 10 to 16 ms):
 To look at frames yourself, run the app with `MYGO_FRAME_STATS=all`, which
 logs how long each frame's build, layout, paint and present took.
 
+## The Phone App
+
+Measured on 2026-11-18 on an iPhone 18 Pro Max (iOS 27.2, 120 Hz), 60 s per run, against
+the Expo Phone App it replaced (ADR 0040), both 1.97.1 on the same long Session. "CPU" is
+the share of one core; the compositor is `backboardd`, which puts the app's frames on screen.
+
+|                                  | MyGo                       | Expo                    |
+| -------------------------------- | -------------------------- | ----------------------- |
+| Idle, a spinner on screen        | 6.6% (compositor 6.2%)     | 4.8% (compositor 11.4%) |
+| Idle, nothing moving             | **0.3%** (compositor 1.2%) |                         |
+| Scrolling without stopping       | 44% (compositor 26%)       | 46% (compositor 31%)    |
+| Memory while scrolling           | **206 MiB**                | 340 MiB                 |
+| Wake-ups a second, idle, spinner | 1206                       | **164**                 |
+| App installed                    | **25 MB**                  | 61 MB                   |
+
+Before the spinner asked for 30 frames a second, and MyGo's iPhone surface let the display
+link tick that often (egoist/mygo#2004), a spinner on screen cost 22.9% of a core idle.
+Go wakes up far more often than React Native does; that is what is left to win.
+
+To measure it, with the iPhone connected and the app on the screen to measure:
+
+```
+xcrun xctrace record --instrument "Power Profiler" --instrument "Activity Monitor" \
+  --device <udid> --all-processes --time-limit 60s --output run.trace
+```
+
+Attaching to the app (`--attach`) fails on iOS 27; recording everything still has each
+process's CPU time, memory and wake-ups in the `activity-monitor-process-live` table
+(`xcrun xctrace export --input run.trace --xpath …`). Instruments reports no power use per
+app while the iPhone charges. When the recording ends after a second with "Device
+disconnected", run `xcrun devicectl device info details --device <udid>` first, which
+brings the connection back, and keep Xcode builds off the iPhone meanwhile.
+
 ## Finding what costs CPU
 
 A frame should cost what is on screen, not what the history holds. Work done in `View`
 runs on every frame it builds. Animations move in `Draw`, so their frames only paint: the
-pulses (`kit.Pulse`) 30 times a second (`Painter.AnimationFrameRate`; on macOS the display
-then refreshes as often while nothing else moves), and MyGo's loading
-indicators (`kit.Spinner`, the transcript's activity row, the waits for the Daemon, a
-followed computer and the browser) once each display refresh. In October 2026 such a
+pulses (`kit.Pulse`) and the spinners (`kit.Spinner`) 30 times a second
+(`Painter.AnimationFrameRate`; on macOS and iPhones the display then refreshes as often
+while nothing else moves), and MyGo's loading indicators (the transcript's activity row,
+the waits for the Daemon, a followed computer and the browser) once each display refresh. In October 2026 such a
 frame of a Session at work painted in about 0.16 ms in a `ui.Tester`, about 1% of a core
 at 60 Hz. Anything built from the
 Session list is read once per change of the list (`listRev`, `listMemo`), not decoded or

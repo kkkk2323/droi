@@ -57,6 +57,14 @@ release, or `go run ./apps/native` from this repository).
 - [ ] After the computer slept and woke, the Relay row is connected again within half a minute,
       and the app reconnects on its own.
 
+## Scrolling and power
+
+- [ ] Panning a long Session follows the finger, with no pause while it keeps moving.
+- [ ] Flicking again and again, each flick that lands while the content still glides keeps it
+      going; it stops only for a tap.
+- [ ] Left still on a Session with a spinner turning, the app takes under 10% of a core, and
+      under 1% with nothing moving (how to measure: `apps/native/docs/performance.md`).
+
 ## Composer
 
 - [ ] Add image opens the system photo picker and attaches one or several photos; a HEIC photo

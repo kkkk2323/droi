@@ -35,3 +35,7 @@ require (
 )
 
 tool github.com/egoist/mygo/cmd/mygo
+
+// MyGo 0.10.0 with the Phone App's scrolling and frame pacing fixes
+// (egoist/mygo#2002, #2003, #2004); drop once a MyGo release has them.
+replace github.com/egoist/mygo => github.com/kkkk2323/mygo v0.10.1-0.20261118031718-a618729c15dc

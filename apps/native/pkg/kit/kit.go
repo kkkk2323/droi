@@ -192,6 +192,12 @@ func (k *Kit) Spinner(c *ui.Context, size float32, color ui.Color) ui.Element {
 // arcCycle is the time of one turn of Arc, as loading.dev's.
 const arcCycle = 800 * time.Millisecond
 
+// arcRate is how many frames a second Arc asks for: a stroke this small
+// turning looks as smooth at 30 as at the display's 120, and a phone
+// showing one for minutes, as a Session's running tool, spends a quarter
+// of that on it.
+const arcRate = 30
+
 type arcKey struct{}
 
 // Arc is loading.dev's Arc, size DIPs high. Its angle comes from the clock,
@@ -208,7 +214,7 @@ func Arc(c *ui.Context, size float32, color ui.Color) ui.Element {
 		if !still {
 			at := p.Now().UnixNano() % int64(arcCycle)
 			angle = 360 * float32(at) / float32(arcCycle)
-			p.AnimationFrame()
+			p.AnimationFrameRate(arcRate)
 		}
 		// Drawn at rest, twice as large, and turned and halved by the
 		// renderer: the same path every frame keeps its mask, as loading's.
