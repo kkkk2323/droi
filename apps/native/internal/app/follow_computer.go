@@ -214,7 +214,10 @@ func (a *App) computerTab(c *ui.Context) {
 			})
 		}
 	}
-	rows := []func(){row(L("This computer"), L("Paired phones and Automations keep running here whichever computer Droi shows."), !a.following(), a.useThisComputer, L("Use this computer"), nil)}
+	var rows []func()
+	if !a.cfg.Phone {
+		rows = append(rows, row(L("This computer"), L("Paired phones and Automations keep running here whichever computer Droi shows."), !a.following(), a.useThisComputer, L("Use this computer"), nil))
+	}
 	for _, p := range computer.Remembered(a.prefs) {
 		name := pairedName(p)
 		rows = append(rows, row(name, gatewayAddress(p.Gateway), p.ID == a.computerID(), func() { a.follow(p) }, L("Switch to %s", name), func() { a.forgetComputer(p.ID) }))
@@ -238,6 +241,19 @@ func (a *App) computerTab(c *ui.Context) {
 						follow()
 					}
 				})
+				if a.cfg.ScanQR != nil && a.smallButton(c, kit.Outline, L("Scan QR code"), "scan-qr-code", s.computerChecking).Margin(k.Px(8), 0, 0, 0).Clicked() {
+					go func() {
+						code, err := a.cfg.ScanQR()
+						a.cfg.Update(func() {
+							switch {
+							case err != nil:
+								s.computerErr = L("Could not scan: %s", err.Error())
+							case code != "":
+								a.followLink(code)
+							}
+						})
+					}()
+				}
 				msg, color := "", t.MutedForeground
 				switch {
 				case s.computerChecking:

@@ -1,0 +1,10 @@
+{
+  "mobile": {
+    "id": "droiphonekit",
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "PhoneKitPlugin",
+      "frameworks": ["AVFoundation", "PhotosUI"]
+    }
+  }
+}

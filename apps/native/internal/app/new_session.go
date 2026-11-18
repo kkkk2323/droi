@@ -581,8 +581,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
 				if add.Clicked() {
 					go func() {
-						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose images"), Multiple: true,
-							Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+						paths, err := a.pickImages()
 						if err != nil {
 							return
 						}

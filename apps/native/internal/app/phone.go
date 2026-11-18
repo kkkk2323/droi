@@ -1,6 +1,7 @@
 package app
 
 import (
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 
@@ -45,4 +46,37 @@ func (a *App) phoneList(c *ui.Context, status controller.Status, listed []sessio
 	a.newWorkstreamDialog(c)
 	a.workstreamSettingsDialog(c)
 	a.archiveWorkstreamDialog(c)
+}
+
+// pickImages asks for images to attach, off the UI thread: the app's own
+// picker, else the system's file dialog.
+func (a *App) pickImages() ([]string, error) {
+	if a.cfg.PickImages != nil {
+		return a.cfg.PickImages()
+	}
+	return mygo.Dialog.Open(mygo.OpenDialogOptions{
+		Title:    L("Choose images"),
+		Multiple: true,
+		Filters:  []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}},
+	})
+}
+
+// phoneEdgeBack lets a finger from the screen's left edge go back to the
+// Session list, as UIKit's stacks do: past a third of the way, or flung.
+func (a *App) phoneEdgeBack(c *ui.Context) {
+	k := a.kit
+	w, _ := c.Size()
+	ui.Overlay(c, func() {
+		edge := ui.Box(c).Absolute().Left(0).Top(k.Px(56)).Bottom(0).Width(k.Px(16)).Label(L("Back to sessions"))
+		dx, _, held := edge.Dragged()
+		switch {
+		case held:
+			a.edgeSwipe += dx
+		case a.edgeSwipe != 0:
+			if a.edgeSwipe > w/3 {
+				a.Go(Route{Name: "home"})
+			}
+			a.edgeSwipe = 0
+		}
+	})
 }

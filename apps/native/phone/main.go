@@ -39,12 +39,22 @@ func main() {
 		userData: userData,
 		version:  version,
 	}
+	writeSounds(filepath.Join(userData, "sounds"))
 	theme.RegisterFonts()
 	mygo.App.SetName("Droi")
 	mygo.App.SetLanguages(string(l10n.English), string(l10n.Chinese))
 	mygo.App.WhenReady(func() {
 		p.win = mygo.NewWindow(mygo.WindowOptions{Title: "Droi", BackgroundColor: "#ffffff", Content: ui.View(p.view)})
 		p.show(computer.Load(p.prefs))
+	})
+	// Back from the background the socket may be long gone; connect at once
+	// rather than when the wait after the last failure ends.
+	mygo.Power.OnResume(func() {
+		p.update(func() {
+			if p.shown != nil {
+				p.shown.wake()
+			}
+		})
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
@@ -68,6 +78,15 @@ type inside struct {
 	ctl  *controller.Controller
 	app  *app.App
 	stop context.CancelFunc
+	poke chan struct{}
+}
+
+// wake connects now if the phone is not connected.
+func (in *inside) wake() {
+	select {
+	case in.poke <- struct{}{}:
+	default:
+	}
 }
 
 func (p *phone) update(fn func()) {
@@ -107,19 +126,22 @@ func (p *phone) open(to computer.Paired) *inside {
 		Switch: func(next *computer.Paired) {
 			p.update(func() { p.show(next) })
 		},
-		Update:    p.update,
-		StatsFile: filepath.Join(p.userData, "session-stats.json"),
-		Gateway:   gateway.NewClientFunc(via.socketURL),
-		Version:   p.version,
-		Env:       os.Getenv,
-		ReadImage: mygo.Clipboard.ReadImage,
+		Update:     p.update,
+		StatsFile:  filepath.Join(p.userData, "session-stats.json"),
+		Gateway:    gateway.NewClientFunc(via.socketURL),
+		Version:    p.version,
+		Env:        os.Getenv,
+		ReadImage:  mygo.Clipboard.ReadImage,
+		PickImages: pickImages,
+		ScanQR:     scanQR,
+		Alerted:    p.alerted,
 	})
 	a.SetLocale(systemLocale())
-	in := &inside{ctl: ctl, app: a}
+	in := &inside{ctl: ctl, app: a, poke: make(chan struct{}, 1)}
 	a.Start()
 	ctx, cancel := context.WithCancel(context.Background())
 	in.stop = cancel
-	go keepConnected(ctx, ctl)
+	go keepConnected(ctx, ctl, in.poke)
 	return in
 }
 

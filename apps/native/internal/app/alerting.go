@@ -78,6 +78,9 @@ func (a *App) raise(id, title string, ev alerts.Event) {
 		a.unread[id] = true
 	}
 	p := a.alertPrefs()
+	if a.cfg.Alerted != nil {
+		a.cfg.Alerted(ev == alerts.AwaitingInput, soundFor(p, ev) != "")
+	}
 	if a.cfg.PlaySound != nil && soundGateAllows(p.FocusMode, a.focused()) {
 		if sound := soundFor(p, ev); sound != "" {
 			a.cfg.PlaySound(sound)

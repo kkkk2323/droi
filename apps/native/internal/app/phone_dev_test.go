@@ -19,7 +19,10 @@ func TestPhoneDevGateway(t *testing.T) {
 	if os.Getenv("DROI_PHONE_DEV") == "" {
 		t.Skip("set DROI_PHONE_DEV=1 to serve a Fake Daemon to the Phone App")
 	}
-	d := fakedaemon.Start(t, readmeScenario())
+	sc := readmeScenario()
+	sc.Turn = &fakedaemon.Turn{Kind: "permission", Command: "pnpm test", ToolOutput: "27 passed", DelayMs: 40,
+		Reply: "All **27 tests** pass.\n\n| File | Change |\n| --- | --- |\n| `src/auth/login.ts` | awaits the refresh |\n\nNext I would run the whole suite."}
+	d := fakedaemon.Start(t, sc)
 	gw, err := gateway.Start(gateway.Options{
 		Port:         41499,
 		DaemonURL:    func() string { return d.URL },

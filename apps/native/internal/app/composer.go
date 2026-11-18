@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -544,11 +543,7 @@ func (v *sessionView) drop(d dropped) {
 }
 
 func (v *sessionView) chooseImages() {
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-		Title:    L("Choose images"),
-		Multiple: true,
-		Filters:  []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}},
-	})
+	paths, err := v.a.pickImages()
 	if err != nil || len(paths) == 0 {
 		return
 	}

@@ -39,7 +39,8 @@ func (r *route) socketURL() string { return r.cur.Load().(string) }
 
 // keepConnected connects ctl, and again whenever it drops, waiting longer
 // after each failure, until ctx ends.
-func keepConnected(ctx context.Context, ctl *controller.Controller) {
+// A value on wake ends the wait at once.
+func keepConnected(ctx context.Context, ctl *controller.Controller, wake <-chan struct{}) {
 	poke := make(chan struct{}, 1)
 	defer ctl.Subscribe(func(e controller.Event) {
 		if _, ok := e.(controller.StatusChanged); ok {
@@ -63,12 +64,15 @@ func keepConnected(ctx context.Context, ctl *controller.Controller) {
 		if delay > 0 {
 			select {
 			case <-time.After(delay):
+			case <-wake:
+				delay = 0
 			case <-ctx.Done():
 			}
 			continue
 		}
 		select {
 		case <-poke:
+		case <-wake:
 		case <-ctx.Done():
 		}
 	}

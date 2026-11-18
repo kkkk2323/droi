@@ -153,6 +153,15 @@ type Config struct {
 	Presets *defaults.Presets
 	// Phone draws the window for a phone's screen and fingers (ADR 0040).
 	Phone bool
+	// PickImages, optional, asks for images to attach and returns their
+	// files; the system's file dialog when nil.
+	PickImages func() ([]string, error)
+	// ScanQR, optional, reads a pairing code with the camera: "" when the
+	// user cancelled. Nil leaves Settings → Computer without the button.
+	ScanQR func() (string, error)
+	// Alerted, optional, hears each alert: whether the Session waits for an
+	// answer (else it finished), and whether the alert's sound is on.
+	Alerted func(waiting, sound bool)
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -260,6 +269,8 @@ type App struct {
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
 	narrow, drawerOpen bool
+	// edgeSwipe is how far a finger from a phone's left edge has gone.
+	edgeSwipe float32
 	remote             remoteState
 	// revs counts each Session's changes in the Store, for its view to
 	// build again.
@@ -934,6 +945,9 @@ func (a *App) View(c *ui.Context) {
 	a.newWorkstreamDialog(c)
 	a.workstreamSettingsDialog(c)
 	a.archiveWorkstreamDialog(c)
+	if a.cfg.Phone {
+		a.phoneEdgeBack(c)
+	}
 	// After the sidebar, which numbers this frame's Sessions.
 	for n, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
 		if c.Shortcut(ui.Cmd, key) {
