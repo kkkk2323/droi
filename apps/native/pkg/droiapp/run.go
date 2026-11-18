@@ -258,7 +258,7 @@ func Run(o Options) {
 			ReadImage: mygo.Clipboard.ReadImage,
 			ReadFiles: func() []string { p, _ := mygo.Clipboard.ReadFiles(); return p },
 			Updater:   updater,
-			Relaunch:  mygo.App.Relaunch,
+			Relaunch:  func() { mygo.App.Relaunch() },
 			Remote:    remote,
 			Memory:    mem,
 

@@ -402,7 +402,7 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 				act(active)
 			}
 		})
-		ui.Scroll(c).MaxHeight(k.Px(264)).Children(func() {
+		ui.Scroll(c).MaxHeight(k.Px(264)).Shrink(1).Children(func() {
 			ui.Column(c).Role(ui.RoleList).Label(L("Projects")).Padding(k.Px(4)).Children(func() {
 				if len(shown) == 0 {
 					msg := L("No projects yet.")

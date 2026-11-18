@@ -186,7 +186,7 @@ func (a *App) worktreeControl(c *ui.Context, repo *repoInfo, ch worktreeChoice) 
 	ui.PopoverBase(c, tr, &s.worktreeOpen, func(p ui.Element) {
 		p.Label(L("Worktree")).Width(k.Px(304)).Margin(k.Px(6), 0, 0, 0).Radius(k.Px(12)).Border(1, t.Border).
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
-		ui.Scroll(c).MaxHeight(k.Px(420)).Children(func() {
+		ui.Scroll(c).MaxHeight(k.Px(420)).Shrink(1).Children(func() {
 			ui.Column(c).Padding(k.Px(4)).Children(func() {
 				ui.Column(c).Role(ui.RoleGroup).Label(L("Where to work")).Children(func() {
 					if a.choiceRow(c, "local", "laptop", L("Work locally"), "", !ch.On) {

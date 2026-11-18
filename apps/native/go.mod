@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/andybalholm/brotli v1.2.6
 	github.com/coder/websocket v1.8.15
-	github.com/egoist/mygo v0.8.3
+	github.com/egoist/mygo v0.10.0
 	github.com/google/uuid v1.6.0
 	github.com/kkkk2323/droid-sdk-go v0.8.0
 	github.com/klauspost/compress v1.20.3
@@ -17,12 +17,16 @@ require (
 )
 
 require (
+	github.com/ProtonMail/go-crypto v1.4.1 // indirect
+	github.com/cloudflare/circl v1.6.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/ulikunitz/xz v0.5.15 // indirect
+	go.digitalxero.dev/rpm v0.3.4 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	modernc.org/libc v1.72.0 // indirect
