@@ -257,6 +257,7 @@ func TestOrchestratorTranscriptFoldsConsecutiveActivity(t *testing.T) {
 	})
 
 	// Switching to an agent tab must not fold its regular activity.
+	h.until("the agent's row", func() bool { return h.finds("gRPC endpoints, Idle") })
 	h.click("gRPC endpoints, Idle")
 	h.until("agent transcript", func() bool { return h.hasText("Reasoning") && h.hasText("Used Read") && !h.hasText("Activity ·") })
 }
