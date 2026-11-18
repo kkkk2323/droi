@@ -30,8 +30,6 @@ jobs:
 
       - run: pnpm check
 
-      - run: pnpm test
-
   # Formatting, vetting and the Linux builds of the native app read the code
   # only: Ubuntu does them while the macOS runners run the tests. Vet each
   # GOOS the app ships for, as its files differ between them.
@@ -153,40 +151,19 @@ jobs:
 
       - run: go test ./apps/native/pkg/host -run 'TestTheDaemonSeesItsAnchorGo|TestTheDaemonAnchorEndsWhenItsInputCloses'
 
-  phone-e2e:
-    runs-on: ubuntu-latest
+  # The Phone App (apps/native/phone) builds for the iOS simulator, which
+  # links its Go with Xcode's clang and compiles its Swift plugin.
+  phone:
+    runs-on: macos-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-go@v7
         with:
-          node-version: 24
-          cache: 'pnpm'
+          go-version-file: apps/native/go.mod
+          cache-dependency-path: apps/native/go.sum
 
-      - run: pnpm install --frozen-lockfile
-
-      # Chromium is a download of its own, so keep it until Playwright's version
-      # changes; on a hit only its system packages are needed. apt stalls on a
-      # slow mirror now and then, which a retry rides out.
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Chromium with its system packages
-        run: |
-          sudo sh -c 'echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/99retries'
-          pnpm -C tests exec playwright install --with-deps chromium
-
-      - name: Phone App web build against the Fake Daemon
-        run: pnpm test:e2e:phone
-
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with:
-          name: playwright-report-phone
-          path: tests/test-results
-          retention-days: 7
+      - name: Build the Phone App for the iOS simulator
+        working-directory: apps/native
+        run: go tool mygo build -platform ios/simulator phone

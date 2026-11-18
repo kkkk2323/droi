@@ -11,8 +11,7 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 )
 
-// The Session Times (ADR 0032), which every Client orders its Session list
-// by (packages/daemon-layer/src/gateway.ts).
+// The Session Times (ADR 0032), which every Client orders its Session list by.
 const (
 	// SessionTimesPath answers a sessions.TimesSnapshot to a GET: every
 	// Session's Times, or with AfterQuery those changed after that

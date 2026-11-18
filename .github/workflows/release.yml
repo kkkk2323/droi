@@ -27,7 +27,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Validate
-        run: pnpm typecheck && pnpm test
+        run: pnpm check
 
       # - name: Droid CLI compatibility gate
       #   env:

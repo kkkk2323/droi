@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/google/uuid"
 	"github.com/kkkk2323/droid-sdk-go/protocol"
@@ -324,7 +323,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if !v.focused {
 					// The composer appears a moment after its Session opens, when a
 					// click may have put the focus in the sidebar's search.
-					if !c.Focused(a.sidebar.searchBox) {
+					// A phone's keyboard would cover the transcript just opened.
+					if !c.Focused(a.sidebar.searchBox) && !a.cfg.Phone {
 						in.AutoFocus()
 					}
 					v.focused = true
@@ -543,11 +543,7 @@ func (v *sessionView) drop(d dropped) {
 }
 
 func (v *sessionView) chooseImages() {
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-		Title:    L("Choose images"),
-		Multiple: true,
-		Filters:  []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}},
-	})
+	paths, err := v.a.pickImages()
 	if err != nil || len(paths) == 0 {
 		return
 	}

@@ -6,8 +6,7 @@ import (
 )
 
 // The Session list's order, which a phone takes from the computer so that it
-// lists the Sessions as the computer's window does
-// (packages/daemon-layer/src/gateway.ts).
+// lists the Sessions as the computer's window does.
 const (
 	// SessionListPath answers a SessionListOrder to a GET.
 	SessionListPath = "/session-list"

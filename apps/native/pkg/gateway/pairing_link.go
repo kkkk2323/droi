@@ -26,8 +26,8 @@ type PairingLink struct {
 
 var bareToken = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-// ParsePairingLink reads a pairing link pasted by hand as the Phone App does
-// (packages/daemon-layer/src/pairing.ts): the whole link, whose fragment
+// ParsePairingLink reads a pairing link pasted by hand, as Settings →
+// Computer and the Phone App's pairing page do: the whole link, whose fragment
 // carries the token and may name the Gateway, else the link's own origin.
 // A bare token or a fragment alone has no address and is
 // ErrNoGatewayAddress.

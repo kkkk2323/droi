@@ -30,10 +30,7 @@ if grep -q '^apps/native/' <<<"$changed"; then
   go test ./apps/native/... >"$log" 2>&1 || fail "go test ./apps/native/..."
   go test -cpu 1 ./apps/native/internal/app >"$log" 2>&1 || fail "go test -cpu 1 ./apps/native/internal/app"
 fi
-if grep -Eq '^(apps/mobile|packages|tests)/|^(package\.json|pnpm-lock\.yaml|tsconfig\.json|vitest\.config\.ts)$' <<<"$changed"; then
-  { pnpm check && pnpm test; } >"$log" 2>&1 || fail "pnpm check && pnpm test"
-fi
-if grep -Eq '^(apps/mobile|packages/daemon-layer|tests/mobile)/' <<<"$changed"; then
-  pnpm test:e2e:phone >"$log" 2>&1 || fail "pnpm test:e2e:phone"
+if grep -Eq '\.(js|mjs|cjs)$|^(package\.json|pnpm-lock\.yaml)$' <<<"$changed"; then
+  pnpm check >"$log" 2>&1 || fail "pnpm check"
 fi
 echo "$state" >"$gitdir/claude-checks-passed"

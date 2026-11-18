@@ -91,36 +91,53 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 	if !a.usage.addOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.Go(s.back)
 	}
-	usage := current.id == "usage" && !a.settingHidden("usage")
+	usage := current.id == "usage" && !a.settingHidden("usage") && (!a.narrow || a.route.Tab != "")
 	if usage && !a.usage.shown {
 		a.enterUsage()
 	}
 	a.usage.shown = usage
-	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
-		ui.Column(c).Role(ui.RoleGroup).Label(L("Settings sections")).Width(a.sidebarWidth()).Shrink(0).Gap(k.Px(2)).Padding(44, k.Px(8), k.Px(12), k.Px(8)).
-			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
-			nav := func(icon, label string, selected bool) ui.Element {
-				b := ui.ButtonBase(c).Label(label).Height(k.Px(28)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(5)).Justify(ui.Start).Cursor(ui.CursorPointer)
-				color := t.SidebarForeground
-				switch {
-				case selected:
-					kit.Selected(b, true).Background(t.SidebarAccent)
-					color = t.SidebarAccentFg
-				case b.Hovered():
-					b.Background(t.SidebarAccent.Alpha(0.6))
-				}
-				if icon == "arrow-left" {
-					color = t.MutedForeground
-					if b.Hovered() {
-						color = t.Foreground
-					}
-				}
-				b.Children(func() {
-					k.Icon(c, icon, 14, color)
-					k.Text(c, label, 12, 18).TextColor(color).SingleLine()
-				})
-				return b
+	nav := func(icon, label string, selected bool) ui.Element {
+		h := float32(28)
+		if a.narrow {
+			h = 40
+		}
+		b := ui.ButtonBase(c).Label(label).Height(k.Px(h)).Gap(k.Px(8)).PaddingX(k.Px(8)).Radius(k.Px(5)).Justify(ui.Start).Cursor(ui.CursorPointer)
+		color := t.SidebarForeground
+		switch {
+		case selected && !a.narrow:
+			kit.Selected(b, true).Background(t.SidebarAccent)
+			color = t.SidebarAccentFg
+		case b.Hovered():
+			b.Background(t.SidebarAccent.Alpha(0.6))
+		}
+		if icon == "arrow-left" {
+			color = t.MutedForeground
+			if b.Hovered() {
+				color = t.Foreground
 			}
+		}
+		b.Children(func() {
+			k.Icon(c, icon, 14, color)
+			size, lh := float32(12), float32(18)
+			if a.narrow {
+				size, lh = 15, 22
+			}
+			k.Text(c, label, size, lh).TextColor(color).SingleLine().Grow(1)
+			if a.narrow && icon != "arrow-left" {
+				k.Icon(c, "chevron-right", 14, t.MutedForeground)
+			}
+		})
+		return b
+	}
+	// sections lists Settings' sections, beside the one shown, or, on a
+	// narrow window, as a page of their own.
+	sections := func(col ui.Element) {
+		top := float32(44)
+		if a.cfg.Phone {
+			top = k.Px(8)
+		}
+		col.Role(ui.RoleGroup).Label(L("Settings sections")).Gap(k.Px(2)).Padding(top, k.Px(8), k.Px(12), k.Px(8)).
+			BorderWidth(0, 1, 0, 0).BorderColor(t.Border).DragWindow().Children(func() {
 			if nav("arrow-left", L("Back"), false).Margin(0, 0, k.Px(8), 0).Clicked() {
 				a.Go(s.back)
 			}
@@ -143,13 +160,25 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 					TextColor(t.MutedForeground).Padding(k.Px(8), k.Px(8), 0, k.Px(8))
 			}
 		})
+	}
+	content := func() {
 		if usage {
 			a.usageTab(c)
 			return
 		}
 		ui.Scroll(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Children(func() {
-			ui.Box(c).Height(44).DragWindow()
-			ui.Column(c).FillWidth().MaxWidth(k.Px(760)).AlignSelf(ui.Center).Gap(k.Px(28)).Padding(0, k.Px(32), k.Px(48), k.Px(32)).Children(func() {
+			padX := k.Px(32)
+			if a.narrow {
+				padX = k.Px(16)
+				ui.Row(c).Height(k.Px(44)).PaddingX(k.Px(8)).AlignItems(ui.Center).Children(func() {
+					if k.IconButton(c, "chevron-left", L("Back"), 32).Clicked() {
+						a.route.Tab = ""
+					}
+				})
+			} else {
+				ui.Box(c).Height(44).DragWindow()
+			}
+			ui.Column(c).FillWidth().MaxWidth(k.Px(760)).AlignSelf(ui.Center).Gap(k.Px(28)).Padding(0, padX, k.Px(48), padX).Children(func() {
 				k.Text(c, l10n.T(current.label), 20, 28).Role(ui.RoleHeading).FontWeight(600).LetterSpacing(-k.Px(0.3))
 				if s.err != "" {
 					k.Text(c, s.err, 14, 20).Role(ui.RoleStatus).TextColor(t.DestructiveForeground)
@@ -185,9 +214,24 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 				}
 			})
 		})
+	}
+	root := t.Sidebar
+	if a.narrow && a.route.Tab != "" {
+		root = t.Background
+	}
+	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(root).TextColor(t.Foreground).Children(func() {
+		if a.narrow {
+			if a.route.Tab == "" {
+				sections(ui.Column(c).Grow(1))
+			} else {
+				content()
+			}
+			return
+		}
+		sections(ui.Column(c).Width(a.sidebarWidth()).Shrink(0))
+		content()
 	})
 }
-
 func derefOr(p *string) string {
 	if p == nil {
 		return ""

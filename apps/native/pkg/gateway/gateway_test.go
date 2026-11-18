@@ -112,7 +112,7 @@ func startGateway(t *testing.T, opts Options) *Gateway {
 	return g
 }
 
-// The Clients' URL helpers (packages/daemon-layer/src/gateway.ts).
+// The Clients' URL helpers, from the removed TypeScript daemon layer.
 func daemonURL(gatewayURL, token string) string {
 	return "ws" + strings.TrimPrefix(gatewayURL, "http") + DaemonPath + "?" + TokenQuery + "=" + url.QueryEscape(token)
 }

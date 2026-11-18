@@ -214,7 +214,10 @@ func (a *App) computerTab(c *ui.Context) {
 			})
 		}
 	}
-	rows := []func(){row(L("This computer"), L("Paired phones and Automations keep running here whichever computer Droi shows."), !a.following(), a.useThisComputer, L("Use this computer"), nil)}
+	var rows []func()
+	if !a.cfg.Phone {
+		rows = append(rows, row(L("This computer"), L("Paired phones and Automations keep running here whichever computer Droi shows."), !a.following(), a.useThisComputer, L("Use this computer"), nil))
+	}
 	for _, p := range computer.Remembered(a.prefs) {
 		name := pairedName(p)
 		rows = append(rows, row(name, gatewayAddress(p.Gateway), p.ID == a.computerID(), func() { a.follow(p) }, L("Switch to %s", name), func() { a.forgetComputer(p.ID) }))
@@ -238,6 +241,19 @@ func (a *App) computerTab(c *ui.Context) {
 						follow()
 					}
 				})
+				if a.cfg.ScanQR != nil && a.smallButton(c, kit.Outline, L("Scan QR code"), "scan-qr-code", s.computerChecking).Margin(k.Px(8), 0, 0, 0).Clicked() {
+					go func() {
+						code, err := a.cfg.ScanQR()
+						a.cfg.Update(func() {
+							switch {
+							case err != nil:
+								s.computerErr = L("Could not scan: %s", err.Error())
+							case code != "":
+								a.followLink(code)
+							}
+						})
+					}()
+				}
 				msg, color := "", t.MutedForeground
 				switch {
 				case s.computerChecking:
@@ -261,7 +277,7 @@ func (a *App) followingStartView(c *ui.Context, status controller.Status) {
 	name := a.computerName()
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
-			if a.narrow {
+			if a.narrow && !a.cfg.Phone {
 				a.openSessionsButton(c)
 			}
 		})
@@ -282,11 +298,18 @@ func (a *App) followingStartView(c *ui.Context, status controller.Status) {
 				k.Text(c, failureText(status.Failure), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 				k.Text(c, L("Droi keeps trying. If the Pairing Token of %s was reset, paste its new link.", name), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 				ui.Row(c).Wrap().Justify(ui.Center).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-					if a.smallButton(c, kit.Primary, L("Use this computer"), "laptop", false).Clicked() {
-						a.useThisComputer()
-					}
-					if a.smallButton(c, kit.Outline, L("Paste a new link"), "", false).Clicked() {
-						a.Go(Route{Name: "settings", Tab: "computer"})
+					if a.cfg.Phone {
+						// A phone has no computer of its own: its pairing page takes the new link.
+						if a.smallButton(c, kit.Primary, L("Paste a new link"), "", false).Clicked() {
+							a.useThisComputer()
+						}
+					} else {
+						if a.smallButton(c, kit.Primary, L("Use this computer"), "laptop", false).Clicked() {
+							a.useThisComputer()
+						}
+						if a.smallButton(c, kit.Outline, L("Paste a new link"), "", false).Clicked() {
+							a.Go(Route{Name: "settings", Tab: "computer"})
+						}
 					}
 					forget := L("Forget %s", name)
 					if a.smallButton(c, kit.Ghost, L("Forget"), "trash", false).Label(forget).Clicked() {

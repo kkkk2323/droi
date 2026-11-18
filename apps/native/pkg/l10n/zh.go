@@ -1723,4 +1723,13 @@ var zh = map[string]string{
 	"Agent reasoning level":                                          "选择 Agent Reasoning 级别",
 	"Orchestrator reasoning level":                                   "选择编排会话 Reasoning 级别",
 	"Orchestrator subagents":                                         "编排器子 Agent",
+	"Back to sessions":                                               "返回会话列表",
+	"Connect":                                                        "连接",
+	"Could not scan: %s":                                             "无法扫码：%s",
+	"Open Droi on your computer and turn on Settings → Remote Access. Scan its pairing code, or paste its pairing link.": "在电脑上打开 Droi，开启“设置 → 远程访问”。扫描配对二维码，或粘贴配对链接。",
+	"Pair with a computer": "与电脑配对",
+	"Paired computers":     "已配对的电脑",
+	"Point the camera at the pairing code in Droi → Settings → Remote Access on your computer.": "将摄像头对准电脑上 Droi “设置 → 远程访问”中的配对二维码。",
+	"Scan QR code": "扫描二维码",
+	"The camera closed before it read a code.": "摄像头在识别到二维码前已关闭。",
 }

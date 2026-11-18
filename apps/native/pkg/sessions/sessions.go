@@ -1,7 +1,7 @@
 // Package sessions is the Session list as the Client shows it: summaries
 // from daemon.list_available_sessions, grouped by Workspace, sorted, pinned,
-// folded into compaction chains, and the subagents kept out (a port of
-// packages/daemon-layer/src/sessions.ts and its neighbours).
+// folded into compaction chains, and the subagents kept out (a port of the
+// removed TypeScript daemon layer).
 package sessions
 
 import (

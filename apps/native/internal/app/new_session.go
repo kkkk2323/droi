@@ -388,8 +388,11 @@ func (a *App) workspacePicker(c *ui.Context, tr ui.Element, recent []sessions.Re
 			Background(t.Popover).TextColor(t.PopoverForeground).Clip().Shadow(0, k.Px(10), k.Px(15), -k.Px(3), t.Shadow)
 		ui.Row(c).Gap(k.Px(8)).PaddingX(k.Px(12)).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(t.Border).Children(func() {
 			k.Icon(c, "search", 14, t.MutedForeground)
-			in := ui.TextInputBase(c, &s.query).Label(L("Search projects")).Placeholder(L("Search projects")).AutoFocus().
+			in := ui.TextInputBase(c, &s.query).Label(L("Search projects")).Placeholder(L("Search projects")).
 				Height(k.Px(40)).Grow(1).MinWidth(0).FontSize(k.Px(14)).TextColor(t.Foreground)
+			if !a.cfg.Phone {
+				in.AutoFocus()
+			}
 			if in.Changed() {
 				s.highlight = 0
 			}
@@ -513,7 +516,10 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 					}
 				}
 				in = k.TextArea(c, &s.field, L("Message"), placeholder, kit.AreaStyle{Pad: [4]float32{16, 16, 8, left}, Size: k.Dense(13, 14), Line: k.Dense(22, 24),
-					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled).AutoFocus()
+					MinLines: 2, MaxLines: 8, Color: t.Foreground}).Disabled(!enabled)
+				if !a.cfg.Phone {
+					in.AutoFocus()
+				}
 			})
 			if s.caretToEnd {
 				s.caretToEnd = false
@@ -575,8 +581,7 @@ func (a *App) newSessionComposer(c *ui.Context, workspace string, worktree workt
 				add.Children(func() { k.Icon(c, "plus", 16, t.MutedForeground) })
 				if add.Clicked() {
 					go func() {
-						paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: L("Choose images"), Multiple: true,
-							Filters: []mygo.FileFilter{{Name: L("Images"), Extensions: []string{"png", "jpg", "jpeg", "gif", "webp"}}}})
+						paths, err := a.pickImages()
 						if err != nil {
 							return
 						}

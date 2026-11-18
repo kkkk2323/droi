@@ -198,6 +198,35 @@ preferred Open in app) are kept per computer: this computer's stay under their o
 key with `@` and the computer id added. Drafts and Session stats are keyed by Session id and need
 no split.
 
+## The Phone App
+
+The Phone App is this window on an iPhone (`phone/`, ADR 0040): MyGo's iOS target draws
+`internal/app`'s views with `Config.Phone`, following one Paired Computer through its Gateway
+and running no Host of its own. `main.go` opens on the pairing page until a computer is paired,
+then builds the window's insides for that computer, reconnecting with a backoff and at once when
+iOS brings the app back; `route.go` chooses the Gateway's network address first and its Relay
+after two seconds (ADR 0034); `pairing.go` is the pairing page (scan a code, paste a link, the
+Paired Computers to reopen or forget); `device.go` is the alerts, a haptic and two sounds of
+Droi's own. What only iOS has is `phonekit/`, a MyGo mobile plugin: the camera for the code, the
+photo picker (every photo sent as JPEG, at most 1568 pixels on its long side, so HEIC goes out as
+JPEG) and the alert sounds, with `ios/PhoneKitPlugin.swift` beside it. Paired Computers keep
+their Pairing Tokens in the app's `preferences.json`, through `internal/computer`, as on the
+desktop.
+
+```sh
+pnpm install:phone                    # sign it and install it on the connected iPhone
+go test ./apps/native/internal/app -run TestPhoneDevGateway -v -timeout 0   # DROI_PHONE_DEV=1
+cd apps/native && go tool mygo build -platform ios/simulator phone   # the simulator's build
+```
+
+Installing needs Xcode signed in to an Apple account and `xcodegen` (`brew install xcodegen`):
+the script builds a throwaway Xcode project for the same identifier so Xcode creates the free
+account's development profile, then builds and installs the app with it. The profile lasts seven
+days, so run it again to renew it. `DROI_PHONE_DEV=1` serves the README's Fake Daemon through a
+Gateway on `127.0.0.1:41499`, which the app pairs with as
+`http://127.0.0.1:41499/#pair=phone-dev-token`. [DEVICE-CHECKLIST.md](phone/DEVICE-CHECKLIST.md)
+is what only a real iPhone shows.
+
 ## Layout
 
 | Path                                                                                      | What                                                                                                  |
@@ -217,8 +246,8 @@ no split.
 | `internal/computer/`                                                                      | the Computer preference: the Paired Computers remembered, the one followed, and checking a link       |
 | `internal/updates/`                                                                       | the in-app update: check, download, restart (MyGo's signed updates)                                   |
 | `pkg/prefs/`                                                                              | the Client's local preferences (localStorage's place)                                                 |
-| `pkg/transcript/`                                                                         | messages to transcript entries, tool calls, Script runs, json-render (daemon-layer port)              |
-| `pkg/sessions/`                                                                           | the Session list: grouping, sorting, pins, activity (daemon-layer port)                               |
+| `pkg/transcript/`                                                                         | messages to transcript entries, tool calls, Script runs, json-render (from the removed daemon layer)  |
+| `pkg/sessions/`                                                                           | the Session list: grouping, sorting, pins, activity (from the removed daemon layer)                   |
 | `internal/automations/`                                                                   | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
 | `pkg/models/`, `pkg/defaults/`, `internal/skills/`, `internal/mcp/`, `internal/slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
 | `pkg/kit/`                                                                                | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs, setting rows    |

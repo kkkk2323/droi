@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Release Droi: `scripts/release.sh <version> [git commit options]`, from main with
 # CHANGELOG.md's first section already `## <version> - <date>` (its release notes).
-# Bumps the version in apps/native/mygo.json and devVersion in apps/native/main.go,
+# Bumps the version in mygo.json and devVersion in main.go of apps/native and its
+# Phone App (apps/native/phone),
 # commits them with the changelog as `chore(release): <version>`
 # (extra arguments go to git commit, e.g. --trailer), pushes main and the tag
 # v<version>, then waits for .github/workflows/release.yml to publish the Release.
@@ -30,12 +31,14 @@ fi
 first=$(grep -m1 '^## ' CHANGELOG.md || true)
 [[ "$first" == "## $version - "* ]] || fail "CHANGELOG.md's first section is \"$first\", want \"## $version - <date>\""
 
-perl -pi -e 's/^(  "version": )"[^"]*"/$1"'"$version"'"/' apps/native/mygo.json
-perl -pi -e 's/^const devVersion = "[^"]*"/const devVersion = "'"$version"'"/' apps/native/main.go
+for app in apps/native apps/native/phone; do
+  perl -pi -e 's/^(  "version": )"[^"]*"/$1"'"$version"'"/' "$app/mygo.json"
+  perl -pi -e 's/^const devVersion = "[^"]*"/const devVersion = "'"$version"'"/' "$app/main.go"
+done
 # identity_test.go checks that the two agree.
 go test ./apps/native/ -count=1 >/dev/null || fail "go test ./apps/native/ failed with the new version"
 
-git add CHANGELOG.md apps/native/mygo.json apps/native/main.go
+git add CHANGELOG.md apps/native/mygo.json apps/native/main.go apps/native/phone/mygo.json apps/native/phone/main.go
 git commit -q -m "chore(release): $version" "$@"
 git tag "$tag"
 git push -q origin main

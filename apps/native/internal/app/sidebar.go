@@ -81,7 +81,11 @@ func (a *App) sidebarView(c *ui.Context, listed []sessions.Summary, reported map
 	}
 
 	ui.Column(c).Role(ui.RoleGroup).Label(L("Sessions")).Fill().Background(t.Sidebar).TextColor(t.SidebarForeground).Children(func() {
-		ui.Box(c).Height(44).Shrink(0).DragWindow()
+		if a.cfg.Phone {
+			ui.Box(c).Height(k.Px(8)).Shrink(0)
+		} else {
+			ui.Box(c).Height(44).Shrink(0).DragWindow()
+		}
 		a.sidebarHeader(c)
 		ui.Column(c).Gap(k.Px(2)).Padding(k.Px(8), k.Px(8), k.Px(12), k.Px(8)).Shrink(0).Children(func() {
 			if a.sidebarRow(c, "plus", L("New session"), false, nil).Tooltip(withShortcut(L("New session"), CmdNewSession)).Clicked() {

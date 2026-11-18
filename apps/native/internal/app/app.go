@@ -151,6 +151,17 @@ type Config struct {
 	// Presets, optional, are an app's defaults for a new install, given to
 	// this computer's Daemon and this device once per Version.
 	Presets *defaults.Presets
+	// Phone draws the window for a phone's screen and fingers (ADR 0040).
+	Phone bool
+	// PickImages, optional, asks for images to attach and returns their
+	// files; the system's file dialog when nil.
+	PickImages func() ([]string, error)
+	// ScanQR, optional, reads a pairing code with the camera: "" when the
+	// user cancelled. Nil leaves Settings → Computer without the button.
+	ScanQR func() (string, error)
+	// Alerted, optional, hears each alert: whether the Session waits for an
+	// answer (else it finished), and whether the alert's sound is on.
+	Alerted func(waiting, sound bool)
 }
 
 // App is the window's state, which lasts from frame to frame.
@@ -258,7 +269,9 @@ type App struct {
 	// narrow is a window under the web Client's md breakpoint, where the
 	// sidebar is a drawer; drawerOpen whether it is out.
 	narrow, drawerOpen bool
-	remote             remoteState
+	// edgeSwipe is how far a finger from a phone's left edge has gone.
+	edgeSwipe float32
+	remote    remoteState
 	// revs counts each Session's changes in the Store, for its view to
 	// build again.
 	revs sessionview.Revisions
@@ -841,9 +854,10 @@ func (a *App) View(c *ui.Context) {
 	doing := a.activity(busy)
 	a.noteLiveRuns(listed, doing)
 	a.noteWorkstreams(c, listed, doing)
-	a.narrow = a.isNarrow(c)
+	a.narrow = a.cfg.Phone || a.isNarrow(c)
 	// A drawer only exists on narrow screens; widening the window closes it.
-	if !a.narrow {
+	// A phone has none: its Session list is a page of its own.
+	if !a.narrow || a.cfg.Phone {
 		a.drawerOpen = false
 	}
 	a.sidebar.numbered = a.sidebar.numbered[:0]
@@ -857,8 +871,18 @@ func (a *App) View(c *ui.Context) {
 		return
 	}
 	t := a.kit.T
+	if a.cfg.Phone && a.route.Name == "home" {
+		a.phoneList(c, status, listed, busy, listErr, listDone)
+		return
+	}
 	shown := a.sidebarShown()
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
+	// A phone's screen edges, past the safe area, take the root's colour:
+	// the page's, as no sidebar stands beside it there.
+	root := t.Sidebar
+	if a.cfg.Phone {
+		root = t.Background
+	}
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(root).TextColor(t.Foreground).Children(func() {
 		// edge is where the sidebar ends once it has slid all the way open.
 		edge := float32(0)
 		if !a.narrow {
@@ -927,6 +951,9 @@ func (a *App) View(c *ui.Context) {
 	a.newWorkstreamDialog(c)
 	a.workstreamSettingsDialog(c)
 	a.archiveWorkstreamDialog(c)
+	if a.cfg.Phone {
+		a.phoneEdgeBack(c)
+	}
 	// After the sidebar, which numbers this frame's Sessions.
 	for n, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
 		if c.Shortcut(ui.Cmd, key) {

@@ -1,11 +1,4 @@
-packages:
-  - 'apps/*'
-  - 'packages/*'
-  - 'tests'
-
-onlyBuiltDependencies:
-  - esbuild
-
-patchedDependencies:
-  '@factory/droid-sdk@0.10.0': patches/@factory__droid-sdk@0.10.0.patch
-  '@factory/droid-sdk@0.9.1': patches/@factory__droid-sdk@0.9.1.patch
+# The workspace is the root package alone: oxlint, oxfmt and lucide-static for
+# apps/native's scripts. The file also keeps pnpm from taking a checkout's
+# parent folder for the workspace, as a worktree inside the main checkout is.
+packages: []

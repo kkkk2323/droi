@@ -25,7 +25,7 @@ import (
 	droid "github.com/kkkk2323/droid-sdk-go"
 )
 
-// The Gateway contract the Clients share (packages/daemon-layer/src/gateway.ts).
+// The Gateway contract the Clients share.
 const (
 	// DaemonPath is the WebSocket path whose frames go to the Daemon. A plain
 	// request on it answers 204 or 401, so a Client can tell a bad Pairing
