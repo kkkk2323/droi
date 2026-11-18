@@ -246,8 +246,8 @@ is what only a real iPhone shows.
 | `internal/computer/`                                                                      | the Computer preference: the Paired Computers remembered, the one followed, and checking a link       |
 | `internal/updates/`                                                                       | the in-app update: check, download, restart (MyGo's signed updates)                                   |
 | `pkg/prefs/`                                                                              | the Client's local preferences (localStorage's place)                                                 |
-| `pkg/transcript/`                                                                         | messages to transcript entries, tool calls, Script runs, json-render (from the removed daemon layer) |
-| `pkg/sessions/`                                                                           | the Session list: grouping, sorting, pins, activity (from the removed daemon layer)                  |
+| `pkg/transcript/`                                                                         | messages to transcript entries, tool calls, Script runs, json-render (from the removed daemon layer)  |
+| `pkg/sessions/`                                                                           | the Session list: grouping, sorting, pins, activity (from the removed daemon layer)                   |
 | `internal/automations/`                                                                   | the Automations page's schedules (local time to the Daemon's UTC cron), labels and ids                |
 | `pkg/models/`, `pkg/defaults/`, `internal/skills/`, `internal/mcp/`, `internal/slash/`, … | models, Session Defaults, skills, MCP, slash items and the rest of the daemon layer, one package each |
 | `pkg/kit/`                                                                                | the shadcn/Base UI look as MyGo elements: buttons, menus, selects, switches, dialogs, setting rows    |
