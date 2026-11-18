@@ -303,7 +303,7 @@ func (u Look) Dropdown(c *ui.Context, open *bool, label, value string, options [
 	ui.PopoverBase(c, tr, open, func(panel ui.Element) {
 		panel.Role(ui.RoleList).Label(label).Margin(u.Px(4), 0, 0, 0).MinWidth(tr.Bounds().W).Padding(u.Px(4)).
 			Radius(u.Px(10)).Border(1, p.Line).Background(p.Card).Shadow(0, u.Px(8), u.Px(20), -u.Px(4), p.Shadow)
-		ui.Scroll(c).MaxHeight(u.Px(312)).Children(func() {
+		ui.Scroll(c).MaxHeight(u.Px(312)).Shrink(1).Children(func() {
 			ui.Column(c).Gap(1).Children(func() {
 				for _, o := range options {
 					on := o.Value == value

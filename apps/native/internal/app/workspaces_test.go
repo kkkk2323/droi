@@ -63,6 +63,12 @@ func TestWorkspacesBeyondTheFirstPageShow(t *testing.T) {
 	if got := rows(); strings.Contains(got, "week-tool") || !strings.Contains(got, "busy-4") || !strings.HasSuffix(got, "|Show 3 more|Show 3 more") {
 		t.Fatalf("the picker lists %q", got)
 	}
+	// The picker is no taller than the window leaves below its button, so
+	// the list scrolls to its last row.
+	if list, ok := h.tt.Find("Projects"); ok {
+		h.tt.Scroll(list.X+list.W/2, list.Y+list.H/2, 0, 2000)
+		h.settle()
+	}
 	h.click("Show 3 more")
 	if got := rows(); !strings.Contains(got, "busy-5") || !strings.Contains(got, "week-tool") || !strings.Contains(got, "|old-proto|old-proto|/Users/dev/old-proto") || strings.Contains(got, "Show 3 more") {
 		t.Fatalf("after \"Show 3 more\" the picker lists %q", got)
