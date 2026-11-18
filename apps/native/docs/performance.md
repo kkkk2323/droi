@@ -66,8 +66,9 @@ logs how long each frame's build, layout, paint and present took.
 
 ## The Phone App
 
-Measured on 2026-11-18 on an iPhone 18 Pro Max (iOS 27.2, 120 Hz), 60 s per run, against
-the Expo Phone App it replaced (ADR 0040), both 1.97.1 on the same long Session. "CPU" is
+The MyGo Phone App example (`apps/native/phone`, ADR 0041) against the Expo Phone App,
+measured on 2026-11-18 on an iPhone 18 Pro Max (iOS 27.2, 120 Hz), 60 s per run, both 1.97.1
+on the same long Session. "CPU" is
 the share of one core; the compositor is `backboardd`, which puts the app's frames on screen.
 
 |                                  | MyGo                       | Expo                    |

@@ -1,0 +1,409 @@
+// Prompts take the composer's place (ADR 0003): a permission request is
+// answered with one tap; an ask-user question one question at a time, with a
+// line for an answer of one's own, or cancelled. Whichever Client answers
+// first wins, and the card goes everywhere.
+import type { PendingAskUserRequest, PendingPermission } from '@factory/droid-sdk'
+import {
+  permissionDetail,
+  scriptPermission,
+  type ScriptPermission,
+} from '@droi/daemon-layer/tool-calls'
+import { usePromptActions, usePrompts } from '@droi/daemon-layer/use-prompts'
+import { Check, MessageCircleQuestion, Pencil, ShieldAlert, X } from 'lucide-react-native'
+import { useState } from 'react'
+import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Button, Text } from '../ui/primitives'
+import { useTextScale } from '../ui/text-scale'
+import { fontSize, fonts, radius, space } from '../ui/theme'
+import { useColors } from '../ui/use-colors'
+import { SourceView } from '../transcript/script-run'
+
+export function hasPrompt(prompts: ReturnType<typeof usePrompts>): boolean {
+  return prompts.permissions.length > 0 || prompts.askUser.length > 0
+}
+
+export function PromptArea({ sessionId }: { sessionId: string }) {
+  const colors = useColors()
+  const prompts = usePrompts(sessionId)
+  const actions = usePromptActions(sessionId)
+  if (!hasPrompt(prompts) && !actions.error) return null
+  return (
+    <View aria-live="polite" style={styles.area}>
+      {actions.error ? (
+        <Text role="alert" size="xs" style={{ color: colors.destructiveForeground }}>
+          {actions.error}
+        </Text>
+      ) : null}
+      {prompts.permissions.map((permission) => (
+        <PermissionCard
+          key={permission.requestId}
+          permission={permission}
+          onAnswer={(option) => void actions.answerPermission(permission, option)}
+        />
+      ))}
+      {prompts.askUser.map((request) => (
+        <AskUserCard
+          key={request.requestId}
+          request={request}
+          onAnswer={(answers) => void actions.answerQuestions(request, answers)}
+          onCancel={() => void actions.cancelQuestions(request)}
+        />
+      ))}
+    </View>
+  )
+}
+
+function PermissionCard({
+  permission,
+  onAnswer,
+}: {
+  permission: PendingPermission
+  onAnswer: (selectedOption: string) => void
+}) {
+  const colors = useColors()
+  const title = permission.toolUses.map((t) => t.toolUse.name).join(', ')
+  return (
+    <View
+      role="group"
+      aria-label={`Permission request: ${title}`}
+      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
+    >
+      <View style={styles.kicker}>
+        <ShieldAlert size={12} color={colors.attention} strokeWidth={2} />
+        <Text size="xs" weight="semibold" style={{ color: colors.attention }}>
+          Permission
+        </Text>
+      </View>
+      <Text size="sm" weight="medium">
+        Droid wants to run {title}
+      </Text>
+      {permission.toolUses.map((use) => {
+        const script = scriptPermission(use.details)
+        return script ? (
+          <ScriptPermissionDetail
+            key={use.toolUse.id}
+            permission={script}
+            input={use.toolUse.input}
+          />
+        ) : (
+          <Text
+            key={use.toolUse.id}
+            selectable
+            size="xs"
+            mono
+            style={[styles.detail, { backgroundColor: colors.muted }]}
+          >
+            {permissionDetail(use.details, use.toolUse.input)}
+          </Text>
+        )
+      })}
+      <View style={styles.options}>
+        {permission.options.map((option) => {
+          const cancel = option.value === 'cancel'
+          return (
+            <Pressable
+              key={option.value}
+              role="button"
+              aria-label={option.label}
+              onPress={() => onAnswer(option.value)}
+              style={({ pressed }) => [
+                styles.option,
+                { backgroundColor: pressed ? colors.accent : colors.card },
+              ]}
+            >
+              <Text
+                size="sm"
+                weight="medium"
+                tone={cancel ? 'muted' : 'default'}
+                style={styles.fill}
+              >
+                {option.label}
+              </Text>
+              {cancel ? (
+                <X size={14} color={colors.mutedForeground} />
+              ) : (
+                <Check size={14} color={colors.foreground} />
+              )}
+            </Pressable>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+/**
+ * A Script asks once for the calls it can see in its source: each by line,
+ * as its own Prompt would show it, with the program a tap away.
+ */
+function ScriptPermissionDetail({
+  permission,
+  input,
+}: {
+  permission: ScriptPermission
+  input: Record<string, unknown>
+}) {
+  const colors = useColors()
+  const script = typeof input['script'] === 'string' ? input['script'] : ''
+  const [open, setOpen] = useState(permission.calls.length === 0)
+  const impactColor = (impact: string | null) =>
+    impact === 'high'
+      ? colors.destructiveForeground
+      : impact === 'medium'
+        ? colors.attention
+        : colors.mutedForeground
+  return (
+    <View style={[styles.script, { backgroundColor: colors.muted }]}>
+      {permission.calls.length > 0 ? (
+        <View role="list" aria-label="Calls in the Script" style={styles.scriptCalls}>
+          {permission.calls.map((call) => (
+            <View
+              key={`${call.line}:${call.tool}:${call.detail}`}
+              role="listitem"
+              aria-label={`Line ${call.line}, ${call.tool}: ${call.detail}${call.impact ? `, ${call.impact}` : ''}`}
+              style={styles.scriptCall}
+            >
+              <Text tone="muted" size="xs" mono style={styles.scriptLine}>
+                L{call.line}
+              </Text>
+              <Text size="xs" weight="medium">
+                {call.tool}
+              </Text>
+              <Text selectable size="xs" mono style={styles.fill}>
+                {call.detail}
+              </Text>
+              {call.impact ? (
+                <Text size="xs" style={{ color: impactColor(call.impact) }}>
+                  {call.impact}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {script ? (
+        <>
+          <Pressable
+            role="button"
+            aria-expanded={open}
+            onPress={() => setOpen(!open)}
+            style={[styles.sourceToggle, { borderTopColor: colors.border }]}
+          >
+            <Text tone="muted" size="xs">
+              {open ? 'Hide source' : 'Show source'}
+            </Text>
+          </Pressable>
+          {open ? (
+            <SourceView script={script} highlight={new Set(permission.calls.map((c) => c.line))} />
+          ) : null}
+        </>
+      ) : null}
+    </View>
+  )
+}
+
+type Answers = Array<{ index: number; question: string; answer: string }>
+
+function AskUserCard({
+  request,
+  onAnswer,
+  onCancel,
+}: {
+  request: PendingAskUserRequest
+  onAnswer: (answers: Answers) => void
+  onCancel: () => void
+}) {
+  const colors = useColors()
+  const scale = useTextScale()
+  const [step, setStep] = useState(0)
+  const [chosen, setChosen] = useState<Record<number, string[]>>({})
+  const [custom, setCustom] = useState<Record<number, string>>({})
+
+  const question = request.questions[step]
+  if (!question) return null
+  // droid 1.2 says what each option means, index-aligned; the SDK's type
+  // predates it (Droi's patch keeps the field when the request is parsed).
+  const descriptions = (question as { optionDescriptions?: string[] }).optionDescriptions
+  const selected = chosen[question.index] ?? []
+  const typed = custom[question.index] ?? ''
+  const canContinue = selected.length > 0 || typed.trim().length > 0
+  const last = step + 1 === request.questions.length
+
+  const select = (option: string) => {
+    setCustom((prev) => ({ ...prev, [question.index]: '' }))
+    setChosen((prev) => {
+      const current = prev[question.index] ?? []
+      if (!question.multiSelect) return { ...prev, [question.index]: [option] }
+      return {
+        ...prev,
+        [question.index]: current.includes(option)
+          ? current.filter((o) => o !== option)
+          : [...current, option],
+      }
+    })
+  }
+
+  const type = (value: string) => {
+    setCustom((prev) => ({ ...prev, [question.index]: value }))
+    if (value.trim()) setChosen((prev) => ({ ...prev, [question.index]: [] }))
+  }
+
+  const advance = () => {
+    if (!canContinue) return
+    if (!last) {
+      setStep(step + 1)
+      return
+    }
+    onAnswer(
+      request.questions.map((q) => {
+        const own = custom[q.index]?.trim()
+        return {
+          index: q.index,
+          question: q.question,
+          answer: own ? own : (chosen[q.index] ?? []).join(', '),
+        }
+      }),
+    )
+  }
+
+  return (
+    <View
+      role="group"
+      aria-label="Droid has a question"
+      style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
+    >
+      <View style={styles.kicker}>
+        <MessageCircleQuestion size={12} color={colors.mutedForeground} strokeWidth={2} />
+        <Text size="xs" weight="semibold" tone="muted">
+          {question.topic}
+        </Text>
+        {request.questions.length > 1 ? (
+          <Text size="xs" tone="muted" style={[styles.progress, { backgroundColor: colors.muted }]}>
+            {step + 1} / {request.questions.length}
+          </Text>
+        ) : null}
+      </View>
+      <Text size="sm" weight="medium">
+        {question.question}
+      </Text>
+      {question.options.length > 0 ? (
+        <View
+          role={question.multiSelect ? 'group' : 'radiogroup'}
+          aria-label={question.question}
+          style={styles.options}
+        >
+          {question.options.map((option, i) => {
+            const checked = selected.includes(option)
+            const description = descriptions?.[i]
+            return (
+              <Pressable
+                key={option}
+                role={question.multiSelect ? 'checkbox' : 'radio'}
+                aria-checked={checked}
+                aria-label={option}
+                accessibilityHint={description}
+                onPress={() => select(option)}
+                style={[
+                  styles.option,
+                  description ? styles.described : null,
+                  {
+                    backgroundColor: checked ? colors.accent : colors.card,
+                    borderColor: checked ? colors.ring : 'transparent',
+                  },
+                ]}
+              >
+                <View style={styles.fill}>
+                  <Text size="sm" weight="medium">
+                    {option}
+                  </Text>
+                  {description ? (
+                    <Text size="xs" tone="muted">
+                      {description}
+                    </Text>
+                  ) : null}
+                </View>
+                {checked ? <Check size={14} color={colors.foreground} /> : null}
+              </Pressable>
+            )
+          })}
+        </View>
+      ) : null}
+      <View style={[styles.own, { backgroundColor: colors.muted }]}>
+        <Pencil size={12} color={colors.mutedForeground} />
+        <TextInput
+          aria-label={`Other answer for: ${question.question}`}
+          placeholder="Or type your own answer"
+          placeholderTextColor={colors.mutedForeground}
+          value={typed}
+          onChangeText={type}
+          onSubmitEditing={advance}
+          style={[
+            styles.ownInput,
+            { color: colors.foreground, fontSize: styles.ownInput.fontSize * scale },
+          ]}
+        />
+      </View>
+      <View style={styles.footer}>
+        {step > 0 ? (
+          <Button label="Back" variant="ghost" onPress={() => setStep(step - 1)} />
+        ) : null}
+        <View style={styles.fill} />
+        <Button label="Cancel" variant="ghost" onPress={onCancel} />
+        <Button label={last ? 'Answer' : 'Next'} disabled={!canContinue} onPress={advance} />
+      </View>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  area: { gap: space.sm, paddingHorizontal: space.md },
+  card: {
+    borderWidth: 1,
+    borderRadius: radius.xl,
+    padding: space.md,
+    gap: space.sm,
+  },
+  kicker: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  progress: { paddingHorizontal: 6, borderRadius: 5, overflow: 'hidden' },
+  detail: { borderRadius: radius.lg, paddingHorizontal: space.sm, paddingVertical: 6 },
+  script: { borderRadius: radius.lg, overflow: 'hidden' },
+  scriptCalls: { paddingVertical: space.xs },
+  scriptCall: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: space.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+  },
+  scriptLine: { width: 28 },
+  sourceToggle: {
+    borderTopWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: space.sm,
+    paddingVertical: space.sm,
+  },
+  options: { gap: space.xs },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    minHeight: 44,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  described: { paddingVertical: space.sm },
+  own: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    minHeight: 44,
+  },
+  ownInput: { flex: 1, fontFamily: fonts.sans, fontSize: fontSize.base, minHeight: 44 },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  fill: { flex: 1 },
+})

@@ -1,3 +1,12 @@
+## 1.98.1 - 2026-11-18
+
+### Changed
+
+- The Phone App is the Expo app again (ADR 0041): `pnpm install:phone` builds and installs it as in 1.97.1, and it pairs once after an install over the MyGo app. The MyGo Phone App of 1.98.0 stays in `apps/native/phone` as an example until MyGo's mobile support matures, and `pnpm install:phone:mygo` installs it.
+
+### Fixed
+
+- Two view tests of the MyGo Phone App no longer fail now and then on one CPU, where they clicked before the Session's settings came, and nor does the test of unarchiving a Scratch Session, which opened the row's menu before the list showed it archived, or the Workstream test that clicked an agent's row before it showed.
 ## 1.98.0 - 2026-11-18
 
 ### Added

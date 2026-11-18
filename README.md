@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go)](https://go.dev/)
 [![MyGo](https://img.shields.io/badge/MyGo-0.10.0-6E56CF)](https://mygo.egoist.dev)
+[![Expo](https://img.shields.io/badge/Expo-SDK%2057-000020?logo=expo)](https://expo.dev/)
 [![Release](https://img.shields.io/github/v/release/kkkk2323/droi)](https://github.com/kkkk2323/droi/releases/latest)
 
 A native macOS, Windows and iPhone client for the [Factory Droid](https://docs.factory.ai) coding agent.
@@ -50,7 +51,7 @@ Measurement methodology: [apps/native/docs/performance.md](./apps/native/docs/pe
    - **Windows 10/11 (x64)**: run `droi-setup-<version>-amd64.exe` (installs per-user without administrator rights; if SmartScreen prompts, choose **More info → Run anyway**).
    - **Linux (`x64` / `arm64`, headless Host)**: install `droi-<version>-linux-<arch>.tar.gz` and run `droi host` ([setup guide](./apps/native/README.md#droi-host-on-linux)).
 3. **Sign in**: if `droid` is already signed in, Droi opens straight to your Sessions. Otherwise, sign in with Factory in the window (shared with the `droid` CLI) or paste a `FACTORY_API_KEY`. Additional Factory accounts can be added under **Settings → Account**.
-4. **Optional (iPhone Phone App)**: with Xcode and `xcodegen` on a Mac, `pnpm install:phone` builds and installs the app on a connected iPhone; enable **Settings → Remote Access** on your computer and scan the QR code.
+4. **Optional (iPhone Phone App)**: build and install the Expo client on a connected iPhone with `pnpm install:phone`, enable **Settings → Remote Access** on your computer and scan the QR code.
 
 Droi checks for signed delta updates every hour and restarts automatically once no Session is working ([how releases work](./apps/native/docs/releases.md)).
 
@@ -67,7 +68,7 @@ Phone App / Remote ─── Pairing Token ─┘
 - **Daemon (`droid daemon`)**: owns every Session, its transcript, Worktrees, Automations, Skills and MCP connections.
 - **Host**: runs inside the desktop app (or standalone as `droi host`). It supervises the Daemon, shares the `droid` CLI login (and manages multi-account folders via `FACTORY_HOME_OVERRIDE`), attaches the Runtime Overlay for Memory and extensions, and runs the Gateway.
 - **Gateway**: authenticates Clients with a per-launch local token or a Pairing Token, attaches the Host's Factory credential so secrets never travel to remote devices, and proxies the Daemon protocol over WebSocket.
-- **Clients**: the native desktop window (`apps/native`) and the iPhone Phone App (`apps/native/phone`), which draws the same window on MyGo's iOS target (ADR 0040). Neither holds conversation state; both speak the Daemon protocol through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go).
+- **Clients**: the native desktop window (`apps/native`) and the iPhone Phone App (`apps/mobile`). Neither holds conversation state; both speak the Daemon protocol through [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) and `@droi/daemon-layer`.
 
 Domain vocabulary is documented in [CONTEXT.md](./CONTEXT.md), and architecture decisions live in [docs/adr](./docs/adr).
 
@@ -82,9 +83,9 @@ git log --grep='factory-droid' --oneline
 The repository is structured so Droid can plan, implement and verify changes end to end:
 
 - **[AGENTS.md](./AGENTS.md) & [CLAUDE.md](./CLAUDE.md)** define the maintained packages, design system constraints and validation workflow.
-- **[CONTEXT.md](./CONTEXT.md) & [docs/adr](./docs/adr)** record the ubiquitous language and 39 architecture decision records.
+- **[CONTEXT.md](./CONTEXT.md) & [docs/adr](./docs/adr)** record the ubiquitous language and 33 architecture decision records.
 - **Skills in [.agents/skills](./.agents/skills)** guide TDD, bug diagnosis, code review and domain modeling.
-- **Deterministic Fake Daemon testing ([ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md))**: Go view tests (`ui.NewTester`) drive the desktop window and the Phone App against a scripted Fake Daemon from [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) without needing a live Factory API key. Even the screenshot in this README is rendered from a Fake Daemon scenario:
+- **Deterministic Fake Daemon testing ([ADR 0002](./docs/adr/0002-e2e-tests-run-the-client-against-a-fake-daemon.md))**: both Go view tests (`ui.NewTester`) and mobile Playwright E2E tests drive the real Clients against a scripted Fake Daemon from [droid-sdk-go](https://github.com/kkkk2323/droid-sdk-go) without needing a live Factory API key. Even the screenshot in this README is rendered from a Fake Daemon scenario:
   ```bash
   DROI_README_SHOTS=1 go test ./apps/native/internal/app -run TestReadmeScreenshots
   ```
@@ -98,25 +99,32 @@ Run all commands from the repository root:
 | `go run ./apps/native` | Run the desktop app (requires `droid` on `PATH`) |
 | `go test ./apps/native/...` | Run Go unit tests and native view tests against the Fake Daemon |
 | `go tool -modfile=apps/native/go.mod mygo build apps/native` | Build `Droi.app` / `.dmg` (or `-platform windows/amd64` for Windows) |
-| `(cd apps/native && go tool mygo build -platform ios/simulator phone)` | Build the Phone App for the iOS simulator |
-| `pnpm check` | Run format check and lint |
-| `pnpm install:phone` | Build the Phone App and install it on a connected iPhone |
+| `pnpm check` | Run format check, lint and TypeScript typecheck |
+| `pnpm test` | Run TypeScript unit tests (vitest) |
+| `pnpm test:e2e:phone` | Run Playwright E2E suite for the Phone App against the Fake Daemon |
+| `pnpm install:phone` | Build a signed Release of the Phone App and install it on a connected iPhone |
+| `pnpm install:phone:mygo` | Build the MyGo Phone App example and install it instead ([ADR 0041](./docs/adr/0041-the-phone-app-stays-on-expo-and-the-mygo-one-is-an-example.md)) |
 | `FACTORY_API_KEY=... go test ./apps/native/pkg/host ./apps/native/pkg/gateway -run Live -v` | Run live integration tests against a real Daemon |
 
 ## Project Structure
 
 ```
 apps/
-└── native/                  # Desktop app & Host in Go on MyGo (macOS, Windows, Linux host)
-    ├── internal/app/        # Native window views and Fake Daemon view tests, the Phone App's too
-    ├── pkg/host/            # Daemon supervisor, CLI login, multi-account, Runtime Overlay
-    ├── pkg/gateway/         # Remote Access Gateway and Pairing Token verification
-    ├── pkg/droiapp/         # App-as-a-library entrypoint (ADR 0029)
-    ├── pkg/extension/       # Extension seams (Overlay, Pages, SettingsTabs, ToolViews)
-    ├── phone/               # iPhone Phone App: the same window on MyGo's iOS target (ADR 0040)
-    └── pkg/...              # Public UI and protocol packages (sessionview, settingsview, kit, theme)
+├── native/                  # Desktop app & Host in Go on MyGo (macOS, Windows, Linux host)
+│   ├── internal/app/        # Native window views and Fake Daemon view tests
+│   ├── pkg/host/            # Daemon supervisor, CLI login, multi-account, Runtime Overlay
+│   ├── pkg/gateway/         # Remote Access Gateway and Pairing Token verification
+│   ├── pkg/droiapp/         # App-as-a-library entrypoint (ADR 0029)
+│   ├── pkg/extension/       # Extension seams (Overlay, Pages, SettingsTabs, ToolViews)
+│   ├── phone/               # Example: the same window on an iPhone through MyGo (ADR 0041)
+│   └── pkg/...              # Public UI and protocol packages (sessionview, settingsview, kit, theme)
+└── mobile/                  # iPhone Phone App (Expo SDK 57, React Native)
+packages/
+└── daemon-layer/            # Shared TypeScript Daemon connection and Session state layer
+tests/
+└── mobile/                  # Playwright E2E tests for the Phone App against the Fake Daemon
 docs/
-└── adr/                     # Architecture Decision Records (ADR 0001–0040)
+└── adr/                     # Architecture Decision Records (ADR 0001–0033)
 ```
 
 More details on the native package layout and reference screen testing are in [apps/native/README.md](./apps/native/README.md).

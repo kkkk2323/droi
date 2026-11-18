@@ -16,7 +16,7 @@ The interface should feel like a precision instrument -- quiet confidence rather
 - **Color**: neutral palette with one blue tint (`#0169cc` light, `#339cff` dark) for the controls that show state. Color is reserved for status, actions, and that tint -- never for decoration.
 - **Geometry**: Settings → Density picks the sizes (ADR 0026): Comfortable, the default, has 32px controls and 14px base text; Compact has 28px controls and 13px text. 8–12px radii, 20px/500 headings with −0.3px tracking.
 - **Contrast**: text `#171717`, muted text `#636363`, hairlines at 12% ink and inputs at 15% (ADR 0026). A white panel on the white page must still read as its own surface.
-- **Motion**: Subtle and purposeful (MyGo's `Animate` in the native app and the Phone App, which is the same window). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.
+- **Motion**: Subtle and purposeful (MyGo's `Animate` in the native app, react-native-reanimated in the Phone App). Animations should feel responsive, not theatrical. Prefer fast durations (150-250ms) with cubic-bezier easing.
 
 ### Design Principles
 

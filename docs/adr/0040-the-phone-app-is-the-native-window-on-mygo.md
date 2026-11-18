@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0041
 ---
 
 # The Phone App is the native app's window on MyGo

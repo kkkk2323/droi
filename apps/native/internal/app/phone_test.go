@@ -87,14 +87,20 @@ func TestAPhonesComposerBarIsOneRow(t *testing.T) {
 	h := newPhoneHarness(t)
 	h.openSession("Fix the login race")
 	h.until("the composer", func() bool { _, ok := h.tt.Find("Send"); return ok })
-	send, _ := h.tt.Find("Send")
-	// Compact, the autonomy button's name tells its level.
-	autonomy := "Autonomy"
-	for _, l := range autonomyLevels {
-		if name := "Autonomy: " + l10n.T(models.AutonomyLabels[l]); h.hasText(name) {
-			autonomy = name
+	// Compact, the autonomy button's name tells its level, once the
+	// Session's settings came.
+	autonomy := ""
+	h.until("the autonomy button", func() bool {
+		for _, l := range autonomyLevels {
+			if name := "Autonomy: " + l10n.T(models.AutonomyLabels[l]); h.hasText(name) {
+				autonomy = name
+				return true
+			}
 		}
-	}
+		return false
+	})
+	h.settle()
+	send, _ := h.tt.Find("Send")
 	for _, label := range []string{"Add image", "Spec mode", autonomy, "Skills and MCP servers"} {
 		r, ok := h.tt.Find(label)
 		if mid := r.Y + r.H/2; !ok || mid < send.Y || mid > send.Y+send.H {
@@ -134,6 +140,7 @@ func TestAPhonesModelPickerIsASheet(t *testing.T) {
 	h := newPhoneHarness(t)
 	h.openSession("Fix the login race")
 	h.until("the composer", func() bool { _, ok := h.tt.Find("Send"); return ok })
+	h.settle()
 	h.click("Model and reasoning effort")
 	h.until("the sheet", func() bool { _, ok := h.tt.Find("Choose a model"); return ok })
 	for i := 0; i < 30; i++ {
