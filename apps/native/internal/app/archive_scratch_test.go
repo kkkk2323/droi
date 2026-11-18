@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -105,6 +106,17 @@ func TestArchivingAScratchSessionMovesItsFolderToTheTrashAndUnarchivingRestoresI
 		t.Fatal("the folder is still there")
 	}
 
+	// The folder goes to the Trash before the Session list shows the row
+	// archived, so its menu offers Unarchive only after that.
+	h.until("the row archived", func() bool {
+		if err := h.tt.RightClick("Name the dog"); err != nil {
+			return false
+		}
+		h.frame()
+		menu := h.tt.Menu()
+		h.tt.CloseMenu()
+		return slices.Contains(menu, "Unarchive")
+	})
 	h.chooseFromMenu("Name the dog", "Unarchive")
 	h.until("the folder back", func() bool { return folderExists(cwd) })
 	if _, err := h.d.WaitForRequest("daemon.unarchive_session", 1); err != nil {

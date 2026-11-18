@@ -6,7 +6,7 @@
 
 ### Fixed
 
-- Two view tests of the MyGo Phone App no longer fail now and then on one CPU, where they clicked before the Session's settings came.
+- Two view tests of the MyGo Phone App no longer fail now and then on one CPU, where they clicked before the Session's settings came, and nor does the test of unarchiving a Scratch Session, which opened the row's menu before the list showed it archived.
 ## 1.98.0 - 2026-11-18
 
 ### Added
