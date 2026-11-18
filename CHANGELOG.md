@@ -1,4 +1,4 @@
-## 1.98.1 - 2026-11-18
+## 1.98.1 - 2026-11-19
 
 ### Changed
 
@@ -6,6 +6,7 @@
 
 ### Fixed
 
+- A key added while the Key Pool starts is used and shows its quota. Anlan Droi adds the company's keys as it opens, which is when the pool starts: a key whose check was still under way went only into the pool's file, showed "No quota yet" and took no requests until the app opened again.
 - Two view tests of the MyGo Phone App no longer fail now and then on one CPU, where they clicked before the Session's settings came, and nor does the test of unarchiving a Scratch Session, which opened the row's menu before the list showed it archived, or the Workstream test that clicked an agent's row before it showed.
 ## 1.98.0 - 2026-11-18
 

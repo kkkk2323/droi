@@ -400,7 +400,8 @@ func (p *Pool) Add(ctx context.Context, key string) error {
 	}
 	r := p.readerLocked()
 	p.mu.Unlock()
-	if err := r.AddKey(ctx, key); err != nil {
+	usage, err := r.CheckKey(ctx, key)
+	if err != nil {
 		code := strings.TrimPrefix(err.Error(), "key probe failed: ")
 		if keys.IsInvalidKeyError(code) {
 			return errors.New(l10n.L("Factory does not accept this key. Check that you copied the whole key."))
@@ -408,8 +409,15 @@ func (p *Pool) Add(ctx context.Context, key string) error {
 		return errors.New(l10n.L("Droi could not check this key's quota (%s). Check the key and try again.", code))
 	}
 	p.mu.Lock()
+	if p.keyByIDLocked(keyID(key)) != "" {
+		p.mu.Unlock()
+		return errors.New(l10n.L("This key is already in the Key Pool."))
+	}
+	// Start, or a Stop and Start, can have replaced r while the key was
+	// checked, with a rotator made from the keys stored then.
+	p.readerLocked().AddCheckedKey(key, usage)
 	p.stored.Keys = append(p.stored.Keys, storedKey{Key: key, AddedAt: time.Now().UTC()})
-	err := p.saveLocked()
+	err = p.saveLocked()
 	p.mu.Unlock()
 	p.changed()
 	return err

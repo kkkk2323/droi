@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -625,29 +626,43 @@ func (r *KeyRotator) GetActiveKey() string {
 // already configured or the upstream rejects it.
 func (r *KeyRotator) AddKey(ctx context.Context, key string) error {
 	key = strings.TrimSpace(key)
-	if key == "" {
-		return fmt.Errorf("empty key")
+	usage, err := r.CheckKey(ctx, key)
+	if err != nil {
+		return err
 	}
-	r.mu.RLock()
-	for _, k := range r.keys {
-		if k == key {
-			r.mu.RUnlock()
-			return fmt.Errorf("key already configured")
-		}
-	}
-	r.mu.RUnlock()
+	r.AddCheckedKey(key, usage)
+	return nil
+}
 
+// CheckKey probes key against the billing endpoint without adding it, for
+// AddCheckedKey on this rotator or on one made while the probe ran.
+func (r *KeyRotator) CheckKey(ctx context.Context, key string) (*KeyUsage, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, fmt.Errorf("empty key")
+	}
+	if r.Has(key) {
+		return nil, fmt.Errorf("key already configured")
+	}
 	usage := r.fetchKeyUsage(ctx, key)
 	if usage.Error != "" {
-		return fmt.Errorf("key probe failed: %s", usage.Error)
+		return nil, fmt.Errorf("key probe failed: %s", usage.Error)
 	}
+	return usage, nil
+}
 
+// AddCheckedKey appends key, with the usage CheckKey read, to the rotation;
+// a key already there stays as it is.
+func (r *KeyRotator) AddCheckedKey(key string, usage *KeyUsage) {
 	r.mu.Lock()
+	if slices.Contains(r.keys, key) {
+		r.mu.Unlock()
+		return
+	}
 	r.keys = append(r.keys, key)
 	r.usages[key] = usage
 	r.mu.Unlock()
 	r.reselectActiveKey()
-	return nil
 }
 
 // RemoveKey takes key out of the rotation.
