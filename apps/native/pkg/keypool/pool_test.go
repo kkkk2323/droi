@@ -249,3 +249,48 @@ func TestManualModeKeepsTheKey(t *testing.T) {
 		t.Fatal("removed the last key while running")
 	}
 }
+
+// A key whose check is still under way when the pool starts must reach the
+// rotator Start made, not only keys.json: an app that adds the company's
+// keys while it opens starts the pool at the same time.
+func TestAddWhileThePoolStarts(t *testing.T) {
+	checking, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	f := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/billing") && strings.Contains(r.Header.Get("Authorization"), "fk-late") {
+			once.Do(func() { close(checking) })
+			<-release
+		}
+		if strings.HasPrefix(r.URL.Path, "/billing") {
+			io.WriteString(w, usageBody)
+			return
+		}
+		io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(f.Close)
+	p := Open(Options{Dir: filepath.Join(t.TempDir(), "llm"), Upstream: f.URL, UsageURL: f.URL + "/billing"})
+	t.Cleanup(p.Stop)
+	ctx := context.Background()
+	if err := p.Add(ctx, "fk-first-0000000000"); err != nil {
+		t.Fatal(err)
+	}
+	added := make(chan error, 1)
+	go func() { added <- p.Add(ctx, "fk-late-0000000000") }()
+	<-checking
+	if _, err := p.Start(); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-added; err != nil {
+		t.Fatal(err)
+	}
+	p.mu.Lock()
+	r := p.rotator
+	p.mu.Unlock()
+	if !r.Has("fk-late-0000000000") {
+		t.Fatalf("the running rotator has %d keys, without the one added while it started", len(r.Keys()))
+	}
+	if st := p.State(); len(st.Keys) != 2 || st.Keys[1].State.Status != "ok" {
+		t.Fatalf("state = %+v", st.Keys)
+	}
+}
