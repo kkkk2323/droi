@@ -876,7 +876,13 @@ func (a *App) View(c *ui.Context) {
 		return
 	}
 	shown := a.sidebarShown()
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
+	// A phone's screen edges, past the safe area, take the root's colour:
+	// the page's, as no sidebar stands beside it there.
+	root := t.Sidebar
+	if a.cfg.Phone {
+		root = t.Background
+	}
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(root).TextColor(t.Foreground).Children(func() {
 		// edge is where the sidebar ends once it has slid all the way open.
 		edge := float32(0)
 		if !a.narrow {

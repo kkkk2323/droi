@@ -1,8 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": [
-    "react",
-    "typescript",
     "import"
   ],
   "categories": {
@@ -11,50 +9,19 @@
     "perf": "warn"
   },
   "rules": {
-    "react/react-in-jsx-scope": "off",
     "import/no-unassigned-import": "off",
     "no-await-in-loop": "off"
   },
-  "overrides": [
-    {
-      "files": ["packages/daemon-layer/**"],
-      "rules": {
-        "no-restricted-globals": [
-          "error",
-          "window",
-          "document",
-          "localStorage",
-          "sessionStorage",
-          "navigator",
-          "Audio",
-          "AudioContext"
-        ],
-        "no-restricted-imports": [
-          "error",
-          { "paths": ["electron", "react-dom", "react-dom/client"] }
-        ]
-      }
-    }
-  ],
-  "settings": {
-    "react": {
-      "version": "19"
-    }
-  },
   "env": {
     "builtin": true,
-    "browser": true,
     "node": true
   },
   "ignorePatterns": [
     "node_modules",
     "out",
     "dist",
+    "build",
     "resources",
-    "legacy",
-    "apps/mobile/dist",
-    "apps/mobile/ios",
-    "apps/mobile/.expo",
-    "apps/mobile/build"
+    "legacy"
   ]
 }

@@ -215,7 +215,11 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 			})
 		})
 	}
-	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
+	root := t.Sidebar
+	if a.narrow && a.route.Tab != "" {
+		root = t.Background
+	}
+	ui.Row(c).Role(ui.RoleGroup).Label(L("Settings")).Fill().AlignItems(ui.Stretch).Background(root).TextColor(t.Foreground).Children(func() {
 		if a.narrow {
 			if a.route.Tab == "" {
 				sections(ui.Column(c).Grow(1))
