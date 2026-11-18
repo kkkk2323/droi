@@ -171,7 +171,7 @@ func (a *App) settingsPage(c *ui.Context, status controller.Status) {
 			if a.narrow {
 				padX = k.Px(16)
 				ui.Row(c).Height(k.Px(44)).PaddingX(k.Px(8)).AlignItems(ui.Center).Children(func() {
-					if k.IconButton(c, "chevron-left", L("Settings"), 32).Clicked() {
+					if k.IconButton(c, "chevron-left", L("Back"), 32).Clicked() {
 						a.route.Tab = ""
 					}
 				})

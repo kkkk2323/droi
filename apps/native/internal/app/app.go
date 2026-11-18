@@ -271,7 +271,7 @@ type App struct {
 	narrow, drawerOpen bool
 	// edgeSwipe is how far a finger from a phone's left edge has gone.
 	edgeSwipe float32
-	remote             remoteState
+	remote    remoteState
 	// revs counts each Session's changes in the Store, for its view to
 	// build again.
 	revs sessionview.Revisions
