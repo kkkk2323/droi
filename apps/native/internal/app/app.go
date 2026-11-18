@@ -351,6 +351,7 @@ func autoUpdate(cfg Config) bool {
 func (a *App) applyPrefs() {
 	a.kit = kit.New(theme.Parse(prefs.Theme.Get(a.prefs)), theme.FontChoice(prefs.Font.Get(a.prefs)), theme.TextSize(prefs.TextSize.Get(a.prefs)), prefs.Zoom.Get(a.prefs))
 	a.kit.Compact = theme.Density(prefs.Density.Get(a.prefs)) == theme.DensityCompact
+	a.kit.Phone = a.cfg.Phone
 	if l10n.Set(prefs.Language.Get(a.prefs), a.locale) && a.languageChanged != nil {
 		a.languageChanged()
 	}
@@ -841,7 +842,16 @@ func (a *App) Route() Route { return a.route }
 func (a *App) View(c *ui.Context) {
 	a.showing = ""
 	defer a.noteShown()
-	c.SetTheme(a.kit.UITheme(c.Theme()))
+	ut := a.kit.UITheme(c.Theme())
+	// A phone's bands past the safe area, under the status bar and the home
+	// indicator, take the root's colour: the page's. The Session list and
+	// Settings' sections are the sidebar's; the other pages have none
+	// beside them.
+	onSidebar := a.route.Name == "home" || a.route.Name == "settings" && a.route.Tab == ""
+	if a.cfg.Phone && !onSidebar {
+		ut.Background = a.kit.T.Background
+	}
+	c.SetTheme(ut)
 	if a.copyText != "" {
 		c.WriteClipboard(a.copyText)
 		a.copyText = ""
@@ -876,8 +886,7 @@ func (a *App) View(c *ui.Context) {
 		return
 	}
 	shown := a.sidebarShown()
-	// A phone's screen edges, past the safe area, take the root's colour:
-	// the page's, as no sidebar stands beside it there.
+	// A phone has no sidebar beside the page.
 	root := t.Sidebar
 	if a.cfg.Phone {
 		root = t.Background
@@ -913,8 +922,12 @@ func (a *App) View(c *ui.Context) {
 		} else {
 			a.drawer(c, func() { a.sidebarView(c, listed, busy, listErr, listDone) })
 		}
-		// The web Client keeps the main panel's left border while the sidebar is hidden.
-		main := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Clip().BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
+		// The web Client keeps the main panel's left border while the sidebar is
+		// hidden; a phone's page has no sidebar beside it, only the screen's edge.
+		main := ui.Column(c).Grow(1).MinWidth(0).FillHeight().Background(t.Background).Clip()
+		if !a.cfg.Phone {
+			main.BorderWidth(0, 0, 0, 1).BorderColor(t.Border)
+		}
 		a.mu.Lock()
 		starting := startingUp(status, a.everConnected)
 		a.mu.Unlock()

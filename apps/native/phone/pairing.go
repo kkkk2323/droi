@@ -27,7 +27,10 @@ type pairing struct {
 func (p *phone) pairingView(c *ui.Context, k *kit.Kit) {
 	t := k.T
 	s := &p.pair
-	c.SetTheme(k.UITheme(c.Theme()))
+	ut := k.UITheme(c.Theme())
+	// The bands past the safe area take the root's colour: the page's.
+	ut.Background = t.Background
+	c.SetTheme(ut)
 	pair := func(link string) {
 		link = strings.TrimSpace(link)
 		if link == "" || s.checking {
