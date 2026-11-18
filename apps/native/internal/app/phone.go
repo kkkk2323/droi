@@ -1,9 +1,13 @@
 package app
 
 import (
+	"github.com/egoist/mygo/ui"
+	"github.com/kkkk2323/droid-sdk-go/controller"
+
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
+	"github.com/kkkk2323/droi/apps/native/pkg/sessions"
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
 )
 
@@ -19,3 +23,26 @@ func PrefsKit(p *prefs.Store, locale string) *kit.Kit {
 
 // ComputerError is err, from computer.Verify, as the window tells it.
 func ComputerError(err error) string { return computerError(err) }
+
+// phoneList is a phone's first page, the Session list, which a Session or
+// the New session page is pushed over (ADR 0014): the sidebar, filling the
+// screen, under the connection's banner.
+func (a *App) phoneList(c *ui.Context, status controller.Status, listed []sessions.Summary, busy map[string]string, listErr string, listDone bool) {
+	t := a.kit.T
+	a.mu.Lock()
+	starting := startingUp(status, a.everConnected)
+	a.mu.Unlock()
+	ui.Column(c).Fill().Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
+		if starting && status.Failure != nil {
+			a.followingStartView(c, status)
+			return
+		}
+		a.banner(c, status)
+		ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+			a.sidebarView(c, listed, busy, listErr, listDone)
+		})
+	})
+	a.newWorkstreamDialog(c)
+	a.workstreamSettingsDialog(c)
+	a.archiveWorkstreamDialog(c)
+}

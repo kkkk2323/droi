@@ -843,9 +843,10 @@ func (a *App) View(c *ui.Context) {
 	doing := a.activity(busy)
 	a.noteLiveRuns(listed, doing)
 	a.noteWorkstreams(c, listed, doing)
-	a.narrow = a.isNarrow(c)
+	a.narrow = a.cfg.Phone || a.isNarrow(c)
 	// A drawer only exists on narrow screens; widening the window closes it.
-	if !a.narrow {
+	// A phone has none: its Session list is a page of its own.
+	if !a.narrow || a.cfg.Phone {
 		a.drawerOpen = false
 	}
 	a.sidebar.numbered = a.sidebar.numbered[:0]
@@ -859,6 +860,10 @@ func (a *App) View(c *ui.Context) {
 		return
 	}
 	t := a.kit.T
+	if a.cfg.Phone && a.route.Name == "home" {
+		a.phoneList(c, status, listed, busy, listErr, listDone)
+		return
+	}
 	shown := a.sidebarShown()
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(t.Sidebar).TextColor(t.Foreground).Children(func() {
 		// edge is where the sidebar ends once it has slid all the way open.

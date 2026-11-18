@@ -29,6 +29,12 @@ func (a *App) sidebarShown() bool { return !a.narrow && prefs.SidebarVisible.Get
 // clear of the traffic lights.
 func (a *App) openSessionsButton(c *ui.Context) {
 	k := a.kit
+	if a.cfg.Phone {
+		if k.IconButton(c, "chevron-left", L("Sessions"), 32).Clicked() {
+			a.Go(Route{Name: "home"})
+		}
+		return
+	}
 	if a.cfg.InsetTop {
 		ui.Box(c).Width(64).Shrink(0)
 	}

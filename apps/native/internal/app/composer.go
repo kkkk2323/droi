@@ -324,7 +324,8 @@ func (v *sessionView) inputBar(c *ui.Context, s *session.Session, running, loade
 				if !v.focused {
 					// The composer appears a moment after its Session opens, when a
 					// click may have put the focus in the sidebar's search.
-					if !c.Focused(a.sidebar.searchBox) {
+					// A phone's keyboard would cover the transcript just opened.
+					if !c.Focused(a.sidebar.searchBox) && !a.cfg.Phone {
 						in.AutoFocus()
 					}
 					v.focused = true

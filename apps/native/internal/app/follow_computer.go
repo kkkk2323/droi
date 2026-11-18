@@ -261,7 +261,7 @@ func (a *App) followingStartView(c *ui.Context, status controller.Status) {
 	name := a.computerName()
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Height(k.Px(44)).Shrink(0).PaddingX(k.Px(8)).AlignItems(ui.Center).DragWindow().Children(func() {
-			if a.narrow {
+			if a.narrow && !a.cfg.Phone {
 				a.openSessionsButton(c)
 			}
 		})
@@ -282,11 +282,18 @@ func (a *App) followingStartView(c *ui.Context, status controller.Status) {
 				k.Text(c, failureText(status.Failure), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 				k.Text(c, L("Droi keeps trying. If the Pairing Token of %s was reset, paste its new link.", name), 13, 18).TextColor(t.MutedForeground).TextAlign(ui.Center)
 				ui.Row(c).Wrap().Justify(ui.Center).Gap(k.Px(8)).Margin(k.Px(8), 0, 0, 0).Children(func() {
-					if a.smallButton(c, kit.Primary, L("Use this computer"), "laptop", false).Clicked() {
-						a.useThisComputer()
-					}
-					if a.smallButton(c, kit.Outline, L("Paste a new link"), "", false).Clicked() {
-						a.Go(Route{Name: "settings", Tab: "computer"})
+					if a.cfg.Phone {
+						// A phone has no computer of its own: its pairing page takes the new link.
+						if a.smallButton(c, kit.Primary, L("Paste a new link"), "", false).Clicked() {
+							a.useThisComputer()
+						}
+					} else {
+						if a.smallButton(c, kit.Primary, L("Use this computer"), "laptop", false).Clicked() {
+							a.useThisComputer()
+						}
+						if a.smallButton(c, kit.Outline, L("Paste a new link"), "", false).Clicked() {
+							a.Go(Route{Name: "settings", Tab: "computer"})
+						}
 					}
 					forget := L("Forget %s", name)
 					if a.smallButton(c, kit.Ghost, L("Forget"), "trash", false).Label(forget).Clicked() {
