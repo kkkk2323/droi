@@ -1,3 +1,21 @@
+## 1.98.0 - 2026-11-18
+
+### Added
+
+- The Phone App is now the same window as the desktop app, drawn by MyGo on the iPhone (ADR 0040), in place of the Expo app. It pairs with Droi → Settings → Remote Access as before, by scanning the code or pasting the link, and keeps its Paired Computers when it is installed again. An install over the Expo app opens on the pairing page once.
+- On the phone, a long press on Queue hands the message to the running turn, as ⌘↩ does on a keyboard.
+
+### Changed
+
+- Droi moves to MyGo 0.10.0, with three fixes for the iPhone of its own until a MyGo release has them (egoist/mygo#2002, #2003, #2004).
+- Spinners turn at 30 frames a second, as the pulses do. On an iPhone, a Session with one turning now takes 6.6% of a core while idle, down from 22.9%.
+- On the phone, the composer's bar shows its controls as icons in one row, and the model picker is a sheet from the bottom of the screen, with the reasoning effort as chips.
+
+### Fixed
+
+- On the iPhone, scrolling follows the finger: it no longer pauses while the finger keeps moving, or freezes for a second, and a flick that lands while the content still glides keeps it going.
+- On the iPhone, the bands under the status bar and the home indicator take the page's colour, and a Session's page has no line along the screen's left edge.
+- `pnpm install:phone` installs the app inside the `.ipa`, which `devicectl` takes.
 ## 1.97.1 - 2026-11-17
 
 ### Fixed
