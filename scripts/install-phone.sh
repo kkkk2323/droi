@@ -79,7 +79,9 @@ xcodebuild -project "$work/DroiProfile.xcodeproj" -scheme DroiProfile -configura
 
 (cd "$native" && go tool mygo build -platform ios phone)
 ipa="$native/phone/build/ios-arm64/droi-phone-$version.ipa"
-xcrun devicectl device install app --device "$device" "$ipa"
+# devicectl drops the connection installing an .ipa; the .app inside installs.
+(cd "$work" && unzip -q "$ipa" 'Payload/*')
+xcrun devicectl device install app --device "$device" "$work/Payload/Droi.app"
 xcrun devicectl device process launch --device "$device" "$id" >/dev/null ||
   echo "Installed but not launched: is the iPhone locked, or the developer not trusted yet?"
 echo "Installed Droi $version on the iPhone."
