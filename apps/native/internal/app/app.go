@@ -151,6 +151,8 @@ type Config struct {
 	// Presets, optional, are an app's defaults for a new install, given to
 	// this computer's Daemon and this device once per Version.
 	Presets *defaults.Presets
+	// Phone draws the window for a phone's screen and fingers (ADR 0040).
+	Phone bool
 }
 
 // App is the window's state, which lasts from frame to frame.

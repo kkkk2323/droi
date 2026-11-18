@@ -1,0 +1,22 @@
+{
+  "name": "Droi",
+  "slug": "droi-phone",
+  "identifier": "com.kkkk2323.droi",
+  "version": "1.97.1",
+  "icon": "resources/icon.png",
+  "out": "build",
+  "ios": {
+    "minimumSystemVersion": "17.0",
+    "distribution": "development",
+    "orientations": ["portrait"],
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "Droi connects to the Droi app on your computers over your local network.",
+      "NSCameraUsageDescription": "Droi uses the camera to scan the pairing code shown on your computer, and to take photos you attach.",
+      "NSPhotoLibraryUsageDescription": "Droi attaches the photos you pick to your message.",
+      "ITSAppUsesNonExemptEncryption": false
+    },
+    "launchScreen": {
+      "background": "#ffffff"
+    }
+  }
+}
