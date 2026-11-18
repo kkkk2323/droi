@@ -1,0 +1,4 @@
+# The workspace is the root package alone: oxlint, oxfmt and lucide-static for
+# apps/native's scripts. The file also keeps pnpm from taking a checkout's
+# parent folder for the workspace, as a worktree inside the main checkout is.
+packages: []
