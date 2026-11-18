@@ -19,8 +19,8 @@ import (
 	"strings"
 )
 
-// MemorySessionTag marks a Memory Session (ADR 0011), as
-// packages/daemon-layer/src/memory-session.ts names it.
+// MemorySessionTag marks a Memory Session (ADR 0011), as the removed
+// TypeScript daemon layer named it.
 const MemorySessionTag = "droi.memory"
 
 // SessionsDir is ~/.factory/sessions, or .factory/sessions in

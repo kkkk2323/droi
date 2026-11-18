@@ -1,7 +1,7 @@
 // Package prefs keeps the Client's local preferences, in the place of the web
 // Client's localStorage: one JSON file in the app's data directory, values
-// stored under the same keys and in the same string forms the web Client uses
-// (packages/daemon-layer/src/local-preference.ts), so the two read alike.
+// stored under the same keys and in the same string forms the web Client used,
+// so an update reads them unchanged.
 package prefs
 
 import (

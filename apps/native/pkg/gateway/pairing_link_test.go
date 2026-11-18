@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// The cases of packages/daemon-layer/src/pairing.test.ts, which the Phone
-// App's parsing is held to.
+// The cases the removed TypeScript daemon layer's pairing tests held parsing
+// to.
 func TestParsePairingLinkReadsTheGatewayAndTokenFromAPastedLink(t *testing.T) {
 	for _, tc := range []struct {
 		in      string
