@@ -155,16 +155,64 @@ func (v *View) StopJob(j transcript.Job) {
 // Stopping is whether StopJob waits on the Daemon for j.
 func (v *View) Stopping(j transcript.Job) bool { return v.jobs.stopping[j.ID] }
 
-// RunningCommands are the Session's background commands still running.
-// A Script still going is not one: it is the run of a call Droid waits on.
-func (v *View) RunningCommands() []transcript.Job {
+// BackgroundTasks are the Session's background work still running, oldest
+// first: commands an Execute left running, and Scripts left running.
+//
+// A Script still going after its first answer may be one a turn waits on,
+// and one that ran before the Daemon restarted ended without a record of
+// its end. So Scripts count as far as the Daemon's count of the Session's
+// background work goes past its commands, newest first; while a turn runs,
+// whose new Scripts that count has not seen yet, so do those that asked to
+// start in the background. A droid that counts nothing leaves only those.
+func (v *View) BackgroundTasks() []transcript.Job {
+	jobs := v.Jobs()
 	var out []transcript.Job
-	for _, j := range v.Jobs() {
-		if !j.Done && !j.Script {
+	var scripts []transcript.Job
+	for _, j := range jobs {
+		switch {
+		case j.Done:
+		case j.Script:
+			scripts = append(scripts, j)
+		default:
 			out = append(out, j)
 		}
 	}
+	if len(scripts) == 0 {
+		return out
+	}
+	s := v.env.Controller.Store().Session(v.id)
+	if s == nil {
+		return out
+	}
+	n, known := s.BackgroundWork()
+	idle := s.WorkingState() == protocol.DroidWorkingStateIdle
+	room := 0
+	if known {
+		room = n - len(s.BackgroundProcesses())
+	}
+	for i := len(scripts) - 1; i >= 0; i-- {
+		j := scripts[i]
+		switch {
+		case room > 0:
+			room--
+		case j.Background && (!known || !idle):
+		default:
+			continue
+		}
+		out = append(out, j)
+	}
+	slices.SortStableFunc(out, func(a, b transcript.Job) int { return cmp.Compare(a.StartedAt, b.StartedAt) })
 	return out
+}
+
+// lastNotification is the last notification the Script run told Droid.
+func (v *View) lastNotification(run string) (transcript.Notice, bool) {
+	for i := len(v.notices) - 1; i >= 0; i-- {
+		if n := v.notices[i]; n.Kind == transcript.ScriptNotified && n.Run == run {
+			return n, true
+		}
+	}
+	return transcript.Notice{}, false
 }
 
 // job is the background job a tool call started, if any; jobs must be
@@ -220,16 +268,32 @@ func (v *View) jobMark(c *ui.Context, j transcript.Job) {
 
 // ShowsOutput is whether JobOutput draws anything for j.
 func (v *View) ShowsOutput(j transcript.Job) bool {
-	return !j.Script && j.OutputFile != "" && v.local()
+	if j.Script {
+		n, ok := v.lastNotification(j.ID)
+		return ok && n.Text != ""
+	}
+	return j.OutputFile != "" && v.local()
 }
 
 // JobOutput is the last lines a background command wrote, read from its
-// output file while the Daemon runs on this computer; false draws nothing.
+// output file while the Daemon runs on this computer, or the last
+// notification a Script told Droid; false draws nothing.
 func (v *View) JobOutput(c *ui.Context, j transcript.Job) bool {
 	if !v.ShowsOutput(j) {
 		return false
 	}
 	k, t := v.look()
+	if j.Script {
+		n, _ := v.lastNotification(j.ID)
+		ui.Column(c).Role(ui.RoleGroup).Label(l10n.L("Last notification")).Children(func() {
+			ui.Scroll(c).MaxHeight(k.Px(240)).Children(func() {
+				k.Text(c, n.Text, 11.5, 20).Font(k.Mono).TextColor(t.MutedForeground).Selectable().Padding(k.Px(6), k.Px(10))
+			})
+			k.Text(c, l10n.L("Last notification · %s", transcript.FormatTimestamp(n.CreatedAt, v.env.Now())), 10.5, 15.75).
+				TextColor(t.MutedForeground.Alpha(0.7)).SingleLine().Padding(0, k.Px(10), k.Px(6), k.Px(10))
+		})
+		return true
+	}
 	text, read := v.jobTail(j)
 	if !j.Done {
 		c.After(jobsRead)

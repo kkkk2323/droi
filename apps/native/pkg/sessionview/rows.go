@@ -592,6 +592,10 @@ func activityBlockStats(b transcript.Block) (events, failed int, working bool) {
 
 // userEntry is the user's bubble on the right.
 func (v *View) userEntry(c *ui.Context, e *transcript.Entry) {
+	if transcript.IsWake(e) {
+		v.wakeEntry(c, e)
+		return
+	}
 	k, t := v.look()
 	if len(e.Blocks) == 1 && e.Blocks[0].Kind == transcript.QueuedAnswers {
 		v.queuedRecord(c, e.Blocks[0].Records)

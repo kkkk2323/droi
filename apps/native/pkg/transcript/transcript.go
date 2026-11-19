@@ -66,6 +66,10 @@ const (
 	// The records of queued AskUser sets the user answered or dismissed,
 	// in a user entry: one block for records that follow each other.
 	QueuedAnswers
+	// What woke the Session while no one spoke to it, in a user entry of
+	// its own (IsWake): the Notices, and the calls a background Script made
+	// once the turn that started it was over.
+	Wake
 )
 
 type Block struct {
@@ -78,6 +82,7 @@ type Block struct {
 	Calls      []*ToolCall
 	Call       *ToolCall
 	Records    []QueuedRecord
+	Notices    []Notice
 }
 
 type Entry struct {
@@ -264,6 +269,13 @@ type Builder struct {
 	spans    []span
 	results  map[string]*protocol.ToolResult
 	watching map[string]*ToolCall
+	// resultAt is the index of the message each result came in.
+	resultAt map[string]int
+	// starters are the calls that leave work running, by tool use: Scripts
+	// and fire-and-forget commands, which Notices name.
+	starters map[string]*ToolCall
+	// runTools are the tools each Script calls, by run, read once.
+	runTools map[string]string
 }
 
 // draft is an entry under way: its blocks are draftBl[from:to].
@@ -366,11 +378,20 @@ func (bl *Builder) blocks(m protocol.FactoryDroidMessage) []*decodedBlock {
 // Build makes the transcript of the messages a Session shows, as the
 // package's Build does.
 func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
+	return bl.BuildWithNotices(messages, nil)
+}
+
+// BuildWithNotices is Build with the Session's Notices (NoticeReader), each
+// shown where it came, as what woke the Session.
+func (bl *Builder) BuildWithNotices(messages []protocol.FactoryDroidMessage, notices []Notice) []*Entry {
 	if bl.messages == nil {
 		bl.messages = map[string]*seenMessage{}
 		bl.src = map[*ToolCall]*decodedBlock{}
 		bl.results = map[string]*protocol.ToolResult{}
 		bl.watching = map[string]*ToolCall{}
+		bl.resultAt = map[string]int{}
+		bl.starters = map[string]*ToolCall{}
+		bl.runTools = map[string]string{}
 	}
 	bl.gen++
 	defer func() {
@@ -382,16 +403,19 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	}()
 	defer clear(bl.src)
 	defer clear(bl.watching)
+	defer clear(bl.starters)
 
 	results := bl.results
 	clear(results)
-	for _, m := range messages {
+	clear(bl.resultAt)
+	for i, m := range messages {
 		if m.Role != protocol.MessageRoleTool {
 			continue
 		}
 		for _, d := range bl.blocks(m) {
 			if d.typ == protocol.ContentBlockTypeToolResult && d.ok {
 				results[d.result.ToolUseID] = d.result
+				bl.resultAt[d.result.ToolUseID] = i
 			}
 		}
 	}
@@ -402,7 +426,57 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	// calls a WaitForScript saw show where that wait sits in the turn.
 	watching := bl.watching
 	ds, bs, cs, sp := bl.drafts[:0], bl.draftBl[:0], bl.draftCs[:0], bl.spans[:0]
-	for _, m := range messages {
+
+	// spoke: the user, Droid's words or a Notice came last. A background
+	// Script's calls from then on are no turn's: they show as a wake where
+	// they came, not under the call that started the Script long before.
+	spoke := false
+	wake := func(id string, at float64) *Block {
+		if n := len(ds); n > 0 && ds[n-1].User && ds[n-1].to-ds[n-1].from == 1 && bs[ds[n-1].from].Kind == Wake {
+			ds[n-1].CreatedAt = at
+			return &bs[ds[n-1].from]
+		}
+		bs, sp = append(bs, Block{Kind: Wake, ID: "wake:" + id}), append(sp, span{})
+		ds = append(ds, draft{Entry: Entry{ID: "wake:" + id, User: true, CreatedAt: at}, from: len(bs) - 1, to: len(bs)})
+		return &bs[len(bs)-1]
+	}
+	var byAfter map[string][]int
+	var shown []bool
+	if len(notices) > 0 {
+		byAfter, shown = make(map[string][]int, len(notices)), make([]bool, len(notices))
+		for i, n := range notices {
+			byAfter[n.after] = append(byAfter[n.after], i)
+		}
+	}
+	show := func(i int) {
+		if shown[i] {
+			return
+		}
+		shown[i] = true
+		n := notices[i]
+		if n.Summary == "" || n.Kind != CommandEnded {
+			if s := bl.starterSummary(n); s != "" {
+				n.Summary = s
+			}
+		}
+		w := wake(n.ID, n.CreatedAt)
+		w.Notices = append(w.Notices, n)
+		spoke = true
+	}
+	showAfter := func(id string) {
+		for _, i := range byAfter[id] {
+			show(i)
+		}
+	}
+	if byAfter != nil {
+		showAfter("")
+	}
+	prev := ""
+	for i, m := range messages {
+		if byAfter != nil && prev != "" {
+			showAfter(prev)
+		}
+		prev = m.ID
 		if isReceipt(m) {
 			continue
 		}
@@ -431,6 +505,7 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			continue
 		}
 		start := len(bs)
+		var bg, bgOwners []*ToolCall
 		for _, d := range bl.blocks(m) {
 			if !d.ok {
 				continue
@@ -455,8 +530,16 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 				use := d.use
 				call, run := bl.call(d, results[use.ID], resolved)
 				bl.src[call] = d
+				if use.Name == ScriptTool && use.ScriptExecution == nil || call.Input["fireAndForget"] == true {
+					bl.starters[use.ID] = call
+				}
 				if use.ScriptExecution != nil {
 					if owner := watching[use.ScriptExecution.OuterToolUseID]; owner != nil {
+						// The call watching the run answered before this one came.
+						if at, ok := bl.resultAt[owner.Use.ID]; spoke && ok && at < i {
+							bg, bgOwners = append(bg, call), append(bgOwners, owner)
+							continue
+						}
 						owner.Nested = append(owner.Nested, call)
 						continue
 					}
@@ -482,6 +565,16 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 				}
 			}
 		}
+		if len(bg) > 0 {
+			if len(bs) == start {
+				w := wake(bg[0].Use.ID, m.CreatedAt)
+				w.Calls = append(w.Calls, bg...)
+				continue
+			}
+			for k, c := range bg {
+				bgOwners[k].Nested = append(bgOwners[k].Nested, c)
+			}
+		}
 		// A user message with nothing to show is a record, not a turn: the
 		// Daemon persists each hook run as one, and a message that was only a
 		// system reminder loses its text on the way.
@@ -490,6 +583,7 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 		}
 		isError := m.IsError != nil && *m.IsError
 		user := role == protocol.MessageRoleUser
+		spoke = user || bs[len(bs)-1].Kind == Text
 		// One turn arrives as several assistant messages; shown as one entry
 		// so nothing splits it. Tool runs join up too. The entry before is
 		// the last, so its blocks end where this message's start.
@@ -505,6 +599,13 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			continue
 		}
 		ds = append(ds, draft{Entry: Entry{ID: m.ID, User: user, CreatedAt: m.CreatedAt, IsError: isError}, from: start, to: len(bs)})
+	}
+	if byAfter != nil {
+		showAfter(prev)
+		// The message before it is not among those shown: it stays last.
+		for i := range notices {
+			show(i)
+		}
 	}
 	bl.drafts, bl.draftBl, bl.draftCs, bl.spans = ds, bs, cs, sp
 
@@ -534,6 +635,8 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 			if b.Kind == Tools {
 				s := sp[d.from+j]
 				b.Calls = cs[s.from:s.to:s.to]
+			}
+			if b.Kind == Tools || b.Kind == Wake {
 				for k, c := range b.Calls {
 					b.Calls[k] = bl.canonical(c)
 				}
@@ -559,6 +662,30 @@ func (bl *Builder) Build(messages []protocol.FactoryDroidMessage) []*Entry {
 	}
 	bl.last = entries
 	return entries
+}
+
+// starterSummary is what the call that started n's work does: the tools a
+// Script calls, or a command's summary; "" when it is not loaded.
+func (bl *Builder) starterSummary(n Notice) string {
+	if n.Kind != CommandEnded {
+		if s, ok := bl.runTools[n.Run]; ok {
+			return s
+		}
+	}
+	c := bl.starters[n.Run]
+	if c == nil {
+		return ""
+	}
+	if n.Kind == CommandEnded {
+		if s, _ := c.Input["summary"].(string); strings.TrimSpace(s) != "" {
+			return firstLine(s, 120)
+		}
+		s, _ := c.Input["command"].(string)
+		return firstLine(s, 120)
+	}
+	s := scriptTools(c.Use)
+	bl.runTools[n.Run] = s
+	return s
 }
 
 // call is the call of tool use d with result, and the run it watches when
@@ -661,7 +788,8 @@ func sameEntry(a, b *Entry) bool {
 func sameBlock(a, b *Block) bool {
 	if a.Kind != b.Kind || a.ID != b.ID || a.Text != b.Text || a.Image != b.Image || a.Streaming != b.Streaming ||
 		(a.DurationMs == nil) != (b.DurationMs == nil) || a.DurationMs != nil && *a.DurationMs != *b.DurationMs ||
-		!sameCall(a.Call, b.Call) || len(a.Calls) != len(b.Calls) || (a.Calls == nil) != (b.Calls == nil) {
+		!sameCall(a.Call, b.Call) || len(a.Calls) != len(b.Calls) || (a.Calls == nil) != (b.Calls == nil) ||
+		(a.Notices == nil) != (b.Notices == nil) || (len(a.Notices) > 0 || len(b.Notices) > 0) && !reflect.DeepEqual(a.Notices, b.Notices) {
 		return false
 	}
 	for i := range a.Calls {

@@ -75,6 +75,26 @@ func TestJobsReadAScriptLeftRunning(t *testing.T) {
 	eq(t, []any{j.Done, j.Status}, []any{true, ""})
 }
 
+func TestAScriptCanAskToStartInTheBackground(t *testing.T) {
+	for script, want := range map[string]bool{
+		"// @script: {\"startInBackground\": true}\nawait tools.Execute({})":                      true,
+		"// @input: x <<'EOF'\nhi\nEOF\n  //  @script: {\"startInBackground\":true}\nnotify('x')": true,
+		"// @script: {\"startInBackground\": false}\nawait tools.Execute({})":                     false,
+		"await tools.Execute({}) // @script: {\"startInBackground\": true}":                       false,
+		"await tools.Execute({})": false,
+	} {
+		if got := StartsInBackground(script); got != want {
+			t.Errorf("%q: %v", script, got)
+		}
+	}
+	running := []map[string]any{{"type": "text", "text": `{"toolCallId":"s4","status":"running"}`}}
+	jobs := Jobs([]protocol.FactoryDroidMessage{
+		msg("assistant", `[{"type":"tool_use","id":"s4","name":"Script","input":{"script":"// @script: {\"startInBackground\": true}\nnotify('x')"}}]`),
+		msg("tool", resultOf("s4", running)),
+	})
+	eq(t, []any{len(jobs), jobs[0].Script, jobs[0].Background}, []any{1, true, true})
+}
+
 func TestJobsIgnoreOtherAnswers(t *testing.T) {
 	msgs := []protocol.FactoryDroidMessage{
 		msg("assistant", `[{"type":"tool_use","id":"s3","name":"Script","input":{"script":"x"}}]`),

@@ -165,7 +165,11 @@ type View struct {
 	list    ui.ListState
 	entries []*transcript.Entry
 	builder transcript.Builder
-	built   int64 // the Session's revision entries were built at
+	// noticeReader reads the Notices the transcript shows where they woke
+	// the Session; notices are the last it read.
+	noticeReader transcript.NoticeReader
+	notices      []transcript.Notice
+	built        int64 // the Session's revision entries were built at
 	// frameRows are the list's rows of the frame being built.
 	frameRows []transcriptRow
 	rowCache  rowCache
@@ -506,7 +510,7 @@ func (v *View) Release() {
 		// it is shown again; one at its end starts there again as it was.
 		v.list, v.leftEnd = ui.ListState{FollowEnd: true}, false
 	}
-	v.builder = transcript.Builder{}
+	v.builder, v.noticeReader, v.notices = transcript.Builder{}, transcript.NoticeReader{}, nil
 	v.entries, v.frameRows, v.rowCache, v.built = nil, nil, rowCache{}, -1
 	v.links, v.linksAt = nil, linksKey{}
 	clear(v.calls)
@@ -652,8 +656,10 @@ func (v *View) refresh(s *session.Session) {
 	v.built = rev
 	var next []*transcript.Entry
 	// Read in place: copying a long Session's messages on each change was
-	// most of what its window allocated while its agent worked.
-	s.ReadDisplayMessages(func(msgs []protocol.FactoryDroidMessage) { next = v.builder.Build(msgs) })
+	// most of what its window allocated while its agent worked. The
+	// Notices are for the model only, so only the stored messages have them.
+	s.ReadMessages(func(msgs []protocol.FactoryDroidMessage) { v.notices = v.noticeReader.Read(msgs) })
+	s.ReadDisplayMessages(func(msgs []protocol.FactoryDroidMessage) { next = v.builder.BuildWithNotices(msgs, v.notices) })
 	v.entries, _ = transcript.ReuseUnchanged(v.entries, next)
 }
 
