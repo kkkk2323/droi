@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react'
 import { useConnectionState, useDaemonConnection } from './connection-context'
 import {
   applyPatch,
+  rewrittenModel,
   toSessionDefaults,
   type SessionDefaultsPatch,
   type SessionDefaultsView,
@@ -67,11 +68,21 @@ export function useSessionDefaultsEditor(): SessionDefaultsEditor {
       const before = queryClient.getQueryData<SessionDefaultsView>(QUERY_KEY)
       if (before) queryClient.setQueryData(QUERY_KEY, applyPatch(before, patch))
       try {
-        const result = await controller.updateSessionDefaults(patch as never)
-        queryClient.setQueryData(
-          QUERY_KEY,
-          toSessionDefaults(result.defaults as unknown as Record<string, unknown>),
-        )
+        let result = await controller.updateSessionDefaults(patch as never)
+        let returned = result.defaults as unknown as Record<string, unknown>
+        const legacyId = rewrittenModel(before, patch, returned)
+        if (legacyId) {
+          try {
+            result = await controller.updateSessionDefaults({
+              ...patch,
+              acknowledgeLegacyModelId: legacyId,
+            } as never)
+            returned = result.defaults as unknown as Record<string, unknown>
+          } catch {
+            // Keep the first answer if the Daemon rewrote the slot for a non-legacy reason.
+          }
+        }
+        queryClient.setQueryData(QUERY_KEY, toSessionDefaults(returned))
       } catch (cause) {
         if (before) queryClient.setQueryData(QUERY_KEY, before)
         setSaveError(cause instanceof Error ? cause.message : String(cause))

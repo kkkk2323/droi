@@ -55,6 +55,10 @@ type View struct {
 // alone. For the three "same as main" choices a pointer to "" clears the
 // choice.
 type Patch struct {
+	// AcknowledgeLegacyModelID tells the Daemon to keep a legacy built-in
+	// model in legacyModelOverrides instead of auto-upgrading it to a newer
+	// generation.
+	AcknowledgeLegacyModelID        *string
 	ModelID                         *string
 	ReasoningEffort                 *string
 	InteractionMode                 *string
@@ -69,6 +73,9 @@ type Patch struct {
 	SubagentAutonomyLevel           *string
 	// SubagentModelSettings replaces the settings as a whole when non-nil.
 	SubagentModelSettings SubagentModelSettings
+	// SubagentInheritTiers clears the listed complexity tiers so they inherit
+	// again (droid 1.15+ merges subagentModelSettings per key).
+	SubagentInheritTiers []string
 	// WorktreeDirectory "" goes back to the Daemon's default folder.
 	WorktreeDirectory       *string
 	WorktreeAutoDeleteLimit *int
@@ -86,6 +93,7 @@ func (p Patch) Params() map[string]any {
 			out[key] = *v
 		}
 	}
+	put("acknowledgeLegacyModelId", p.AcknowledgeLegacyModelID, false)
 	put("modelId", p.ModelID, false)
 	put("reasoningEffort", p.ReasoningEffort, false)
 	put("interactionMode", p.InteractionMode, false)
@@ -111,7 +119,62 @@ func (p Patch) Params() map[string]any {
 	if p.SubagentModelSettings != nil {
 		out["subagentModelSettings"] = p.SubagentModelSettings
 	}
+	if len(p.SubagentInheritTiers) > 0 {
+		out["subagentInheritTiers"] = p.SubagentInheritTiers
+	}
 	return out
+}
+
+// RewrittenModel reports the built-in model id that p asked to save when the
+// Daemon's update_session_defaults answer came back with a different model in
+// that slot. droid's legacy-model-upgrade layer silently replaces an older
+// generation model (for example gemini-3.8-flash -> gemini-4-hydrogen, or
+// gpt-6.1-sol -> gpt-6.2-sol) unless acknowledgeLegacyModelId is sent; returning
+// the requested id lets the caller retry once with that acknowledgement.
+func RewrittenModel(before View, p Patch, returned map[string]any) string {
+	if p.AcknowledgeLegacyModelID != nil || len(returned) == 0 {
+		return ""
+	}
+	isBuiltIn := func(id string) bool {
+		return id != "" && id != CurrentModel && id != "inherit" && !strings.HasPrefix(strings.ToLower(id), "custom:")
+	}
+	str := func(key string) string {
+		s, _ := returned[key].(string)
+		return s
+	}
+	if p.ModelID != nil && isBuiltIn(*p.ModelID) {
+		want := *p.ModelID
+		got, gotNew := str("modelId"), str("newSessionModelId")
+		if (got != "" && got != want) || (gotNew != "" && gotNew != want) {
+			return want
+		}
+	}
+	if p.SpecModeModelID != nil && isBuiltIn(*p.SpecModeModelID) {
+		want := *p.SpecModeModelID
+		if got := str("specModeModelId"); got != "" && got != want {
+			return want
+		}
+	}
+	if p.CompactionModel != nil && isBuiltIn(*p.CompactionModel) {
+		want := *p.CompactionModel
+		if got := str("compactionModel"); got != "" && got != want {
+			return want
+		}
+	}
+	if p.SubagentModelSettings != nil {
+		gotSub, _ := returned["subagentModelSettings"].(map[string]any)
+		for _, tier := range SubagentTiers {
+			k := tier + "Model"
+			want := p.SubagentModelSettings[k]
+			if !isBuiltIn(want) || want == before.SubagentModelSettings[k] {
+				continue
+			}
+			if got, _ := gotSub[k].(string); got != "" && got != want {
+				return want
+			}
+		}
+	}
+	return ""
 }
 
 type Mode struct{ Value, Label string }

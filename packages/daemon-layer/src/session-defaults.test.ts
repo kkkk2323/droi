@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   applyPatch,
   reasoningChoices,
+  rewrittenModel,
   specSaveChoice,
   specSavePaths,
   toSessionDefaults,
@@ -106,5 +107,75 @@ describe('session defaults', () => {
   test('token limits read as Factory writes them', () => {
     expect(tokenLimitLabel(250_000)).toBe('250K')
     expect(tokenLimitLabel(1_000_000)).toBe('1M')
+  })
+
+  test('detects when the Daemon rewrites a legacy built-in model to a newer generation', () => {
+    const before = toSessionDefaults({
+      subagentModelSettings: {
+        lightModel: 'custom:magpie-openai-gpt-6-1-sol-abcdef',
+        mediumModel: 'gpt-6.1-sol',
+      },
+    })
+    expect(
+      rewrittenModel(
+        before,
+        { compactionModel: 'gemini-3.8-flash' },
+        { compactionModel: 'gemini-4-hydrogen' },
+      ),
+    ).toBe('gemini-3.8-flash')
+    expect(
+      rewrittenModel(
+        before,
+        { compactionModel: 'gemini-4-hydrogen' },
+        { compactionModel: 'gemini-4-hydrogen' },
+      ),
+    ).toBeNull()
+    expect(
+      rewrittenModel(
+        before,
+        { compactionModel: 'custom:magpie-openai-gpt-6-1-sol-abcdef' },
+        { compactionModel: 'gpt-6.2-sol' },
+      ),
+    ).toBeNull()
+    expect(
+      rewrittenModel(
+        before,
+        { modelId: 'gpt-6.1-sol' },
+        { modelId: 'gpt-6.1-sol', newSessionModelId: 'gpt-6.2-sol' },
+      ),
+    ).toBe('gpt-6.1-sol')
+    expect(
+      rewrittenModel(
+        before,
+        { specModeModelId: 'claude-sonnet-5' },
+        { specModeModelId: 'claude-sonnet-5-5' },
+      ),
+    ).toBe('claude-sonnet-5')
+    expect(
+      rewrittenModel(
+        before,
+        { subagentModelSettings: { lightModel: 'gpt-6.1-sol', mediumModel: 'gpt-6.1-sol' } },
+        { subagentModelSettings: { lightModel: 'gpt-6.2-sol', mediumModel: 'gpt-6.2-sol' } },
+      ),
+    ).toBe('gpt-6.1-sol')
+    expect(
+      rewrittenModel(
+        before,
+        { acknowledgeLegacyModelId: 'gemini-3.8-flash', compactionModel: 'gemini-3.8-flash' },
+        { compactionModel: 'gemini-4-hydrogen' },
+      ),
+    ).toBeNull()
+  })
+
+  test('applyPatch does not copy protocol-only keys onto the view', () => {
+    const view = toSessionDefaults({ compactionModel: 'gemini-4-hydrogen' })
+    const next = applyPatch(view, {
+      acknowledgeLegacyModelId: 'gemini-3.8-flash',
+      compactionModel: 'gemini-3.8-flash',
+      subagentInheritTiers: ['light'],
+    })
+    expect(next.compactionModel).toBe('gemini-3.8-flash')
+    expect('acknowledgeLegacyModelId' in next).toBe(false)
+    expect('subagentInheritTiers' in next).toBe(false)
   })
 })

@@ -61,10 +61,112 @@ func TestPatchShowsAtOnce(t *testing.T) {
 }
 
 func TestPatchParams(t *testing.T) {
-	got := Patch{SpecModeModelID: ptr(""), ModelID: ptr("gpt-5"), CompactionTokenLimit: ptr(500_000)}.Params()
-	want := map[string]any{"specModeModelId": nil, "modelId": "gpt-5", "compactionTokenLimit": 500_000}
+	got := Patch{
+		AcknowledgeLegacyModelID: ptr("gemini-3.8-flash"),
+		SpecModeModelID:          ptr(""),
+		ModelID:                  ptr("gpt-5"),
+		CompactionTokenLimit:     ptr(500_000),
+		SubagentInheritTiers:     []string{"light"},
+	}.Params()
+	want := map[string]any{
+		"acknowledgeLegacyModelId": "gemini-3.8-flash",
+		"specModeModelId":          nil,
+		"modelId":                  "gpt-5",
+		"compactionTokenLimit":     500_000,
+		"subagentInheritTiers":     []string{"light"},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Params = %v, want %v", got, want)
+	}
+}
+
+func TestRewrittenModel(t *testing.T) {
+	before := View{
+		SubagentModelSettings: SubagentModelSettings{
+			"lightModel":  "custom:magpie-openai-gpt-6-1-sol-abcdef",
+			"mediumModel": "gpt-6.1-sol",
+		},
+	}
+	for _, c := range []struct {
+		name     string
+		patch    Patch
+		returned map[string]any
+		want     string
+	}{
+		{
+			name:     "compaction model upgraded",
+			patch:    Patch{CompactionModel: ptr("gemini-3.8-flash")},
+			returned: map[string]any{"compactionModel": "gemini-4-hydrogen"},
+			want:     "gemini-3.8-flash",
+		},
+		{
+			name:     "compaction model kept",
+			patch:    Patch{CompactionModel: ptr("gemini-4-hydrogen")},
+			returned: map[string]any{"compactionModel": "gemini-4-hydrogen"},
+			want:     "",
+		},
+		{
+			name:     "compaction current-model ignored",
+			patch:    Patch{CompactionModel: ptr(CurrentModel)},
+			returned: map[string]any{"compactionModel": "gemini-4-hydrogen"},
+			want:     "",
+		},
+		{
+			name:     "default model upgraded in modelId",
+			patch:    Patch{ModelID: ptr("gpt-6.1-sol")},
+			returned: map[string]any{"modelId": "gpt-6.2-sol"},
+			want:     "gpt-6.1-sol",
+		},
+		{
+			name:     "default model upgraded in newSessionModelId",
+			patch:    Patch{ModelID: ptr("gpt-6.1-sol")},
+			returned: map[string]any{"modelId": "gpt-6.1-sol", "newSessionModelId": "gpt-6.2-sol"},
+			want:     "gpt-6.1-sol",
+		},
+		{
+			name:     "spec mode model upgraded",
+			patch:    Patch{SpecModeModelID: ptr("claude-sonnet-5")},
+			returned: map[string]any{"specModeModelId": "claude-sonnet-5-5"},
+			want:     "claude-sonnet-5",
+		},
+		{
+			name:  "changed subagent tier upgraded",
+			patch: Patch{SubagentModelSettings: SubagentModelSettings{"lightModel": "gpt-6.1-sol", "mediumModel": "gpt-6.1-sol"}},
+			returned: map[string]any{
+				"subagentModelSettings": map[string]any{"lightModel": "gpt-6.2-sol", "mediumModel": "gpt-6.2-sol"},
+			},
+			want: "gpt-6.1-sol",
+		},
+		{
+			name:  "unchanged subagent tier not retried",
+			patch: Patch{SubagentModelSettings: SubagentModelSettings{"lightModel": "custom:magpie-openai-gpt-6-1-sol-abcdef", "mediumModel": "gpt-6.1-sol"}},
+			returned: map[string]any{
+				"subagentModelSettings": map[string]any{"lightModel": "custom:magpie-openai-gpt-6-1-sol-abcdef", "mediumModel": "gpt-6.2-sol"},
+			},
+			want: "",
+		},
+		{
+			name:     "custom model ignored",
+			patch:    Patch{CompactionModel: ptr("custom:magpie-openai-gpt-6-1-sol-abcdef")},
+			returned: map[string]any{"compactionModel": "gpt-6.2-sol"},
+			want:     "",
+		},
+		{
+			name:     "already acknowledged not retried again",
+			patch:    Patch{AcknowledgeLegacyModelID: ptr("gemini-3.8-flash"), CompactionModel: ptr("gemini-3.8-flash")},
+			returned: map[string]any{"compactionModel": "gemini-4-hydrogen"},
+			want:     "",
+		},
+		{
+			name:     "empty response ignored",
+			patch:    Patch{CompactionModel: ptr("gemini-3.8-flash")},
+			returned: nil,
+			want:     "",
+		},
+	} {
+		if got := RewrittenModel(before, c.patch, c.returned); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 
