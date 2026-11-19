@@ -1,3 +1,8 @@
+## 1.99.2 - 2026-11-19
+
+### Fixed
+
+- Tightened vertical spacing around wake rows in the Session transcript so background Script notifications and command completion notices sit inline with surrounding tool and reasoning rows instead of leaving a full turn gap above and below.
 ## 1.99.1 - 2026-11-19
 
 ### Fixed

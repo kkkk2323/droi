@@ -22,7 +22,7 @@ import (
 )
 
 // devVersion is the version of `go run`; a build takes mygo.json's.
-const devVersion = "1.99.1"
+const devVersion = "1.99.2"
 
 func main() {
 	userData, err := mygo.App.Path(mygo.PathUserData)
