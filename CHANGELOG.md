@@ -1,3 +1,9 @@
+## 1.99.1 - 2026-11-19
+
+### Fixed
+
+- Picking an older-generation built-in model (such as Gemini 3.8 Flash or GPT-6.1 Sol) in Settings → Session defaults now sticks instead of being silently replaced by a newer generation (such as Gemini 4 Hydrogen or GPT-6.2 Sol). When the Daemon rewrites a newly saved built-in model through its legacy-model-upgrade layer, Droi acknowledges it once with `acknowledgeLegacyModelId` so the Daemon records it in `legacyModelOverrides`.
+- Resetting a Subagent task tier in Settings → Session defaults back to Inherit now sends `subagentInheritTiers`, so `droid` 1.15+ clears the tier override instead of keeping the previous model.
 ## 1.99.0 - 2026-11-19
 
 ### Added

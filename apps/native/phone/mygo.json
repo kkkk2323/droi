@@ -2,7 +2,7 @@
   "name": "Droi",
   "slug": "droi-phone",
   "identifier": "com.kkkk2323.droi",
-  "version": "1.99.0",
+  "version": "1.99.1",
   "icon": "resources/icon.png",
   "out": "build",
   "ios": {
