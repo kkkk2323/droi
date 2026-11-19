@@ -328,6 +328,7 @@ function Sections({ defaults, save }: { defaults: SessionDefaultsView; save: Sav
                   subagentModelSettings: withSubagentTier(subagents, tier, {
                     model: value === INHERIT ? null : value,
                   }),
+                  ...(value === INHERIT ? { subagentInheritTiers: [tier] } : {}),
                 }),
               )}
             />,

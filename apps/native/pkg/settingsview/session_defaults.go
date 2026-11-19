@@ -344,7 +344,11 @@ func (s *Settings) SessionDefaults(c *ui.Context, note string, banner func()) {
 							k.Text(c, l10n.T(tier.name), 14, 20).SingleLine().Width(k.Px(112)).Shrink(0)
 							ModelFieldOr(c, k, s.env.Prefs, l10n.T(tier.model), l10n.L("Inherit (calling session)"), locked("subagent."+tier.id+"Model"), s.Flag("model:subagent-"+tier.id), &s.picker,
 								defaults.PickableModels(dv.Models, true), model, func(next string) {
-									save(defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(settings, tier.id, next)})
+									p := defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(settings, tier.id, next)}
+									if next == "" {
+										p.SubagentInheritTiers = []string{tier.id}
+									}
+									save(p)
 								})
 							if model == "" {
 								return

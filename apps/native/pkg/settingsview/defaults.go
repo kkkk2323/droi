@@ -100,7 +100,19 @@ func (d *Defaults) Save(dv defaults.View, p defaults.Patch, failed func(error)) 
 	go func() {
 		cl, err := d.Controller.Client()
 		if err == nil {
-			err = cl.Call(d.ctx(), "daemon.update_session_defaults", p.Params(), nil)
+			var res struct {
+				Defaults map[string]any `json:"defaults"`
+			}
+			err = cl.Call(d.ctx(), "daemon.update_session_defaults", p.Params(), &res)
+			if err == nil {
+				if legacyID := defaults.RewrittenModel(dv, p, res.Defaults); legacyID != "" {
+					retry := p
+					retry.AcknowledgeLegacyModelID = &legacyID
+					// Ignore a retry failure (for example "Model is not legacy"
+					// when an org policy rewrote the slot): the first save succeeded.
+					_ = cl.Call(d.ctx(), "daemon.update_session_defaults", retry.Params(), nil)
+				}
+			}
 		}
 		d.Update(func() {
 			if err != nil && failed != nil {

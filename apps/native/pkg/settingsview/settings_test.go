@@ -2,16 +2,21 @@ package settingsview
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/egoist/mygo/ui"
 	droid "github.com/kkkk2323/droid-sdk-go"
 	"github.com/kkkk2323/droid-sdk-go/controller"
 	"github.com/kkkk2323/droid-sdk-go/fakedaemon"
 
+	"github.com/kkkk2323/droi/apps/native/pkg/defaults"
 	"github.com/kkkk2323/droi/apps/native/pkg/kit"
 	"github.com/kkkk2323/droi/apps/native/pkg/prefs"
 	"github.com/kkkk2323/droi/apps/native/pkg/theme"
@@ -157,5 +162,189 @@ func TestSessionDefaultsSavesAPick(t *testing.T) {
 	}
 	if dv := h.s.env.Defaults.Get(); dv == nil || dv.InteractionMode != "spec" {
 		t.Fatalf("the defaults shown: %+v", dv)
+	}
+}
+
+// When droid's legacy-model-upgrade layer rewrites a newly picked older model
+// (for example gemini-3.8-flash -> gemini-4-hydrogen or gpt-6.1-sol ->
+// gpt-6.2-sol), Save retries once with acknowledgeLegacyModelId so the choice
+// sticks. When the Daemon rewrote a non-legacy model for another reason and
+// rejects the acknowledgement, Save does not report a failure.
+func TestDefaultsSaveAcknowledgesLegacyModel(t *testing.T) {
+	upgrades := map[string]string{
+		"gemini-3.8-flash": "gemini-4-hydrogen",
+		"gpt-6.1-sol":      "gpt-6.2-sol",
+	}
+	var (
+		mu              sync.Mutex
+		compactionModel = "gemini-4-hydrogen"
+		subagentModels  = map[string]string{"lightModel": "custom:magpie-openai-gpt-6-1-sol-abcdef"}
+		overrides       = map[string]bool{}
+		updates         []map[string]any
+		rejectAck       bool
+	)
+	effective := func() map[string]any {
+		cm := compactionModel
+		if up, ok := upgrades[cm]; ok && !overrides[cm] {
+			cm = up
+		}
+		sub := map[string]string{}
+		for k, v := range subagentModels {
+			if up, ok := upgrades[v]; ok && !overrides[v] {
+				v = up
+			}
+			sub[k] = v
+		}
+		return map[string]any{
+			"compactionModel":       cm,
+			"subagentModelSettings": sub,
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.CloseNow()
+		for {
+			_, raw, err := conn.Read(r.Context())
+			if err != nil {
+				return
+			}
+			var req struct {
+				ID     string         `json:"id"`
+				Method string         `json:"method"`
+				Params map[string]any `json:"params"`
+			}
+			if err := json.Unmarshal(raw, &req); err != nil {
+				return
+			}
+			var resp map[string]any
+			switch req.Method {
+			case "daemon.authenticate":
+				resp = map[string]any{"type": "response", "id": req.ID, "result": map[string]any{"authenticated": true}}
+			case "daemon.get_default_settings":
+				mu.Lock()
+				resp = map[string]any{"type": "response", "id": req.ID, "result": effective()}
+				mu.Unlock()
+			case "daemon.update_session_defaults":
+				mu.Lock()
+				updates = append(updates, req.Params)
+				ack, _ := req.Params["acknowledgeLegacyModelId"].(string)
+				if ack != "" && rejectAck {
+					resp = map[string]any{"type": "response", "id": req.ID, "error": map[string]any{"code": -32603, "message": "Model is not legacy"}}
+				} else {
+					if ack != "" {
+						overrides[ack] = true
+					}
+					if cm, ok := req.Params["compactionModel"].(string); ok {
+						compactionModel = cm
+					}
+					if sub, ok := req.Params["subagentModelSettings"].(map[string]any); ok {
+						for k, v := range sub {
+							if s, ok := v.(string); ok {
+								subagentModels[k] = s
+							}
+						}
+					}
+					resp = map[string]any{"type": "response", "id": req.ID, "result": map[string]any{"success": true, "defaults": effective()}}
+				}
+				mu.Unlock()
+			default:
+				resp = map[string]any{"type": "response", "id": req.ID, "result": map[string]any{}}
+			}
+			b, _ := json.Marshal(resp)
+			if err := conn.Write(r.Context(), websocket.MessageText, b); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	ctl := controller.New(controller.Config{
+		URL:        "ws" + strings.TrimPrefix(srv.URL, "http"),
+		Credential: func(context.Context) (*droid.Credential, error) { return &droid.Credential{APIKey: "fk-test"}, nil },
+	})
+	t.Cleanup(func() { ctl.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := ctl.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{}, 16)
+	var failedErr error
+	defs := &Defaults{
+		Controller: ctl,
+		Update: func(fn func()) {
+			fn()
+			select {
+			case done <- struct{}{}:
+			default:
+			}
+		},
+	}
+	wait := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			if ok() {
+				return
+			}
+			select {
+			case <-done:
+			case <-deadline:
+				t.Fatalf("timed out waiting for %s", what)
+			}
+		}
+	}
+
+	defs.Get()
+	wait("initial defaults", func() bool { return defs.Get() != nil })
+
+	// 1. Summary model: gemini-3.8-flash is rewritten to gemini-4-hydrogen on
+	// the first call, then acknowledged and kept.
+	cm := "gemini-3.8-flash"
+	defs.Save(*defs.Get(), defaults.Patch{CompactionModel: &cm}, func(err error) { failedErr = err })
+	wait("compaction model reload", func() bool {
+		mu.Lock()
+		n := len(updates)
+		mu.Unlock()
+		return n >= 2 && defs.Get().CompactionModel == "gemini-3.8-flash"
+	})
+	mu.Lock()
+	if len(updates) != 2 || updates[0]["acknowledgeLegacyModelId"] != nil || updates[1]["acknowledgeLegacyModelId"] != "gemini-3.8-flash" {
+		t.Fatalf("compaction updates = %v", updates)
+	}
+	mu.Unlock()
+
+	// 2. Subagent light task model: gpt-6.1-sol is rewritten to gpt-6.2-sol,
+	// then acknowledged and kept.
+	dv := *defs.Get()
+	defs.Save(dv, defaults.Patch{SubagentModelSettings: defaults.WithSubagentTierModel(dv.SubagentModelSettings, "light", "gpt-6.1-sol")}, func(err error) { failedErr = err })
+	wait("subagent model reload", func() bool {
+		mu.Lock()
+		n := len(updates)
+		mu.Unlock()
+		return n >= 4 && defs.Get().SubagentModelSettings["lightModel"] == "gpt-6.1-sol"
+	})
+	mu.Lock()
+	if len(updates) != 4 || updates[2]["acknowledgeLegacyModelId"] != nil || updates[3]["acknowledgeLegacyModelId"] != "gpt-6.1-sol" {
+		t.Fatalf("subagent updates = %v", updates)
+	}
+	// 3. A retry rejected as "Model is not legacy" does not fail the save.
+	delete(overrides, "gemini-3.8-flash")
+	rejectAck = true
+	mu.Unlock()
+
+	defs.Save(*defs.Get(), defaults.Patch{CompactionModel: &cm}, func(err error) { failedErr = err })
+	wait("non-legacy retry completion", func() bool {
+		mu.Lock()
+		n := len(updates)
+		mu.Unlock()
+		return n >= 6 && defs.Get().CompactionModel == "gemini-4-hydrogen"
+	})
+	if failedErr != nil {
+		t.Fatalf("unexpected save error: %v", failedErr)
 	}
 }

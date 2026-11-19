@@ -126,8 +126,12 @@ func TestSessionDefaultsSetsASubagentTierModel(t *testing.T) {
 	// The list starts with the fallback, highlighted.
 	h.tt.Key(0, ui.KeyEnter)
 	h.frame()
-	if got, _ := json.Marshal(h.defaultsPatchSent(3)["subagentModelSettings"]); string(got) != `{}` {
+	p := h.defaultsPatchSent(3)
+	if got, _ := json.Marshal(p["subagentModelSettings"]); string(got) != `{}` {
 		t.Fatalf("subagentModelSettings %s", got)
+	}
+	if got, _ := json.Marshal(p["subagentInheritTiers"]); string(got) != `["heavy"]` {
+		t.Fatalf("subagentInheritTiers %s", got)
 	}
 }
 

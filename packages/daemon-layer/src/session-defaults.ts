@@ -34,6 +34,7 @@ export interface SessionDefaultsView {
 
 /** What `daemon.update_session_defaults` takes; `null` clears a "same as main" choice. */
 export interface SessionDefaultsPatch {
+  acknowledgeLegacyModelId?: string
   modelId?: string
   reasoningEffort?: string
   interactionMode?: string
@@ -47,6 +48,7 @@ export interface SessionDefaultsPatch {
   compactionThresholdCheckEnabled?: boolean
   subagentAutonomyLevel?: string
   subagentModelSettings?: SubagentModelSettings
+  subagentInheritTiers?: SubagentTier[]
 }
 
 export const INTERACTION_MODES = [
@@ -130,9 +132,54 @@ export function applyPatch(
 ): SessionDefaultsView {
   const next = { ...view }
   for (const [key, value] of Object.entries(patch)) {
+    if (key === 'acknowledgeLegacyModelId' || key === 'subagentInheritTiers') continue
     if (value !== undefined) (next as Record<string, unknown>)[key] = value
   }
   return next
+}
+
+/**
+ * The built-in model id that `patch` asked to save when the Daemon's answer
+ * came back with a different model in that slot (droid's legacy-model-upgrade
+ * replaces older generations unless `acknowledgeLegacyModelId` is sent).
+ */
+export function rewrittenModel(
+  before: SessionDefaultsView | undefined,
+  patch: SessionDefaultsPatch,
+  returned: RawDefaults | undefined,
+): string | null {
+  if (patch.acknowledgeLegacyModelId || !returned) return null
+  const isBuiltIn = (id: string | null | undefined): id is string =>
+    Boolean(
+      id && id !== CURRENT_MODEL && id !== 'inherit' && !id.toLowerCase().startsWith('custom:'),
+    )
+  const str = (key: string) => (typeof returned[key] === 'string' ? (returned[key] as string) : '')
+  if (isBuiltIn(patch.modelId)) {
+    const got = str('modelId')
+    const gotNew = str('newSessionModelId')
+    if ((got && got !== patch.modelId) || (gotNew && gotNew !== patch.modelId)) {
+      return patch.modelId
+    }
+  }
+  if (isBuiltIn(patch.specModeModelId)) {
+    const got = str('specModeModelId')
+    if (got && got !== patch.specModeModelId) return patch.specModeModelId
+  }
+  if (isBuiltIn(patch.compactionModel)) {
+    const got = str('compactionModel')
+    if (got && got !== patch.compactionModel) return patch.compactionModel
+  }
+  if (patch.subagentModelSettings) {
+    const gotSub = returned['subagentModelSettings'] as Record<string, unknown> | undefined
+    for (const tier of SUBAGENT_TIERS) {
+      const key = `${tier}Model` as const
+      const want = patch.subagentModelSettings[key]
+      if (!isBuiltIn(want) || want === before?.subagentModelSettings[key]) continue
+      const got = typeof gotSub?.[key] === 'string' ? (gotSub[key] as string) : ''
+      if (got && got !== want) return want
+    }
+  }
+  return null
 }
 
 /**
