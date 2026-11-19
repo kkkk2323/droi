@@ -278,8 +278,18 @@ func (v *View) cutEntry(rows []transcriptRow, entries []*transcript.Entry, i, tu
 		rows = append(rows, transcriptRow{kind: rowBlock, key: e.ID, e: e, block: -1})
 		pending = 0
 	}
-	rows[start].top += 12
-	rows[len(rows)-1].bottom = pending + 12
+	// A wake row is a 28px line rather than a user bubble, so the entries
+	// around it sit at a tool row's 2px gap instead of a full turn's gap.
+	if i > 0 && transcript.IsWake(entries[i-1]) {
+		rows[start].top = 2
+	} else {
+		rows[start].top += 12
+	}
+	if i+1 < len(entries) && transcript.IsWake(entries[i+1]) {
+		rows[len(rows)-1].bottom = 2
+	} else {
+		rows[len(rows)-1].bottom = pending + 12
+	}
 	return rows
 }
 

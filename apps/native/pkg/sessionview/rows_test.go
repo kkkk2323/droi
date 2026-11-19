@@ -64,6 +64,9 @@ func cachedRowsAgainstFreshCuts(t *testing.T, seed uint64) {
 		n++
 		id := fmt.Sprintf("e%d", n)
 		if user {
+			if rnd.IntN(3) == 0 {
+				return &transcript.Entry{ID: id, User: true, CreatedAt: float64(n * 1000), Blocks: []transcript.Block{{Kind: transcript.Wake, ID: "wake:" + id, Notices: []transcript.Notice{{ID: "n:" + id, Kind: transcript.CommandEnded, Summary: "dev server"}}}}}
+			}
 			return &transcript.Entry{ID: id, User: true, CreatedAt: float64(n * 1000), Blocks: []transcript.Block{{Kind: transcript.Text, ID: id + ":0", Text: "do it"}}}
 		}
 		var blocks []transcript.Block
@@ -204,6 +207,9 @@ func TestCachedRowsAreAFreshCutWhenFoldingActivity(t *testing.T) {
 			n++
 			id := fmt.Sprintf("e%d", n)
 			if user {
+				if rnd.IntN(3) == 0 {
+					return &transcript.Entry{ID: id, User: true, CreatedAt: float64(n * 1000), Blocks: []transcript.Block{{Kind: transcript.Wake, ID: "wake:" + id, Notices: []transcript.Notice{{ID: "n:" + id, Kind: transcript.CommandEnded, Summary: "dev server"}}}}}
+				}
 				return &transcript.Entry{ID: id, User: true, CreatedAt: float64(n * 1000), Blocks: []transcript.Block{{Kind: transcript.Text, ID: id + ":0", Text: "do it"}}}
 			}
 			var blocks []transcript.Block
@@ -283,5 +289,40 @@ func TestCachedRowsAreAFreshCutWhenFoldingActivity(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestWakeAdjacentEntriesKeepTightSpacing(t *testing.T) {
+	wake := &transcript.Entry{ID: "w1", User: true, CreatedAt: 2000, Blocks: []transcript.Block{{
+		Kind:    transcript.Wake,
+		ID:      "wake:w1",
+		Notices: []transcript.Notice{{ID: "n1", Kind: transcript.CommandEnded, Summary: "dev server"}},
+	}}}
+	entries := []*transcript.Entry{
+		{ID: "u1", User: true, CreatedAt: 1000, Blocks: []transcript.Block{{Kind: transcript.Text, ID: "u1:0", Text: "start"}}},
+		{ID: "a1", CreatedAt: 1500, Blocks: []transcript.Block{{Kind: transcript.Tools, ID: "a1:0", Calls: []*transcript.ToolCall{{Use: protocol.ToolUse{ID: "t1", Name: "Execute"}}}}}},
+		wake,
+		{ID: "a2", CreatedAt: 2500, Blocks: []transcript.Block{
+			{Kind: transcript.Thinking, ID: "a2:0", Text: "let me check"},
+			{Kind: transcript.Text, ID: "a2:1", Text: "done"},
+		}},
+	}
+	v := &View{flags: map[string]*bool{}}
+	rows := v.cachedRows(entries, "", false)
+	// rows: [0]=u1, [1]=a1 cluster, [2]=a1 call, [3]=w1, [4]=a2 thinking, [5]=a2 text, [6]=a2 turnEnd
+	if len(rows) != 7 {
+		t.Fatalf("got %d rows, want 7: %+v", len(rows), rows)
+	}
+	if rows[1].top != 20 {
+		t.Fatalf("entry after normal user bubble top = %v, want 20", rows[1].top)
+	}
+	if rows[2].bottom != 2 {
+		t.Fatalf("entry before wake bottom = %v, want 2", rows[2].bottom)
+	}
+	if rows[4].top != 2 {
+		t.Fatalf("entry after wake top = %v, want 2", rows[4].top)
+	}
+	if rows[6].bottom != 12 {
+		t.Fatalf("closing entry bottom = %v, want 12", rows[6].bottom)
 	}
 }

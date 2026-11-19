@@ -35,7 +35,7 @@ func (v *View) wakeEntry(c *ui.Context, e *transcript.Entry) {
 			chevron()
 		}
 	}
-	v.column(c).Role(ui.RoleGroup).Label(label).Padding(k.Px(12), k.Px(24), k.Px(4), k.Px(24)).Children(func() {
+	v.column(c).Role(ui.RoleGroup).Label(label).PaddingX(k.Px(24)).Children(func() {
 		if !wakeHasDetail(b) {
 			ui.Row(c).FillWidth().Height(k.Px(28)).Gap(k.Px(8)).PaddingX(k.Px(6)).Margin(0, 0, 0, -k.Px(6)).Children(func() { line(nil) })
 			return
