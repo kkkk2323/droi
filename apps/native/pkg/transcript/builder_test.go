@@ -23,20 +23,23 @@ func referenceBuild(messages []protocol.FactoryDroidMessage) []*Entry {
 		return out
 	}
 	results := map[string]*protocol.ToolResult{}
-	for _, m := range messages {
+	resultAt := map[string]int{}
+	for i, m := range messages {
 		if m.Role != protocol.MessageRoleTool {
 			continue
 		}
 		for _, d := range decoded(m) {
 			if d.typ == protocol.ContentBlockTypeToolResult && d.ok {
 				results[d.result.ToolUseID] = d.result
+				resultAt[d.result.ToolUseID] = i
 			}
 		}
 	}
 	records, resolved := queuedRecords(messages)
 	watching := map[string]*ToolCall{}
 	var entries []*Entry
-	for _, m := range messages {
+	spoke := false
+	for i, m := range messages {
 		if isReceipt(m) {
 			continue
 		}
@@ -62,6 +65,7 @@ func referenceBuild(messages []protocol.FactoryDroidMessage) []*Entry {
 			continue
 		}
 		var blocks []Block
+		var bg, owners []*ToolCall
 		for _, d := range decoded(m) {
 			if !d.ok {
 				continue
@@ -79,6 +83,10 @@ func referenceBuild(messages []protocol.FactoryDroidMessage) []*Entry {
 				call.Queued = queuedStateOf(call, resolved)
 				if use.ScriptExecution != nil {
 					if owner := watching[use.ScriptExecution.OuterToolUseID]; owner != nil {
+						if at, ok := resultAt[owner.Use.ID]; spoke && ok && at < i {
+							bg, owners = append(bg, call), append(owners, owner)
+							continue
+						}
 						owner.Nested = append(owner.Nested, call)
 						continue
 					}
@@ -102,11 +110,27 @@ func referenceBuild(messages []protocol.FactoryDroidMessage) []*Entry {
 				}
 			}
 		}
+		if len(bg) > 0 {
+			if len(blocks) == 0 {
+				if n := len(entries); n > 0 && IsWake(entries[n-1]) {
+					entries[n-1].Blocks[0].Calls = append(entries[n-1].Blocks[0].Calls, bg...)
+					entries[n-1].CreatedAt = m.CreatedAt
+				} else {
+					id := "wake:" + bg[0].Use.ID
+					entries = append(entries, &Entry{ID: id, User: true, CreatedAt: m.CreatedAt, Blocks: []Block{{Kind: Wake, ID: id, Calls: bg}}})
+				}
+				continue
+			}
+			for k, c := range bg {
+				owners[k].Nested = append(owners[k].Nested, c)
+			}
+		}
 		if len(blocks) == 0 {
 			continue
 		}
 		isError := m.IsError != nil && *m.IsError
 		user := role == protocol.MessageRoleUser
+		spoke = user || blocks[len(blocks)-1].Kind == Text
 		if n := len(entries); !user && n > 0 && !entries[n-1].User {
 			prev := entries[n-1]
 			for _, b := range blocks {
@@ -281,6 +305,12 @@ func (s *randomSession) step() []protocol.FactoryDroidMessage {
 // before it kept anything; keeps each entry that came out the same; and
 // leaves what it returned before as it was.
 func TestABuilderMatchesAFreshBuildAsASessionChanges(t *testing.T) {
+	wakes := 0
+	defer func() {
+		if !t.Failed() && wakes == 0 {
+			t.Error("no build had a background Script's calls in a wake")
+		}
+	}()
 	for seed := range uint64(40) {
 		s := &randomSession{r: rand.New(rand.NewPCG(seed, 7))}
 		var b Builder
@@ -288,6 +318,11 @@ func TestABuilderMatchesAFreshBuildAsASessionChanges(t *testing.T) {
 		for step := range 300 {
 			msgs := s.step()
 			got, want := b.Build(msgs), referenceBuild(msgs)
+			for _, e := range got {
+				if IsWake(e) {
+					wakes++
+				}
+			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("seed %d step %d: got %#v\nwant %#v", seed, step, got, want)
 			}

@@ -1,3 +1,13 @@
+## 1.99.0 - 2026-11-19
+
+### Added
+
+- A Session's transcript shows what woke it while no one spoke to it, where it woke: a background Script's notification, or the end of a Script or a command Droid left running, as one quiet row with its time. The row opens to what droid told Droid, and to the tool calls the Script made after its turn ended, which used to sit under the Script's row far up the transcript.
+- The header's background tasks count Scripts left running in the background, not only commands, and a Script's row there opens to its last notification. A Script counts while droid counts background work for the Session, so one from before droid restarted does not show as running.
+
+### Changed
+
+- Droi moves to droid-sdk-go v0.9.0, which keeps droid's count of a Session's background work.
 ## 1.98.1 - 2026-11-19
 
 ### Changed

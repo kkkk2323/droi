@@ -70,6 +70,10 @@ func railItems(entries []*transcript.Entry, unloaded []*transcript.Entry) []rail
 		items = append(items, railItem{id: e.ID, entry: -1, prompt: prompt(e)})
 	}
 	for i, e := range entries {
+		// What woke the Session is no one's message.
+		if transcript.IsWake(e) {
+			continue
+		}
 		if e.User {
 			items = append(items, railItem{id: e.ID, entry: i, prompt: prompt(e)})
 			continue

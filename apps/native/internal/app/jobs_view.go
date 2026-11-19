@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -9,12 +10,12 @@ import (
 	"github.com/kkkk2323/droi/apps/native/pkg/transcript"
 )
 
-// jobsMenu is the header's count of the Session's background commands
-// still running; it opens to them, each to the last lines it wrote while
-// the Daemon runs here.
+// jobsMenu is the header's count of the Session's background tasks still
+// running; it opens to them, each to the last lines a command wrote while
+// the Daemon runs here, or to a Script's last notification.
 func (v *sessionView) jobsMenu(c *ui.Context) {
 	k, t := v.a.kit, v.a.kit.T
-	jobs := v.RunningCommands()
+	jobs := v.BackgroundTasks()
 	if len(jobs) == 0 {
 		v.jobsOpen = false
 		return
@@ -51,7 +52,11 @@ func (v *sessionView) jobList(c *ui.Context, jobs []transcript.Job) {
 	row := func(r ui.Element, j transcript.Job, chevron func()) {
 		r.Height(k.Px(30)).Gap(k.Px(8)).Padding(0, k.Px(2), 0, k.Px(8)).Radius(k.Px(6)).Children(func() {
 			k.Spinner(c, 12, t.Info)
-			k.Text(c, j.Summary, 12.5, 18.75).TextColor(t.Foreground).Tooltip(j.Command).SingleLine().Grow(1).Shrink(1).MinWidth(0)
+			summary := j.Summary
+			if j.Script {
+				summary = L("Script") + " · " + summary
+			}
+			k.Text(c, summary, 12.5, 18.75).TextColor(t.Foreground).Tooltip(cmp.Or(j.Command, summary)).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 			k.Text(c, v.JobState(j), 11, 16.5).TextColor(t.MutedForeground).FontFeatures("tnum").SingleLine().Shrink(0)
 			if chevron != nil {
 				chevron()
@@ -107,11 +112,11 @@ func (v *sessionView) jobList(c *ui.Context, jobs []transcript.Job) {
 	})
 }
 
-// jobsRunning counts a Session's background commands still running, as
+// jobsRunning counts a Session's background tasks still running, as
 // far as a view this window keeps of it knows.
 func (a *App) jobsRunning(id string) int {
 	if v := a.views[id]; v != nil {
-		return len(v.RunningCommands())
+		return len(v.BackgroundTasks())
 	}
 	return 0
 }

@@ -21,6 +21,9 @@ type Job struct {
 	// ID is the tool use that started it (a Script's is its run).
 	ID     string
 	Script bool
+	// Background: a Script that asked to start in the background
+	// (startInBackground), which no turn waits on.
+	Background bool
 	// Summary is what the call said it does; for a Script, the tools it calls.
 	Summary    string
 	Command    string
@@ -121,10 +124,38 @@ type jobStep struct {
 	use *protocol.ToolUse
 	// tools is what a Script call calls, read once it is asked for.
 	tools     *string
+	asksBg    *bool
 	toolUseID string
 	started   *Job
 	run       string
 	status    string
+}
+
+// asksBackground is whether the Script call s asked to start in the
+// background.
+func (s *jobStep) asksBackground() bool {
+	if s.asksBg == nil {
+		script, _ := decodeInput(s.use.Input)["script"].(string)
+		b := StartsInBackground(script)
+		s.asksBg = &b
+	}
+	return *s.asksBg
+}
+
+var scriptDirective = regexp.MustCompile(`(?m)^\s*//\s*@script:\s*(\{.*\})\s*$`)
+
+// StartsInBackground is whether a Script's program asks, in its
+// `// @script:` directive, to start in the background: the call answers at
+// once and the run goes on after the turn.
+func StartsInBackground(script string) bool {
+	m := scriptDirective.FindStringSubmatch(script)
+	if m == nil {
+		return false
+	}
+	var d struct {
+		StartInBackground bool `json:"startInBackground"`
+	}
+	return json.Unmarshal([]byte(m[1]), &d) == nil && d.StartInBackground
 }
 
 // scriptTools is what the Script call s calls.
@@ -294,7 +325,7 @@ func (jr *JobReader) Read(messages []protocol.FactoryDroidMessage) []Job {
 				}
 				switch {
 				case s.status == "running" && name == ScriptTool && byID[s.run] == nil:
-					byID[s.run] = &Job{ID: s.run, Script: true, Summary: use.scriptTools(), StartedAt: at}
+					byID[s.run] = &Job{ID: s.run, Script: true, Background: use.asksBackground(), Summary: use.scriptTools(), StartedAt: at}
 					order = append(order, s.run)
 				case s.status != "running" && s.status != "stalled" && name == WaitForScriptTool:
 					status := s.status

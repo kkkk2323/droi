@@ -321,7 +321,7 @@ func TestReuseUnchanged(t *testing.T) {
 // added to Entry or Block has to be compared there too.
 func TestSameEntryIsDeepEqual(t *testing.T) {
 	eq(t, reflect.TypeFor[Entry]().NumField(), 5)
-	eq(t, reflect.TypeFor[Block]().NumField(), 9)
+	eq(t, reflect.TypeFor[Block]().NumField(), 10)
 	five, six := 5.0, 6.0
 	c := &ToolCall{Use: protocol.ToolUse{ID: "c", Name: "Read"}, Input: map[string]any{"file_path": "/a"}}
 	sameC := &ToolCall{Use: protocol.ToolUse{ID: "c", Name: "Read"}, Input: map[string]any{"file_path": "/a"}}
@@ -333,6 +333,7 @@ func TestSameEntryIsDeepEqual(t *testing.T) {
 		{Kind: Subagent, ID: "e:3", Call: c},
 		{Kind: QueuedAnswers, ID: "e:4", Records: []QueuedRecord{{ToolCallID: "q", Answers: []QueuedAnswer{{"Q", "A"}}}}},
 		{Kind: Picture, ID: "e:5", Image: Image{"image/png", "AAAA"}},
+		{Kind: Wake, ID: "e:6", Notices: []Notice{{ID: "n", Kind: ScriptNotified, Run: "r", Text: "half done"}}},
 	}}
 	variants := []func(e *Entry){
 		func(e *Entry) {},
@@ -340,7 +341,7 @@ func TestSameEntryIsDeepEqual(t *testing.T) {
 		func(e *Entry) { e.User = true },
 		func(e *Entry) { e.CreatedAt = 2 },
 		func(e *Entry) { e.IsError = true },
-		func(e *Entry) { e.Blocks = e.Blocks[:5] },
+		func(e *Entry) { e.Blocks = e.Blocks[:6] },
 		func(e *Entry) { e.Blocks[0].Text = "ho" },
 		func(e *Entry) { e.Blocks[0].Streaming = true },
 		func(e *Entry) { e.Blocks[0].Kind = Thinking },
@@ -361,6 +362,15 @@ func TestSameEntryIsDeepEqual(t *testing.T) {
 			e.Blocks[4].Records = []QueuedRecord{{ToolCallID: "q", Answers: []QueuedAnswer{{"Q", "B"}}}}
 		},
 		func(e *Entry) { e.Blocks[5].Image.Data = "BBBB" },
+		func(e *Entry) { e.Blocks[6].Notices = nil },
+		func(e *Entry) { e.Blocks[6].Notices = []Notice{} },
+		func(e *Entry) {
+			e.Blocks[6].Notices = []Notice{{ID: "n", Kind: ScriptNotified, Run: "r", Text: "all done"}}
+		},
+		func(e *Entry) {
+			one := 1
+			e.Blocks[6].Notices = []Notice{{ID: "n", Kind: ScriptNotified, Run: "r", Text: "half done", ExitCode: &one}}
+		},
 	}
 	clone := func(e Entry) *Entry {
 		e.Blocks = slices.Clone(e.Blocks)
