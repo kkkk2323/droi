@@ -110,6 +110,7 @@ installed types before using an Expo module, and add Expo packages with
 ## Releases and performance
 
 - Releasing: `scripts/release.sh <version>`, after the changelog; steps in `apps/native/docs/releases.md`.
+- Merging PRs: merge once approved without waiting for CI, unless explicitly asked to wait.
 - CPU, memory or frame cost: how to measure and profile is in `apps/native/docs/performance.md`.
 
 ## Code Style
