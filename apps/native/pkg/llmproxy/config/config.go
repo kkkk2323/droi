@@ -18,7 +18,10 @@ const (
 	UsageFullRefreshSec = 1800
 	// UsageRecheckMinSec spaces the single-key re-reads after a 402/429.
 	UsageRecheckMinSec = 30
-	SpilloverThreshold = 0.98
+	// SpilloverThreshold is the used ratio at which a key yields to another.
+	// 1.0 spends each key's full quota; if a request hits 402/429 at 100%,
+	// the proxy switches keys and lets droid retry.
+	SpilloverThreshold = 1.0
 
 	// DailyKeyOpens is how many Pro keys' Standard months the rotator starts
 	// per local day before it would rather wait, so the months end on

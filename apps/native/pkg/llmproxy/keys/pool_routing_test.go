@@ -276,9 +276,13 @@ func TestSelectKeyForModel_PresentedKeyYieldsToExpiringMonth(t *testing.T) {
 			usageWithMonth("key-sent", 40, 5*day, 30),
 			usageWithMonth("key-expiring", 61, 2*day, 0),
 		}, "key-expiring"},
-		{"a spent month is left", []*KeyUsage{
+		{"an expiring month at 98% still wins", []*KeyUsage{
 			usageWithMonth("key-sent", 4, 25*day, 30),
 			usageWithMonth("key-expiring", 98, 2*day, 0),
+		}, "key-expiring"},
+		{"a spent month is left", []*KeyUsage{
+			usageWithMonth("key-sent", 4, 25*day, 30),
+			usageWithMonth("key-expiring", 100, 2*day, 0),
 		}, "key-sent"},
 	} {
 		t.Run(c.name, func(t *testing.T) {

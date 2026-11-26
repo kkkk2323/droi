@@ -67,6 +67,12 @@ func TestOpeningOpensEarlyWhenOpenKeysAreSpent(t *testing.T) {
 	for _, k := range []string{"open", "never", "never-2"} {
 		r.usages[k].StandardPercent = ptrTo(98)
 	}
+	if key, _ := r.SelectKeyForModel("", "claude-fable-5.1", nil); key == "ended" {
+		t.Fatal("opened a third key while open keys still have 2% left")
+	}
+	for _, k := range []string{"open", "never", "never-2"} {
+		r.usages[k].StandardPercent = ptrTo(100)
+	}
 	if key, _ := r.SelectKeyForModel("", "claude-fable-5.1", nil); key != "ended" {
 		t.Fatalf("every open key is spent; routed %s", key)
 	}
@@ -114,9 +120,16 @@ func TestScheduledOpeningLeavesRequestsOnOpenKeys(t *testing.T) {
 	if st := r.OpeningStatus(); st.OpenedToday != 1 || !st.Scheduled {
 		t.Fatalf("status = %+v", st)
 	}
-	// Every open key spent: a request still opens one at once.
+	// Open keys at 98% still serve before opening another.
 	for _, k := range []string{"open", "never"} {
 		r.usages[k].StandardPercent = ptrTo(98)
+	}
+	if key, _ := r.SelectKeyForModel("", "claude-fable-5.1", nil); key == "never-2" {
+		t.Fatal("opened a key while open keys still have 2% left")
+	}
+	// Every open key spent: a request still opens one at once.
+	for _, k := range []string{"open", "never"} {
+		r.usages[k].StandardPercent = ptrTo(100)
 	}
 	if key, _ := r.SelectKeyForModel("", "claude-fable-5.1", nil); key != "never-2" {
 		t.Fatalf("spent pool routed %s", key)
