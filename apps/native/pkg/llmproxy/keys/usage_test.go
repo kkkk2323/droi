@@ -346,11 +346,11 @@ func TestSelectActiveKey_ExpireFirst(t *testing.T) {
 
 	selected := r.selectActiveKey()
 	if selected != "key-early" {
-		t.Fatalf("expected key-early (earliest expiry, ratio 0.5 < 0.98), got %s", selected)
+		t.Fatalf("expected key-early (earliest expiry, ratio 0.5 < 1.0), got %s", selected)
 	}
 }
 
-func TestSelectActiveKey_Spillover98(t *testing.T) {
+func TestSelectActiveKey_SpilloverAt100(t *testing.T) {
 	r := &KeyRotator{
 		keys:   []string{"key-full", "key-ok"},
 		usages: make(map[string]*KeyUsage),
@@ -358,12 +358,12 @@ func TestSelectActiveKey_Spillover98(t *testing.T) {
 
 	earlyMs := float64(1742496000000)
 	lateMs := float64(1750000000000)
-	used98 := float64(98)
+	used := float64(98)
 	used50 := float64(50)
 	total100 := float64(100)
 
 	r.usages["key-full"] = &KeyUsage{
-		Key: "key-full", Used: &used98, Total: &total100,
+		Key: "key-full", Used: &used, Total: &total100,
 		ExpiresTsMs: &earlyMs, LastCheckedAt: testNow(),
 	}
 	r.usages["key-ok"] = &KeyUsage{
@@ -371,9 +371,18 @@ func TestSelectActiveKey_Spillover98(t *testing.T) {
 		ExpiresTsMs: &lateMs, LastCheckedAt: testNow(),
 	}
 
-	selected := r.selectActiveKey()
-	if selected != "key-ok" {
-		t.Fatalf("expected key-ok (key-full at 98%% spillover), got %s", selected)
+	if selected := r.selectActiveKey(); selected != "key-full" {
+		t.Fatalf("expected key-full at 98%% (< 100%% spillover), got %s", selected)
+	}
+
+	used = 99
+	if selected := r.selectActiveKey(); selected != "key-full" {
+		t.Fatalf("expected key-full at 99%% (< 100%% spillover), got %s", selected)
+	}
+
+	used = 100
+	if selected := r.selectActiveKey(); selected != "key-ok" {
+		t.Fatalf("expected key-ok (key-full at 100%% spillover), got %s", selected)
 	}
 }
 
@@ -385,23 +394,26 @@ func TestSelectActiveKey_AllExhausted(t *testing.T) {
 
 	ms1 := float64(1742496000000)
 	ms2 := float64(1750000000000)
+	used100 := float64(100)
 	used99 := float64(99)
-	used95 := float64(95)
 	total100 := float64(100)
 
 	r.usages["key-a"] = &KeyUsage{
-		Key: "key-a", Used: &used99, Total: &total100,
+		Key: "key-a", Used: &used100, Total: &total100,
 		ExpiresTsMs: &ms1, LastCheckedAt: testNow(),
 	}
 	r.usages["key-b"] = &KeyUsage{
-		Key: "key-b", Used: &used95, Total: &total100,
+		Key: "key-b", Used: &used99, Total: &total100,
 		ExpiresTsMs: &ms2, LastCheckedAt: testNow(),
 	}
 
-	selected := r.selectActiveKey()
-	// Both >= 98%: pick the one with most remaining (key-b: 5 > key-a: 1)
-	if selected != "key-b" {
-		t.Fatalf("expected key-b (most remaining: 5), got %s", selected)
+	if selected := r.selectActiveKey(); selected != "key-b" {
+		t.Fatalf("expected key-b (still has 1%% remaining), got %s", selected)
+	}
+
+	used99 = 100
+	if selected := r.selectActiveKey(); selected != "key-a" {
+		t.Fatalf("expected key-a (fallback when all keys are at 100%%), got %s", selected)
 	}
 }
 
@@ -697,12 +709,12 @@ func TestSelectActiveKey_SameExpiry_NoOscillation(t *testing.T) {
 	}
 
 	ms := float64(1742496000000)
-	used97 := float64(97)
+	used99 := float64(99)
 	used20 := float64(20)
 	total100 := float64(100)
 
 	r.usages["key-high"] = &KeyUsage{
-		Key: "key-high", Used: &used97, Total: &total100,
+		Key: "key-high", Used: &used99, Total: &total100,
 		ExpiresTsMs: &ms, LastCheckedAt: testNow(),
 	}
 	r.usages["key-low"] = &KeyUsage{
@@ -712,7 +724,7 @@ func TestSelectActiveKey_SameExpiry_NoOscillation(t *testing.T) {
 
 	selected := r.selectActiveKey()
 	if selected != "key-high" {
-		t.Fatalf("expected key-high (97%% < 98%% threshold, keep burning), got %s", selected)
+		t.Fatalf("expected key-high (99%% < 100%% threshold, keep burning), got %s", selected)
 	}
 }
 
@@ -723,12 +735,12 @@ func TestSelectActiveKey_SameExpiry_SpilloverSwitchesToNext(t *testing.T) {
 	}
 
 	ms := float64(1742496000000)
-	used98 := float64(98)
+	used100 := float64(100)
 	used20 := float64(20)
 	total100 := float64(100)
 
 	r.usages["key-high"] = &KeyUsage{
-		Key: "key-high", Used: &used98, Total: &total100,
+		Key: "key-high", Used: &used100, Total: &total100,
 		ExpiresTsMs: &ms, LastCheckedAt: testNow(),
 	}
 	r.usages["key-low"] = &KeyUsage{
@@ -738,7 +750,7 @@ func TestSelectActiveKey_SameExpiry_SpilloverSwitchesToNext(t *testing.T) {
 
 	selected := r.selectActiveKey()
 	if selected != "key-low" {
-		t.Fatalf("expected key-low (key-high hit 98%% spillover), got %s", selected)
+		t.Fatalf("expected key-low (key-high hit 100%% spillover), got %s", selected)
 	}
 }
 
@@ -796,12 +808,12 @@ func TestResolveKeyForRequest_PresentedKeySpillover(t *testing.T) {
 	}
 
 	ms := float64(1750000000000)
-	used98 := float64(98)
+	used := float64(98)
 	used50 := float64(50)
 	total100 := float64(100)
 
 	r.usages["key-full"] = &KeyUsage{
-		Key: "key-full", Used: &used98, Total: &total100,
+		Key: "key-full", Used: &used, Total: &total100,
 		ExpiresTsMs: &ms, LastCheckedAt: testNow(),
 	}
 	r.usages["key-ok"] = &KeyUsage{
@@ -810,9 +822,13 @@ func TestResolveKeyForRequest_PresentedKeySpillover(t *testing.T) {
 	}
 	r.activeKey.Store(str("key-ok"))
 
-	result := r.ResolveKeyForRequest("key-full")
-	if result != "key-ok" {
-		t.Fatalf("expected key-ok (key-full at spillover), got %s", result)
+	if result := r.ResolveKeyForRequest("key-full"); result != "key-full" {
+		t.Fatalf("expected key-full at 98%% (< 100%% spillover), got %s", result)
+	}
+
+	used = 100
+	if result := r.ResolveKeyForRequest("key-full"); result != "key-ok" {
+		t.Fatalf("expected key-ok (key-full at 100%% spillover), got %s", result)
 	}
 }
 

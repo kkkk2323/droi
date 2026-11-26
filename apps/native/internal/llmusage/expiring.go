@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
+	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/config"
 	"github.com/kkkk2323/droi/apps/native/pkg/llmproxy/keys"
 )
 
 const (
-	// minExpiringPercent: the Key Pool stops routing a key at 98% used, so
-	// the last 2% of a month cannot be spent and is not listed.
-	minExpiringPercent = 2.0
+	// minExpiringPercent is the unspendable tail below 100% left by
+	// SpilloverThreshold. At 1.0 it is 0, so a key stays listed until used up.
+	minExpiringPercent = (1 - config.SpilloverThreshold) * 100
 	// expiringHorizon lists months that end this soon, plus any key that
 	// needs attention earlier.
 	expiringHorizon = keys.ExpiringWithin

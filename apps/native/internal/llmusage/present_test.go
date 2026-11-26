@@ -259,7 +259,7 @@ func TestExpiring(t *testing.T) {
 		{Index: 3, Key: "c", Status: "ok", Limits: month(50, 70*time.Hour)},
 		{Index: 4, Key: "d", Status: "http_403", Limits: month(0, time.Hour)},
 		// Used up: the Key Pool no longer routes it.
-		{Index: 5, Key: "e", Status: "ok", Limits: month(99, time.Hour)},
+		{Index: 5, Key: "e", Status: "ok", Limits: month(100, time.Hour)},
 		// Ten minutes after b: same group, more left first.
 		{Index: 6, Key: "f", Status: "ok", Limits: month(69, 2*time.Hour+10*time.Minute)},
 		// Beyond the horizon, and one week covers it.
@@ -292,6 +292,14 @@ func TestExpiring(t *testing.T) {
 	}
 	if v.SummaryTone != ToneDanger || v.Summary != "4 把 key · 最早 2 小时后作废" {
 		t.Errorf("summary = %q", v.Summary)
+	}
+
+	// A key at 98% still has spendable quota and stays listed until 100%.
+	tail := BuildExpiring([]keys.KeyState{
+		{Index: 1, Key: "tail", Status: "ok", Limits: month(98, 2*time.Hour)},
+	}, now, nil)
+	if len(tail.Pools) != 1 || tail.Pools[0].Note != "1 把 key" {
+		t.Errorf("98%% key should remain in expiring list: %+v", tail.Pools)
 	}
 }
 
@@ -591,7 +599,7 @@ func TestCycle(t *testing.T) {
 	if v = BuildCycle(runwayKeys(2), nil, now); v.Available {
 		t.Errorf("no month under way = %+v", v)
 	}
-	if v = BuildCycle([]keys.KeyState{{Status: "ok", Limits: month(99, 5*day)}}, &Spend{Recent: 3, HasRecent: true}, now); !v.Available || v.Target != "计时中的月额度已用完" || v.Verdict != "" {
+	if v = BuildCycle([]keys.KeyState{{Status: "ok", Limits: month(100, 5*day)}}, &Spend{Recent: 3, HasRecent: true}, now); !v.Available || v.Target != "计时中的月额度已用完" || v.Verdict != "" {
 		t.Errorf("used up = %+v", v)
 	}
 }

@@ -80,7 +80,7 @@ func TestProxyKeepsTheKeyDroidSent(t *testing.T) {
 	}))
 	defer upstream.Close()
 	sw := &switches{ok: true}
-	px := startSwitchProxy(t, upstream.URL, sw, poolUsage("fk-spent", 99.5, 99.5), poolUsage("fk-fresh", 0, 0))
+	px := startSwitchProxy(t, upstream.URL, sw, poolUsage("fk-spent", 100, 100), poolUsage("fk-fresh", 0, 0))
 
 	resp, _ := postLLM(t, px.BaseURL(), "fk-spent")
 	if resp.StatusCode != 200 || len(seen) != 1 || seen[0] != "Bearer fk-spent" {
