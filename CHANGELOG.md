@@ -1,3 +1,8 @@
+## 1.99.3 - 2026-11-26
+
+### Changed
+
+- The Key Pool now spends each key's quota to 100% before spilling over to another key instead of stopping at 98%, so the last 2% (about 15.4M credits on a Max key) is no longer left unused until reset; when a request hits 402 or 429 at 100%, the proxy switches keys and lets droid retry. Keys at 98%–99% also stay in the Expiring list and Cycle pace until truly spent.
 ## 1.99.2 - 2026-11-19
 
 ### Fixed
