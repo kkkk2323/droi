@@ -33,3 +33,28 @@ func TestPopupListsShowTheirRows(t *testing.T) {
 		t.Errorf("the Skills panel takes no room: %+v", r)
 	}
 }
+
+// A skill whose SKILL.md frontmatter droid rejected (droid 1.23) is listed but
+// not loaded: its row says so and names the fields.
+func TestASkillDroidCouldNotLoadSaysWhy(t *testing.T) {
+	h := newHarness(t, fakedaemon.Scenario{
+		Sessions: []fakedaemon.SessionSpec{{Title: "One", Cwd: "/Users/dev/acme-web",
+			Messages: []fakedaemon.Message{{Role: "user", Text: "hi"}}}},
+		Input: map[string]any{"skills": []map[string]any{
+			{"name": "wait-what", "description": "Re-pitch the last message"},
+			{"name": "deploy", "description": "Ship it", "frontmatterIssues": []map[string]any{
+				{"path": "allowed-tools", "code": "invalid_type", "expected": "array"},
+				{"path": "version", "code": "invalid"},
+			}},
+		}},
+	}, "")
+	h.openSession("One")
+	h.until("the composer", func() bool { _, ok := h.tt.Find("Skills and MCP servers"); return ok })
+	h.settle()
+	h.click("Skills and MCP servers")
+	h.until("the skills", func() bool { return h.hasText("deploy") && h.hasText("wait-what") })
+	if !h.hasText("Invalid frontmatter") || !h.hasText("`allowed-tools` must be a list; `version` is invalid") {
+		t.Fatal("the skill droid could not load does not say why")
+	}
+	h.shot("skills-invalid-frontmatter")
+}

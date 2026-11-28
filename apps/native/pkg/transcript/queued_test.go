@@ -81,6 +81,40 @@ func TestAReceiptResolvesItsCall(t *testing.T) {
 	}
 }
 
+// From droid 1.23 a queued call's input has no `blocking`; its result's first
+// line says it queued, or that it repeats a pending set, which it stands with.
+func TestQueuedAskUserFromDroid123(t *testing.T) {
+	queued := quote("Queued. The user's answers will arrive later as a user message naming this AskUser call; keep working.\nPending queued questions:\n1. Which region?")
+	repeat := quote("Not queued again: these questions are already pending as AskUser call call_1. The user's answers will arrive later as a user message; keep working.")
+	answered := "Answered queued questions (AskUser call call_1):\nQ: \"Which region?\"\nA: \"eu-west\""
+	calls := func(msgs ...protocol.FactoryDroidMessage) []*ToolCall {
+		return Build(msgs)[0].Blocks[0].Calls
+	}
+	uses := msg("assistant", `[{"type":"tool_use","id":"call_1","name":"AskUser","input":{"questionnaire":"1. [question] Which region?\n[topic] Region\n[context] The region decides the CDN.\n[option] eu-west\n[option] us-east"}},`+
+		`{"type":"tool_use","id":"call_2","name":"AskUser","input":{"questions":[{"question":"Which region?","context":"Asked again."}]}},`+
+		`{"type":"tool_use","id":"call_3","name":"AskUser","input":{"questionnaire":"1. [question] Now?"}},`+
+		`{"type":"tool_use","id":"call_4","name":"AskUser","input":{"questionnaire":"1. [question] Later?"}}]`)
+	results := msg("tool", `[{"type":"tool_result","toolUseId":"call_1","content":`+queued+`},{"type":"tool_result","toolUseId":"call_2","content":`+repeat+`},`+
+		`{"type":"tool_result","toolUseId":"call_3","content":"1. [question] Now?\n[answer] yes"},{"type":"tool_result","toolUseId":"call_4","content":`+queued+`,"isError":true}]`)
+	states := func(cs []*ToolCall) []QueuedState {
+		out := []QueuedState{}
+		for _, c := range cs {
+			out = append(out, c.Queued)
+		}
+		return out
+	}
+
+	waiting := calls(uses, results)
+	eq(t, states(waiting), []QueuedState{QueuedWaiting, QueuedWaiting, NotQueued, NotQueued})
+	eq(t, Summary(waiting[0]), "waiting for your answer · The region decides the CDN.")
+	eq(t, Summary(waiting[1]), "waiting for your answer · Asked again.")
+
+	done := calls(uses, results, msg("user", `[{"type":"text","text":`+quote(answered)+`}]`, withID("ask-user-answer:call_1")))
+	eq(t, states(done), []QueuedState{QueuedAnswered, QueuedAnswered, NotQueued, NotQueued})
+
+	// Before its result, a call with no input to say so is not known to queue.
+	eq(t, states(calls(uses)), []QueuedState{NotQueued, NotQueued, NotQueued, NotQueued})
+}
 func TestQueuedSummary(t *testing.T) {
 	recs := []QueuedRecord{{Answers: []QueuedAnswer{{"Which?", "this"}}}, {Dismissed: true, Answers: []QueuedAnswer{{Question: "Now?"}}}}
 	eq(t, QueuedSummary(recs), "Answered queued questions: Which? → this; Now?")

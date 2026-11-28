@@ -79,6 +79,23 @@ func TestDisabledLabel(t *testing.T) {
 	}
 }
 
+func TestFrontmatterIssues(t *testing.T) {
+	s := skill(protocol.SkillLocationPersonal)
+	if got := FrontmatterIssues(s); got != "" {
+		t.Errorf("a skill that parsed: %q", got)
+	}
+	s.FrontmatterIssues = []protocol.SkillFrontmatterIssue{
+		{Path: "name", Code: protocol.SkillFrontmatterIssueCodeMissing},
+		{Path: "description", Code: protocol.SkillFrontmatterIssueCodeInvalidType, Expected: "string"},
+		{Path: "allowed-tools", Code: protocol.SkillFrontmatterIssueCodeInvalidType, Expected: "array"},
+		{Path: "metadata", Code: protocol.SkillFrontmatterIssueCodeInvalidType},
+		{Path: "<root>", Code: "a code newer than Droi"},
+	}
+	want := "`name` is missing; `description` must be a string; `allowed-tools` must be a list; `metadata` has the wrong type; `frontmatter` is invalid"
+	if got := FrontmatterIssues(s); got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
 func TestGroupSkills(t *testing.T) {
 	named := func(name string, location protocol.SkillLocation) protocol.SkillInfo {
 		s := skill(location)

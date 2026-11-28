@@ -40,12 +40,15 @@ var FactoryAutomationTools = []string{
 
 // FactoryMissionTools are the llm ids of Factory's own Workstreams
 // (mission-v2) tools, hidden so an imported or legacy official session
-// opened in Droi never mixes Factory's cloud tools into Droi.
+// opened in Droi never mixes Factory's cloud tools into Droi. droid offers
+// them only in a Missions 2.0 session (droid 1.23's session tools included).
 var FactoryMissionTools = []string{
 	"SpawnAgent", "SendMessage", "ListAgents", "InterruptAgent",
 	"RenameAgent", "ArchiveAgent", "CreateListener",
 	"SetPrAutofix", "SetWorkstreamPrAutofix",
 	"CreateTask", "ReadTask", "ListTasks", "UpdateTask", "DeleteTask",
+	"ListSessions", "ViewSession", "MessageSession", "StartSession", "StartWorkstream",
+	"AnswerPrompt", "MessageUser", "RequestAttention",
 }
 
 // workstreamTools is Droi's Workstream server, for a Workstream's Sessions

@@ -12,6 +12,7 @@ package skills
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/kkkk2323/droi/apps/native/internal/collate"
 	"github.com/kkkk2323/droi/apps/native/pkg/l10n"
@@ -97,6 +98,43 @@ func DisabledLabel(skill protocol.SkillInfo) string {
 		return l10n.L("Disabled for this project")
 	}
 	return l10n.L("Disabled")
+}
+
+// FrontmatterIssues says why droid rejected the skill's SKILL.md frontmatter
+// (droid 1.23), one reason a field; "" when it parsed or the Daemon is older.
+// droid lists such a skill but does not load it, whatever `enabled` says.
+func FrontmatterIssues(skill protocol.SkillInfo) string {
+	var reasons []string
+	for _, issue := range skill.FrontmatterIssues {
+		field := issue.Path
+		if field == "<root>" || field == "" {
+			field = "frontmatter"
+		}
+		var reason string
+		switch issue.Code {
+		case protocol.SkillFrontmatterIssueCodeMissing:
+			reason = l10n.L("`%s` is missing", field)
+		case protocol.SkillFrontmatterIssueCodeInvalidType:
+			switch issue.Expected {
+			case "string":
+				reason = l10n.L("`%s` must be a string", field)
+			case "boolean":
+				reason = l10n.L("`%s` must be a boolean", field)
+			case "number":
+				reason = l10n.L("`%s` must be a number", field)
+			case "array":
+				reason = l10n.L("`%s` must be a list", field)
+			case "object":
+				reason = l10n.L("`%s` must be a map", field)
+			default:
+				reason = l10n.L("`%s` has the wrong type", field)
+			}
+		default:
+			reason = l10n.L("`%s` is invalid", field)
+		}
+		reasons = append(reasons, reason)
+	}
+	return strings.Join(reasons, "; ")
 }
 
 type Group struct {

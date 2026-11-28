@@ -9,10 +9,10 @@ import (
 	"github.com/kkkk2323/droid-sdk-go/protocol"
 )
 
-// AskUserTool asks the user questions. With blocking false (droid 1.1) it
-// queues them: the call returns at once, the agent keeps working, and the
-// user's answers, or their dismissal, come back as two messages named after
-// the call. The receipt is user-only and saved as they arrive; no transcript
+// AskUserTool asks the user questions. A queued call (droid 1.1's blocking
+// false; from 1.23 the session's choice) returns at once, the agent keeps
+// working, and the user's answers, or their dismissal, come back as two
+// messages named after the call. The receipt is user-only and saved as they arrive; no transcript
 // shows it. The record is the user message the agent reads.
 const (
 	AskUserTool          = "AskUser"
@@ -155,13 +155,20 @@ func plainText(m protocol.FactoryDroidMessage) string {
 	return strings.Join(parts, "\n")
 }
 
+// queuedResultLine begins the result of an AskUser call that queued its
+// questions; alreadyPendingLine, of one that repeated a pending set and names
+// it. From droid 1.23 the session decides which calls queue and the result is
+// the one record of it: the call's input no longer says `blocking: false`.
+const queuedResultLine = "Queued. The user's answers will arrive later as a user message naming this AskUser call; keep working."
+
+var alreadyPendingLine = regexp.MustCompile(`^Not queued again: these questions are already pending as AskUser call (\S+)\. The user's answers will arrive later as a user message; keep working\.$`)
+
 // queuedStateOf is where call stands when it queued questions; NotQueued
-// for any other call, and while a queued one has no result yet.
+// for any other call, and while a queued one has no result yet. A record or
+// receipt names only a queued call, so one settles the call before its
+// result arrives; a repeat stands where the set it repeats does.
 func queuedStateOf(call *ToolCall, resolved map[string]QueuedState) QueuedState {
 	if call.Use.Name != AskUserTool {
-		return NotQueued
-	}
-	if blocking, ok := call.Input["blocking"].(bool); !ok || blocking {
 		return NotQueued
 	}
 	if s := resolved[call.Use.ID]; s != NotQueued {
@@ -170,7 +177,18 @@ func queuedStateOf(call *ToolCall, resolved map[string]QueuedState) QueuedState 
 	if call.Result == nil || call.Result.IsError != nil && *call.Result.IsError {
 		return NotQueued
 	}
-	return QueuedWaiting
+	first, _, _ := strings.Cut(ResultText(call.Result), "\n")
+	if m := alreadyPendingLine.FindStringSubmatch(first); m != nil {
+		if s := resolved[m[1]]; s != NotQueued {
+			return s
+		}
+		return QueuedWaiting
+	}
+	blocking, ok := call.Input["blocking"].(bool)
+	if first == queuedResultLine || ok && !blocking {
+		return QueuedWaiting
+	}
+	return NotQueued
 }
 
 var queuedLabels = map[QueuedState]string{
@@ -183,8 +201,31 @@ var queuedLabels = map[QueuedState]string{
 // where it stands, then its context.
 func queuedParts(c *ToolCall) []SummaryPart {
 	parts := []SummaryPart{{Value: l10n.T(queuedLabels[c.Queued])}}
-	if ctx, _ := c.Input["context"].(string); strings.TrimSpace(ctx) != "" {
-		parts = append(parts, SummaryPart{Value: firstLine(strings.TrimSpace(ctx), 120)})
+	if ctx := queuedContext(c.Input); ctx != "" {
+		parts = append(parts, SummaryPart{Value: firstLine(ctx, 120)})
 	}
 	return parts
+}
+
+// queuedContext is a queued set's explanation: the call's top-level
+// `context` (droid 1.1), else its first question's, from a `[context]` line
+// of the questionnaire or the `questions` shape.
+func queuedContext(input map[string]any) string {
+	if ctx, _ := input["context"].(string); strings.TrimSpace(ctx) != "" {
+		return strings.TrimSpace(ctx)
+	}
+	if q, _ := input["questionnaire"].(string); q != "" {
+		for _, line := range strings.Split(q, "\n") {
+			if ctx, ok := strings.CutPrefix(strings.TrimSpace(line), "[context]"); ok && strings.TrimSpace(ctx) != "" {
+				return strings.TrimSpace(ctx)
+			}
+		}
+	}
+	if qs, _ := input["questions"].([]any); len(qs) > 0 {
+		if q, _ := qs[0].(map[string]any); q != nil {
+			ctx, _ := q["context"].(string)
+			return strings.TrimSpace(ctx)
+		}
+	}
+	return ""
 }
