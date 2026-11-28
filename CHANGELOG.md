@@ -1,3 +1,18 @@
+## 1.99.4 - 2026-11-28
+
+### Added
+
+- The Skills tab marks a skill that droid lists but could not load with "Invalid frontmatter" and names the `SKILL.md` fields it rejected, such as "`allowed-tools` must be a list" (droid 1.23).
+
+### Fixed
+
+- A queued AskUser call in a session written by droid 1.23 (the official CLI or Factory App in `/migrate` or a Missions 2.0 session) shows as waiting, answered or dismissed again instead of as a plain AskUser call: droid 1.23 no longer marks the call's input, so Droi reads its result. Older sessions still read as before.
+- A question's explanation, which droid has sent with each question since 1.20, shows under the question in the AskUser card again, and in the row of a queued call.
+- Factory's Missions 2.0 session tools (`ListSessions`, `ViewSession`, `MessageSession`, `StartSession`, `StartWorkstream`, `AnswerPrompt`, `MessageUser`, `RequestAttention`) stay hidden from Droi's Sessions with the other Workstreams tools.
+
+### Changed
+
+- Droi moves to droid-sdk-go v0.10.0.
 ## 1.99.3 - 2026-11-26
 
 ### Changed
