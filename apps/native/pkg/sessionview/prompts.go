@@ -414,6 +414,9 @@ func (v *View) askUserCard(c *ui.Context, q controller.AskUser) {
 			text.SingleLine()
 			return
 		}
+		if ctx := strings.TrimSpace(question.Context); ctx != "" {
+			k.Text(c, ctx, 12, 18).TextColor(t.MutedForeground).Margin(k.Px(2), 0, 0, 0).Selectable()
+		}
 		if len(question.Options) > 0 {
 			role, group := ui.RoleRadio, ui.RoleRadioGroup
 			if multi {

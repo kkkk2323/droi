@@ -46,6 +46,7 @@ func TestAQueuedQuestionLeavesTheComposer(t *testing.T) {
 	if !h.hasButton("Dismiss") || h.hasButton("Cancel") {
 		t.Error("the queued card's button is not Dismiss")
 	}
+	h.shot("queued-ask-user")
 	h.click("Message")
 	h.typeInto("and tag it")
 	if got := h.sessionText(); got != "and tag it" {

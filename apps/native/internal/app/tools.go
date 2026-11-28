@@ -353,6 +353,7 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 	a := v.a
 	k, t := a.kit, a.kit.T
 	off := s.Enabled != nil && !*s.Enabled
+	issues := skills.FrontmatterIssues(s)
 	sw, can := skills.SkillSwitch(s, project)
 	row := ui.Row(c.Key(string(s.Location)+":"+s.Name)).Role(ui.RoleListItem).Label(s.Name).AlignItems(ui.Start).Gap(k.Px(12)).
 		Padding(k.Px(6), k.Px(8)).Radius(k.Px(10))
@@ -366,6 +367,9 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 				if off {
 					v.toolBadge(c, l10n.T(skills.DisabledLabel(s)))
 				}
+				if issues != "" {
+					v.toolBadge(c, L("Invalid frontmatter"))
+				}
 				if s.UserInvocable != nil && !*s.UserInvocable {
 					v.toolBadge(c, L("Model only"))
 				}
@@ -375,6 +379,9 @@ func (v *sessionView) skillRow(c *ui.Context, s protocol.SkillInfo, project, sav
 			})
 			if s.Description != "" {
 				k.Text(c, s.Description, 13, 20).TextColor(t.MutedForeground).MaxLines(2).Margin(k.Px(2), 0, 0, 0)
+			}
+			if issues != "" {
+				k.Text(c, issues, 12, 18).TextColor(t.DestructiveForeground).MaxLines(3).Margin(k.Px(2), 0, 0, 0)
 			}
 		})
 		if string(s.Location) == "personal" {
